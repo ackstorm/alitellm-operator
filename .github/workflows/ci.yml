@@ -83,7 +83,7 @@ jobs:
 
       - name: Upload unit coverage
         if: always()
-        uses: actions/upload-artifact@v4  # v4.6.2
+        uses: actions/upload-artifact@v7  # v4.6.2
         with:
           name: cover-unit
           path: cover-unit.out
@@ -125,7 +125,7 @@ jobs:
 
       - name: Upload envtest coverage
         if: always()
-        uses: actions/upload-artifact@v4  # v4.6.2
+        uses: actions/upload-artifact@v7  # v4.6.2
         with:
           name: cover-envtest
           path: cover-envtest.out
@@ -254,7 +254,7 @@ jobs:
 
       - name: Upload forensics
         if: failure()
-        uses: actions/upload-artifact@v4  # v4.6.2
+        uses: actions/upload-artifact@v7  # v4.6.2
         with:
           name: e2e-forensics
           path: |

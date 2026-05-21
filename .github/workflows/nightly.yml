@@ -89,7 +89,7 @@ jobs:
       # `if-no-files-found: ignore` keeps non-failure runs noise-free.
       - name: Upload fuzz crash corpus
         if: failure()
-        uses: actions/upload-artifact@v4  # v4.6.2
+        uses: actions/upload-artifact@v7  # v4.6.2
         with:
           name: fuzz-crashes-${{ github.sha }}
           path: |
