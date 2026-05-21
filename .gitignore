@@ -43,3 +43,6 @@ kubeconfig
 # Git worktrees (used by superpowers:using-git-worktrees)
 worktrees/
 site/
+
+# Frozen LiteLLM OpenAPI snapshot + design spec (kept locally, not committed)
+spec/
