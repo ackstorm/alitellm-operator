@@ -35,7 +35,7 @@ jobs:
     timeout-minutes: 15
     if: "github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release): v')"
     steps:
-      - uses: actions/checkout@v4  # v4.3.1
+      - uses: actions/checkout@v6  # v4.3.1
 
       - name: Cache devtools + go caches
         uses: actions/cache@v4  # v4.3.0
@@ -62,7 +62,7 @@ jobs:
     timeout-minutes: 15
     if: "github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release): v')"
     steps:
-      - uses: actions/checkout@v4  # v4.3.1
+      - uses: actions/checkout@v6  # v4.3.1
 
       - name: Cache devtools + go caches
         uses: actions/cache@v4  # v4.3.0
@@ -96,7 +96,7 @@ jobs:
     timeout-minutes: 25
     if: "github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release): v')"
     steps:
-      - uses: actions/checkout@v4  # v4.3.1
+      - uses: actions/checkout@v6  # v4.3.1
 
       - name: Cache devtools + go caches
         uses: actions/cache@v4  # v4.3.0
@@ -142,7 +142,7 @@ jobs:
       security-events: write
       actions: read
     steps:
-      - uses: actions/checkout@v4  # v4.3.1
+      - uses: actions/checkout@v6  # v4.3.1
 
       # Dependency review on PR diffs (first-party action; no SHA-pin needed per HRD-07).
       - name: Dependency Review
@@ -211,7 +211,7 @@ jobs:
        !github.event.pull_request.draft ||
        contains(github.event.pull_request.labels.*.name, 'run-e2e'))
     steps:
-      - uses: actions/checkout@v4  # v4.3.1
+      - uses: actions/checkout@v6  # v4.3.1
 
       - name: Cache devtools + go caches
         uses: actions/cache@v4  # v4.3.0
