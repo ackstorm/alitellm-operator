@@ -19,13 +19,10 @@ fi
 
 # Extract the GO-XXXX-XXXX IDs from the table rows in the ack file.
 # Table format: `| <#> | GO-YYYY-NNNN | ...` — we grep the second column.
-EXPECTED=$(grep -oE '^\| [0-9]+ \| GO-[0-9]{4}-[0-9]+' "$ACK_FILE" \
+# Empty ack-list is valid and means "expect zero reachable advisories";
+# `|| true` keeps `pipefail` from aborting on the no-match grep exit.
+EXPECTED=$( { grep -oE '^\| [0-9]+ \| GO-[0-9]{4}-[0-9]+' "$ACK_FILE" || true; } \
   | awk -F'|' '{print $3}' | tr -d ' ' | sort -u)
-
-if [[ -z "$EXPECTED" ]]; then
-  echo "FAIL: could not parse any GO-* IDs from $ACK_FILE" >&2
-  exit 1
-fi
 
 # Run govulncheck; capture full output so we can both inspect IDs and surface
 # the report to humans on mismatch. govulncheck exits 3 when reachable
@@ -38,12 +35,17 @@ set -e
 
 # Extract reachable (CALLED) advisory IDs. The text-mode output lists each
 # reachable advisory under a `Vulnerability #N: GO-XXXX-XXXX` header.
-ACTUAL=$(echo "$RAW" | grep -oE '^Vulnerability #[0-9]+: GO-[0-9]{4}-[0-9]+' \
+# Zero reachable is the happy path; `|| true` keeps pipefail from aborting.
+ACTUAL=$( { echo "$RAW" | grep -oE '^Vulnerability #[0-9]+: GO-[0-9]{4}-[0-9]+' || true; } \
   | awk '{print $NF}' | sort -u)
 
 if [[ "$EXPECTED" == "$ACTUAL" ]]; then
-  COUNT=$(echo "$EXPECTED" | wc -l | tr -d ' ')
-  echo "govulncheck-gate: PASS — ${COUNT} reachable advisories match the acknowledged set."
+  if [[ -z "$EXPECTED" ]]; then
+    echo "govulncheck-gate: PASS — 0 reachable advisories (ack-list is empty)."
+  else
+    COUNT=$(echo "$EXPECTED" | wc -l | tr -d ' ')
+    echo "govulncheck-gate: PASS — ${COUNT} reachable advisories match the acknowledged set."
+  fi
   exit 0
 fi
 
