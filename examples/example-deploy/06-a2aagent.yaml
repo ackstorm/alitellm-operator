@@ -1,0 +1,49 @@
+---
+# Copyright 2026 ACKstorm.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Dogfood A2AAgent CR — vendor-research-agent.
+#
+# Exercises spec §11 AC-A1 (POST /v1/agents registration with
+# agent_name == metadata.name) and AC-A2 (agent_card_params.url overlaid
+# from spec.endpoint). Flat _FINALv3 shape: no spec.type, no spec.litellm.*
+# nesting (per CONTEXT.md Anti-Patterns).
+#
+# After apply, expect:
+#   (a) status.lastRendered.agentID populated with the LiteLLM-assigned
+#       UUID once POST /v1/agents succeeds.
+#   (b) Ready=True reason=Synced once LiteLLMConnection/default is Ready.
+#   (c) agent_name="vendor-research-agent" and
+#       agent_card_params.url="http://vendor-research-agent.default.svc:9001"
+#       overlaid by the operator (spec.endpoint wins over spec.agentCard.url
+#       per AC-A2; a ProjectionOverride Event is emitted on collision).
+#   (d) spec.params.timeout=30 forwarded to AgentConfig top-level (NOT
+#       inside agent_card_params — spec §6.6).
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMA2AAgent
+metadata:
+  name: vendor-research-agent
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  # Agent endpoint — overlaid as agent_card_params.url on POST /v1/agents.
+  # Must be reachable from the LiteLLM pod for A2A protocol calls.
+  endpoint: "http://vendor-research-agent.default.svc:9001"
+  # agentCard — REQUIRED JSON pass-through bag forwarded to
+  # agent_card_params in the POST /v1/agents body (spec §6.6).
+  agentCard:
+    name: "vendor-research"
+    version: "1.0"
+    description: "Vendor research A2A agent"
+  # params — OPTIONAL JSON pass-through forwarded at AgentConfig top-level
+  # (NOT inside agent_card_params). Keys listed here ship alongside
+  # agent_name, agent_card_params, and the operator's structural overlays.
+  params:
+    timeout: 30

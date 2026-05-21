@@ -1,0 +1,37 @@
+---
+# Copyright 2026 ACKstorm.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Minimal Team CR — no budget, no spec.params. Demonstrates the
+# absent-budget wire contract per spec §6.7 line 1194: when spec.budget
+# is absent (or its leaves removed), the operator's POST /team/new and
+# POST /team/update bodies send max_budget=null and budget_duration=null
+# explicitly — clearing the LiteLLM-side fields.
+#
+# IMPORTANT: do NOT name this CR `default`. The operator synthetically
+# bootstraps the LiteLLM team aliased `default` at startup (spec §7.4
+# line 1313 + plan 06-03 TeamDefaultRunnable); it does NOT create a
+# Kubernetes Team/default CR. If a user wants to override the implicit
+# default's parameters (e.g. add a budget), creating Team/default
+# applies the ownership transition per spec §6.7 line 1223 (AC-T2 —
+# the CR-driven reconcile takes over the alias).
+#
+# For a fuller example exercising AC-T1 (budget projection) + AC-T6
+# (pass-through spec.params with tpm_limit/rpm_limit/tags), see
+# config/samples/team-finance.yaml.
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMTeam
+metadata:
+  name: example
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+# Minimal: no budget, no spec.params. Wire effect: POST /team/new with
+# team_alias='example', max_budget=null, budget_duration=null.
+spec: {}

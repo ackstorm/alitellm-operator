@@ -1,0 +1,351 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.0
+  name: litellmmodels.litellm.ackstorm.ai
+spec:
+  group: litellm.ackstorm.ai
+  names:
+    kind: LiteLLMModel
+    listKind: LiteLLMModelList
+    plural: litellmmodels
+    shortNames:
+    - mdl
+    singular: litellmmodel
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: Ready
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Ready')].reason
+      name: Reason
+      type: string
+    - jsonPath: .status.lastRendered.litellmModelID
+      name: ModelID
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          LiteLLMModel is the Schema for the litellmmodels API.
+
+          MODEL-01: a LiteLLMModel CR registers one LiteLLM model entry (a litellm_params +
+          model_info pair) against the LiteLLM instance referenced by
+          LiteLLMConnection/default. User-authored and Discovery-generated CRs are
+          treated identically by the reconciler (OWN-04 silent-overwrite on
+          first-reconcile name collision).
+
+          Shape: flat _FINALv3 — no spec.type discriminator, no nested litellm
+          sub-object. spec.params and spec.info are pass-through bags. spec.secrets[]
+          provides {{NAME}} substitution (§5.2). See ModelSpec for field details.
+
+          LiteLLMModel names are chosen freely by the user (MODEL-01 — not a singleton).
+          There is NO CEL singleton-by-name rule on this resource. The spec §7.5
+          finalizer name is "models.litellm.ackstorm.ai/finalizer".
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              ModelSpec defines the desired state of Model.
+
+              MODEL-01: a user can declare a Model CR with spec.params (pass-through bag
+              forwarded to LiteLLM litellm_params) and spec.info (pass-through bag
+              forwarded to LiteLLM model_info). Both bags are x-kubernetes-preserve-unknown-
+              fields: true (any JSON is accepted). spec.secrets[] maps Kubernetes Secrets
+              into {{NAME}} placeholders inside the bags (§5.2 substitution).
+
+              The shape is flat per _FINALv3: no spec.type discriminator and no
+              nested litellm sub-object. The operator's only typed-field overlay is
+              model_info.id (null on create, resolved remote ID on update — D-04).
+
+              MODEL-02: spec.secrets[].as values are validated at admission via the CEL
+              XValidation rule on this struct; uniqueness within a Model is also
+              enforced (SEC-03).
+
+              MODEL-05: spec.params and spec.info pass-through bags carry
+              x-kubernetes-preserve-unknown-fields: true so any future litellm_params /
+              model_info fields are accepted without a CRD schema change.
+            properties:
+              info:
+                description: |-
+                  Info is a pass-through bag of fields forwarded verbatim to
+                  LiteLLM's model_info on POST /model/new and POST /model/update,
+                  except that the operator overlays model_info.id (null on CREATE,
+                  resolved LiteLLM UUID on UPDATE — D-04). Any JSON object is accepted
+                  (x-kubernetes-preserve-unknown-fields: true). Same {{NAME}} substitution
+                  rules as spec.params apply (§5.2, D-05).
+
+                  If the user supplies spec.info.id, the operator's overlay always wins
+                  and a type=Warning, reason=ProjectionOverride Event is emitted per
+                  spec §5.1 (Identity tier — operator-set field).
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+              params:
+                description: |-
+                  Params is a pass-through bag of fields forwarded verbatim to
+                  LiteLLM's litellm_params on POST /model/new and POST /model/update.
+                  Any JSON object is accepted (x-kubernetes-preserve-unknown-fields: true).
+                  String-typed leaf values may contain {{NAME}} placeholders that are
+                  resolved from spec.secrets[] before the body reaches LiteLLM (§5.2,
+                  D-05). Non-string leaves are forwarded unchanged (SEC-02).
+
+                  The operator NEVER adds or removes keys inside this bag; the user's
+                  declared keyset is the desired state. On each reconcile, the rendered
+                  post-substitution body is hashed (SHA-256) and compared against
+                  status.lastRendered.hash to detect drift (D-01).
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+              secrets:
+                description: |-
+                  Secrets is the substitution map for resolving {{NAME}} placeholders in
+                  spec.params and spec.info string-typed leaves (§5.2, D-05, SEC-03).
+                  Each entry maps an uppercase NAME (the as field) to a Kubernetes Secret
+                  key (secretRef). Placeholders in the bags are replaced with the resolved
+                  plaintext value before the body is forwarded to LiteLLM. Secret material
+                  NEVER appears in logs, Events, or status conditions (§9.1, AC-S1).
+
+                  CEL constraints: each as value must match ^[A-Z_][A-Z0-9_]*$ and all as
+                  values within a Model must be unique (SEC-03). Violations are rejected
+                  at admission — no reconcile is triggered.
+
+                  NOTE: SEC-03 uniqueness of spec.secrets[].as values is enforced as a
+                  runtime check in the Model reconciler (see
+                  internal/controller/model_controller.go Step 3.5). The CEL XValidation
+                  list-uniqueness expression was not expressible in the Kubernetes 1.31
+                  CRD CEL environment (toSet and map-then-unique patterns require a
+                  newer CEL library version). The admission-time CEL alternative is
+                  deferred to v1beta1 when a higher Kubernetes floor can be assumed.
+                items:
+                  description: |-
+                    SecretSubstitution maps a Kubernetes Secret key to an uppercase NAME that
+                    can be referenced as {{NAME}} in spec.params and spec.info string-typed
+                    leaves (§5.2). The as value is the NAME; the secretRef points to the
+                    Kubernetes Secret and key that carry the plaintext value (SEC-01.SEC-03).
+
+                    SEC-03: the as value is validated at admission by the CEL pattern
+                    ^[A-Z_][A-Z0-9_]*$; lowercase letters, digits-first names, and whitespace
+                    are rejected. Uniqueness of as values within a Model is enforced by a CEL
+                    XValidation on ModelSpec.Secrets (see above).
+                  properties:
+                    as:
+                      description: |-
+                        As is the placeholder NAME used in {{NAME}} substitution expressions
+                        within spec.params and spec.info string-typed leaves. Must match the
+                        pattern ^[A-Z_][A-Z0-9_]*$ (§5.2, SEC-03). Unique within the enclosing
+                        Model CR (SEC-03 uniqueness — enforced via CEL on spec.secrets).
+
+                        Example: as=ANTHROPIC_API_KEY matches the placeholder
+                        "{{ANTHROPIC_API_KEY}}" anywhere in spec.params or spec.info strings.
+                      minLength: 1
+                      pattern: ^[A-Z_][A-Z0-9_]*$
+                      type: string
+                    secretRef:
+                      description: |-
+                        SecretRef identifies the Kubernetes Secret and key whose plaintext
+                        value replaces the {{As}} placeholder at reconcile time. The Secret
+                        MUST reside in the same namespace as the Model CR (no cross-namespace
+                        resolution in v1alpha1). A missing Secret or key surfaces as
+                        Ready=False, reason=SecretNotFound (§6.0).
+
+                        Reuses SecretKeyRef from litellmconnection_types.go (same package —
+                        no additional type definition needed). SEC-01, SEC-06.
+                      properties:
+                        key:
+                          description: |-
+                            Key inside the referenced Secret's `data` map whose value is the
+                            LiteLLM master key.
+                          minLength: 1
+                          type: string
+                        name:
+                          description: |-
+                            Name of the Kubernetes Secret resource in the LiteLLMConnection's
+                            namespace.
+                          minLength: 1
+                          type: string
+                      required:
+                      - key
+                      - name
+                      type: object
+                  required:
+                  - as
+                  - secretRef
+                  type: object
+                type: array
+            type: object
+          status:
+            description: |-
+              ModelStatus defines the observed state of Model.
+
+              The status surface per D-07 (CONTEXT.md): a nested lastRendered struct
+              carries the operator-side drift source of truth (D-01) alongside the
+              standard observedGeneration + conditions fields. The flat D-07 structure
+              is the rejected alternative (Q3.1 Option B); nested is preferred for
+              kubectl get -o yaml readability.
+
+              OWN-08: observedGeneration is populated on every successful reconcile so
+              that consumers can detect whether the reconciler has processed the latest
+              spec version.
+            properties:
+              conditions:
+                description: |-
+                  Conditions carries the standard metav1.Condition list. The single type
+                  defined for Model is `Ready`, with reason values from §6.0:
+                  - Synced — rendered body matches LiteLLM; no drift.
+                  - LiteLLMUnavailable — LiteLLMConnection/default not Ready (CONN-06).
+                  - LiteLLMRejected — LiteLLM returned a 4xx/5xx on mutation.
+                  - SecretNotFound — a spec.secrets[].secretRef is missing (SEC-06).
+                  - UnresolvedPlaceholder — a {{NAME}} in spec.params/info has no matching
+                  spec.secrets[] entry (SEC-05).
+
+                  Phase 3+ dependents read this via kubectl or by listing Model CRs; the
+                  Model reconciler does not expose a cache equivalent to the connection cache.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              lastRendered:
+                description: |-
+                  LastRendered is the operator-side drift source of truth (D-01, D-07).
+                  It records the post-substitution rendered state that was last
+                  successfully applied to LiteLLM. The reconciler compares the current
+                  desired state hash against lastRendered.hash to detect drift without
+                  querying the LiteLLM API (bypassing Probe 4a/4b encrypted-response
+                  issues — see spec/DEFECTS-1.82.6.md).
+                properties:
+                  at:
+                    description: |-
+                      At is the timestamp of the last SUCCESSFUL render (NOT every reconcile
+                      attempt — transient failures do not update this field). Reconcile
+                      attempt frequency is observable via controller-runtime workqueue metrics
+                      and cr_status_age_seconds (§10 / OBS-03).
+                    format: date-time
+                    type: string
+                  hash:
+                    description: |-
+                      Hash is the SHA-256 hex of the RFC 8785–canonicalized merged
+                      post-substitution body (spec.params merged with spec.info, after
+                      {{NAME}} substitution, before the model_info.id overlay). The hash
+                      deliberately excludes model_info.id so that CREATE vs UPDATE reconciles
+                      do not oscillate (D-01). An empty hash indicates the Model has not yet
+                      been successfully reconciled.
+                    type: string
+                  infoKeys:
+                    description: |-
+                      InfoKeys is the sorted list of dotted-path keys present in spec.info at
+                      the time of the last successful render (D-02). Same shrinkage-detection
+                      semantics as ParamsKeys — any key removal in EITHER bag triggers
+                      delete-and-recreate.
+                    items:
+                      type: string
+                    type: array
+                  litellmModelID:
+                    description: |-
+                      LiteLLMModelID is the LiteLLM-assigned UUID (model_info.id) for this
+                      Model entry. Persisted here so the reconciler can reference it directly
+                      on subsequent reconciles without an extra GET /model/info call (D-04).
+
+                      IMPORTANT (D-02 consequence): on every delete-and-recreate cycle, LiteLLM
+                      assigns a fresh UUID. The reconciler MUST re-pin this field to the new
+                      UUID inside the same reconcile that performed the delete+recreate, before
+                      returning success, to avoid a stale-ID 404 on the next reconcile.
+
+                      Diverges from spec §6.2: documented in spec/DEFECTS-1.82.6.md row 7 (D-04).
+                    type: string
+                  paramsKeys:
+                    description: |-
+                      ParamsKeys is the sorted list of dotted-path keys present in spec.params
+                      at the time of the last successful render (D-02). The reconciler diffs
+                      this against the current spec.params keyset: if any key is absent in the
+                      desired state (a shrinkage), the full delete-and-recreate path is taken
+                      instead of POST /model/update (D-02, see spec/DEFECTS-1.82.6.md row 2).
+                    items:
+                      type: string
+                    type: array
+                type: object
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the metadata.generation of the Model CR the
+                  reconciler most recently processed successfully. Consumers can compare
+                  this against metadata.generation to detect whether the current spec
+                  has been reconciled yet (OWN-08).
+                format: int64
+                type: integer
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

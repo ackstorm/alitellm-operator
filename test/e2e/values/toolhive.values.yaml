@@ -1,0 +1,19 @@
+# Tier 2 ToolHive operator configuration
+#
+# Used by:  scripts/cluster.sh up   (step 4b — helm upgrade --install toolhive-operator)
+# Chart:    oci://ghcr.io/stacklok/toolhive/toolhive-operator  (upstream, OCI-hosted)
+# CRDs:     oci://ghcr.io/stacklok/toolhive/toolhive-operator-crds  (installed in step 4a)
+#
+# IMPORTANT: the CRDs chart and Operator chart are on INDEPENDENT version
+# streams (CRDs ~0.0.x, Operator ~0.5.x). Pin each separately — see
+# test/e2e/CHART_PINS.md. Install order is always CRDs first (Established=True
+# is a prereq for the operator chart).
+#
+# Apply changes:  make cluster-hydrate
+
+crdsChartVersion:     0.0.55      # see test/e2e/CHART_PINS.md
+operatorChartVersion: 0.5.5       # independent of crdsChartVersion
+
+resources:
+  requests: { cpu: 50m, memory: 64Mi }
+  limits:   { cpu: 500m, memory: 256Mi }

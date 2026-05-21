@@ -1,0 +1,60 @@
+---
+# Copyright 2026 ACKstorm.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Sample MCPServerDiscovery CR exercising plan 05-04 + spec §11 AC-MSD1
+# (Pipeline B: ToolHive Discovery generates Kubernetes MCPServer child CRs).
+# Applied with
+# `kubectl apply -f config/samples/litellm_v1alpha1_mcpserverdiscovery.yaml`
+# after the operator's CRDs are installed.
+#
+# NOTE: This sample requires ToolHive CRDs (toolhive.stacklok.dev/v1beta1)
+# installed in the cluster. Without them, the operator surfaces
+# Ready=False reason=SourceUnreachable and retries every 1 minute via the
+# lazy informer (Phase 5 D-08). LiteLLMConnection is NOT required for
+# Discovery kinds — they reconcile K8s child CRs only.
+#
+# After apply, expect:
+#   (a) The operator reads ToolHive MCPServer/VirtualMCPServer CRs in the
+#       namespaces listed below, derives the three-part dotted name
+#       `<discovery-name>.<toolhive-ns>.<toolhive-name>`, and generates
+#       Kubernetes MCPServer child CRs with ownerReferences back to this CR.
+#   (b) Only children whose derived name matches the include filter below
+#       are created; non-matching candidates appear in
+#       status.skippedCandidates[].
+#   (c) status.generatedCount and status.generatedChildren[] reflect active
+#       children; removed ToolHive objects are detected by K8s label-selector
+#       vanish detection and their children deleted.
+#   (d) A refresh occurs every 1 minute (spec.refresh.interval).
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMMCPServerDiscovery
+metadata:
+  name: mcpserverdiscovery-sample
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  # type must be "toolhive" (the only supported Discovery source in v1alpha1).
+  type: toolhive
+  # toolhive block configures which namespaces and ToolHive CR kinds to watch.
+  # namespaces is an in-memory filter; the operator's ClusterRole grants
+  # cluster-scoped read access to ToolHive CRDs (Phase 5 D-07).
+  toolhive:
+    namespaces: ["default"]
+    kinds: [MCPServer, VirtualMCPServer]
+  # Post-derivation include filter. The filter target is the three-part dotted
+  # name `<discovery-name>.<toolhive-ns>.<toolhive-name>`. This pattern admits
+  # only children whose name starts with "^toolhive\." (RE2 semantics).
+  filters:
+    include:
+      - "^toolhive\\..*"
+  # refresh.interval controls the Discovery polling cadence.
+  # Minimum floor is 1m (MDISC-05 CEL gate).
+  refresh:
+    interval: "1m"

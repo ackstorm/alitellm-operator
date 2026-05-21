@@ -1,0 +1,2 @@
+go test fuzz v1
+string("anthropic/claude:3_sonnet 20240229")

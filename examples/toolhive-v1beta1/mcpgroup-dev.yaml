@@ -1,0 +1,12 @@
+apiVersion: toolhive.stacklok.dev/v1beta1
+kind: MCPGroup
+metadata:
+  name: dev
+  namespace: mcp
+  labels:
+    app.kubernetes.io/component: mcp
+    app.kubernetes.io/env: production
+  annotations:
+    litellm.io/access-groups: dev,run,dream
+spec:
+  description: MCP Group — dev tools (context7, deepwiki)

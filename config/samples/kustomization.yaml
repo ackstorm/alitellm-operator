@@ -1,0 +1,24 @@
+## Append samples of your project ##
+resources:
+- litellm_v1alpha1_litellmconnection.yaml
+- litellm_v1alpha1_model.yaml
+- litellm_v1alpha1_modeldiscovery.yaml
+# Phase 4 per-provider ModelDiscovery samples (plan 04-06)
+- modeldiscovery-anthropic.yaml
+- modeldiscovery-bedrock.yaml
+- modeldiscovery-gemini.yaml
+- modeldiscovery-kubeai.yaml
+- modeldiscovery-openai.yaml
+- litellm_v1alpha1_mcpserver.yaml
+# Phase 5 plan 05-01 non-trivial MCPServer sample (http transport)
+- mcpserver-http.yaml
+- litellm_v1alpha1_mcpserverdiscovery.yaml
+# Phase 5 plan 05-04 non-trivial MCPServerDiscovery sample (ToolHive)
+- mcpserverdiscovery-toolhive.yaml
+- litellm_v1alpha1_a2aagent.yaml
+# Phase 5 plan 05-03 non-trivial A2AAgent sample (vendor-research + {{NAME}} substitution)
+- a2aagent-vendor-research.yaml
+- litellm_v1alpha1_team.yaml
+# Phase 6 plan 06-04 — non-trivial Team sample exercising AC-T1 + AC-T6.
+- team-finance.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

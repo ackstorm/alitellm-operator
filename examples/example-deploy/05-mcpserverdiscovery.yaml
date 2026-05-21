@@ -1,0 +1,50 @@
+---
+# Copyright 2026 ACKstorm.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Dogfood MCPServerDiscovery CR — ToolHive discovery (Pipeline B).
+#
+# NOTE: ToolHive CRDs (toolhive.stacklok.dev/v1beta1) may be absent in
+# the team's cluster. If ToolHive is not installed:
+#   - Remove this file from dogfood/default/kustomization.yaml
+#     resources list BEFORE running `kubectl apply -k dogfood/default/`
+#   - OR leave it in and accept Ready=False reason=SourceUnreachable
+#     (the reconciler retries every 1 minute and converges when ToolHive
+#     is installed, per Phase 5 D-08 lazy informer behavior)
+#
+# Check for ToolHive CRDs: `kubectl get crd | grep toolhive`
+#
+# Exercises spec §11 AC-MSD1 (Pipeline B: generates MCPServer children
+# from ToolHive objects) and MSDISC-06 (lazy informer tolerates absent CRDs).
+#
+# After apply, expect (when ToolHive is present):
+#   (a) Ready=True reason=Synced once ToolHive CRDs are installed and
+#       the lazy informer registers successfully.
+#   (b) Generated child MCPServer CRs named
+#       "toolhive.<toolhive-namespace>.<toolhive-name>" appearing in
+#       default within 30s.
+#   (c) Refresh every 1 minute (spec.refresh.interval).
+# When ToolHive is absent: Ready=False reason=SourceUnreachable — acceptable.
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMMCPServerDiscovery
+metadata:
+  name: toolhive
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  # Discovery type — toolhive is the only supported value in v1alpha1.
+  type: toolhive
+  # ToolHive namespaces to watch for MCPServer/VirtualMCPServer objects.
+  # The operator's cluster-scoped read RBAC covers all namespaces listed.
+  toolhive:
+    namespaces: [default]
+  # Refresh interval — must be >= 1m (CEL floor, mirroring MDISC-05).
+  refresh:
+    interval: 1m

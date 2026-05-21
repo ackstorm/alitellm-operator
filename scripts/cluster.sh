@@ -1,0 +1,189 @@
+#!/usr/bin/env bash
+# scripts/cluster.sh — e2e cluster lifecycle.
+#
+# All Helm chart installs are pinned via test/e2e/CHART_PINS.md; all tunables
+# live in test/e2e/values/*.values.yaml. See test/e2e/README.md for the
+# CI gate vs dev iteration workflows.
+
+set -euo pipefail
+
+CLUSTER_NAME="${CLUSTER_NAME:-alitellm-operator-test}"
+KIND_CONFIG="${KIND_CONFIG:-scripts/kind-config.yaml}"
+VALUES_DIR="${VALUES_DIR:-test/e2e/values}"
+
+usage() {
+  cat <<'USAGE' >&2
+scripts/cluster.sh — e2e cluster lifecycle.
+
+Usage:
+  scripts/cluster.sh up        # create kind + install all charts + wait Ready
+  scripts/cluster.sh hydrate   # re-apply hydration on an already-up cluster
+  scripts/cluster.sh down      # delete kind cluster
+  scripts/cluster.sh keep      # same as up but no EXIT trap (local iteration)
+  scripts/cluster.sh status    # print kubectl get on hydration fixtures
+USAGE
+  exit 1
+}
+
+cmd_up()      { create_cluster; create_namespaces; install_all; apply_fixtures; }
+cmd_hydrate() { create_namespaces; install_all; apply_fixtures; }
+cmd_down()    { kind delete cluster --name "${CLUSTER_NAME}" || true; }
+cmd_keep()    { cmd_up; }
+cmd_status()  { print_status; }
+
+create_cluster() {
+  if kind get clusters | grep -qx "${CLUSTER_NAME}"; then
+    echo "[cluster.sh] kind cluster '${CLUSTER_NAME}' already exists — skipping create"
+    return 0
+  fi
+  echo "[cluster.sh] creating kind cluster '${CLUSTER_NAME}'..."
+  kind create cluster \
+    --name "${CLUSTER_NAME}" \
+    --config "${KIND_CONFIG}" \
+    --wait 60s
+}
+
+create_namespaces() {
+  local ns
+  for ns in default litellm-system toolhive-system mocks dev prod; do
+    kubectl get ns "${ns}" >/dev/null 2>&1 || kubectl create ns "${ns}"
+  done
+}
+install_toolhive() {
+  local crds_version operator_version
+  crds_version="$(awk '/^crdsChartVersion:/ {print $2}' "${VALUES_DIR}/toolhive.values.yaml")"
+  operator_version="$(awk '/^operatorChartVersion:/ {print $2}' "${VALUES_DIR}/toolhive.values.yaml")"
+
+  echo "[cluster.sh] installing toolhive-operator-crds @ ${crds_version}..."
+  helm upgrade --install toolhive-operator-crds \
+    oci://ghcr.io/stacklok/toolhive/toolhive-operator-crds \
+    --version "${crds_version}" \
+    --wait --timeout 60s
+
+  echo "[cluster.sh] installing toolhive-operator @ ${operator_version}..."
+  helm upgrade --install toolhive-operator \
+    oci://ghcr.io/stacklok/toolhive/toolhive-operator \
+    --version "${operator_version}" \
+    -n toolhive-system \
+    -f "${VALUES_DIR}/toolhive.values.yaml" \
+    --wait --timeout 90s
+
+  # Step 2.5 — add v1beta1 versions to ToolHive CRDs (not yet in published charts).
+  # The OCI chart above ships only v1alpha1. This fixture (vendored from
+  # stacklok/toolhive v0.28.0 @ 748a64228710ce241a225f5530022ce2c96cc23e) adds
+  # v1beta1 served=true, storage=false to both MCPServer and VirtualMCPServer so
+  # the operator's dual-version informer can register against both vintages.
+  # The fixture contains both v1alpha1 (storage: true, preserved) and v1beta1
+  # (storage: false, new). kubectl apply replaces the OCI chart's CRD with the
+  # multi-version fixture; safe in an ephemeral kind cluster. Idempotent.
+  echo "[cluster.sh] adding v1beta1 CRD versions (toolhive dual-vintage fixture)..."
+  kubectl apply -f test/e2e/fixtures/toolhive-v1beta1-crds.yaml
+  echo "[cluster.sh] toolhive CRD versions after fixture: $(kubectl get crd mcpservers.toolhive.stacklok.dev -o jsonpath='{.spec.versions[*].name}' 2>/dev/null || echo 'crd-not-found')"
+}
+
+install_litellm() {
+  local version image_tag image
+  version="$(awk '/^chartVersion:/ {print $2}' "${VALUES_DIR}/litellm.values.yaml")"
+  image_tag="$(awk '/^[[:space:]]*tag:/ {print $2; exit}' "${VALUES_DIR}/litellm.values.yaml")"
+  image="ghcr.io/berriai/litellm-database:${image_tag}"
+
+  # β: pre-pull + kind load the LiteLLM image so the migrations Job (and
+  # the runtime Deployment) hit a locally-resident image. Combined with
+  # image.pullPolicy=IfNotPresent in litellm.values.yaml, this eliminates
+  # the ghcr.io round-trip on cold-cache that previously left the PreSync
+  # Job in ImagePullBackOff → DB unmigrated → 500s on /model/new + friends.
+  echo "[cluster.sh] pre-pulling ${image} on host..."
+  docker pull "${image}"
+  echo "[cluster.sh] kind-loading ${image} into ${CLUSTER_NAME}..."
+  kind load docker-image "${image}" --name "${CLUSTER_NAME}"
+
+  local tmpdir; tmpdir="$(mktemp -d)"
+  echo "[cluster.sh] pulling litellm-helm @ ${version} into ${tmpdir}..."
+  ( cd "${tmpdir}" && helm pull oci://docker.litellm.ai/berriai/litellm-helm --version "${version}" --untar )
+
+  echo "[cluster.sh] installing litellm @ ${version}..."
+  helm upgrade --install litellm "${tmpdir}/litellm-helm" \
+    -n litellm-system \
+    -f "${VALUES_DIR}/litellm.values.yaml" \
+    --wait --timeout 240s
+
+  # α: helm --wait covers Deployment readiness + PreSync hook completion,
+  # but a Job stuck in ImagePullBackOff can leave helm to time out silently
+  # while the chart reports STATUS=deployed. Re-verify the migrations Job
+  # explicitly so a regression here fails loud (vs producing 500s in the
+  # e2e suite ten minutes later).
+  echo "[cluster.sh] verifying litellm-migrations Job Complete..."
+  kubectl -n litellm-system wait --for=condition=complete \
+    job/litellm-migrations --timeout=180s
+
+  rm -rf "${tmpdir}"
+}
+
+install_mocks() {
+  echo "[cluster.sh] building + loading litellm-mock:e2e..."
+  make e2e-mock-build
+  kind load docker-image litellm-mock:e2e --name "${CLUSTER_NAME}"
+
+  echo "[cluster.sh] installing openai-mock + kubeai-mock..."
+  helm upgrade --install openai-mock test/e2e/charts/mocks/ \
+    -n mocks -f "${VALUES_DIR}/openai-mock.values.yaml" \
+    --wait --timeout 60s
+  helm upgrade --install kubeai-mock test/e2e/charts/mocks/ \
+    -n mocks -f "${VALUES_DIR}/kubeai-mock.values.yaml" \
+    --wait --timeout 60s
+}
+
+install_operator() {
+  echo "[cluster.sh] building alitellm-operator:e2e..."
+  make docker-build IMG=alitellm-operator:e2e
+  kind load docker-image alitellm-operator:e2e --name "${CLUSTER_NAME}"
+
+  echo "[cluster.sh] helm install alitellm-operator..."
+  helm upgrade --install alitellm-operator ./deploy/helm/alitellm-operator/ \
+    -n default -f "${VALUES_DIR}/operator.values.yaml" \
+    --wait --timeout 90s
+}
+
+install_all() {
+  install_toolhive
+  install_litellm
+  install_mocks
+  install_operator
+}
+apply_fixtures() {
+  # Secret MUST be applied before the CR. Otherwise reconciler fires once
+  # against missing Secret, emits transient SecretNotFound event, flickers
+  # connection_ready=0→1. Order is the cheapest determinism fix (spec §5).
+  kubectl apply -f test/e2e/fixtures/master-key-secret.yaml
+  kubectl apply -f test/e2e/fixtures/litellmconnection.yaml
+  kubectl -n default wait --for=condition=Ready \
+    litellmconnection/default --timeout=60s
+}
+print_status() {
+  echo "== kind clusters =="
+  kind get clusters
+  echo
+  echo "== nodes =="
+  kubectl get nodes
+  echo
+  echo "== namespaces (e2e layout) =="
+  kubectl get ns default litellm-system toolhive-system mocks dev prod 2>/dev/null
+  echo
+  echo "== hydration =="
+  helm ls -A
+  echo
+  echo "== operator-managed CRs =="
+  kubectl -n default get \
+    litellmconnections,models,modeldiscoveries,mcpservers,mcpserverdiscoveries,a2aagents,teams \
+    2>/dev/null
+  echo
+  echo "== conditions (one-liner) =="
+  kubectl -n default get litellmconnections,models,modeldiscoveries,mcpservers,mcpserverdiscoveries,a2aagents,teams \
+    -o jsonpath='{range .items[*]}{.kind}/{.metadata.name}: {.status.conditions[?(@.type=="Ready")].status}={.status.conditions[?(@.type=="Ready")].reason}{"\n"}{end}' \
+    2>/dev/null
+}
+
+case "${1:-}" in
+  up|hydrate|down|keep|status) "cmd_${1}" ;;
+  *) usage ;;
+esac

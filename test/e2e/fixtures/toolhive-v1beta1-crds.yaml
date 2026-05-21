@@ -1,0 +1,253 @@
+# Source: github.com/stacklok/toolhive @ v0.28.0
+# Path: deploy/charts/operator-crds/templates/
+# Upstream commit SHA: 748a64228710ce241a225f5530022ce2c96cc23e
+# Vendored: 2026-05-20 (Phase 9 Task 09-08)
+# Rationale: Published toolhive-operator-crds OCI chart ships v1alpha1 only;
+# v1beta1 declared in v0.28.0 templates but no published chart carries it yet.
+# This fixture supplements the OCI chart install so Tier 2 can exercise both
+# vintages of the operator's MCPServerDiscovery code path.
+#
+# Usage: kubectl apply -f test/e2e/fixtures/toolhive-v1beta1-crds.yaml
+# (run after toolhive-operator-crds Helm chart install; idempotent)
+#
+# The OCI chart installs mcpservers.toolhive.stacklok.dev with v1alpha1 only
+# (storage: true). This file applies a multi-version CRD that preserves
+# v1alpha1 as storage version and adds v1beta1 (served: true, storage: false)
+# so the operator's dual-version informer can register both informers against
+# a live cluster. Schema is deliberately permissive (x-kubernetes-preserve-
+# unknown-fields: true) — Tier 2 exercises API reachability + reconciler
+# behavior, not CRD schema validation.
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.3
+  name: mcpservers.toolhive.stacklok.dev
+spec:
+  conversion:
+    strategy: None
+  group: toolhive.stacklok.dev
+  names:
+    categories:
+    - toolhive
+    kind: MCPServer
+    listKind: MCPServerList
+    plural: mcpservers
+    shortNames:
+    - mcpserver
+    - mcpservers
+    singular: mcpserver
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Status
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: Ready
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    deprecated: true
+    deprecationWarning: toolhive.stacklok.dev/v1alpha1 is deprecated; use v1beta1
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: MCPServer is the deprecated v1alpha1 version of the MCPServer resource.
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: MCPServerSpec defines the desired state of MCPServer.
+            properties:
+              image:
+                description: Image is the container image for the MCP server
+                type: string
+              transport:
+                default: stdio
+                description: Transport is the transport method (stdio, streamable-http or sse)
+                enum:
+                - stdio
+                - streamable-http
+                - sse
+                type: string
+              proxyMode:
+                default: streamable-http
+                description: ProxyMode is the proxy mode for stdio transport (sse or streamable-http)
+                enum:
+                - sse
+                - streamable-http
+                type: string
+            required:
+            - image
+            type: object
+            x-kubernetes-preserve-unknown-fields: true
+          status:
+            description: MCPServerStatus defines the observed state of MCPServer.
+            type: object
+            x-kubernetes-preserve-unknown-fields: true
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Status
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: Ready
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1beta1
+    schema:
+      openAPIV3Schema:
+        description: MCPServer is the Schema for the mcpservers API (v1beta1)
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: MCPServerSpec defines the desired state of MCPServer.
+            properties:
+              image:
+                description: Image is the container image for the MCP server
+                type: string
+              transport:
+                default: stdio
+                description: Transport is the transport method (stdio, streamable-http or sse)
+                enum:
+                - stdio
+                - streamable-http
+                - sse
+                type: string
+              proxyMode:
+                default: streamable-http
+                description: ProxyMode is the proxy mode for stdio transport (sse or streamable-http)
+                enum:
+                - sse
+                - streamable-http
+                type: string
+            required:
+            - image
+            type: object
+            x-kubernetes-preserve-unknown-fields: true
+          status:
+            description: MCPServerStatus defines the observed state of MCPServer.
+            type: object
+            x-kubernetes-preserve-unknown-fields: true
+        type: object
+    served: true
+    storage: false
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.3
+  name: virtualmcpservers.toolhive.stacklok.dev
+spec:
+  conversion:
+    strategy: None
+  group: toolhive.stacklok.dev
+  names:
+    categories:
+    - toolhive
+    kind: VirtualMCPServer
+    listKind: VirtualMCPServerList
+    plural: virtualmcpservers
+    shortNames:
+    - vmcp
+    - virtualmcp
+    singular: virtualmcpserver
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.url
+      name: URL
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: Ready
+      type: string
+    deprecated: true
+    deprecationWarning: toolhive.stacklok.dev/v1alpha1 is deprecated; use v1beta1
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: VirtualMCPServer is the deprecated v1alpha1 version of the VirtualMCPServer resource.
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: VirtualMCPServerSpec defines the desired state of VirtualMCPServer.
+            type: object
+            x-kubernetes-preserve-unknown-fields: true
+          status:
+            description: VirtualMCPServerStatus defines the observed state of VirtualMCPServer.
+            type: object
+            x-kubernetes-preserve-unknown-fields: true
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.url
+      name: URL
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: Ready
+      type: string
+    name: v1beta1
+    schema:
+      openAPIV3Schema:
+        description: VirtualMCPServer is the Schema for the virtualmcpservers API (v1beta1)
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: VirtualMCPServerSpec defines the desired state of VirtualMCPServer.
+            type: object
+            x-kubernetes-preserve-unknown-fields: true
+          status:
+            description: VirtualMCPServerStatus defines the observed state of VirtualMCPServer.
+            type: object
+            x-kubernetes-preserve-unknown-fields: true
+        type: object
+    served: true
+    storage: false
+    subresources:
+      status: {}

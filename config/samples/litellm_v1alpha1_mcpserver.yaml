@@ -1,0 +1,43 @@
+---
+# Copyright 2026 ACKstorm.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Sample MCPServer CR exercising plan 05-01 + spec §11 AC-MS1 (POST
+# /v1/mcp/server on first reconcile) and AC-MS-TRANSPORT (spec.transport
+# enum admission). Applied with
+# `kubectl apply -f config/samples/litellm_v1alpha1_mcpserver.yaml` after
+# the operator's CRDs are installed and LiteLLMConnection/default is Ready.
+#
+# After apply, expect:
+#   (a) status.lastRendered.serverID populated with the LiteLLM-assigned
+#       server ID once POST /v1/mcp/server succeeds.
+#   (b) Ready=True reason=Synced once the server registration is confirmed.
+#   (c) spec.transport="http" shipped verbatim to LiteLLM; no operator
+#       translation occurs (translation is MCPServerDiscovery's concern).
+#   (d) spec.params.mcp_info forwarded as a top-level key in the
+#       NewMCPServerRequest body per spec §6.4 pass-through contract.
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMMCPServer
+metadata:
+  name: mcpserver-example
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  # endpoint is required (MinLength=1). Use the in-cluster Service DNS
+  # form for services co-located in default.
+  endpoint: "http://example-mcp.default.svc:9000/sse"
+  # transport must be one of {http, sse} per spec §6.4 CEL enum validation.
+  # The operator ships this value verbatim to LiteLLM without translation.
+  transport: http
+  # Pass-through bag forwarded to LiteLLM NewMCPServerRequest top-level.
+  # String-typed leaves may carry {{NAME}} placeholders (§5.2).
+  params:
+    mcp_info:
+      description: "Sample MCP server — demonstrates the http transport path."

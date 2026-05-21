@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Operator install namespace. Kustomize stamps this onto every
+# namespaced resource below (ServiceAccount, RoleBinding, Deployment).
+namespace: alitellm-operator-system
+
+# Prefix matches the helm chart's resource names so the kustomize and
+# helm install paths produce identical object names.
+namePrefix: alitellm-operator-
+
+resources:
+- ../../config/crd
+- ../../config/manager
+- manager-rbac.yaml
+
+# Pin the operator image to the current release tag.
+# Bumped per release alongside Chart.yaml appVersion.
+images:
+- name: controller
+  newName: ghcr.io/ackstorm/alitellm-operator
+  newTag: v0.0.4

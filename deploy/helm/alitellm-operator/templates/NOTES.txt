@@ -1,0 +1,83 @@
+LiteLLM Operator v{{ .Chart.AppVersion }} has been installed!
+
+Namespace: {{ .Release.Namespace }}
+Watch namespace: {{ .Values.watchNamespace }}
+Image: {{ .Values.image.repo }}:{{ .Values.image.tag }}
+
+=== IMPORTANT: CRD Upgrade Dance (D-03) ===
+
+The 7 LiteLLM operator CRDs are shipped in the chart's crds/ directory and
+are installed automatically by `helm install`. However, Helm does NOT manage
+CRDs on `helm upgrade` (standard Helm 3 convention — avoids accidental data
+loss on schema changes).
+
+Before every `helm upgrade`, apply the CRDs manually:
+
+  kubectl apply -f charts/alitellm-operator/crds/
+  # or, if installing from the OCI registry:
+  helm pull oci://ghcr.io/ackstorm/charts/alitellm-operator \
+    --version {{ .Chart.Version }} --untar
+  kubectl apply -f alitellm-operator/crds/
+
+Then run your upgrade:
+
+  helm upgrade {{ .Release.Name }} oci://ghcr.io/ackstorm/charts/alitellm-operator \
+    --version {{ .Chart.Version }} --namespace {{ .Release.Namespace }}
+
+=== Verify the Install ===
+
+  # Check operator is running
+  kubectl get deployment -n {{ .Release.Namespace }}
+
+  # Check CRDs installed
+  kubectl get crd | grep litellm.ackstorm.ai
+
+  # Expected CRDs (7 total):
+  #   a2aagents.litellm.ackstorm.ai
+  #   litellmconnections.litellm.ackstorm.ai
+  #   mcpserverdiscoveries.litellm.ackstorm.ai
+  #   mcpservers.litellm.ackstorm.ai
+  #   modeldiscoveries.litellm.ackstorm.ai
+  #   models.litellm.ackstorm.ai
+  #   teams.litellm.ackstorm.ai
+
+=== Getting Started ===
+
+Tip: For a fresh namespace, run:
+  helm install alitellm-operator ./charts/alitellm-operator \
+    --namespace <your-namespace> --create-namespace
+
+1. Create a Secret with your LiteLLM master key:
+
+  kubectl create secret generic litellm-master-key \
+    --from-literal=LITELLM_MASTER_KEY=<your-master-key> \
+    -n {{ .Values.watchNamespace }}
+
+2. Create a LiteLLMConnection CR:
+
+  kubectl apply -n {{ .Values.watchNamespace }} -f - <<EOF
+  apiVersion: litellm.ackstorm.ai/v1alpha1
+  kind: LiteLLMConnection
+  metadata:
+    name: default
+  spec:
+    endpoint: http://litellm.<your-namespace>.svc:4000
+    masterKeySecretRef:
+      name: litellm-master-key
+      key: LITELLM_MASTER_KEY
+  EOF
+
+3. Check the connection status:
+
+  kubectl get litellmconnection default -n {{ .Values.watchNamespace }} -o yaml
+
+For a full walkthrough, see:
+  https://github.com/ackstorm/alitellm-operator/blob/main/README.md
+
+{{ if not .Values.toolhive.enabled }}
+NOTE: toolhive.enabled=false — the ToolHive RBAC is not installed.
+MCPServerDiscovery CRs will surface Ready=False, reason=SourceUnreachable
+if ToolHive CRDs are installed but the operator lacks RBAC to read them.
+To enable, upgrade with --set toolhive.enabled=true after running
+`kubectl apply -f crds/`.
+{{ end }}

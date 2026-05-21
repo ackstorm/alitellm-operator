@@ -1,0 +1,52 @@
+# ModelDiscovery sample: OpenAI (and OpenAI-compatible providers)
+#
+# CEL rules exercised:
+#   - spec.type=openai matches the Enum constraint
+#   - credentialsSecretRef is REQUIRED for openai
+#   - region is FORBIDDEN for openai
+#   - baseUrl is OPTIONAL (defaults to https://api.openai.com/v1)
+#   - refresh.interval >= 1m (MDISC-05 floor)
+#
+# OpenAI-compatible providers (vLLM, Together.ai, Groq, OpenRouter,
+# Mistral, DeepInfra, ...): set spec.type=openai and override spec.baseUrl
+# to the target provider's /v1 endpoint. The Bearer token comes from the
+# SAME OPENAI_API_KEY Secret key — the OpenAI-compat protocol mandates
+# that auth header shape.
+#
+# Filter exercise: filters.exclude removes legacy completion models
+# (gpt-3.5*, davinci, babbage) that aren't useful for modern routing —
+# RE2 patterns, lenient semantics (zero matches is fine).
+#
+# Required Secret: openai-credentials with key:
+#   OPENAI_API_KEY
+#
+# Reconciler call: GET ${baseUrl}/models with `Authorization: Bearer
+# $OPENAI_API_KEY`. Default baseUrl: https://api.openai.com/v1.
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMModelDiscovery
+metadata:
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: openai-models
+  namespace: default
+spec:
+  type: openai
+  credentialsSecretRef:
+    name: openai-credentials
+  # baseUrl: https://api.together.xyz/v1     # uncomment for Together.ai
+  # baseUrl: https://api.groq.com/openai/v1  # uncomment for Groq
+  # baseUrl: https://openrouter.ai/api/v1    # uncomment for OpenRouter
+  params:
+    rpm: 100
+    timeout: 300
+  info:
+    mode: chat
+    supports_function_calling: true
+  filters:
+    exclude:
+      - "gpt-3\\.5.*"
+      - "davinci"
+      - "babbage"
+  refresh:
+    interval: 5m

@@ -1,0 +1,44 @@
+# ModelDiscovery sample: Google Gemini (Google AI Studio API)
+#
+# CEL rules exercised:
+#   - spec.type=gemini matches the Enum constraint
+#   - credentialsSecretRef is REQUIRED for gemini
+#   - region is FORBIDDEN for gemini
+#   - baseUrl is FORBIDDEN for gemini
+#   - refresh.interval >= 1m (MDISC-05 floor)
+#
+# Filter exercise: filters.include narrows to Gemini Pro tier models only
+# (RE2 patterns; an empty include match-set surfaces as Ready=False with
+# reason=UpstreamInvalid per spec §6.3 — see plan 04-02 + PATTERNS.md
+# anti-pattern fence line 1031). Two patterns are listed:
+#   - "gemini-.*-pro$"  (e.g. gemini-1.5-pro)
+#   - "gemini-pro$"     (e.g. gemini-pro — legacy single-tier name)
+#
+# Required Secret: gemini-credentials with key:
+#   GEMINI_API_KEY (or GOOGLE_API_KEY per provider docs)
+#
+# Reconciler call: GET https://generativelanguage.googleapis.com/v1beta/models
+# with the `x-goog-api-key: $GEMINI_API_KEY` header.
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMModelDiscovery
+metadata:
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: gemini-pro-models
+  namespace: default
+spec:
+  type: gemini
+  credentialsSecretRef:
+    name: gemini-credentials
+  params:
+    rpm: 60
+    timeout: 240
+  info:
+    mode: chat
+  filters:
+    include:
+      - "gemini-.*-pro$"
+      - "gemini-pro$"
+  refresh:
+    interval: 10m

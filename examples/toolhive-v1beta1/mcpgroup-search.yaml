@@ -1,0 +1,12 @@
+apiVersion: toolhive.stacklok.dev/v1beta1
+kind: MCPGroup
+metadata:
+  name: search
+  namespace: mcp
+  labels:
+    app.kubernetes.io/component: mcp
+    app.kubernetes.io/env: production
+  annotations:
+    litellm.io/access-groups: run,dream,librechat
+spec:
+  description: MCP Group — search tools (gofetch, VirtualMCPServer aggregator)

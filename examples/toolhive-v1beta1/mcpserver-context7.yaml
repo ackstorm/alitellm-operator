@@ -1,0 +1,26 @@
+apiVersion: toolhive.stacklok.dev/v1beta1
+kind: MCPServer
+metadata:
+  name: context7
+  namespace: mcp
+  labels:
+    app.kubernetes.io/component: mcp
+    app.kubernetes.io/env: production
+  annotations:
+    litellm.io/access-groups: dev,run,dream
+spec:
+  groupRef:
+    name: dev
+  image: node:24-alpine
+  args:
+  - npx
+  - -y
+  - '@upstash/context7-mcp'
+  transport: stdio
+  proxyMode: streamable-http
+  podTemplateSpec:
+    spec:
+      containers:
+      - name: mcp
+        securityContext:
+          readOnlyRootFilesystem: false

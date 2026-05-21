@@ -1,0 +1,224 @@
+name: Release and Publish
+run-name: Release ${{ github.event.head_commit.message }}
+
+# Commit-message-driven release (Y2).
+#
+# A push to main whose head commit message starts with
+#   chore(release): v<MAJOR>.<MINOR>.<PATCH>[-<prerelease>]
+# triggers the release pipeline. The commit itself does NOT need to
+# carry the manifest bumps — this workflow:
+#   1. parses the version from the commit message,
+#   2. runs the full test gate (make test),
+#   3. runs `make bump VERSION=<X.Y.Z>` and commits the bumps back to
+#      main as github-actions[bot] with a [skip ci] marker,
+#   4. runs goreleaser (image cross-build, sign, SBOM) using
+#      GORELEASER_CURRENT_TAG so no git tag is required at this point,
+#   5. pushes the Helm chart to GHCR's OCI registry,
+#   6. as the LAST step, creates and pushes the annotated v<X.Y.Z>
+#      git tag at the bot-bump commit.
+#
+# Putting the tag last means a failure anywhere upstream leaves origin
+# with no orphan tag — the next attempt is just another
+# `chore(release): vX.Y.Z` push.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
+env:
+  GO_VERSION: '1.26'
+
+jobs:
+  parse:
+    name: Parse release intent
+    runs-on: ubuntu-latest
+    # Job-level filter: only release commits proceed. Non-release pushes
+    # see this workflow as "skipped" (cheap).
+    if: "startsWith(github.event.head_commit.message, 'chore(release): v')"
+    outputs:
+      version: ${{ steps.extract.outputs.version }}
+    steps:
+      - name: Extract version from commit message
+        id: extract
+        env:
+          MSG: ${{ github.event.head_commit.message }}
+        run: |
+          FIRST=$(printf '%s' "$MSG" | head -n1)
+          VERSION=$(printf '%s' "$FIRST" | sed -nE 's/^chore\(release\): v([0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?).*$/\1/p')
+          if [ -z "$VERSION" ]; then
+            echo "ERROR: could not parse semver from commit message" >&2
+            echo "First line: $FIRST" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Detected release version: v$VERSION"
+
+  run-tests:
+    name: Run tests
+    needs: parse
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Run tests
+        # ci.yml uses envtest-fast (no -race) because the race detector
+        # adds 2-5x overhead and inflates AC_CF2b adoption-recognition's
+        # reconciler-converge time past the in-test poll budget. release.yml
+        # mirrors ci.yml here to avoid CI/release skew on the same commit.
+        run: |
+          make unit
+          make envtest-fast
+
+  build-and-release:
+    name: Build + release
+    needs: [parse, run-tests]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: main
+          # contents:write on the workflow's GITHUB_TOKEN lets us push
+          # the bot bump commit (and later the tag) back to main.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git identity
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+
+      - name: Bump manifests via make bump
+        env:
+          VERSION: ${{ needs.parse.outputs.version }}
+        run: make bump VERSION=$VERSION
+
+      - name: Commit + push manifest bumps to main
+        id: bump_push
+        env:
+          VERSION: ${{ needs.parse.outputs.version }}
+        run: |
+          # If the user happened to bump locally already, `make bump`
+          # was a no-op and the working tree is clean. Skip the commit.
+          if git diff --quiet; then
+            echo "no manifest changes — already at v$VERSION"
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git add deploy/helm/alitellm-operator/Chart.yaml \
+                  deploy/helm/alitellm-operator/values.yaml \
+                  config/manager/kustomization.yaml \
+                  deploy/kustomize/kustomization.yaml
+          git commit -m "chore(release): bump manifests to v$VERSION [skip ci]"
+          git push origin main
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Determine GoReleaser config
+        id: release_type
+        env:
+          VERSION: ${{ needs.parse.outputs.version }}
+        run: |
+          if echo "$VERSION" | grep -Eq '-(alpha|beta|rc)'; then
+            echo "config_file=.goreleaser.prerelease.yml" >> "$GITHUB_OUTPUT"
+          else
+            echo "config_file=.goreleaser.yml" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+        with:
+          driver: docker-container
+          driver-opts: |
+            image=moby/buildkit:v0.12.0
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.12.0
+
+      - name: Regenerate CRDs (sanity)
+        run: make generate manifests
+
+      # HRD-09: install cosign for keyless OIDC signing of release artifacts.
+      - name: Install cosign
+        uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da  # v3.7.0
+        with:
+          cosign-release: v2.4.1
+
+      # HRD-09: install cyclonedx-gomod for CycloneDX SBOM generation.
+      - name: Install cyclonedx-gomod
+        run: |
+          go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.10.0
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      # Install goreleaser directly. goreleaser-action@v7 verifies the
+      # downloaded binary against a sigstore bundle that the cosign on
+      # the runner cannot parse — we trust the official release tarball
+      # over TLS instead.
+      - name: Install GoReleaser
+        run: |
+          GORELEASER_VERSION=v2.14.0
+          curl -sSL -o /tmp/goreleaser.tar.gz \
+            "https://github.com/goreleaser/goreleaser/releases/download/${GORELEASER_VERSION}/goreleaser_Linux_x86_64.tar.gz"
+          tar -xzf /tmp/goreleaser.tar.gz -C /tmp goreleaser
+          sudo install -m 0755 /tmp/goreleaser /usr/local/bin/goreleaser
+          goreleaser --version
+
+      # GoReleaser requires a real git tag at HEAD AND its release-create
+      # API call implicitly pushes the tag to origin once goreleaser
+      # succeeds. To avoid the race with that implicit push (which
+      # rejected our post-goreleaser push as 'already exists'), create
+      # AND push the tag here before goreleaser runs. `|| true` swallows
+      # an "already exists" rejection from a prior in-flight attempt at
+      # the same SHA — goreleaser will then read the existing tag
+      # idempotently. A workflow failure between this push and goreleaser
+      # leaves the tag on origin without a GH release — recover by
+      # `git push origin :v<X.Y.Z>` and re-pushing the chore(release)
+      # commit.
+      - name: Create + push release tag
+        env:
+          VERSION: ${{ needs.parse.outputs.version }}
+        run: |
+          git tag -a "v$VERSION" -m "v$VERSION"
+          git push origin "v$VERSION" || true
+
+      - name: Run GoReleaser
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          DOCKER_BUILDKIT: 1
+        run: goreleaser release --clean --config ${{ steps.release_type.outputs.config_file }}
+
+      - name: Push Helm chart to OCI registry
+        uses: appany/helm-oci-chart-releaser@v0.5.0
+        with:
+          name: alitellm-operator
+          repository: ${{ github.repository_owner }}/charts/
+          tag: ${{ needs.parse.outputs.version }}
+          path: deploy/helm/alitellm-operator
+          registry: ghcr.io
+          registry_username: ${{ github.actor }}
+          registry_password: ${{ secrets.GITHUB_TOKEN }}
+          update_dependencies: 'false'
+

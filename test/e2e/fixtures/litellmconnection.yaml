@@ -1,0 +1,12 @@
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMConnection
+metadata:
+  name: default
+  namespace: default
+spec:
+  # NOTE: CR field is `endpoint`, not `baseUrl` (plan typo — see CR shape in
+  # api/litellm/v1alpha1/litellmconnection_types.go).
+  endpoint: http://litellm.litellm-system.svc.cluster.local:4000
+  masterKeySecretRef:
+    name: litellm-master-key
+    key: master-key

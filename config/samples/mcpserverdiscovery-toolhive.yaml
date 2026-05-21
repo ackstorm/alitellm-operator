@@ -1,0 +1,60 @@
+---
+# Sample MCPServerDiscovery CR exercising the Phase 5 plan 05-04 Pipeline B
+# happy path.
+#
+# Covers requirements: MSDISC-01..16 (the full plan 05-04 surface).
+#
+# Phase 5 CONTEXT.md decisions in play:
+#   - D-06: ToolHive API group + version = toolhive.stacklok.dev/v1beta1
+#           (the operator's lazy informer registers against this GVK only).
+#   - D-07: spec.toolhive.namespaces[] is an in-memory filter at the
+#           reconciler; the cluster-scoped read RBAC ships unconditionally.
+#   - D-09: transport derivation is from ToolHive's status.transport with
+#           fallback to "http" when absent/empty.
+#   - D-10: transport normalization at the Discovery boundary —
+#           streamable-http → http, sse → sse, anything else →
+#           status.skippedCandidates[reason=InvalidTransport].
+#
+# Filter target is the POST-DERIVATION dotted three-part name
+# `<discovery-name>.<toolhive-namespace>.<toolhive-name>` per spec §6.5 +
+# 05-CONTEXT.md <specifics> line 314. The include pattern below
+# demonstrates the dotted-name target by admitting ONLY children whose
+# upstream ToolHive object lives in the `dev` namespace.
+#
+# Applied with:
+#   kubectl apply -f config/samples/mcpserverdiscovery-toolhive.yaml
+# after the operator's CRDs + the ToolHive `toolhive.stacklok.dev/v1beta1`
+# CRDs are installed. With ToolHive CRDs absent at boot, the reconciler
+# surfaces Ready=False, reason=SourceUnreachable per MSDISC-06; the
+# informer retries every 1 minute and Discovery converges when ToolHive
+# is installed (D-08).
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMMCPServerDiscovery
+metadata:
+  name: toolhive-dev
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  type: toolhive
+  toolhive:
+    namespaces: [dev, prod]
+    kinds: [MCPServer, VirtualMCPServer]
+  # Pass-through bag PROPAGATED VERBATIM into every generated child
+  # MCPServer's spec.params (MSDISC-11 / AC-SEC4-PROPAGATE). The child
+  # reconciler (plan 05-01) substitutes {{NAME}} placeholders on its own
+  # reconcile — MSDisc never substitutes.
+  params:
+    mcp_info:
+      managed_by: alitellm-operator
+  # Post-derivation dotted-name include pattern per <specifics> line 314.
+  # The pattern matches `<discovery>.dev.<anything>` — children derived
+  # from upstream ToolHive objects in the `dev` namespace are admitted;
+  # `prod`-namespace objects are silently dropped (filter excludes are
+  # silent by the Phase 4 contract).
+  filters:
+    include:
+      - "toolhive-dev\\.dev\\..*"
+  refresh:
+    interval: 5m

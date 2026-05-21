@@ -1,0 +1,72 @@
+# deploy/helm/alitellm-operator/values.yaml
+#
+# Plan 07-02 (D-02): exactly 4 parameterized surfaces. Extended by Tier 2
+# plan amendment A5 (2026-05-19) to add `extraEnv` and `resources` so the
+# Tier 2 test environment can override SAFETY_RELIST_INTERVAL, LOG_LEVEL,
+# and resource limits without bypassing the shipping chart. Defaults below
+# preserve the original kustomize behavior — production installs that don't
+# set these surfaces render identically to the pre-A5 chart.
+#
+# Other knobs (replica count, node selector, tolerations, affinity,
+# security context, leader-election toggle) remain kustomize-locked. To
+# expose additional knobs, edit `scripts/kustomize-to-helm.sh` + this file
+# and run `make helm-sync`.
+#
+# Re-enable trigger: a dogfood install surfaces a need → add the surface
+# here + `helm-sync` regen.
+
+image:
+  # Container registry + image name. Matches the ghcr.io/ackstorm/ OCI
+  # artifact pushed by the release.yml workflow.
+  repo: ghcr.io/ackstorm/alitellm-operator
+  # Tag to deploy. Bumped automatically by release CI on tag push.
+  tag: v0.0.4
+  # Pull policy. IfNotPresent is appropriate for pinned tags.
+  pullPolicy: IfNotPresent
+# watchNamespace is the Kubernetes namespace the operator watches for CRs.
+# Maps to the WATCH_NAMESPACE env var on the manager Deployment.
+# Per spec §4 / SCOPE-04: CRs in any other namespace are never reconciled.
+watchNamespace: default
+toolhive:
+  # enabled=true (default) includes the ClusterRole + ClusterRoleBinding
+  # that grants the operator read access to ToolHive MCPServer +
+  # VirtualMCPServer objects (Phase 5 D-07). Set to false on clusters
+  # without ToolHive — the lazy informer (Phase 5 D-08) silently retries
+  # when CRDs are absent. Note: with RBAC stripped, MCPServerDiscovery CRs
+  # will surface Ready=False, reason=SourceUnreachable, message="ToolHive
+  # RBAC missing" if ToolHive CRDs are installed but RBAC is absent.
+  enabled: true
+metrics:
+  serviceMonitor:
+    # enabled=false (default): the prometheus-operator ServiceMonitor CR is
+    # not rendered. Set to true when prometheus-operator is installed in the
+    # cluster. See deploy/helm/alitellm-operator/templates/install.yaml for the
+    # stub block that is activated when this value is true.
+    enabled: false
+# extraEnv: list of additional environment variables to inject into the manager
+# container, AFTER the WATCH_NAMESPACE entry. Each item is {name, value}.
+#
+# Tier 2 uses this to set LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL=10s (for the
+# AC-M3 wholesale-replace drift gate) and LITELLM_OPERATOR_LOG_LEVEL=debug.
+# Production installs that want defaults can leave this empty.
+#
+# Example:
+#   extraEnv:
+#     - name: LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL
+#       value: "10s"
+#     - name: LITELLM_OPERATOR_LOG_LEVEL
+#       value: "debug"
+extraEnv: []
+# resources: manager container resource requests and limits.
+#
+# Defaults below mirror the original kustomize values (config/manager/manager.yaml)
+# so production installs render identically to the pre-A5 chart. Override in
+# values files when running on resource-constrained nodes (or to give the
+# operator more headroom in a busy cluster).
+resources:
+  limits:
+    cpu: 500m
+    memory: 128Mi
+  requests:
+    cpu: 10m
+    memory: 64Mi

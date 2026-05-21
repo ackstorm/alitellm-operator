@@ -1,0 +1,44 @@
+---
+# Copyright 2026 ACKstorm.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Dogfood LiteLLMConnection targeting the team's live LiteLLM 1.82.6.
+#
+# Per CONTEXT.md D-05: operator + LiteLLM both in default
+# (single-namespace topology). The endpoint resolves to the in-cluster
+# Service DNS. If the team's LiteLLM Service has a different name than
+# "litellm", update spec.endpoint accordingly.
+#
+# Spec reference: §6.0 + CONN-01..09.
+#
+# After apply, expect:
+#   (a) status.conditions[type=Ready].status=True within 30s if the
+#       LiteLLM Service is reachable and the master key is valid.
+#   (b) status.conditions[type=Ready].reason=Synced on successful probe.
+#   (c) Secret rotation of litellm-master-key propagates within 30s via
+#       the Secret-watch path (Phase 2 D-12 resourceVersion watch).
+#   (d) Every child kind (Model, MCPServer, A2AAgent, Team) gates on this
+#       connection; discovery kinds (ModelDiscovery, MCPServerDiscovery)
+#       proceed regardless.
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMConnection
+metadata:
+  name: default
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  # In-cluster Service DNS for LiteLLM running in default.
+  # Update this value if the team's LiteLLM Service has a different name
+  # (e.g. http://litellm-proxy.default.svc:4000).
+  endpoint: "http://litellm.default.svc:4000"
+  # Reference to the Secret holding the LiteLLM master API key.
+  masterKeySecretRef:
+    name: litellm-master-key
+    key: LITELLM_MASTER_KEY

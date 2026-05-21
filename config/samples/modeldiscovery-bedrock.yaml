@@ -1,0 +1,53 @@
+# ModelDiscovery sample: Amazon Bedrock (single region per CR)
+#
+# CEL rules exercised:
+#   - spec.type=bedrock matches the Enum constraint
+#   - region is REQUIRED for bedrock
+#   - baseUrl is FORBIDDEN for bedrock
+#   - credentialsSecretRef is OPTIONAL (commented variant below shows the
+#     IRSA / Pod Identity / EC2-instance-profile path with the field
+#     omitted — operator falls back to the default AWS credential chain
+#     per D-05)
+#   - refresh.interval >= 1m (MDISC-05 floor)
+#
+# Multi-region note: each AWS region requires its OWN ModelDiscovery CR
+# with a DISTINCT spec.prefix to avoid name collisions on identical model
+# IDs across regions. Example pair:
+#   - ModelDiscovery/bedrock-us-east-1  (spec.prefix: bedrock-use1)
+#   - ModelDiscovery/bedrock-eu-west-1  (spec.prefix: bedrock-euw1)
+#
+# Bedrock model ID example: "anthropic.claude-3-sonnet-20240229-v1:0"
+# The `:` between `v1` and `0` is normalized to `-` for the K8s child
+# Model's metadata.name (spec §6.3 line 756 — see MDISC-10). The RAW ID
+# is preserved verbatim in spec.params.model.
+#
+# Required Secret keys (when credentialsSecretRef is set):
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+# Optional Secret key:
+#   AWS_SESSION_TOKEN (for STS temporary credentials)
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMModelDiscovery
+metadata:
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: bedrock-us-east-1
+  namespace: default
+spec:
+  type: bedrock
+  region: us-east-1
+  prefix: bedrock-use1
+  credentialsSecretRef:
+    name: aws-bedrock-credentials
+  # IRSA variant (operator falls back to default AWS credential chain):
+  #   Delete the credentialsSecretRef block above and uncomment nothing —
+  #   the operator detects the omission and uses IRSA / Pod Identity /
+  #   EC2 instance profile / env-var credentials in that order.
+  #   See D-05 + CONTEXT.md <specifics> line 278.
+  params:
+    rpm: 50
+    timeout: 600
+  info:
+    mode: chat
+  refresh:
+    interval: 15m

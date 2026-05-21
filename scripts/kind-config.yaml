@@ -1,0 +1,13 @@
+# Kind cluster configuration used by scripts/cluster.sh (e2e).
+#
+# Single-node cluster pinned to kindest/node:v1.31.0 — this matches the
+# envtest k8s version (suite_test.go uses ENVTEST_K8S_VERSION=1.31)
+# so the envtest pass and the kind pass share the same control-plane
+# minor. No extraPortMappings — the metrics endpoint is reached via
+# `kubectl port-forward`, not host-published.
+apiVersion: kind.x-k8s.io/v1alpha4
+kind: Cluster
+name: alitellm-operator-test
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.31.0

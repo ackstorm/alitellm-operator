@@ -1,0 +1,37 @@
+# ModelDiscovery sample: KubeAI (in-cluster OpenAI-compatible gateway)
+#
+# CEL rules exercised:
+#   - spec.type=kubeai matches the Enum constraint
+#   - baseUrl is REQUIRED for kubeai
+#   - credentialsSecretRef is FORBIDDEN for kubeai (in-cluster gateway,
+#     typically no auth — see CONTEXT.md <specifics> line 278)
+#   - region is FORBIDDEN for kubeai
+#   - refresh.interval >= 1m (MDISC-05 floor)
+#
+# Litellm-provider mapping: spec.type=kubeai maps to LiteLLM provider
+# "hosted_vllm" (NOT "kubeai") per spec §6.3 line 792 — the generated
+# child Model's spec.params.model becomes "hosted_vllm/<raw-id>".
+#
+# Assumption: KubeAI is installed in the "kubeai" namespace with the
+# standard Service DNS. Adjust spec.baseUrl if your install differs:
+#   http://<service-name>.<namespace>.svc/openai/v1
+#
+# No Secret required.
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMModelDiscovery
+metadata:
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: kubeai-local
+  namespace: default
+spec:
+  type: kubeai
+  baseUrl: http://kubeai.kubeai.svc/openai/v1
+  params:
+    rpm: 1000
+    timeout: 60
+  info:
+    mode: chat
+  refresh:
+    interval: 5m

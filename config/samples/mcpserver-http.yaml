@@ -1,0 +1,26 @@
+---
+# Sample MCPServer CR exercising the Phase 5 plan 05-01 happy path:
+#   - spec.transport = http (CEL enum admitted)
+#   - spec.endpoint  = non-empty URL (MinLength=1 admitted)
+#   - spec.params    = pass-through bag with nested mcp_info (per spec §6.4
+#                      user-contract — anything outside the modeled
+#                      NewMCPServerRequest fields belongs in mcp_info)
+#
+# Applied with `kubectl apply -f config/samples/mcpserver-http.yaml` after
+# the operator's CRDs are installed. The MCPServer reconciler will issue
+# POST /v1/mcp/server, pin status.lastRendered.serverID, and report
+# Ready=True / Reason=Synced once LiteLLMConnection/default is Ready.
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMMCPServer
+metadata:
+  name: mcpserver-http-sample
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  endpoint: "https://mcp.example.com"
+  transport: http
+  params:
+    mcp_info:
+      description: "Sample MCP server demonstrating the http transport"

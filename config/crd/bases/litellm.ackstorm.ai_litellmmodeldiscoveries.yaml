@@ -1,0 +1,619 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.0
+  name: litellmmodeldiscoveries.litellm.ackstorm.ai
+spec:
+  group: litellm.ackstorm.ai
+  names:
+    kind: LiteLLMModelDiscovery
+    listKind: LiteLLMModelDiscoveryList
+    plural: litellmmodeldiscoveries
+    shortNames:
+    - mdisc
+    singular: litellmmodeldiscovery
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.type
+      name: Type
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: Ready
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Ready')].reason
+      name: Reason
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: "LiteLLMModelDiscovery is the Schema for the litellmmodeldiscoveries
+          API — the\nfirst Pipeline B CRD (spec §3.3 / §7.1, _FINALv3 two-pipeline
+          model).\nA LiteLLMModelDiscovery CR points the operator at one upstream
+          provider\n(anthropic, bedrock, gemini, kubeai, or openai) and reconciles\ndiscovered
+          IDs into a fan-out of Kubernetes LiteLLMModel child CRs in\nWATCH_NAMESPACE.
+          Discovery NEVER calls LiteLLM directly; each child\nreconciles into LiteLLM
+          via the Phase 3 LiteLLMModel controller.\n\nThe six CR-level XValidation
+          rules above enforce the per-type\nrequired/forbidden field matrix from spec
+          §6.3 (provider table) plus\nthe MDISC-05 refresh-interval 1-minute floor.
+          SEC-03 list-uniqueness\nfor spec.secrets[].as is deferred to the child LiteLLMModel's
+          runtime check\n(same Kubernetes 1.31 CEL-library limitation documented in\nmodel_types.go:87-93
+          — reuse the same runtime check from).\n\nMDISC-22 — required Secret keys
+          per provider are FIXED per spec §6.3:\n\n\tanthropic: ANTHROPIC_API_KEY\n\tbedrock:
+          AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY (AWS_SESSION_TOKEN optional)\n\tgemini:
+          GEMINI_API_KEY (or GOOGLE_API_KEY per provider docs)\n\topenai: OPENAI_API_KEY\n\tkubeai:
+          n/a (no credentialsSecretRef)\n\nThe reconciler validates required keys
+          at credential-resolution time\nand surfaces SecretNotFound if any required
+          key is missing.\n\nThe Discovery finalizer is \"modeldiscoveries.litellm.ackstorm.ai/\nfinalizer\"
+          (mirrors Phase 3's models.litellm.ackstorm.ai/finalizer).\nIt issues NO
+          LiteLLM call — its only work is waiting for owned\nchildren to drain via
+          blockOwnerDeletion=true cascade, then removing\nitself. Each child LiteLLMModel's
+          own finalizer issues POST /model/delete on\nthe LiteLLM side (Phase 3 model_controller.go)."
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: "ModelDiscoverySpec defines the desired state of ModelDiscovery
+              — the\nflat _FINALv3 shape (spec §6.3). One ModelDiscovery CR points
+              the\noperator at a single upstream provider (anthropic, bedrock, gemini,\nkubeai,
+              or openai) and generates a fan-out of Kubernetes Model child\nCRs (Pipeline
+              B per spec §3.3). Discovery NEVER calls LiteLLM directly;\neach generated
+              child reconciles into LiteLLM via the Phase 3 Model\ncontroller (Pipeline
+              A).\n\nProvider field matrix (CR-level CEL XValidation, see markers
+              on the\nModelDiscovery struct below) per spec §6.3 provider table:\n\n\tanthropic
+              — requires credentialsSecretRef; forbids region, baseUrl.\n\tbedrock
+              — requires region; forbids baseUrl; credentialsSecretRef optional.\n\tgemini
+              — requires credentialsSecretRef; forbids region, baseUrl.\n\tkubeai
+              — requires baseUrl; forbids credentialsSecretRef, region.\n\topenai
+              — requires credentialsSecretRef; baseUrl optional; forbids region.\n\nMDISC-01
+              enforces spec.type ∈ {anthropic, bedrock, gemini, kubeai, openai}\nat
+              admission via the +kubebuilder:validation:Enum marker. MDISC-04\n(prefix),
+              MDISC-05 (refresh.interval floor), MDISC-15 (credential\nsurface), and
+              MDISC-22/23 (propagation bags) are all schema-side."
+            properties:
+              baseUrl:
+                description: |-
+                  BaseURL is the upstream provider's base endpoint. Required for
+                  kubeai (e.g. "http://kubeai.kubeai.svc/openai/v1"); optional for
+                  openai (default OpenAI-platform endpoint applies on omit); forbidden
+                  for anthropic, bedrock, gemini.
+
+                  Discovery calls <BaseURL>/models (OpenAI-compatible wire shape) for
+                  kubeai + openai variants. For OpenAI-compatible providers (vLLM,
+                  Together, Groq, OpenRouter) the user sets spec.type=openai and
+                  spec.baseUrl=<provider URL>; the per-request Bearer key comes from
+                  spec.credentialsSecretRef. No URL pattern is enforced at the CRD
+                  layer; CEL only gates presence/absence per provider type.
+                type: string
+              credentialsSecretRef:
+                description: |-
+                  CredentialsSecretRef points to the Kubernetes Secret carrying the
+                  upstream provider's API credentials. Required for anthropic, gemini,
+                  openai; required-or-default-chain for bedrock; FORBIDDEN for kubeai
+                  (the kubeai provider runs in-cluster without auth — see CONTEXT.md
+                  <specifics> line 278). The Secret MUST reside in the same namespace
+                  as the ModelDiscovery CR (no cross-namespace resolution in v1alpha1).
+
+                  Required Secret keys per provider (spec §6.3 line 721-737 normative):
+                  anthropic: ANTHROPIC_API_KEY
+                  bedrock: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY (AWS_SESSION_TOKEN optional)
+                  gemini: GEMINI_API_KEY (or GOOGLE_API_KEY)
+                  openai: OPENAI_API_KEY
+                  kubeai: n/a (no credentialsSecretRef)
+
+                  MDISC-15 is non-negotiable: the credential material is operator-side
+                  ONLY. The reconciler MUST NOT propagate any value from this Secret
+                  into the generated child Model's spec.params / spec.info /
+                  spec.secrets[]. Inference-time credentials flow via spec.secrets[]
+                  (the propagation bag), NOT via this field.
+
+                  Discovery uses NEW SecretObjectRef (single Name field) — NOT the
+                  SecretKeyRef{Name, Key} used by LiteLLMConnection and Model. The
+                  Secret keys are fixed per provider per the normative table above,
+                  so the user does not pick a per-key lookup; only the Secret's name
+                  is parameterized.
+                properties:
+                  name:
+                    description: |-
+                      Name of the Kubernetes Secret resource in the ModelDiscovery's
+                      namespace. Required and non-empty.
+                    minLength: 1
+                    type: string
+                required:
+                - name
+                type: object
+              filters:
+                description: |-
+                  Filters narrows the post-provider-list candidate set via RE2
+                  include/exclude patterns matched against the raw provider-returned
+                  ID. Empty (absent) Filters means "no filtering" (all provider IDs
+                  become candidates). Per spec §6.3: include FIRST (strict — empty
+                  match-set surfaces as Ready=False, reason=UpstreamInvalid), then
+                  exclude (lenient — empty match-set is fine).
+
+                  Filter-order divergence from autoconfig is intentional: autoconfig
+                  applies exclude first then include (src/generator.py:324); the spec
+                  mandates include first then exclude. **Spec wins** — see
+                  CONTEXT.md D-11 line 118 and PATTERNS.md anti-pattern line 1031.
+                  Codes this and ships a regression test exercising the
+                  order with overlapping patterns.
+                properties:
+                  exclude:
+                    description: |-
+                      Exclude removes candidates from the post-Include set: a candidate
+                      is filtered out if it matches any pattern in Exclude. Empty (or
+                      absent) Exclude means "exclude nothing". Exclude is forward-looking
+                      defense — zero matches is fine (lenient semantics per spec §6.3).
+                    items:
+                      type: string
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  include:
+                    description: |-
+                      Include narrows the candidate set: a candidate ID is admitted only
+                      if it matches at least one pattern in Include. Empty (or absent)
+                      Include means "admit all" (no narrowing). If Include is non-empty
+                      and matches ZERO provider IDs, the reconcile surfaces Ready=False,
+                      reason=UpstreamInvalid (operator-intent vs upstream-reality drift).
+                    items:
+                      type: string
+                    type: array
+                    x-kubernetes-list-type: atomic
+                type: object
+              info:
+                description: |-
+                  Info is a pass-through bag of fields propagated VERBATIM into every
+                  generated child Model's spec.info (MDISC-23). The Discovery
+                  reconciler does NOT overlay any field here — the child's own
+                  reconciler handles the model_info.id overlay (D-04 in Phase 3).
+
+                  Any JSON object is accepted (x-kubernetes-preserve-unknown-fields:
+                  true). Same {{NAME}} substitution semantics as Params apply on the
+                  child's reconcile.
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+              params:
+                description: |-
+                  Params is a pass-through bag of fields propagated VERBATIM into
+                  every generated child Model's spec.params (MDISC-23). On top of this
+                  bag, the Discovery reconciler overlays two typed fields per child:
+                  - model: "<litellm-provider>/<raw-id>" (e.g. "anthropic/claude-3-5-sonnet-20241022")
+                  - aws_region_name: <spec.region> (bedrock only)
+                  All other keys are forwarded unchanged. {{NAME}} substitution
+                  happens on the child Model's own reconcile (§5.2 propagation rule
+                  per AC-SEC4-PROPAGATE), NOT on Discovery's reconcile.
+
+                  Any JSON object is accepted (x-kubernetes-preserve-unknown-fields:
+                  true). String-typed leaves may carry {{NAME}} placeholders matched
+                  against spec.secrets[] on the child's reconcile.
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+              prefix:
+                description: |-
+                  Prefix is the lowercase DNS-1123 segment prepended to each
+                  discovered ID when generating the child Model's metadata.name
+                  (final shape: <prefix>.<normalized-id>). The prefix is OPTIONAL at
+                  the CRD layer; the reconciler defaults it to lowercased(spec.type)
+                  at reconcile time (MDISC-04). The default is NOT a CRD-layer default
+                  — keeping the schema thin lets the reconciler own the substitution
+                  (matches spec §6.3 prefix semantics line 689-878).
+
+                  Pattern is the DNS-1123 subdomain segment: lowercase alphanumerics
+                  with internal hyphens and optional dotted sub-segments. MaxLength=63
+                  matches the K8s DNS label budget; the generated child name's full
+                  length is validated again at reconcile time against DNS-1123
+                  subdomain (253 chars) — see normalization step.
+                maxLength: 63
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                type: string
+              refresh:
+                description: |-
+                  Refresh controls the periodic provider-list cadence. The
+                  reconciler returns ctrl.Result{RequeueAfter: spec.refresh.interval}
+                  on success (D-08); transient errors short-circuit through the
+                  controller-runtime workqueue exponential backoff (REL-02 pattern).
+                  The CEL floor of 1 minute (MDISC-05) is enforced at the resource
+                  root, see the +kubebuilder:validation:XValidation marker on
+                  ModelDiscovery.
+                properties:
+                  interval:
+                    description: |-
+                      Interval is the cadence between two successive provider-list
+                      reconciles. metav1.Duration accepts kubectl-friendly strings like
+                      "5m", "1h", "30m". CEL floor of 1m is enforced at admission.
+                    type: string
+                required:
+                - interval
+                type: object
+              region:
+                description: |-
+                  Region is the AWS region for Bedrock control-plane discovery
+                  (required when spec.type=bedrock, forbidden otherwise — see the
+                  CR-level CEL rule on the ModelDiscovery struct). One region per
+                  CR per PROJECT.md Key Decision; multi-region requires multiple CRs
+                  with distinct spec.prefix (e.g. bedrock-use1, bedrock-euw1).
+
+                  The value is overlaid as aws_region_name in each generated child
+                  Model's spec.params (the operator's only typed-field overlay per
+                  CONTEXT.md D-07 line 79-85). Plain string — AWS region codes are
+                  open-ended and not enumerated here; CEL gates presence per provider.
+                type: string
+              secrets:
+                description: |-
+                  Secrets is the substitution map PROPAGATED verbatim into every
+                  generated child Model's spec.secrets[] (MDISC-23). Discovery does
+                  NOT perform substitution itself — the propagated entries ride along
+                  and the Phase 3 Model reconciler substitutes them on the child's
+                  own reconcile (AC-SEC4-PROPAGATE).
+
+                  MDISC-15 enforces a STRICT boundary with spec.credentialsSecretRef:
+                  credentials used to call the upstream provider's discovery endpoint
+                  are NEVER reused for inference. Users who need an inference-time
+                  secret declare it here independently of credentialsSecretRef. A
+                  post-render canary asserts no credentialsSecretRef material appears
+                  in any generated child's rendered fields (CONTEXT.md anti-pattern
+                  line 1021).
+
+                  SEC-03 uniqueness of spec.secrets[].as values is enforced as a
+                  runtime check on the child Model's reconcile;
+                  the CEL admission alternative is deferred per the same v1alpha1
+                  limitation documented in model_types.go:87-93.
+                items:
+                  description: |-
+                    SecretSubstitution maps a Kubernetes Secret key to an uppercase NAME that
+                    can be referenced as {{NAME}} in spec.params and spec.info string-typed
+                    leaves (§5.2). The as value is the NAME; the secretRef points to the
+                    Kubernetes Secret and key that carry the plaintext value (SEC-01.SEC-03).
+
+                    SEC-03: the as value is validated at admission by the CEL pattern
+                    ^[A-Z_][A-Z0-9_]*$; lowercase letters, digits-first names, and whitespace
+                    are rejected. Uniqueness of as values within a Model is enforced by a CEL
+                    XValidation on ModelSpec.Secrets (see above).
+                  properties:
+                    as:
+                      description: |-
+                        As is the placeholder NAME used in {{NAME}} substitution expressions
+                        within spec.params and spec.info string-typed leaves. Must match the
+                        pattern ^[A-Z_][A-Z0-9_]*$ (§5.2, SEC-03). Unique within the enclosing
+                        Model CR (SEC-03 uniqueness — enforced via CEL on spec.secrets).
+
+                        Example: as=ANTHROPIC_API_KEY matches the placeholder
+                        "{{ANTHROPIC_API_KEY}}" anywhere in spec.params or spec.info strings.
+                      minLength: 1
+                      pattern: ^[A-Z_][A-Z0-9_]*$
+                      type: string
+                    secretRef:
+                      description: |-
+                        SecretRef identifies the Kubernetes Secret and key whose plaintext
+                        value replaces the {{As}} placeholder at reconcile time. The Secret
+                        MUST reside in the same namespace as the Model CR (no cross-namespace
+                        resolution in v1alpha1). A missing Secret or key surfaces as
+                        Ready=False, reason=SecretNotFound (§6.0).
+
+                        Reuses SecretKeyRef from litellmconnection_types.go (same package —
+                        no additional type definition needed). SEC-01, SEC-06.
+                      properties:
+                        key:
+                          description: |-
+                            Key inside the referenced Secret's `data` map whose value is the
+                            LiteLLM master key.
+                          minLength: 1
+                          type: string
+                        name:
+                          description: |-
+                            Name of the Kubernetes Secret resource in the LiteLLMConnection's
+                            namespace.
+                          minLength: 1
+                          type: string
+                      required:
+                      - key
+                      - name
+                      type: object
+                  required:
+                  - as
+                  - secretRef
+                  type: object
+                type: array
+              type:
+                description: |-
+                  Type discriminates the upstream provider. Enforced at admission via
+                  the +kubebuilder:validation:Enum marker (MDISC-01). The reconciler
+                  dispatches to internal/providers/<type>.go via the registry; per-type
+                  branching outside the registry is prohibited (CONTEXT.md D-01).
+                enum:
+                - anthropic
+                - bedrock
+                - gemini
+                - kubeai
+                - openai
+                type: string
+            required:
+            - refresh
+            - type
+            type: object
+          status:
+            description: "ModelDiscoveryStatus defines the observed state of ModelDiscovery
+              —\nthe _FINALv3 status surface (MDISC-26, renamed from _FINALv2's\n\"registeredNames[]\"
+              vocabulary to \"generatedChildren[]\" to reflect\nthe Pipeline B K8s-child-CR-emission
+              model).\n\nSpec §6.3 invariant:\n\n\tdiscoveredCount == generatedCount\n\n(Filtered-out
+              names are NOT counted in discoveredCount.)\n\nTwo condition types are
+              written on every reconcile (each idempotent\nvia apimeta.SetStatusCondition):\n\n\tReady
+              — top-level readiness with reasons:\n\t {Synced, SourceUnreachable,
+              AuthFailed,\n\t SecretNotFound, InvalidConfig, UpstreamInvalid}\n\t
+              NOTE: LiteLLMUnavailable and LiteLLMRejected are\n\t NOT Discovery-level
+              reasons (MDISC-27 — Discovery\n\t never calls LiteLLM). Those reasons
+              surface on the\n\t child Model's status.\n\n\tSourceReachable — provider-list
+              reachability with reasons:\n\t {Ok, Unreachable, AuthFailed}\n\t Used
+              as the gate for vanish-detection (D-09): the\n\t diff-and-delete step
+              is skipped when this is False."
+            properties:
+              conditions:
+                description: |-
+                  Conditions carries the metav1.Condition list. Two condition types
+                  are populated on every reconcile:
+
+                  Ready — reasons: Synced, SourceUnreachable, AuthFailed,
+                  SecretNotFound, InvalidConfig, UpstreamInvalid.
+                  LiteLLMUnavailable and LiteLLMRejected are
+                  NOT valid here (MDISC-27 + spec §6.0).
+
+                  SourceReachable — reasons: Ok, Unreachable, AuthFailed.
+                  The atomic-refresh-snapshot vanish guard
+                  (D-09) gates diff-and-delete on
+                  SourceReachable=True.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              discoveredCount:
+                default: 0
+                description: |-
+                  DiscoveredCount is the size of the post-filter candidate set on
+                  the most recent successful refresh (filtered-out IDs are NOT
+                  counted). Maintains the invariant noted on ModelDiscoveryStatus's
+                  godoc above.
+                format: int32
+                type: integer
+              failedCandidates:
+                description: |-
+                  FailedCandidates records candidates whose SSA write to the K8s
+                  apiserver failed for a reason other than name collision. Each
+                  entry names the candidate and the reason.
+
+                  Reason enum (spec §6.3 + MDISC-26 _FINALv3 narrowing):
+                  ChildCRWriteFailed — the K8s apiserver rejected the SSA patch
+                  (server timeout, rate-limit, service
+                  unavailable, SSA field conflict, etc.).
+
+                  _FINALv3 narrowed this enum to a SINGLE value (MDISC-26 / D-10):
+                  LiteLLMRejected and LiteLLMUnavailable are NOT valid here because
+                  Discovery never calls LiteLLM (MDISC-27). Those reasons surface on
+                  the child Model's status instead.
+                items:
+                  description: |-
+                    FailedCandidate records a candidate whose K8s apiserver write
+                    (Server-Side Apply patch) failed for a non-collision reason. The
+                    Reason enum is intentionally single-valued in _FINALv3: Discovery
+                    never calls LiteLLM, so LiteLLMRejected / LiteLLMUnavailable are NOT
+                    Discovery-level reasons (MDISC-26 / D-10). See CONTEXT.md
+                    <specifics> line 284 and PATTERNS.md line 1037.
+                  properties:
+                    message:
+                      description: |-
+                        Message is a free-form diagnostic. Per §9.1, MUST NOT contain
+                        secret material — AWS error strings are sanitized via the
+                        reconciler's sanitizeAWSError helper before surfacing here.
+                      type: string
+                    name:
+                      description: |-
+                        Name is the normalized candidate name (post-prefix +
+                        normalization, the value that would have become the child Model's
+                        metadata.name).
+                      minLength: 1
+                      type: string
+                    reason:
+                      description: |-
+                        Reason classifies the failure. Single-valued enum per _FINALv3
+                        (MDISC-26): only ChildCRWriteFailed is valid; LiteLLMRejected and
+                        LiteLLMUnavailable have been retired from Discovery-level reasons
+                        (MDISC-27 — Discovery never calls LiteLLM; those reasons surface
+                        on the child Model's status instead).
+                      enum:
+                      - ChildCRWriteFailed
+                      type: string
+                  required:
+                  - name
+                  - reason
+                  type: object
+                type: array
+              generatedChildren:
+                description: |-
+                  GeneratedChildren lists the metadata.name of every owned child
+                  Model CR (sorted for deterministic kubectl get -o yaml output).
+                  On the next reconcile, the reconciler uses a label-selector
+                  (litellm.ackstorm.ai/generated-by=<this>) for ACTUAL ownership
+                  enumeration; this list is a status echo for human inspection, not
+                  the source of truth.
+                items:
+                  type: string
+                type: array
+              generatedCount:
+                default: 0
+                description: |-
+                  GeneratedCount is len(GeneratedChildren) — the number of child
+                  Model CRs the Discovery currently owns (SSA-applied with
+                  ownerReferences[controller=true, blockOwnerDeletion=true] +
+                  labels[litellm.ackstorm.ai/generated-by=<this>]).
+                format: int32
+                type: integer
+              lastRefreshAt:
+                description: |-
+                  LastRefreshAt is the timestamp of the most recent SUCCESSFUL
+                  provider-list reconcile (NOT every reconcile attempt — transient
+                  failures do not update this field). Mirrors Phase 3's
+                  LastRendered.At pattern (model_types.go:237-243).
+                format: date-time
+                type: string
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the metadata.generation of the ModelDiscovery
+                  the reconciler most recently processed successfully (OWN-08).
+                format: int64
+                type: integer
+              skippedCandidates:
+                description: |-
+                  SkippedCandidates records candidates that were NOT generated as
+                  child Models because of K8s-native conflict resolution. Each entry
+                  names the candidate and the reason.
+
+                  Reason enum (spec §6.3 line 870 normative — exhaustive):
+                  ExplicitModelExists — a child with the same name already exists
+                  and its controller ownerRef does NOT point
+                  at this Discovery (MDISC-14).
+                  DuplicateDiscovery — a child with the same name exists and is
+                  owned by a DIFFERENT ModelDiscovery
+                  (MDISC-13). OwnedBy names the winner.
+                  InvalidDiscoveredName — the candidate's normalized name failed
+                  DNS-1123 subdomain validation (MDISC-11).
+                items:
+                  description: |-
+                    SkippedCandidate records a candidate that was NOT generated as a
+                    child Model due to K8s-native conflict resolution (MDISC-13 / 14 / 11).
+                    The Reason enum is exhaustive per spec §6.3 line 870.
+                  properties:
+                    message:
+                      description: |-
+                        Message is a free-form diagnostic. Per §9.1, MUST NOT contain
+                        secret material (no leaked AWS keys, no Anthropic API keys, no
+                        Bearer tokens — the post-render canary asserts this).
+                      type: string
+                    name:
+                      description: |-
+                        Name is the normalized candidate name (post-prefix +
+                        normalization, the value that would have become the child Model's
+                        metadata.name).
+                      minLength: 1
+                      type: string
+                    ownedBy:
+                      description: |-
+                        OwnedBy is the <namespace>/<name> of the ModelDiscovery winning a
+                        DuplicateDiscovery collision. Empty for ExplicitModelExists (no
+                        Discovery owns the conflicting child) and InvalidDiscoveredName
+                        (no collision — the candidate's own name was rejected).
+                      type: string
+                    reason:
+                      description: |-
+                        Reason classifies the skip. Exhaustive enum per spec §6.3:
+                        ExplicitModelExists — name collides with a user-authored Model
+                        (no controller ownerRef back at this
+                        Discovery) — MDISC-14.
+                        DuplicateDiscovery — name collides with a child owned by a
+                        different ModelDiscovery — MDISC-13. The
+                        OwnedBy field names the winning
+                        Discovery (<namespace>/<name>).
+                        InvalidDiscoveredName — normalized name failed DNS-1123 subdomain
+                        validation — MDISC-11.
+                      enum:
+                      - ExplicitModelExists
+                      - DuplicateDiscovery
+                      - InvalidDiscoveredName
+                      type: string
+                  required:
+                  - name
+                  - reason
+                  type: object
+                type: array
+            type: object
+        type: object
+        x-kubernetes-validations:
+        - message: anthropic requires spec.credentialsSecretRef and forbids spec.region/spec.baseUrl
+          rule: self.spec.type != 'anthropic' || (has(self.spec.credentialsSecretRef)
+            && !has(self.spec.region) && !has(self.spec.baseUrl))
+        - message: bedrock requires spec.region and forbids spec.baseUrl
+          rule: self.spec.type != 'bedrock' || (has(self.spec.region) && !has(self.spec.baseUrl))
+        - message: gemini requires spec.credentialsSecretRef and forbids spec.region/spec.baseUrl
+          rule: self.spec.type != 'gemini' || (has(self.spec.credentialsSecretRef)
+            && !has(self.spec.region) && !has(self.spec.baseUrl))
+        - message: kubeai requires spec.baseUrl and forbids spec.credentialsSecretRef/spec.region
+          rule: self.spec.type != 'kubeai' || (has(self.spec.baseUrl) && !has(self.spec.credentialsSecretRef)
+            && !has(self.spec.region))
+        - message: openai requires spec.credentialsSecretRef and forbids spec.region
+          rule: self.spec.type != 'openai' || (has(self.spec.credentialsSecretRef)
+            && !has(self.spec.region))
+        - message: spec.refresh.interval must be >= 1m
+          rule: duration(self.spec.refresh.interval) >= duration('1m')
+    served: true
+    storage: true
+    subresources:
+      status: {}

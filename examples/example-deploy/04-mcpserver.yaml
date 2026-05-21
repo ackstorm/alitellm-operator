@@ -1,0 +1,43 @@
+---
+# Copyright 2026 ACKstorm.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Dogfood MCPServer CR — Exa Search MCP (SSE transport).
+#
+# Exercises spec §11 AC-MS1 (admin-immediate POST /v1/mcp/server) and
+# AC-MS-TRANSPORT (transport shipped verbatim). Uses the real-world Exa
+# MCP server endpoint per CONTEXT.md D-06.
+#
+# After apply, expect:
+#   (a) status.lastRendered.serverID populated with the LiteLLM-assigned
+#       UUID once POST /v1/mcp/server succeeds.
+#   (b) Ready=True reason=Synced once LiteLLMConnection/default is Ready.
+#   (c) server_name="exa-mcp" and transport="sse" shipped verbatim to
+#       LiteLLM (spec §6.4 — transport is NOT normalized for user-authored
+#       MCPServer CRs, only for MCPServerDiscovery-generated children).
+#   (d) spec.params.description forwarded to LiteLLM as part of the
+#       mcp_info pass-through bag.
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMMCPServer
+metadata:
+  name: exa-mcp
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  # Real-world Exa Search MCP server endpoint (SSE transport).
+  # The operator registers this as the server URL in LiteLLM.
+  endpoint: "https://exa.ai/mcp/sse"
+  # Transport value admitted by CEL enum: {http, sse}.
+  # Shipped verbatim to LiteLLM's POST /v1/mcp/server body.
+  transport: sse
+  # Pass-through bag forwarded to LiteLLM at the top level of
+  # NewMCPServerRequest. Nested mcp_info follows spec §6.4 convention.
+  params:
+    description: "Exa search MCP"

@@ -1,0 +1,39 @@
+---
+# Copyright 2026 ACKstorm.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Example deployment overlay — one of every kind, in the `default` namespace.
+#
+# Numbered prefixes (00-..07-) drive apply order: Secrets first,
+# LiteLLMConnection second, child kinds (Model / ModelDiscovery /
+# MCPServer / MCPServerDiscovery / A2AAgent) in the middle, Team last.
+#
+# CONDITIONAL: if ToolHive CRDs are absent in your cluster, remove
+# `05-mcpserverdiscovery.yaml` from the resources list below before
+# running `kubectl apply -k examples/example-deploy/`. The other resources
+# still exercise Pipeline B via ModelDiscovery/openai. MCPServerDiscovery
+# would otherwise report Ready=False, reason=SourceUnreachable until
+# ToolHive is installed.
+#
+# Before applying, create the referenced Secrets imperatively — see
+# `00-secrets.yaml` for the schema-reference manifests. NEVER commit real
+# key material into these files.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: default
+
+resources:
+  - 00-secrets.yaml
+  - 01-litellmconnection.yaml
+  - 02-model.yaml
+  - 03-modeldiscovery.yaml
+  - 04-mcpserver.yaml
+  - 05-mcpserverdiscovery.yaml
+  - 06-a2aagent.yaml
+  - 07-team.yaml

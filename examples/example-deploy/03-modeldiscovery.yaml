@@ -1,0 +1,56 @@
+---
+# Copyright 2026 ACKstorm.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Dogfood ModelDiscovery CR — OpenAI provider (Pipeline B).
+#
+# Exercises spec §11 AC-MD1 (provider-side discovery generates K8s Model
+# children) and AC-FILT1 (include filter selects specific model families).
+# This CR drives the Pipeline B path: discovery calls GET /v1/models
+# against OpenAI and emits K8s Model child CRs for matching names; the
+# Model controller then reconciles each child into LiteLLM via Pipeline A.
+#
+# After apply, expect:
+#   (a) status.conditions[type=Ready].status=True within 30s once
+#       credentialsSecretRef is resolvable and OpenAI is reachable.
+#   (b) Generated child Model CRs named "openai.gpt-4o*" and
+#       "openai.gpt-4.1*" appearing in default within 30s.
+#   (c) status.generatedCount > 0; status.generatedChildren[] lists the
+#       child CR names.
+#   (d) Refresh every 10m (spec.refresh.interval floor = 1m per MDISC-05).
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMModelDiscovery
+metadata:
+  name: openai
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  # Provider type — governs which provider client is instantiated.
+  # CEL enforces type ∈ {anthropic, bedrock, gemini, kubeai, openai}.
+  type: openai
+  # Provider credentials — read at reconcile-time from this Secret.
+  # ONLY used for the operator's GET /v1/models call; NEVER injected
+  # into generated child Model spec.params (MDISC-15).
+  credentialsSecretRef:
+    name: openai-api-key
+  # Default baseUrl (https://api.openai.com/v1) used; no override needed.
+  # To use OpenAI-compatible providers (vLLM, Together, Groq, etc.),
+  # uncomment and set spec.baseUrl to the provider's /v1 endpoint.
+  # baseUrl: https://api.together.xyz/v1
+  # RE2 include filter — only gpt-4o and gpt-4.1 model families.
+  # include-strict semantics: zero matches → Ready=False, reason=UpstreamInvalid.
+  # exclude-lenient semantics: zero matches is silent.
+  filters:
+    include:
+      - "gpt-4o.*"
+      - "gpt-4\\.1.*"
+  # Refresh interval — must be >= 1m (MDISC-05 CEL floor).
+  refresh:
+    interval: 10m

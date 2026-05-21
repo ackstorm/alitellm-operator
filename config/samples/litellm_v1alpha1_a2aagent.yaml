@@ -1,0 +1,62 @@
+---
+# Copyright 2026 ACKstorm.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Sample A2AAgent CR exercising plan 05-03 + spec §11 AC-A1 (POST
+# /v1/agents registration), AC-A2 (agent_name == metadata.name overlay),
+# and AC-A3 (spec.endpoint overlaid as agent_card_params.url; Warning
+# Event reason=ProjectionOverride on spec.agentCard.url collision). Applied
+# with `kubectl apply -f config/samples/litellm_v1alpha1_a2aagent.yaml`
+# after the operator's CRDs are installed and LiteLLMConnection/default is
+# Ready.
+#
+# After apply, expect:
+#   (a) POST /v1/agents with agent_name="a2aagent-example" (operator
+#       structural overlay; wins over any spec.agentCard.name key).
+#   (b) agent_card_params.url set to spec.endpoint value, overriding the
+#       intentionally-mismatched spec.agentCard.url below. A Kubernetes
+#       Event reason=ProjectionOverride is emitted on the collision
+#       (spec §6.6 + AC-A3 — the overlay is intentional and documented).
+#   (c) spec.params forwarded at AgentConfig top-level (NOT inside
+#       agent_card_params) per spec §6.6 contract.
+#   (d) Ready=True reason=Synced once LiteLLM accepts the registration.
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMA2AAgent
+metadata:
+  name: a2aagent-example
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  # endpoint is required (MinLength=1). The operator overlays this value
+  # as agent_card_params.url, overriding any spec.agentCard.url declared
+  # below. This is the ProjectionOverride path (AC-A3).
+  endpoint: "http://example-a2a.default.svc:9001"
+  # agentCard is required per spec §6.6. String-typed leaves at any depth
+  # (including nested arrays) are walked for {{NAME}} placeholder
+  # substitution per Phase 5 D-04 second-pass scope.
+  # NOTE: spec.agentCard.url is intentionally set to a wrong value to
+  # demonstrate the ProjectionOverride semantics — the operator always
+  # wins and emits a Warning Event on the collision.
+  agentCard:
+    name: "example"
+    version: "0.1.0"
+    # This URL will be OVERRIDDEN by spec.endpoint above (AC-A3).
+    # A Kubernetes Event type=Warning reason=ProjectionOverride is emitted.
+    url: "http://collides.example/wrong"
+    capabilities:
+      streaming: false
+    defaultInputModes:
+      - text
+    defaultOutputModes:
+      - text
+  # spec.params is forwarded at AgentConfig top-level (not inside
+  # agent_card_params) per spec §6.6.
+  params:
+    timeout: 30

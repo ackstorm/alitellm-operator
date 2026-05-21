@@ -1,0 +1,56 @@
+---
+# Copyright 2026 ACKstorm.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Dogfood Model CR — Anthropic Claude Sonnet 4.5.
+#
+# Exercises spec §11 AC-M1 (POST /model/new on first reconcile) and
+# §5.2 ({{ANTHROPIC_API_KEY}} placeholder substitution via spec.secrets[]).
+# This CR is ALSO the target of the D-07 drift-correction demo:
+# out-of-band `curl -X POST $LITELLM/model/update -d {...}` triggers
+# the safety-re-list + hash-mismatch path, incrementing
+# drift_corrected_total{domain=model,action=update_drifted}.
+#
+# After apply, expect:
+#   (a) status.lastRendered.hash populated; Ready=True reason=Synced once
+#       LiteLLM accepts POST /model/new.
+#   (b) litellm_params.api_key resolved from {{ANTHROPIC_API_KEY}} via the
+#       anthropic-api-key Secret (§5.2 substitution).
+#   (c) litellm_params.model="anthropic/claude-sonnet-4.5" and
+#       litellm_params.api_base shipped verbatim to LiteLLM.
+#   (d) model_info.description="Anthropic Sonnet 4.5 — dogfood model"
+#       carried through to LiteLLM model_info.
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMModel
+metadata:
+  name: claude-sonnet-4-5
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  # litellm_params pass-through — forwarded verbatim to LiteLLM's
+  # POST /model/new body. The {{ANTHROPIC_API_KEY}} placeholder is
+  # resolved from spec.secrets[] before the body reaches LiteLLM.
+  params:
+    model: "anthropic/claude-sonnet-4.5"
+    # {{ANTHROPIC_API_KEY}} is resolved at reconcile-time from the
+    # anthropic-api-key Secret (see spec.secrets[] below).
+    api_key: "{{ANTHROPIC_API_KEY}}"
+    api_base: "https://api.anthropic.com"
+  # model_info pass-through — forwarded verbatim to LiteLLM model_info.
+  info:
+    description: "Anthropic Sonnet 4.5 — dogfood model"
+  # Secrets declares the substitution map for {{NAME}} placeholders in
+  # spec.params. Each entry resolves one Secret key into a named
+  # placeholder. Rotation propagates within 30s via the Secret-watch path.
+  secrets:
+    - as: ANTHROPIC_API_KEY
+      secretRef:
+        name: anthropic-api-key
+        key: ANTHROPIC_API_KEY

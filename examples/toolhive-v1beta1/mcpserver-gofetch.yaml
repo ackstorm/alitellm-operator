@@ -1,0 +1,22 @@
+apiVersion: toolhive.stacklok.dev/v1beta1
+kind: MCPServer
+metadata:
+  name: gofetch
+  namespace: mcp
+  labels:
+    app.kubernetes.io/component: mcp
+    app.kubernetes.io/env: production
+  annotations:
+    litellm.io/access-groups: run,dream,librechat
+spec:
+  groupRef:
+    name: search
+  image: ghcr.io/stackloklabs/gofetch/server:1.0.1
+  transport: streamable-http
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi

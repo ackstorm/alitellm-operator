@@ -1,0 +1,570 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.0
+  name: litellmmcpserverdiscoveries.litellm.ackstorm.ai
+spec:
+  group: litellm.ackstorm.ai
+  names:
+    kind: LiteLLMMCPServerDiscovery
+    listKind: LiteLLMMCPServerDiscoveryList
+    plural: litellmmcpserverdiscoveries
+    shortNames:
+    - msdisc
+    singular: litellmmcpserverdiscovery
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: Ready
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Ready')].reason
+      name: Reason
+      type: string
+    - jsonPath: .status.discoveredCount
+      name: Discovered
+      type: integer
+    - jsonPath: .status.generatedCount
+      name: Generated
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          LiteLLMMCPServerDiscovery is the Schema for the litellmmcpserverdiscoveries API — the
+          second Pipeline B CRD in the operator (after LiteLLMModelDiscovery). It points
+          the operator at the cluster's ToolHive deployment and reconciles
+          discovered ToolHive `MCPServer` / `VirtualMCPServer` objects into a
+          fan-out of Kubernetes LiteLLMMCPServer child CRs in WATCH_NAMESPACE.
+
+          Discovery NEVER calls LiteLLM directly; each child reconciles into
+          LiteLLM via the Phase 5 LiteLLMMCPServer controller (Pipeline A).
+
+          The two CR-level XValidation rules above enforce:
+          - Defensive Type == 'toolhive' (Enum already enforces this; the CEL
+          rule documents intent and survives any future Enum expansion).
+          - MSDISC-05: refresh.interval >= 1m floor.
+
+          Per Phase 5 D-04 (and MSDISC-04 specifically): MCPServerDiscovery has
+          NO upstream-credential reference field. ToolHive reads are authorized
+          via the operator's cluster-scoped ServiceAccount RBAC (Phase 5 D-07,
+          config/rbac/toolhive_clusterrole.yaml). This is a SCHEMA-LEVEL
+          prohibition — the field is structurally absent.
+
+          The Discovery finalizer is `mcpserverdiscoveries.litellm.ackstorm.ai/
+          finalizer`. It issues NO LiteLLM call — its only work is waiting for
+          owned children to drain via blockOwnerDeletion=true cascade, then
+          removing itself. Each child MCPServer's own finalizer issues
+          `DELETE /v1/mcp/server/<server_id>` on the LiteLLM side (Phase 5 plan
+          05-01 mcpserver_controller.go).
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              MCPServerDiscoverySpec defines the desired state of MCPServerDiscovery —
+              the flat `_FINALv3` shape (spec §6.5). One MCPServerDiscovery CR points
+              the operator at the cluster's ToolHive deployment (the only allowed
+              `spec.type` value in v1alpha1) and generates a fan-out of Kubernetes
+              MCPServer child CRs (Pipeline B per spec §3.3).
+
+              Discovery NEVER calls LiteLLM directly; each generated child reconciles
+              into LiteLLM via the Phase 5 MCPServer controller (Pipeline A). This
+              mirrors the Phase 4 ModelDiscovery → Model relationship.
+
+              MSDISC-01 narrows spec.type to {toolhive} via the Enum marker. MSDISC-04
+              (no upstream-credential reference field — schema-level prohibition) is
+              structurally enforced by the *absence* of any such field. MSDISC-05
+              (refresh.interval 1m floor) is enforced via CEL XValidation on the
+              resource root. MSDISC-14 (toolhive sub-block presence + minItems=1 on
+              namespaces) is enforced at the schema level.
+            properties:
+              filters:
+                description: |-
+                  Filters narrows the post-derivation candidate set via RE2
+                  include/exclude patterns matched against the POST-DERIVATION
+                  dotted three-part name (`<discovery-name>.<toolhive-namespace>.
+                  <toolhive-name>`) per spec §6.5. Empty (absent) Filters means
+                  "no filtering" (every discovered ToolHive object becomes a
+                  candidate).
+
+                  Per spec §6.5: include FIRST (strict — empty match-set surfaces
+                  as Ready=False, reason=UpstreamInvalid), then exclude (lenient —
+                  empty match-set is fine). The reconciler in enforces
+                  the order; this CRD type only carries the patterns.
+                properties:
+                  exclude:
+                    description: |-
+                      Exclude removes candidates from the post-Include set: a candidate
+                      is filtered out if it matches any pattern in Exclude. Empty (or
+                      absent) Exclude means "exclude nothing". Exclude is forward-looking
+                      defense — zero matches is fine (lenient semantics per spec §6.5).
+                    items:
+                      type: string
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  include:
+                    description: |-
+                      Include narrows the candidate set: a candidate dotted name is
+                      admitted only if it matches at least one pattern in Include. Empty
+                      (or absent) Include means "admit all". If Include is non-empty
+                      and matches ZERO candidates, the reconcile surfaces Ready=False,
+                      reason=UpstreamInvalid (operator-intent vs upstream-reality drift).
+                    items:
+                      type: string
+                    type: array
+                    x-kubernetes-list-type: atomic
+                type: object
+              params:
+                description: |-
+                  Params is a pass-through bag of fields PROPAGATED VERBATIM into
+                  every generated child MCPServer's spec.params (AC-SEC4-PROPAGATE).
+                  Discovery does NOT perform substitution itself; the Phase 5 MCPServer
+                  reconciler substitutes them on the child's own reconcile (§5.2).
+
+                  Any JSON object is accepted (x-kubernetes-preserve-unknown-fields:
+                  true). String-typed leaves may carry {{NAME}} placeholders matched
+                  against spec.secrets[] on the child's reconcile.
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+              refresh:
+                description: |-
+                  Refresh controls the periodic ToolHive-list cadence. The
+                  reconciler returns ctrl.Result{RequeueAfter: spec.refresh.interval}
+                  on success (Phase 4 D-08 inherited). The CEL floor of 1 minute
+                  (MSDISC-05) is enforced at the resource root via the
+                properties:
+                  interval:
+                    description: |-
+                      Interval is the cadence between two successive ToolHive-list
+                      reconciles. metav1.Duration accepts kubectl-friendly strings like
+                      "5m", "1h", "30m". CEL floor of 1m is enforced at admission.
+                    type: string
+                required:
+                - interval
+                type: object
+              secrets:
+                description: |-
+                  Secrets is the substitution map PROPAGATED verbatim into every
+                  generated child MCPServer's spec.secrets[] (AC-SEC4-PROPAGATE).
+                  Discovery does NOT perform substitution itself — the propagated
+                  entries ride along and the Phase 5 MCPServer reconciler substitutes
+                  them on the child's own reconcile.
+
+                  MSDisc has NO field for upstream-source credentials — ToolHive
+                  reads are authorized via the operator's cluster-scoped
+                  ServiceAccount RBAC (config/rbac/toolhive_clusterrole.yaml) per
+                  Phase 5 D-07. MSDISC-04 makes the schema-level prohibition
+                  load-bearing — credentials for the upstream source and credentials
+                  for inference MUST be expressed via DIFFERENT mechanisms (cluster
+                  RBAC vs spec.secrets[]).
+                items:
+                  description: |-
+                    SecretSubstitution maps a Kubernetes Secret key to an uppercase NAME that
+                    can be referenced as {{NAME}} in spec.params and spec.info string-typed
+                    leaves (§5.2). The as value is the NAME; the secretRef points to the
+                    Kubernetes Secret and key that carry the plaintext value (SEC-01.SEC-03).
+
+                    SEC-03: the as value is validated at admission by the CEL pattern
+                    ^[A-Z_][A-Z0-9_]*$; lowercase letters, digits-first names, and whitespace
+                    are rejected. Uniqueness of as values within a Model is enforced by a CEL
+                    XValidation on ModelSpec.Secrets (see above).
+                  properties:
+                    as:
+                      description: |-
+                        As is the placeholder NAME used in {{NAME}} substitution expressions
+                        within spec.params and spec.info string-typed leaves. Must match the
+                        pattern ^[A-Z_][A-Z0-9_]*$ (§5.2, SEC-03). Unique within the enclosing
+                        Model CR (SEC-03 uniqueness — enforced via CEL on spec.secrets).
+
+                        Example: as=ANTHROPIC_API_KEY matches the placeholder
+                        "{{ANTHROPIC_API_KEY}}" anywhere in spec.params or spec.info strings.
+                      minLength: 1
+                      pattern: ^[A-Z_][A-Z0-9_]*$
+                      type: string
+                    secretRef:
+                      description: |-
+                        SecretRef identifies the Kubernetes Secret and key whose plaintext
+                        value replaces the {{As}} placeholder at reconcile time. The Secret
+                        MUST reside in the same namespace as the Model CR (no cross-namespace
+                        resolution in v1alpha1). A missing Secret or key surfaces as
+                        Ready=False, reason=SecretNotFound (§6.0).
+
+                        Reuses SecretKeyRef from litellmconnection_types.go (same package —
+                        no additional type definition needed). SEC-01, SEC-06.
+                      properties:
+                        key:
+                          description: |-
+                            Key inside the referenced Secret's `data` map whose value is the
+                            LiteLLM master key.
+                          minLength: 1
+                          type: string
+                        name:
+                          description: |-
+                            Name of the Kubernetes Secret resource in the LiteLLMConnection's
+                            namespace.
+                          minLength: 1
+                          type: string
+                      required:
+                      - key
+                      - name
+                      type: object
+                  required:
+                  - as
+                  - secretRef
+                  type: object
+                type: array
+              toolhive:
+                description: |-
+                  Toolhive carries the toolhive-specific configuration sub-block.
+                  Required because in v1alpha1 `spec.type` is always `toolhive`; a
+                  future discriminator-aware schema (when other Discovery sources
+                  land) will gate this with a CEL XValidation rule similar to
+                  ModelDiscovery's per-provider matrix.
+                properties:
+                  kinds:
+                    default:
+                    - MCPServer
+                    - VirtualMCPServer
+                    description: |-
+                      Kinds enumerates the ToolHive resource kinds to watch. Defaults
+                      to both `MCPServer` and `VirtualMCPServer` (per spec §6.5). A user
+                      who wants Discovery limited to one kind (e.g. only `MCPServer`)
+                      specifies a singleton list.
+
+                      Empty list is REJECTED at admission via the Enum constraint on
+                      each item — but the default ensures the omitted-field case is
+                      "watch both", not "watch nothing".
+                    items:
+                      enum:
+                      - MCPServer
+                      - VirtualMCPServer
+                      type: string
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  namespaces:
+                    description: |-
+                      Namespaces enumerates the Kubernetes namespaces from which
+                      ToolHive `MCPServer` / `VirtualMCPServer` objects should be
+                      considered for discovery. ToolHive objects in OTHER namespaces
+                      are silently ignored.
+
+                      MUST contain at least one entry (MinItems=1). Each entry MUST be
+                      a non-empty DNS-1123-friendly string (MinLength=1); CRD-layer
+                      validation does NOT enforce DNS-1123 format because the cluster's
+                      own namespace creation already enforces that contract.
+                    items:
+                      type: string
+                    minItems: 1
+                    type: array
+                    x-kubernetes-list-type: atomic
+                required:
+                - namespaces
+                type: object
+              type:
+                description: |-
+                  Type discriminates the upstream Discovery source. In v1alpha1 the
+                  ONLY allowed value is `toolhive`. The Enum marker below admits
+                  nothing else; future Discovery sources (e.g. an A2A-side directory,
+                  a Kubernetes-API-server-side scan) would expand this Enum without
+                  breaking the existing schema (additive Enum values are non-breaking).
+
+                  MSDISC-01 enforces this at admission.
+                enum:
+                - toolhive
+                type: string
+            required:
+            - refresh
+            - toolhive
+            - type
+            type: object
+          status:
+            description: "MCPServerDiscoveryStatus defines the observed state of MCPServerDiscovery
+              —\nthe `_FINALv3` Pipeline B status surface. Mirrors ModelDiscoveryStatus\nwith
+              MCP-side renames (MCPServerSkippedCandidate / MCPServerFailedCandidate)\nto
+              avoid Go name collision with the Phase 4 ModelDiscovery types in the\nsame
+              package.\n\nSpec §6.5 invariant:\n\n\tdiscoveredCount == generatedCount\n\n(Filtered-out
+              names are NOT counted in discoveredCount.)\n\nTwo condition types are
+              written on every reconcile (each idempotent\nvia apimeta.SetStatusCondition):\n\n\tReady
+              — top-level readiness with reasons:\n\t {Synced, SourceUnreachable,
+              SecretNotFound,\n\t InvalidConfig, UpstreamInvalid}\n\t NOTE: LiteLLMUnavailable
+              / LiteLLMRejected are\n\t NOT Discovery-level reasons (Discovery never\n\t
+              calls LiteLLM — MSDISC-16). Those reasons surface\n\t on the child MCPServer's
+              status.\n\n\tSourceReachable — ToolHive-list reachability with reasons:\n\t
+              {Ok, Unreachable}\n\t Used as the gate for vanish-detection (Phase 4\n\t
+              D-09 inherited): diff-and-delete is skipped when\n\t this is False."
+            properties:
+              conditions:
+                description: |-
+                  Conditions carries the metav1.Condition list. Two condition types
+                  are populated on every reconcile:
+
+                  Ready — reasons: Synced, SourceUnreachable,
+                  SecretNotFound, InvalidConfig, UpstreamInvalid.
+                  LiteLLMUnavailable / LiteLLMRejected are NOT
+                  valid here (MSDISC-16).
+
+                  SourceReachable — reasons: Ok, Unreachable.
+                  The atomic-refresh-snapshot vanish guard
+                  (Phase 4 D-09 inherited) gates diff-and-delete
+                  on SourceReachable=True.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              discoveredCount:
+                default: 0
+                description: |-
+                  DiscoveredCount is the size of the post-filter candidate set on
+                  the most recent successful refresh (filtered-out IDs are NOT
+                  counted). Maintains the invariant noted on
+                  MCPServerDiscoveryStatus's godoc above.
+                format: int32
+                type: integer
+              failedCandidates:
+                description: |-
+                  FailedCandidates records candidates whose SSA write to the K8s
+                  apiserver failed for a reason other than name collision. Each
+                  entry names the candidate and the reason.
+
+                  Reason enum (single-valued under `_FINALv3`):
+                  ChildCRWriteFailed — the K8s apiserver rejected the SSA patch
+                  (server timeout, rate-limit, service
+                  unavailable, SSA field conflict, etc.).
+                items:
+                  description: |-
+                    MCPServerFailedCandidate records a candidate whose K8s apiserver write
+                    (SSA patch) failed for a non-collision reason. Single-valued enum per
+                    `_FINALv3`: Discovery never calls LiteLLM, so LiteLLM-side reasons are
+                    NOT valid here.
+
+                    The MCPServer- prefix on the Go type avoids a name collision with the
+                    Phase 4 ModelDiscovery `FailedCandidate` type in the same package.
+                  properties:
+                    message:
+                      description: Message is a free-form diagnostic.
+                      type: string
+                    name:
+                      description: |-
+                        Name is the candidate dotted three-part name
+                        (`<discovery-name>.<toolhive-namespace>.<toolhive-name>`).
+                      minLength: 1
+                      type: string
+                    reason:
+                      description: |-
+                        Reason classifies the failure. Single-valued enum: only
+                        ChildCRWriteFailed is valid; LiteLLM-side reasons surface on
+                        the child MCPServer's status instead.
+                      enum:
+                      - ChildCRWriteFailed
+                      type: string
+                  required:
+                  - name
+                  - reason
+                  type: object
+                type: array
+              generatedChildren:
+                description: |-
+                  GeneratedChildren lists the metadata.name of every owned child
+                  MCPServer CR (sorted for deterministic kubectl get -o yaml
+                  output). On the next reconcile, the reconciler uses a label-
+                  selector (litellm.ackstorm.ai/generated-by=<this>) for ACTUAL
+                  ownership enumeration; this list is a status echo for human
+                  inspection, not the source of truth.
+                items:
+                  type: string
+                type: array
+              generatedCount:
+                default: 0
+                description: |-
+                  GeneratedCount is len(GeneratedChildren) — the number of child
+                  MCPServer CRs the Discovery currently owns (SSA-applied with
+                  ownerReferences[controller=true, blockOwnerDeletion=true] +
+                  labels[litellm.ackstorm.ai/generated-by=<this>]).
+                format: int32
+                type: integer
+              lastRefreshAt:
+                description: |-
+                  LastRefreshAt is the timestamp of the most recent SUCCESSFUL
+                  ToolHive-list reconcile (NOT every reconcile attempt — transient
+                  failures do not update this field). Mirrors Phase 4
+                  ModelDiscoveryStatus.LastRefreshAt semantics.
+                format: date-time
+                type: string
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the metadata.generation of the
+                  MCPServerDiscovery the reconciler most recently processed
+                  successfully (OWN-08 carry-forward).
+                format: int64
+                type: integer
+              skippedCandidates:
+                description: |-
+                  SkippedCandidates records candidates that were NOT generated as
+                  child MCPServers because of K8s-native conflict resolution OR
+                  because of a Discovery-side validation skip. Each entry names
+                  the candidate and the reason.
+
+                  Reason enum per spec §6.5 + Phase 5 D-10 (exhaustive):
+                  ExplicitMCPServerExists — a child with the same name already
+                  exists and its controller ownerRef
+                  does NOT point at this Discovery.
+                  DuplicateDiscovery — a child with the same name exists and
+                  is owned by a DIFFERENT Discovery
+                  (structurally rare under dotted naming).
+                  OwnedBy names the winner.
+                  EndpointUnknown — the ToolHive object has empty/absent
+                  status.url (MSDISC-12).
+                  InvalidTransport — the ToolHive object's status.transport
+                  value is not in the normalization map
+                  (`streamable-http → http`, `sse → sse`,
+                  absent → `http`). Anything else
+                  (e.g. `stdio`, `unknown`, custom) is
+                  skipped. Added per Phase 5 D-10.
+                items:
+                  description: |-
+                    MCPServerSkippedCandidate records a candidate that was NOT generated
+                    as a child MCPServer due to K8s-native conflict resolution or a
+                    Discovery-side validation skip. The Reason enum is exhaustive per spec
+                    §6.5 + Phase 5 D-10 (which added the `InvalidTransport` value).
+
+                    The MCPServer- prefix on the Go type avoids a name collision with the
+                    Phase 4 ModelDiscovery `SkippedCandidate` type in the same package.
+                  properties:
+                    message:
+                      description: |-
+                        Message is a free-form diagnostic. Per §9.1, MUST NOT contain
+                        secret material (the operator only handles ToolHive metadata
+                        fields, not secret payloads, so this is structurally easy to
+                        satisfy).
+                      type: string
+                    name:
+                      description: |-
+                        Name is the candidate dotted three-part name
+                        (`<discovery-name>.<toolhive-namespace>.<toolhive-name>`) that
+                        would have become the child MCPServer's metadata.name.
+                      minLength: 1
+                      type: string
+                    ownedBy:
+                      description: |-
+                        OwnedBy is the <namespace>/<name> of the MCPServerDiscovery
+                        winning a DuplicateDiscovery collision (or the explicit MCPServer
+                        owner for ExplicitMCPServerExists). Empty for EndpointUnknown
+                        and InvalidTransport (no collision — the candidate's own data
+                        was rejected).
+                      type: string
+                    reason:
+                      description: |-
+                        Reason classifies the skip. Exhaustive enum per spec §6.5 +
+                        Phase 5 D-10:
+                        ExplicitMCPServerExists — name collides with a user-authored
+                        MCPServer (no controller ownerRef
+                        back at this Discovery).
+                        DuplicateDiscovery — name collides with a child owned by
+                        a different MCPServerDiscovery.
+                        OwnedBy names the winning Discovery
+                        (<namespace>/<name>).
+                        EndpointUnknown — ToolHive object's status.url is empty
+                        or absent (MSDISC-12).
+                        InvalidTransport — ToolHive object's status.transport
+                        value is not in the normalization
+                        map; the candidate is dropped to
+                        avoid emitting an MCPServer with a
+                        transport that fails CEL admission
+                        on the child CR (CRD enum is
+                        {http, sse}; ToolHive may emit
+                        `streamable-http`, `sse`, `stdio`,
+                        custom strings).
+                      enum:
+                      - ExplicitMCPServerExists
+                      - DuplicateDiscovery
+                      - EndpointUnknown
+                      - InvalidTransport
+                      type: string
+                  required:
+                  - name
+                  - reason
+                  type: object
+                type: array
+            type: object
+        type: object
+        x-kubernetes-validations:
+        - message: spec.type must be 'toolhive' in v1alpha1
+          rule: self.spec.type == 'toolhive'
+        - message: spec.refresh.interval must be >= 1m
+          rule: duration(self.spec.refresh.interval) >= duration('1m')
+    served: true
+    storage: true
+    subresources:
+      status: {}

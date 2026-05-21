@@ -1,0 +1,41 @@
+# ModelDiscovery sample: Anthropic (api.anthropic.com)
+#
+# CEL rules exercised (api/litellm/v1alpha1/modeldiscovery_types.go):
+#   - spec.type=anthropic matches the Enum constraint (MDISC-01)
+#   - credentialsSecretRef is REQUIRED for anthropic
+#   - region is FORBIDDEN for anthropic
+#   - baseUrl is FORBIDDEN for anthropic
+#   - refresh.interval >= 1m (MDISC-05 floor)
+#
+# Filter exercise: filters.exclude narrows the kept-set by removing legacy
+# claude-2.0 / claude-2.1 model families (RE2 patterns, anchored).
+#
+# Required Secret: anthropic-credentials with key:
+#   ANTHROPIC_API_KEY
+#
+# Reconciler call: GET https://api.anthropic.com/v1/models with the
+# `x-api-key: $ANTHROPIC_API_KEY` and `anthropic-version` headers.
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMModelDiscovery
+metadata:
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: anthropic-models
+  namespace: default
+spec:
+  type: anthropic
+  credentialsSecretRef:
+    name: anthropic-credentials
+  params:
+    rpm: 100
+    timeout: 300
+  info:
+    mode: chat
+    supports_function_calling: true
+  filters:
+    exclude:
+      - "claude-2\\.0"
+      - "claude-2\\.1"
+  refresh:
+    interval: 5m

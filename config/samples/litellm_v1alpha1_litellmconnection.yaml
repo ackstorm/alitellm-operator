@@ -1,0 +1,48 @@
+---
+# Copyright 2026 ACKstorm.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Sample LiteLLMConnection CR exercising plan 02-01 + spec §11 AC-C1
+# (singleton LiteLLMConnection/default) and CONN-02 (name MUST be "default";
+# any other name is rejected at admission via CEL). Applied with
+# `kubectl apply -f config/samples/litellm_v1alpha1_litellmconnection.yaml`
+# after the operator's CRDs are installed.
+#
+# SINGLETON CONSTRAINT: only one LiteLLMConnection may exist per namespace
+# and its name must be "default". The operator does not reconcile any CR
+# named otherwise (spec §6.1).
+#
+# After apply, expect:
+#   (a) The operator probes GET /v1/key/info on the LiteLLM endpoint with
+#       the master key from the referenced Secret. Probe runs every 5 min.
+#   (b) status condition Ready=True reason=Synced once the probe succeeds;
+#       Ready=False reason=Unreachable / BadMasterKey / SecretNotFound on
+#       failure.
+#   (c) All dependent child kinds (Model, MCPServer, A2AAgent, Team) remain
+#       Ready=False reason=LiteLLMUnavailable until this CR is Ready=True.
+#   (d) Secret rotation is detected within 30s via the Secret-watch path
+#       (Phase 2 D-12); the operator invalidates the connection cache and
+#       re-probes automatically.
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMConnection
+metadata:
+  name: default
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  # endpoint is the in-cluster Service DNS for the LiteLLM proxy.
+  # Use the full FQDN form for cross-namespace resolution robustness.
+  endpoint: "http://litellm.default.svc:4000"
+  # masterKeySecretRef references the Kubernetes Secret holding the LiteLLM
+  # master key (LITELLM_MASTER_KEY). The operator reads this at startup and
+  # on every Secret-rotation event; the key is NEVER logged (§9.1, AC-S1).
+  masterKeySecretRef:
+    name: litellm-master-key
+    key: LITELLM_MASTER_KEY

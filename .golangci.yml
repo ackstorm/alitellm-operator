@@ -1,0 +1,91 @@
+run:
+  timeout: 5m
+  allow-parallel-runners: true
+  # Pin the analysed Go version so golangci-lint v1.62.2 (built with Go 1.23)
+  # does not refuse to lint code whose go.mod targets Go 1.26. The runtime
+  # toolchain still compiles against 1.26; this only narrows the language
+  # features the linter assumes available.
+  go: "1.23"
+
+issues:
+  # don't skip warning about doc comments
+  # don't exclude the default set of lint
+  exclude-use-default: false
+  # restore some of the defaults
+  # (fill in the rest as needed)
+  exclude-rules:
+    - path: "api/*"
+      linters:
+        - lll
+    - path: "internal/*"
+      linters:
+        - dupl
+        - lll
+linters:
+  disable-all: true
+  enable:
+    - dupl
+    - errcheck
+    - copyloopvar
+    - ginkgolinter
+    - goconst
+    - gocyclo
+    - gofmt
+    - goimports
+    - gosec
+    - gosimple
+    - govet
+    - ineffassign
+    - lll
+    - misspell
+    - nakedret
+    - prealloc
+    - revive
+    - staticcheck
+    - typecheck
+    - unconvert
+    - unparam
+    - unused
+
+linters-settings:
+  revive:
+    rules:
+      - name: comment-spacings
+  # gosec — Phase 13 HRD-01 (HIGH-only gate).
+  # Locked decision (13-SPEC.md): HIGH findings block CI; MEDIUM/LOW reported
+  # but non-blocking. The explicit `includes` list pins the rule subset
+  # reviewed in the Wave 1 audit so adding a new gosec rule upstream cannot
+  # silently turn the gate red.
+  #
+  # G105 (modular exponentiation without modulus) is omitted because it is
+  # reserved / withdrawn upstream.
+  # G115 (integer-overflow conversion) is omitted from the HIGH gate per the
+  # 13-01 audit: the 4 reachable findings already carry `// #nosec G115`
+  # annotations with documented upper bounds.
+  gosec:
+    severity: high
+    confidence: low
+    includes:
+      - G101
+      - G102
+      - G103
+      - G104
+      - G106
+      - G107
+      - G108
+      - G109
+      - G110
+      - G201
+      - G202
+      - G203
+      - G204
+      - G304
+      - G401
+      - G402
+      - G403
+      - G404
+      - G501
+      - G502
+      - G503
+      - G504
+      - G505

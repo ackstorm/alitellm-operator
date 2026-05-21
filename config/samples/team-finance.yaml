@@ -1,0 +1,84 @@
+---
+# Copyright 2026 ACKstorm.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Sample Team CR exercising the Phase 6 plan 06-02 + 06-04 happy path
+# alongside spec §11 AC-T1 (budget projection) and AC-T6 (pass-through
+# spec.params bag). Applied with `kubectl apply -f
+# config/samples/team-finance.yaml` after the operator's CRDs are
+# installed and LiteLLMConnection/default is Ready.
+#
+# After apply, expect:
+#   (a) status.lastRendered.teamID populated with the LiteLLM-assigned
+#       UUID (Phase 5 D-02 / DEF-§6.4/§6.6-ID-PERSIST pin).
+#   (b) team_alias=finance projected to LiteLLM (bare metadata.name —
+#       the operator's structural overlay always wins over any
+#       spec.params.team_alias the user supplies, with a Warning
+#       Event reason=ProjectionOverride emitted on the collision).
+#   (c) max_budget=500.0 + budget_duration="30d" projected at the top
+#       level of the POST /team/new body — operator structural
+#       overlays for spec.budget.limit and spec.budget.period
+#       always win over identically-keyed entries in spec.params
+#       (spec §6.7 line 1194).
+#   (d) rpm_limit=6000 + tpm_limit=1000000 at the top level of the body
+#       as Phase-10 typed-overlay projections from spec.rateLimits.{rpm,
+#       tpm} (NOT spec.params — those keys are operator-overlay-
+#       controlled per Feature 01 §2.1; placing them inside spec.params
+#       would emit Warning ProjectionOverride events and silently null
+#       the user's values on the wire).
+#   (e) tags + blocked=false at the top level of the body as pass-
+#       through entries from spec.params (no operator overlay).
+#
+# Notably, this CR is NOT named "default" — that name is reserved for
+# the operator's implicit-bootstrap Team/default reconcile (spec §7.4
+# line 1313). The operator does not create a Kubernetes Team/default
+# CR; the user MAY create one to override the implicit default's
+# parameters (e.g. add a budget), in which case the ownership
+# transition is handled per spec §6.7 line 1223 (AC-T2).
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMTeam
+metadata:
+  name: finance
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  # Optional budget block. When absent (or its leaves removed), the
+  # operator's POST /team/update body sends max_budget=null and
+  # budget_duration=null on the wire — clearing the LiteLLM-side
+  # fields (spec §6.7 line 1194 — "clearing budget" contract).
+  budget:
+    limit: 500.0
+    period: "30d"
+  # Phase 10 typed rate-limit sub-block (Feature 01 §1). Projects onto
+  # top-level rpm_limit / tpm_limit (always-emit; null on clear) plus
+  # operator-hardcoded rpm_limit_type / tpm_limit_type =
+  # "best_effort_throughput" (conditional-add; omitted when the
+  # corresponding *_limit is null per Feature 01 §2.1). The *_type
+  # keys are NOT exposed as CR fields (Feature 01 §1.2/§1.3).
+  rateLimits:
+    rpm: 6000
+    tpm: 1000000
+  # Pass-through bag — merged at the top level of NewTeamRequest /
+  # team-update body. The 7 operator structural overlays
+  # (team_alias, max_budget, budget_duration, rpm_limit, tpm_limit,
+  # rpm_limit_type, tpm_limit_type) and team_id ALL win over
+  # spec.params on key collision; a Kubernetes Event type=Warning
+  # reason=ProjectionOverride is emitted per colliding key.
+  #
+  # NOTE: `tags: [...]` is a LiteLLM ENTERPRISE-only feature — POST
+  # /team/new rejects it with HTTP 403 on the open-source build. If you
+  # have a LITELLM_LICENSE set on your LiteLLM deployment, you can
+  # re-add `tags: ["finance", "production"]`. For OSS users, `metadata`
+  # is the equivalent free-form pass-through key.
+  params:
+    metadata:
+      dept: finance
+      env: production
+    blocked: false

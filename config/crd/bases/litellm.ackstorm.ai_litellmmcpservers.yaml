@@ -1,0 +1,346 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.0
+  name: litellmmcpservers.litellm.ackstorm.ai
+spec:
+  group: litellm.ackstorm.ai
+  names:
+    kind: LiteLLMMCPServer
+    listKind: LiteLLMMCPServerList
+    plural: litellmmcpservers
+    shortNames:
+    - mcpsrv
+    singular: litellmmcpserver
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: Ready
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Ready')].reason
+      name: Reason
+      type: string
+    - jsonPath: .status.lastRendered.serverID
+      name: ServerID
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          LiteLLMMCPServer is the Schema for the litellmmcpservers API per spec §6.4 (`_FINALv3`).
+
+          MCP-01: a LiteLLMMCPServer CR registers one MCP server entry against LiteLLM
+          via the admin-immediate path (`POST /v1/mcp/server`). User-authored and
+          LiteLLMMCPServerDiscovery-generated CRs are reconciled identically — the
+          reconciler does NOT branch on ownerRef state (AC-MS1).
+
+          Finalizer (spec §7.5): `mcpservers.litellm.ackstorm.ai/finalizer` —
+          issues `DELETE /v1/mcp/server/<server_id>` before the CR is removed
+          from etcd. The finalizer constant lives in
+          internal/controller/mcpserver_controller.go (Phase 5 PATTERNS.md L129).
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              MCPServerSpec defines the desired state of MCPServer per spec §6.4
+              (`_FINALv3` flat shape).
+
+              MCP-01: a user can declare an MCPServer CR registering one MCP server
+              entry against the LiteLLM instance referenced by LiteLLMConnection/default.
+              `spec.endpoint` (required) and `spec.transport ∈ {http, sse}` (CEL enum)
+              are the modeled typed fields; `spec.params` is a JSON pass-through bag
+              forwarded verbatim to LiteLLM's `NewMCPServerRequest`/`UpdateMCPServerRequest`
+              body. The operator NEVER adds operator-side defaults to the bag and never
+              branches its LiteLLM-write path on `metadata.ownerReferences[].kind ==
+              MCPServerDiscovery` — user-authored and Discovery-generated MCPServers
+              reconcile identically (MCP-01 / AC-MS1).
+
+              MCP-02: `spec.params` accepts arbitrary nested JSON
+              (x-kubernetes-preserve-unknown-fields: true). String-typed leaves may
+              contain `{{NAME}}` placeholders resolved from `spec.secrets[]` (§5.2,
+              Phase 3 D-05); non-string leaves pass through unchanged.
+
+              MCP-03: `spec.transport` is admission-validated against the enum
+              `{http, sse}` (spec §6.4). `stdio` and any other value are rejected at
+              admission — the MCPServer reconciler ships the value verbatim to LiteLLM
+              and does NOT translate (translation belongs to MCPServerDiscovery per
+              Phase 5 D-10 — `streamable-http → http`).
+
+              MCP-04: the operator updates via `PUT /v1/mcp/server` (wholesale-replace,
+              empirically validated by Probe 10c on 1.83.10-stable per Phase 5 plan
+              05-00) and deletes via `DELETE /v1/mcp/server/<id>`.
+            properties:
+              endpoint:
+                description: |-
+                  Endpoint is the MCP server URL forwarded verbatim as the `url`
+                  field of LiteLLM's `NewMCPServerRequest`/`UpdateMCPServerRequest`.
+                  Required + non-empty per spec §6.4. The reconciler does NOT
+                  validate scheme/host structure beyond MinLength=1; users are
+                  responsible for supplying a well-formed URL their MCP runtime
+                  accepts.
+                minLength: 1
+                type: string
+              params:
+                description: |-
+                  Params is a pass-through bag of fields forwarded verbatim to
+                  LiteLLM's `NewMCPServerRequest` / `UpdateMCPServerRequest` body.
+                  Any JSON object is accepted (x-kubernetes-preserve-unknown-fields:
+                  true). String-typed leaf values may contain `{{NAME}}` placeholders
+                  resolved from `spec.secrets[]` before the body reaches LiteLLM
+                  (§5.2, Phase 3 D-05). Non-string leaves are forwarded unchanged
+                  (Phase 3 SEC-02 contract carry-forward).
+
+                  The operator NEVER adds, defaults, or removes keys inside this
+                  bag — the user's declared keyset IS the desired state. Per spec
+                  §6.4, "anything outside the modeled set belongs inside `mcp_info`"
+                  is the USER's contract, not the operator's: the operator does NOT
+                  auto-route unknown top-level keys into `mcp_info`.
+
+                  On each reconcile, the rendered post-substitution body is hashed
+                  (SHA-256) and compared against `status.lastRendered.hash` to
+                  detect drift (Phase 3 D-01).
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+              secrets:
+                description: |-
+                  Secrets is the substitution map for resolving `{{NAME}}`
+                  placeholders in `spec.params` string-typed leaves (§5.2, Phase 3
+                  D-05). Each entry maps an uppercase NAME (the `as` field) to a
+                  Kubernetes Secret key (`secretRef`). Placeholders in the bag are
+                  replaced with the resolved plaintext value before the body is
+                  forwarded to LiteLLM. Secret material NEVER appears in logs,
+                  Events, or `status.conditions[].message` (§9.1, AC-S1).
+
+                  SEC-03 uniqueness of `spec.secrets[].as` values is enforced as a
+                  runtime check in the MCPServer reconciler (same pattern as Model
+                  — CEL list-uniqueness was deferred to v1beta1).
+                items:
+                  description: |-
+                    SecretSubstitution maps a Kubernetes Secret key to an uppercase NAME that
+                    can be referenced as {{NAME}} in spec.params and spec.info string-typed
+                    leaves (§5.2). The as value is the NAME; the secretRef points to the
+                    Kubernetes Secret and key that carry the plaintext value (SEC-01.SEC-03).
+
+                    SEC-03: the as value is validated at admission by the CEL pattern
+                    ^[A-Z_][A-Z0-9_]*$; lowercase letters, digits-first names, and whitespace
+                    are rejected. Uniqueness of as values within a Model is enforced by a CEL
+                    XValidation on ModelSpec.Secrets (see above).
+                  properties:
+                    as:
+                      description: |-
+                        As is the placeholder NAME used in {{NAME}} substitution expressions
+                        within spec.params and spec.info string-typed leaves. Must match the
+                        pattern ^[A-Z_][A-Z0-9_]*$ (§5.2, SEC-03). Unique within the enclosing
+                        Model CR (SEC-03 uniqueness — enforced via CEL on spec.secrets).
+
+                        Example: as=ANTHROPIC_API_KEY matches the placeholder
+                        "{{ANTHROPIC_API_KEY}}" anywhere in spec.params or spec.info strings.
+                      minLength: 1
+                      pattern: ^[A-Z_][A-Z0-9_]*$
+                      type: string
+                    secretRef:
+                      description: |-
+                        SecretRef identifies the Kubernetes Secret and key whose plaintext
+                        value replaces the {{As}} placeholder at reconcile time. The Secret
+                        MUST reside in the same namespace as the Model CR (no cross-namespace
+                        resolution in v1alpha1). A missing Secret or key surfaces as
+                        Ready=False, reason=SecretNotFound (§6.0).
+
+                        Reuses SecretKeyRef from litellmconnection_types.go (same package —
+                        no additional type definition needed). SEC-01, SEC-06.
+                      properties:
+                        key:
+                          description: |-
+                            Key inside the referenced Secret's `data` map whose value is the
+                            LiteLLM master key.
+                          minLength: 1
+                          type: string
+                        name:
+                          description: |-
+                            Name of the Kubernetes Secret resource in the LiteLLMConnection's
+                            namespace.
+                          minLength: 1
+                          type: string
+                      required:
+                      - key
+                      - name
+                      type: object
+                  required:
+                  - as
+                  - secretRef
+                  type: object
+                type: array
+              transport:
+                description: |-
+                  Transport is the wire transport vocabulary the MCP server speaks.
+                  Admitted values: `http` and `sse` (spec §6.4). `stdio` and any
+                  other value are rejected at admission by the CEL enum below.
+
+                  The MCPServer reconciler ships this value verbatim to LiteLLM —
+                  no operator-side translation. Discovery-side normalization
+                  (`streamable-http → http`) is implemented in the MCPServerDiscovery
+                  controller per Phase 5 D-10; explicit MCPServer CRs already arrive
+                  post-normalization (the user types `http` or `sse` directly).
+                enum:
+                - http
+                - sse
+                type: string
+            required:
+            - endpoint
+            - transport
+            type: object
+          status:
+            description: |-
+              MCPServerStatus defines the observed state of MCPServer per spec §6.4 +
+              Phase 5 D-03 (nested `lastRendered` substruct).
+            properties:
+              conditions:
+                description: |-
+                  Conditions carries the standard metav1.Condition list. The single
+                  type defined for MCPServer is `Ready`, with reason values from §6.0:
+                  - Synced — rendered body matches LiteLLM; no drift.
+                  - LiteLLMUnavailable — LiteLLMConnection/default not Ready
+                  (D-08 echo-reason from connection cache).
+                  - LiteLLMRejected — LiteLLM returned a 4xx (non-401) on mutation.
+                  - SecretNotFound — a spec.secrets[].secretRef is missing OR
+                  a `{{NAME}}` placeholder has no matching
+                  spec.secrets[].as entry.
+                  - InvalidConfig — spec.params not valid JSON, or duplicate
+                  spec.secrets[].as values.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              lastRendered:
+                description: |-
+                  LastRendered is the operator-side drift source of truth per Phase 3
+                  D-01 / D-07 (extended for MCPServer per Phase 5 D-03). It records
+                  the post-substitution rendered state that was last successfully
+                  applied to LiteLLM. The reconciler compares the current desired
+                  state hash against `lastRendered.hash` to detect drift without
+                  querying the LiteLLM API on every reconcile.
+                properties:
+                  at:
+                    description: |-
+                      At is the timestamp of the last SUCCESSFUL render (NOT every
+                      reconcile attempt — transient failures do not update this field).
+                    format: date-time
+                    type: string
+                  hash:
+                    description: |-
+                      Hash is the SHA-256 hex of the RFC 8785–canonicalized merged
+                      post-substitution body (spec.params merged with structural
+                      overlays {server_name, url, transport}). An empty hash indicates
+                      the MCPServer has not yet been successfully reconciled.
+                    type: string
+                  paramsKeys:
+                    description: |-
+                      ParamsKeys is the sorted list of top-level keys present in
+                      spec.params at the time of the last successful render. Per Phase 5
+                      D-01 (✓ verdict on Probe 10c — PUT IS wholesale-replace on
+                      1.83.10-stable), this field is informational only: the simple PUT
+                      update path does not need per-bag shrinkage detection. The field
+                      is retained for observability and forward-compat with any future
+                      downgrade path.
+                    items:
+                      type: string
+                    type: array
+                  serverID:
+                    description: |-
+                      ServerID is the LiteLLM-assigned UUID (server_id) for this MCP
+                      server entry. Pinned per Phase 5 D-02 so the reconciler can call
+                      `DELETE /v1/mcp/server/<server_id>` directly on the finalizer
+                      path without re-resolving by name. On first reconcile, resolved
+                      via `GET /v1/mcp/server` + in-memory filter on metadata.name.
+
+                      Diverges from spec §6.4: documented in
+                      spec/DEFECTS-1.82.6.md row `DEF-§6.4/§6.6-ID-PERSIST`.
+                    type: string
+                type: object
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the metadata.generation of the MCPServer CR
+                  the reconciler most recently processed successfully. Consumers can
+                  compare this against metadata.generation to detect whether the
+                  current spec has been reconciled yet (Phase 3 OWN-08 carry-forward).
+                format: int64
+                type: integer
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

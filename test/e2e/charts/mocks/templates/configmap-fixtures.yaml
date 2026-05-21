@@ -1,0 +1,9 @@
+{{- if .Values.fixtures.modelsJSON }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-fixtures
+data:
+  models.json: |
+    {{- .Values.fixtures.modelsJSON | nindent 4 }}
+{{- end }}

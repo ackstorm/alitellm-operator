@@ -1,0 +1,45 @@
+# Go toolchain caches persisted by scripts/dev.sh (devtools container).
+# Keeps module + build caches across runs but never committed.
+.gocache/
+
+# kubebuilder / make output
+bin/
+dist/
+testbin/
+
+# Compiled Tier 2 mock binary (go build artifact in test/tier2/mock/)
+test/tier2/mock/mock
+test/tier2/mock/litellm-mock
+
+# Coverage / test artifacts
+cover.out
+coverage.txt
+*.test
+*.out
+
+# Editor / OS noise
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Secrets — never commit
+.env
+.env.*
+*.pem
+*.key
+*.pfx
+*.p12
+credentials.json
+kubeconfig
+*.kubeconfig
+
+# Claude Code local state (worktrees, cost tracking, session data)
+.claude/
+
+# Antigravity CLI local state
+.antigravitycli/
+
+# Git worktrees (used by superpowers:using-git-worktrees)
+worktrees/
+site/

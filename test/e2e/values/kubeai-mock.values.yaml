@@ -1,0 +1,11 @@
+# Tier 2 kubeai-compatible mock instance
+# Used by:  scripts/cluster.sh up (step 6)
+# Chart:    test/e2e/charts/mocks/
+provider: kubeai
+authMode: accept
+image:
+  repository: litellm-mock
+  tag: e2e
+  pullPolicy: Never
+fixtures:
+  modelsJSON: ""           # use binary's embedded kubeai-models.json

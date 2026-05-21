@@ -1,0 +1,58 @@
+---
+# Copyright 2026 ACKstorm.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Sample Model CR exercising the plan 03-01 + 03-02 happy path alongside
+# spec §11 AC-M1 (POST /model/new on first reconcile) and §5.2
+# ({{NAME}} placeholder substitution via spec.secrets[]). Applied with
+# `kubectl apply -f config/samples/litellm_v1alpha1_model.yaml` after the
+# operator's CRDs are installed and LiteLLMConnection/default is Ready.
+#
+# After apply, expect:
+#   (a) status.lastRendered.hash populated and status condition Ready=True
+#       reason=Synced once LiteLLM accepts POST /model/new.
+#   (b) litellm_params.model="openai/gpt-4o-mini" and
+#       litellm_params.api_base resolved from {{API_BASE}} via the Secret
+#       referenced below (§5.2 substitution).
+#   (c) model_info.mode="chat" and model_info.description carried through
+#       to LiteLLM model_info bag verbatim.
+#   (d) Drift correction (AC-DC2): if the LiteLLM-side entry is edited
+#       out-of-band, the operator detects the hash mismatch within 30 min
+#       (safety re-list §7.6) and re-applies via POST /model/update.
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMModel
+metadata:
+  name: openai-gpt-4o-mini-sample
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  # Pass-through bag forwarded to LiteLLM litellm_params on POST /model/new
+  # and POST /model/update. The {{API_BASE}} placeholder is resolved from
+  # spec.secrets[] before the body reaches LiteLLM (§5.2).
+  params:
+    model: "openai/gpt-4o-mini"
+    # {{API_BASE}} is resolved at reconcile-time from the Secret below.
+    # Replace with a literal URL to bypass substitution.
+    api_base: "{{API_BASE}}"
+    rpm: 100
+    timeout: 300
+  # Pass-through bag forwarded verbatim to LiteLLM model_info.
+  info:
+    mode: "chat"
+    description: "OpenAI GPT-4o Mini — cost-efficient chat model for internal dogfood."
+  # Secrets declares the substitution map for {{NAME}} placeholders in
+  # spec.params and spec.info. Each entry resolves one Secret key into a
+  # named placeholder. The operator reads the Secret at reconcile-time;
+  # changes propagate within 30s via the Secret-watch path (Phase 2 D-12).
+  secrets:
+    - as: API_BASE
+      secretRef:
+        name: openai-api-credentials
+        key: API_BASE

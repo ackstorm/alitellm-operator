@@ -1,0 +1,88 @@
+# Tier 2 LiteLLM configuration
+#
+# Used by:  scripts/cluster.sh up   (step 5 — helm pull + helm upgrade --install litellm)
+# Chart:    oci://docker.litellm.ai/berriai/litellm-helm  (upstream, OCI, BETA)
+# Image:    v1.83.10-stable (operator's binary target — see auto-memory litellm_version_target.md)
+#
+# WARNING: the upstream litellm-helm chart is currently in BETA. When bumping
+# `chartVersion`, re-run `make test-full` and inspect any failed Tier 2
+# scenarios for schema drift.
+#
+# NOTE on image.tag override: chart 1.84.0's default appVersion is v1.84.0
+# (BerriAI/litellm#15288), but the operator targets v1.83.10-stable. The
+# `image.tag` value below is an explicit override and must NOT be dropped on
+# chart bumps — keep it pinned to whatever the operator targets in
+# auto-memory `litellm_version_target.md`. A Tier 2 scope_test assertion
+# (Task 9.11) verifies the rendered Deployment uses this tag.
+#
+# Apply changes:  make cluster-hydrate
+
+chartVersion: 1.84.0              # see test/e2e/CHART_PINS.md (BETA — verify suite on bumps)
+
+image:
+  repository: ghcr.io/berriai/litellm-database
+  tag: v1.83.10-stable            # explicit override — see comment above
+  # Override chart default `Always`: scripts/cluster.sh pre-pulls + `kind
+  # load`s this image into the node before `helm install`. With Always,
+  # kubelet round-trips ghcr.io on every Pod start (and EVERY migrations
+  # Job retry on backoff) — a flaky pull stalls the PreSync Job and leaves
+  # the DB schema unmigrated, producing 500s on /model/new, /team/list,
+  # etc. while /health/readiness stays green. IfNotPresent is authoritative
+  # against the pre-loaded image.
+  pullPolicy: IfNotPresent
+
+db:
+  deployStandalone: true
+  database: litellm
+  username: litellm
+  password: litellm
+
+# Bitnami postgresql subchart override (Tier 2 workaround for Bitnami yanking
+# semver tags from Docker Hub free tier in 2025). Redirect to public.ecr.aws
+# mirror, which still serves the version-pinned Bitnami images. The Tier 2
+# install path mirrors the user's prod Flux HelmRelease (see PR thread).
+#
+# `allowInsecureImages: true` is required because the ECR mirror does not
+# carry the Bitnami signature chain that the official Bitnami chart verifies
+# by default. Tier 2 is a test environment — acceptable.
+postgresql:
+  global:
+    imageRegistry: public.ecr.aws
+    security:
+      allowInsecureImages: true
+  auth:
+    username: litellm
+    password: litellm
+    database: litellm
+
+# IMPORTANT: this value MUST match data.master-key in
+# test/e2e/fixtures/master-key-secret.yaml. Twin Secrets: chart creates one
+# in litellm-system for inbound auth; fixture creates one in default for
+# operator outbound auth. Both must hold the same value.
+#
+# NOTE: chart key is `masterkey` (lowercase, no camelCase). Plan originally
+# said `masterKey` — chart silently auto-generates a random one when the key
+# is mistyped, which produces a misleading 401 on /health probes.
+masterkey: sk-test-master-key
+
+envVars:
+  LITELLM_LOG: ERROR
+  MCP_TOOL_PREFIX_SEPARATOR: "."        # Phase 7.1 CR-14 (server_name hyphen rejection workaround)
+  DISABLE_SCHEMA_UPDATE: "true"         # migrations handled by helm PreSync hook (litellm-migrations Job); runtime container must NOT re-run them
+  STORE_MODEL_IN_DB: "True"             # required for POST /model/new — without it, LiteLLM returns 500 from add_new_model
+  # ENFORCE_PRISMA_MIGRATION_CHECK is propagated to the migration Job too
+  # (chart template ranges .Values.envVars into both Deployment and Job).
+  # Without it, the migration container's internal prisma retries (4 in
+  # ~16s) silently bail with "continuing startup" exit 0 when Postgres
+  # isn't ready yet on cold install. Setting it true forces non-zero exit,
+  # which makes K8s Job backoff retry the Pod (backoffLimit=4 = up to ~3
+  # min) — by which time the Postgres StatefulSet has come up.
+  ENFORCE_PRISMA_MIGRATION_CHECK: "true"
+
+# resources: deliberately unset. LiteLLM 1.83 is heavy (Python + Prisma + many
+# provider SDKs); fixed limits keep tripping OOMKilled on kind. Tier 2 is a
+# test env, not capacity-constrained — let kubelet best-effort schedule.
+
+service:
+  type: ClusterIP
+  port: 4000

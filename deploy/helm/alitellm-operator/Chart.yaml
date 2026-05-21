@@ -1,0 +1,12 @@
+apiVersion: v2
+name: alitellm-operator
+version: 0.0.4
+appVersion: v0.0.4
+kubeVersion: ">= 1.27.0"
+description: >-
+  LiteLLM operator for Kubernetes — declarative GitOps surface for Models, MCPServers, A2AAgents, Teams, ModelDiscovery, MCPServerDiscovery, and LiteLLMConnection.
+type: application
+sources:
+  - https://github.com/ackstorm/alitellm-operator
+maintainers:
+  - name: ACKstorm

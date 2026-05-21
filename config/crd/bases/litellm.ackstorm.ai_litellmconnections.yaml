@@ -1,0 +1,206 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.0
+  name: litellmconnections.litellm.ackstorm.ai
+spec:
+  group: litellm.ackstorm.ai
+  names:
+    kind: LiteLLMConnection
+    listKind: LiteLLMConnectionList
+    plural: litellmconnections
+    shortNames:
+    - llmconn
+    singular: litellmconnection
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: Ready
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Ready')].reason
+      name: Reason
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          LiteLLMConnection is the Schema for the litellmconnections API.
+
+          CONN-02: the CEL XValidation rule above (placed on the resource root,
+          not on Spec) rejects any LiteLLMConnection with metadata.name != "default"
+          at admission time — the operator never sees the CR. This is the v1alpha1
+          singleton-by-name enforcement strategy (no admission webhook needed).
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              LiteLLMConnectionSpec defines the desired state of LiteLLMConnection.
+
+              CONN-01: a user can declare a LiteLLMConnection with spec.endpoint and
+              spec.masterKeySecretRef{name, key}, where both `name` and `key` are
+              required and non-empty. Field-level CEL constraints are enforced by
+              the +kubebuilder:validation:Required + MinLength=1 markers below.
+            properties:
+              endpoint:
+                description: |-
+                  Endpoint is the base URL of the LiteLLM instance the operator
+                  will probe and mutate against. Example:
+                  "http://litellm.default.svc.cluster.local:4000".
+
+                  The endpoint is used for both the periodic GET /models probe
+                  (CONN-03, see internal/litellm/keyinfo.go for the §6.1 deviation
+                  note) and every Phase 3+ domain mutation call. The value is
+                  trimmed of any trailing slash by litellm.NewClient at the wire
+                  layer; users may include or omit the trailing slash without
+                  observable effect.
+                minLength: 1
+                type: string
+              masterKeySecretRef:
+                description: |-
+                  MasterKeySecretRef points to the Kubernetes Secret that carries
+                  the LiteLLM master key (sk-.). Both `name` and `key` are
+                  required per CONN-01; the SecretKeyRef type enforces non-empty
+                  values via its own MinLength=1 markers. The Secret MUST live in
+                  the same namespace as the LiteLLMConnection CR (no cross-namespace
+                  resolution in v1alpha1).
+
+                  The reconciler reads the Secret with the operator's ServiceAccount
+                  at probe time; missing Secret or missing key surfaces as
+                  Ready=False, reason=SecretNotFound (§6.0 reason set).
+                properties:
+                  key:
+                    description: |-
+                      Key inside the referenced Secret's `data` map whose value is the
+                      LiteLLM master key.
+                    minLength: 1
+                    type: string
+                  name:
+                    description: |-
+                      Name of the Kubernetes Secret resource in the LiteLLMConnection's
+                      namespace.
+                    minLength: 1
+                    type: string
+                required:
+                - key
+                - name
+                type: object
+            required:
+            - endpoint
+            - masterKeySecretRef
+            type: object
+          status:
+            description: |-
+              LiteLLMConnectionStatus defines the observed state of LiteLLMConnection.
+
+              The status surface is intentionally minimal per Claude's Discretion
+              default in 02-CONTEXT.md: only `observedGeneration` and `conditions`
+              are surfaced. Diagnostic fields (lastProbeAt, probeCount, echoed
+              endpoint) are deferred — envtests cover probe outcomes
+              via the Ready condition itself, no extra fields needed.
+            properties:
+              conditions:
+                description: |-
+                  Conditions carries the standard metav1.Condition list. The single
+                  type defined for LiteLLMConnection is `Ready`, with reason values
+                  drawn from the §6.0 reason set:
+                  - Synced — probe succeeded; cache is fresh.
+                  - Connecting — entry state, no probe outcome yet.
+                  - Unreachable — transient probe failure (5xx, network).
+                  - BadMasterKey — 401 from the LiteLLM master-key probe.
+                  - SecretNotFound — masterKeySecretRef Secret or key missing.
+                  Phase 3+ dependents read this condition via the cache snapshot
+                  (internal/connection.Cache), never via direct CR Get.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the metadata.generation of the CR the
+                  reconciler most recently processed. Surfaced here even though
+                  OWN-08 itself lands in Phase 3 — the reconciler
+                  populates this so Phase 3's contract is in place from day one.
+                format: int64
+                type: integer
+            type: object
+        type: object
+        x-kubernetes-validations:
+        - message: LiteLLMConnection name must be 'default' (singleton per spec §6.1)
+          rule: self.metadata.name == 'default'
+    served: true
+    storage: true
+    subresources:
+      status: {}

@@ -1,0 +1,26 @@
+# Tier 2 operator config — exercises deploy/helm/alitellm-operator/ (production path).
+#
+# Used by:  scripts/cluster.sh up (step 7 — helm upgrade --install alitellm-operator)
+# Image:    built fresh from worktree HEAD via `make docker-build IMG=alitellm-operator:e2e`,
+#           then kind-loaded so pullPolicy=Never resolves.
+
+image:
+  # NOTE: chart values key is `image.repo` (not `image.repository`).
+  repo: alitellm-operator
+  tag: e2e
+  pullPolicy: Never
+
+# Operator's WATCH_NAMESPACE — chart has a dedicated surface; no need for env.
+watchNamespace: default
+
+# Surfaces added by Task 0.4 / amendment A5. SAFETY_RELIST_INTERVAL=10s is
+# load-bearing for AC-M3 (Task 9.4 conformance gate); 30m default would
+# never fire inside the 10-min CI wall-clock budget.
+extraEnv:
+  - name: LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL
+    value: "10s"
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi

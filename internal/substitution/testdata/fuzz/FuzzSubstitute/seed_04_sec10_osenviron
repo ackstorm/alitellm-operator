@@ -1,0 +1,3 @@
+go test fuzz v1
+string("{\"api_key\":\"os.environ/MY_KEY\"}")
+string("")

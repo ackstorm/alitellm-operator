@@ -1,0 +1,82 @@
+site_name: alitellm-operator
+site_description: Kubernetes operator that reconciles LiteLLM proxy resources declaratively
+site_url: https://ackstorm.github.io/alitellm-operator/
+repo_url: https://github.com/ackstorm/alitellm-operator
+repo_name: ackstorm/alitellm-operator
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Quick Start: getting-started/quickstart.md
+  - User Guide:
+    - Overview: user-guide/index.md
+    - LiteLLMConnection: user-guide/connection.md
+    - LiteLLMTeam: user-guide/team.md
+    - LiteLLMModel: user-guide/model.md
+    - LiteLLMA2AAgent: user-guide/a2a-agent.md
+    - LiteLLMMCPServer: user-guide/mcp-server.md
+    - LiteLLMMCPServerDiscovery: user-guide/mcp-server-discovery.md
+    - LiteLLMModelDiscovery: user-guide/model-discovery.md
+  - Developer Guide:
+    - Architecture: developer-guide/architecture.md
+    - Development: developer-guide/development.md
+    - Release Process: developer-guide/release-process.md
+    - Contributions: developer-guide/contributions.md
+  - API Reference:
+    - Overview: api-reference/litellm.ackstorm.ai.md
+  - Metrics: metrics.md
+  - Community:
+    - Code of Conduct: community/code-of-conduct.md
+    - Security Policy: community/security.md
+
+theme:
+  name: material
+  palette:
+    # Palette toggle for light mode
+    - scheme: default
+      toggle:
+        icon: material/brightness-7 
+        name: Switch to dark mode
+    # Palette toggle for dark mode
+    - scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/ackstorm/alitellm-operator 
+  
+# Mike versioning
+  version:
+    provider: mike
+    default: latest
+    alias: true

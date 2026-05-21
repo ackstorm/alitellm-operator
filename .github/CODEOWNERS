@@ -1,0 +1,34 @@
+# CODEOWNERS file for alitellm-operator
+# See https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Global ownership - replace with actual GitHub usernames/teams
+* @ackstorm/alitellm-operator-maintainers
+
+# API definitions and CRDs
+/api/ @ackstorm/alitellm-operator-maintainers
+/config/crd/ @ackstorm/alitellm-operator-maintainers
+
+# Controllers
+/internal/controller/ @ackstorm/alitellm-operator-maintainers 
+
+# LiteLLM integration
+/internal/litellm/ @ackstorm/alitellm-operator-maintainers
+
+# Configuration and deployment
+/config/ @ackstorm/alitellm-operator-maintainers 
+/Dockerfile @ackstorm/alitellm-operator-maintainers 
+/Makefile @ackstorm/alitellm-operator-maintainers
+
+# Documentation
+/README.md @ackstorm/alitellm-operator-maintainers
+*.md @ackstorm/alitellm-operator-maintainers
+
+# CI/CD and GitHub workflows
+/.github/ @ackstorm/alitellm-operator-maintainers
+
+# Go modules and dependencies
+/go.mod @ackstorm/alitellm-operator-maintainers
+/go.sum @ackstorm/alitellm-operator-maintainers
+
+# Tests
+/test/ @ackstorm/alitellm-operator-maintainers 

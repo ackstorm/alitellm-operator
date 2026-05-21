@@ -1,0 +1,66 @@
+---
+# Sample A2AAgent CR exercising the Phase 5 plan 05-03 happy path with the
+# `_FINALv3` flat shape (spec §6.6):
+#   - spec.endpoint   = non-empty URL (MinLength=1 admitted; overlaid as
+#                       agent_card_params.url per spec §6.6)
+#   - spec.agentCard  = REQUIRED JSON pass-through bag (any JSON accepted;
+#                       x-kubernetes-preserve-unknown-fields). String-typed
+#                       leaves at any depth (including skills[].description)
+#                       are walked for {{NAME}} substitution per Phase 5 D-04
+#                       second-pass scope and A2A-06.
+#   - spec.params     = OPTIONAL JSON pass-through bag forwarded verbatim
+#                       to AgentConfig top-level (NOT inside agent_card_params).
+#   - spec.secrets[]  = substitution map shared between spec.params AND
+#                       spec.agentCard (Phase 5 D-04 — single Kubernetes API
+#                       Get per Secret per reconcile across both bags).
+#
+# This sample specifically demonstrates the A2A-06 capability called out in
+# Phase 5 CONTEXT.md Specifics line 313:
+#   "spec.agentCard.skills[*].description CAN contain {{NAME}} placeholders".
+#
+# The {{TOKEN}} placeholder in spec.agentCard.skills[0].description is
+# resolved at reconcile-time from the referenced Secret BEFORE the body
+# reaches LiteLLM. The resolved plaintext value NEVER appears in operator
+# logs, Events, or status.conditions[].message (§9.1, AC-S1).
+#
+# Applied with `kubectl apply -f config/samples/a2aagent-vendor-research.yaml`
+# after the operator's CRDs are installed and the referenced Secret
+# `vendor-token` is present in the same namespace (default).
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMA2AAgent
+metadata:
+  name: a2aagent-vendor-research
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  endpoint: "https://research.vendor.example.com/a2a"
+  # spec.agentCard — REQUIRED JSON pass-through. String-typed leaves at any
+  # depth (incl. nested arrays) are walked for {{NAME}} placeholder
+  # substitution per Phase 5 D-04 second-pass scope.
+  agentCard:
+    name: "Vendor Research Agent"
+    description: "External research agent surfaced via A2A protocol."
+    capabilities:
+      streaming: true
+    defaultInputModes:
+      - text
+    defaultOutputModes:
+      - text
+    # skills[0].description contains the {{TOKEN}} placeholder demonstrating
+    # the Phase 5 D-04 two-pass substitution scope on spec.agentCard nested
+    # arrays (per CONTEXT.md Specifics line 313).
+    skills:
+      - id: research
+        name: Research
+        description: "Vendor research access using bearer {{TOKEN}}."
+  params:
+    # spec.params ships at AgentConfig top-level (NOT inside
+    # agent_card_params) per spec §6.6.
+    tpm_limit: 1000
+  secrets:
+    - as: TOKEN
+      secretRef:
+        name: vendor-token
+        key: token

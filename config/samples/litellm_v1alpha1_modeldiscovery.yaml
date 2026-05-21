@@ -1,0 +1,69 @@
+---
+# Copyright 2026 ACKstorm.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Sample ModelDiscovery CR (scaffold default — OpenAI provider) exercising
+# plan 04-01 + spec §11 AC-MD1 (Pipeline B: Discovery generates Kubernetes
+# Model child CRs) and AC-FILT1 (RE2 include/exclude filter with
+# include-first-then-exclude order). This file complements the per-provider
+# samples in modeldiscovery-{anthropic,bedrock,gemini,kubeai,openai}.yaml;
+# those files are the recommended reference for production use. Applied with
+# `kubectl apply -f config/samples/litellm_v1alpha1_modeldiscovery.yaml`
+# after the operator's CRDs are installed. LiteLLMConnection is NOT required
+# for Discovery kinds — they reconcile K8s child CRs only.
+#
+# After apply, expect:
+#   (a) The operator queries GET https://api.openai.com/v1/models using the
+#       API key from the Secret referenced below.
+#   (b) Models matching include filters AND NOT matching exclude filters are
+#       projected as child Model CRs in default with owner-reference back
+#       to this ModelDiscovery CR.
+#   (c) status.generatedCount reflects the number of active child CRs;
+#       status.generatedChildren[] lists them.
+#   (d) A refresh occurs every 10 minutes; removed models from the provider
+#       are detected via K8s label-selector-based vanish detection.
+#
+# NOTE: Per CONTEXT.md §8 / plan 07-03 audit: the 5 per-provider samples
+# (modeldiscovery-{anthropic,bedrock,gemini,kubeai,openai}.yaml) satisfy
+# DEPLOY-02's "≥1 ModelDiscovery per provider type (5 total)" requirement.
+# This file is the scaffold default — enriched to header-convention quality.
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMModelDiscovery
+metadata:
+  name: modeldiscovery-sample
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  # type selects the provider (CEL enum: anthropic, bedrock, gemini, kubeai,
+  # openai). See modeldiscovery-{anthropic,...}.yaml for provider-specific
+  # samples with full CEL constraint commentary.
+  type: openai
+  # baseUrl defaults to https://api.openai.com/v1 when absent. Override to
+  # target OpenAI-compatible endpoints (vLLM, Together.ai, Groq, etc.).
+  baseUrl: "https://api.openai.com"
+  # credentialsSecretRef is REQUIRED for openai. The Secret key must match the
+  # provider's expected env var name (OPENAI_API_KEY for openai type).
+  # The operator uses this for the provider API call ONLY; it is NEVER
+  # injected into generated child Model CRs' spec.params (§5.2 boundary).
+  credentialsSecretRef:
+    name: openai-discovery-credentials
+    key: OPENAI_API_KEY
+  # RE2 include/exclude filters applied post-derivation to model IDs.
+  # include is evaluated first; exclude is applied on the surviving set.
+  # Zero matches in either list is a no-op (lenient semantics).
+  filters:
+    include:
+      - "gpt-.*"
+    exclude:
+      - "gpt-3\\.5.*"
+  # refresh.interval controls the Discovery polling cadence.
+  # Minimum floor is 1m (MDISC-05 CEL gate); specify as a Go duration.
+  refresh:
+    interval: "10m"

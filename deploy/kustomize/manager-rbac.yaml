@@ -1,0 +1,270 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# GENERATED FILE — do not edit by hand.
+# Source: scripts/render-deploy-kustomize-rbac.sh
+# Regenerate: make deploy-kustomize-sync
+# Drift gate: make deploy-kustomize-sync-check
+#
+# This bundle aggregates the operator-runtime + metrics-auth RBAC files
+# from config/rbac/ into a single multi-document YAML that
+# deploy/kustomize/kustomization.yaml references directly. See the
+# generator script for the rationale and inclusion criteria.
+
+---
+# Source: config/rbac/service_account.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/name: workspace
+    app.kubernetes.io/managed-by: kustomize
+  name: controller-manager
+  namespace: system
+
+---
+# Source: config/rbac/role.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - litellma2aagents
+  - litellmconnections
+  - litellmmcpserverdiscoveries
+  - litellmmcpservers
+  - litellmmodeldiscoveries
+  - litellmmodels
+  - litellmteams
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - litellma2aagents/finalizers
+  - litellmconnections/finalizers
+  - litellmmcpserverdiscoveries/finalizers
+  - litellmmcpservers/finalizers
+  - litellmmodeldiscoveries/finalizers
+  - litellmmodels/finalizers
+  - litellmteams/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - litellma2aagents/status
+  - litellmconnections/status
+  - litellmmcpserverdiscoveries/status
+  - litellmmcpservers/status
+  - litellmmodeldiscoveries/status
+  - litellmmodels/status
+  - litellmteams/status
+  verbs:
+  - get
+  - patch
+  - update
+
+---
+# Source: config/rbac/role_binding.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/name: workspace
+    app.kubernetes.io/managed-by: kustomize
+  name: manager-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: manager-role
+subjects:
+- kind: ServiceAccount
+  name: controller-manager
+  namespace: system
+
+---
+# Source: config/rbac/leader_election_role.yaml
+# permissions to do leader election.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app.kubernetes.io/name: workspace
+    app.kubernetes.io/managed-by: kustomize
+  name: leader-election-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+
+---
+# Source: config/rbac/leader_election_role_binding.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/name: workspace
+    app.kubernetes.io/managed-by: kustomize
+  name: leader-election-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: leader-election-role
+subjects:
+- kind: ServiceAccount
+  name: controller-manager
+  namespace: system
+
+---
+# Source: config/rbac/toolhive_clusterrole.yaml
+# ToolHive cluster-scoped read RBAC (Phase 5 plan 05-02, D-07).
+#
+# Grants the operator's ServiceAccount read access to ToolHive's
+# `toolhive.stacklok.dev/v1beta1` MCPServer + VirtualMCPServer custom
+# resources at cluster scope. The cluster-scope grant is intentional
+# (per Phase 5 D-07): MCPServerDiscovery CRs may select ToolHive
+# objects from ANY namespace via `spec.toolhive.namespaces[]`, and the
+# spec §6.5 dotted-naming guarantee
+# (`<discovery>.<toolhive-ns>.<toolhive-name>`) requires cross-namespace
+# observability.
+#
+# This file ships UNCONDITIONALLY (per D-07): deployments that never
+# instantiate a MCPServerDiscovery still carry the unused permission.
+# Blast radius is low — ToolHive objects do not carry secret material
+# (status.url is the only sensitive field, and it is published by the
+# ToolHive deployment by design).
+#
+# The ClusterRoleBinding subject `name` MUST match the actual operator
+# ServiceAccount. Kustomize's default service_account.yaml does NOT
+# apply a `namePrefix` to the SA at this layer (the prefix is applied
+# at the kustomize root); this file uses the BASE SA name
+# (`controller-manager`) and relies on the kustomize layer above
+# (config/default/kustomization.yaml) to prefix it consistently with
+# the rest of the RBAC.
+#
+# Phase 7 (Helm chart) will template the SA name; in v1alpha1 this
+# binding follows the controller-manager naming.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: alitellm-operator-toolhive-reader
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/component: rbac
+rules:
+- apiGroups:
+  - toolhive.stacklok.dev
+  resources:
+  - mcpservers
+  - virtualmcpservers
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: alitellm-operator-toolhive-reader
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/component: rbac
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alitellm-operator-toolhive-reader
+subjects:
+- kind: ServiceAccount
+  # Base SA name — kustomize's namePrefix at config/default/ resolves
+  # this to e.g. `alitellm-operator-controller-manager` at install time.
+  name: controller-manager
+  # Namespace gets resolved by kustomize at the overlay layer too.
+  namespace: system
+
+---
+# Source: config/rbac/metrics_auth_role.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: metrics-auth-role
+rules:
+- apiGroups:
+  - authentication.k8s.io
+  resources:
+  - tokenreviews
+  verbs:
+  - create
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create
+
+---
+# Source: config/rbac/metrics_auth_role_binding.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: metrics-auth-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: metrics-auth-role
+subjects:
+- kind: ServiceAccount
+  name: controller-manager
+  namespace: system

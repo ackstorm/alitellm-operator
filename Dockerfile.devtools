@@ -1,0 +1,94 @@
+# syntax=docker/dockerfile:1.7
+#
+# Devtools image — provides Go + kubebuilder + controller-gen + kustomize +
+# setup-envtest + docker CLI + docker-compose. The host runs no Go toolchain
+# itself; every `go`, `kubebuilder`, `make`, etc. invocation goes through
+# scripts/dev.sh, which mounts the workspace and the host Docker socket into
+# this image.
+#
+# Used by all four Phase 1 plans.
+
+FROM golang:1.26-bookworm
+
+ARG KUBEBUILDER_VERSION=v4.4.0
+ARG CONTROLLER_GEN_VERSION=v0.16.5
+ARG KUSTOMIZE_VERSION=v5.4.3
+ARG SETUP_ENVTEST_VERSION=release-0.19
+ARG ENVTEST_K8S_VERSION=1.31.0
+ARG KIND_VERSION=v0.25.0
+ARG HELM_VERSION=v3.16.3
+ARG GOVULNCHECK_VERSION=v1.3.0  # pinned 2026-05-20 per 13-01 audit (HRD-02)
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    GOTOOLCHAIN=local \
+    GOFLAGS=-mod=mod \
+    GOBIN=/usr/local/bin
+
+# OS deps: docker CLI + compose v1 (matches host's docker-compose), build essentials
+# Note: docker.io brings only the client; the host socket is mounted at runtime so
+# containers created from inside are siblings on the host daemon, not nested.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl make git jq gnupg lsb-release \
+        bash-completion \
+        docker.io docker-compose \
+    && rm -rf /var/lib/apt/lists/*
+
+# kubebuilder v4 — pinned binary
+RUN ARCH="$(dpkg --print-architecture)" \
+    && curl -fsSL "https://github.com/kubernetes-sigs/kubebuilder/releases/download/${KUBEBUILDER_VERSION}/kubebuilder_linux_${ARCH}" \
+         -o /usr/local/bin/kubebuilder \
+    && chmod +x /usr/local/bin/kubebuilder \
+    && kubebuilder version
+
+# kind — local Kubernetes-in-Docker, used for the E2E layer above envtest.
+# Runs sibling docker containers via the mounted host socket; KUBECONFIG is
+# written under /workspace/.gocache/kube so it persists across wrapper invocations.
+RUN ARCH="$(dpkg --print-architecture)" \
+    && curl -fsSL "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-${ARCH}" \
+         -o /usr/local/bin/kind \
+    && chmod +x /usr/local/bin/kind \
+    && kind version
+
+# helm 3 — required by Tier 2 hydration (scripts/cluster.sh). Pulls OCI
+# charts (litellm-helm, toolhive operator) and installs our own chart.
+RUN ARCH="$(dpkg --print-architecture)" \
+    && curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-${ARCH}.tar.gz" \
+         | tar -xz -C /tmp \
+    && mv "/tmp/linux-${ARCH}/helm" /usr/local/bin/helm \
+    && rm -rf "/tmp/linux-${ARCH}" \
+    && chmod +x /usr/local/bin/helm \
+    && helm version --short
+
+# kubectl — sourced from kubebuilder's bundled assets or fetched separately.
+# kubebuilder v4 doesn't bundle kubectl; install it pinned to the envtest k8s version.
+RUN ARCH="$(dpkg --print-architecture)" \
+    && curl -fsSL "https://dl.k8s.io/release/v${ENVTEST_K8S_VERSION}/bin/linux/${ARCH}/kubectl" \
+         -o /usr/local/bin/kubectl \
+    && chmod +x /usr/local/bin/kubectl \
+    && kubectl version --client
+
+# controller-gen, kustomize, setup-envtest via go install -> /usr/local/bin (GOBIN)
+RUN go install sigs.k8s.io/controller-tools/cmd/controller-gen@${CONTROLLER_GEN_VERSION} \
+    && go install sigs.k8s.io/kustomize/kustomize/v5@${KUSTOMIZE_VERSION} \
+    && go install sigs.k8s.io/controller-runtime/tools/setup-envtest@${SETUP_ENVTEST_VERSION}
+
+# govulncheck — installed straight under the image's pinned toolchain.
+# (Previously needed GOTOOLCHAIN=auto when the base image was Go 1.24
+# because v1.3.0 of golang.org/x/vuln requires Go >= 1.25. With the base
+# bumped to golang:1.26-bookworm the bootstrap toolchain already satisfies
+# the requirement, so the workaround is dropped.)
+RUN go install golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}
+
+# Pre-download envtest assets for k8s 1.31.0 so plan 01-04 doesn't fetch them at test time.
+# Path is content-addressed under /opt/envtest; setup-envtest -p path resolves it.
+RUN mkdir -p /opt/envtest \
+    && setup-envtest use ${ENVTEST_K8S_VERSION} --bin-dir /opt/envtest
+
+ENV ENVTEST_K8S_VERSION=${ENVTEST_K8S_VERSION} \
+    ENVTEST_BIN_DIR=/opt/envtest
+
+# Workspace mount target — scripts/dev.sh sets cwd here.
+WORKDIR /workspace
+
+# Default: drop into bash. Wrapper script overrides with the actual command.
+CMD ["bash"]

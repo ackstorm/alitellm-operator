@@ -1,0 +1,43 @@
+apiVersion: toolhive.stacklok.dev/v1beta1
+kind: VirtualMCPServer
+metadata:
+  name: dev
+  namespace: mcp
+  labels:
+    app.kubernetes.io/component: mcp
+    app.kubernetes.io/env: production
+  annotations:
+    litellm.io/access-groups: dev,run,dream
+spec:
+  config:
+    aggregation:
+      conflictResolution: prefix
+      conflictResolutionConfig:
+        prefixFormat: '{workload}__'
+    groupRef:
+      name: dev
+    operational:
+      timeouts:
+        default: 30s
+      failureHandling:
+        partialFailureMode: fail
+        healthCheckInterval: 30s
+        healthCheckTimeout: 10s
+        unhealthyThreshold: 3
+        circuitBreaker:
+          enabled: true
+          failureThreshold: 5
+          timeout: 60s
+  incomingAuth:
+    type: anonymous
+  outgoingAuth:
+    source: discovered
+  podTemplateSpec:
+    spec:
+      containers:
+      - name: vmcp
+        env:
+        - name: VMCP_LOG_LEVEL
+          value: debug
+        - name: VMCP_METRICS_ENABLED
+          value: "true"

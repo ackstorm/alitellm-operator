@@ -1,0 +1,251 @@
+name: Documentation
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+  
+env:
+  PYTHON_VERSION: '3.11'
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  deploy-documentation:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    name: Deploy docs
+    outputs:
+      is_prerelease: ${{ steps.release_type.outputs.is_prerelease }}
+      release_type: ${{ steps.release_type.outputs.release_type }}
+      validated_version: ${{ steps.semver.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # Fetch full history for Mike
+
+      - name: Generate API docs
+        run: |
+          echo "📚 Generating API documentation..."
+          make docs
+          echo "✅ API documentation generated successfully"
+
+      - name: Validate semver tag
+        id: semver
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: matt-usurp/validate-semver@v2
+        with:
+          version: ${{ github.ref }}
+
+      - name: Determine release type and configuration
+        id: release_type
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          echo "✅ Valid semver tag: ${{ steps.semver.outputs.version }}"
+          echo "📊 Version breakdown:"
+          echo "   Major: ${{ steps.semver.outputs.major }}"
+          echo "   Minor: ${{ steps.semver.outputs.minor }}"
+          echo "   Patch: ${{ steps.semver.outputs.patch }}"
+          
+          # Determine release type for documentation deployment
+          if [ -n "${{ steps.semver.outputs.prerelease }}" ]; then
+            PRERELEASE="${{ steps.semver.outputs.prerelease }}"
+            echo "   Pre-release: $PRERELEASE"
+            echo "ℹ️  Pre-release version detected: ${{ steps.semver.outputs.version }}"
+            
+            if [[ "$PRERELEASE" =~ ^(alpha|beta|rc) ]]; then
+              echo "is_prerelease=true" >> $GITHUB_OUTPUT
+              echo "release_type=prerelease" >> $GITHUB_OUTPUT
+            else
+              echo "is_prerelease=true" >> $GITHUB_OUTPUT
+              echo "release_type=other_prerelease" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+            echo "release_type=stable" >> $GITHUB_OUTPUT
+            echo "✅ Stable release version: ${{ steps.semver.outputs.version }}"
+          fi
+          
+          # Additional validation for common issues
+          if [[ "${{ steps.semver.outputs.major }}" == "0" && "${{ steps.semver.outputs.minor }}" == "0" ]]; then
+            echo "⚠️  Warning: Version ${{ steps.semver.outputs.version }} starts with 0.0. This is typically used for initial development."
+          fi
+          
+          if [ -n "${{ steps.semver.outputs.build }}" ]; then
+            echo "   Build: ${{ steps.semver.outputs.build }}"
+          fi
+            
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          
+      - name: Cache dependencies
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+            
+      - name: Install dependencies
+        run: |
+          echo "📦 Installing Python dependencies..."
+          python -m pip install --upgrade pip
+          pip install -r docs/requirements.txt
+          echo "✅ Dependencies installed successfully"
+          
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+      - name: Deploy main branch documentation
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "🚀 Deploying main branch documentation"
+          echo "📝 Strategy: Deploy as 'latest' and 'dev' aliases"
+          
+          # Helper function to safely set aliases
+          safe_set_alias() {
+            local alias_name="$1"
+            local version="$2"
+            echo "🔧 Setting alias '$alias_name' to version '$version'"
+            if mike alias --push "$version" "$alias_name" 2>/dev/null; then
+              echo "✅ Successfully set alias '$alias_name' to '$version'"
+            else
+              echo "⚠️  Alias '$alias_name' already exists or failed to set"
+            fi
+          }
+          
+          # Deploy main branch as 'latest' and 'dev'
+          mike deploy --push --update-aliases dev latest
+          
+          # Set default alias (handles existing alias gracefully)
+          mike set-default --push latest || echo "⚠️  Default alias already set to latest"
+          
+          echo "✅ Main branch documentation deployed successfully"
+          
+      - name: Deploy stable release documentation
+        if: startsWith(github.ref, 'refs/tags/v') && steps.release_type.outputs.release_type == 'stable'
+        run: |
+          VERSION="${{ steps.semver.outputs.version }}"
+          echo "🚀 Deploying stable release documentation"
+          echo "📝 Version: $VERSION"
+          echo "📝 Strategy: Deploy as versioned release and update 'stable' alias"
+          
+          # Validate version is not empty
+          if [ -z "$VERSION" ]; then
+            echo "❌ Error: Version is empty"
+            exit 1
+          fi
+          
+          # Helper function to safely set aliases
+          safe_set_alias() {
+            local alias_name="$1"
+            local version="$2"
+            echo "🔧 Setting alias '$alias_name' to version '$version'"
+            if mike alias --push "$version" "$alias_name" 2>/dev/null; then
+              echo "✅ Successfully set alias '$alias_name' to '$version'"
+            else
+              echo "⚠️  Alias '$alias_name' already exists or failed to set"
+            fi
+          }
+          
+          # Deploy the tagged version and update 'stable' alias
+          mike deploy --push --update-aliases $VERSION stable
+          
+          # Set this version as the default (handles existing alias gracefully)
+          mike set-default --push stable || echo "⚠️  Default alias already set to stable"
+          
+          echo "✅ Stable release documentation deployed successfully"
+          
+      - name: Deploy pre-release documentation
+        if: startsWith(github.ref, 'refs/tags/v') && steps.release_type.outputs.is_prerelease == 'true'
+        run: |
+          VERSION="${{ steps.semver.outputs.version }}"
+          PRERELEASE_TYPE="${{ steps.release_type.outputs.release_type }}"
+          echo "🚀 Deploying pre-release documentation"
+          echo "📝 Version: $VERSION"
+          echo "📝 Type: $PRERELEASE_TYPE"
+          
+          # Validate version is not empty
+          if [ -z "$VERSION" ]; then
+            echo "❌ Error: Version is empty"
+            exit 1
+          fi
+          
+          # Deploy the pre-release version
+          mike deploy --push $VERSION
+          
+          # Helper function to safely set aliases
+          safe_set_alias() {
+            local alias_name="$1"
+            local version="$2"
+            echo "🔧 Setting alias '$alias_name' to version '$version'"
+            if mike alias --push "$version" "$alias_name" 2>/dev/null; then
+              echo "✅ Successfully set alias '$alias_name' to '$version'"
+            else
+              echo "⚠️  Alias '$alias_name' already exists or failed to set"
+            fi
+          }
+          
+          # Update appropriate aliases based on pre-release type
+          if [[ "$PRERELEASE_TYPE" == "prerelease" ]]; then
+            # For alpha/beta/rc releases, update the 'preview' alias
+            safe_set_alias "preview" "$VERSION"
+          else
+            # For other pre-releases, just deploy without additional aliases
+            echo "📝 Deployed without additional aliases"
+          fi
+          
+          echo "✅ Pre-release documentation deployed successfully"
+
+  documentation-build-test:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          
+      - name: Cache dependencies
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+            
+      - name: Install dependencies
+        run: |
+          echo "📦 Installing Python dependencies..."
+          python -m pip install --upgrade pip
+          pip install -r docs/requirements.txt
+          echo "✅ Dependencies installed successfully"
+          
+      - name: Build documentation
+        run: |
+          echo "🔨 Building documentation..."
+          mkdocs build --strict
+          echo "✅ Documentation built successfully"
+          
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: mkdocs-site
+          path: site/      

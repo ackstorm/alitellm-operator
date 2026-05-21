@@ -1,0 +1,74 @@
+---
+# Copyright 2026 ACKstorm.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Dogfood Team CR — finance team with budget.
+#
+# Mirror of config/samples/team-finance.yaml (Phase 6 reference sample).
+# Exercises spec §11 AC-T1 (budget projection) and AC-T6 (pass-through
+# spec.params bag). Named "finance" — NOT "default" (that name is reserved
+# for the operator's implicit-bootstrap Team/default per spec §7.4).
+#
+# The implicit Team/default is also reconciled on manager start (after
+# LiteLLMConnection/default first reaches Ready=True) with no budget and
+# no Kubernetes CR created by the operator (AC-T2).
+#
+# After apply, expect:
+#   (a) status.lastRendered.teamID populated with the LiteLLM-assigned
+#       UUID (Phase 5 D-02 / DEF-§6.4/§6.6-ID-PERSIST pin).
+#   (b) team_alias=finance projected to LiteLLM (bare metadata.name).
+#   (c) max_budget=500.0 + budget_duration="30d" at the top level of
+#       POST /team/new body (spec.budget.limit + period projection).
+#   (d) rpm_limit=6000 + tpm_limit=1000000 at the top level of the body
+#       as Phase-10 typed-overlay projections from spec.rateLimits.{rpm,
+#       tpm}. The four rate-limit overlay keys (rpm_limit, tpm_limit,
+#       rpm_limit_type, tpm_limit_type) are operator-overlay-controlled
+#       per Feature 01 §2.1 — placing them inside spec.params would emit
+#       Warning ProjectionOverride events on every reconcile and
+#       silently null the user's values on the wire.
+#
+# CR-15 / D-7.1-15 (2026-05-19): the `tags` field was removed from
+# spec.params on 2026-05-19 — LiteLLM 1.83.10 gates `tags` on /team/new
+# behind an Enterprise license (LITELLM_LICENSE env var); the dogfood
+# cluster runs the OSS image, so sending `tags` returns 403 and blocks
+# Team/finance from reaching Ready=True. Teams that hold a LiteLLM
+# Enterprise license can re-add `tags: [...]` to spec.params without
+# operator changes — the operator's pass-through merge will project it
+# verbatim to the wire. The `blocked: false` line was also dropped per
+# CR-10 (the operator's body builder strips it; documenting here that
+# the sample no longer needs it either).
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMTeam
+metadata:
+  name: finance
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  # Optional budget block. When absent (or its leaves removed), the operator
+  # sends max_budget=null + budget_duration=null on the wire, clearing the
+  # LiteLLM-side fields (spec §6.7 line 1194 — "clearing budget" contract).
+  budget:
+    limit: 500.0
+    period: "30d"
+  # Phase 10 typed rate-limit sub-block (Feature 01 §1). Projects onto
+  # top-level rpm_limit / tpm_limit (always-emit; null on clear) plus
+  # operator-hardcoded rpm_limit_type / tpm_limit_type =
+  # "best_effort_throughput" (conditional-add; omitted when the
+  # corresponding *_limit is null per Feature 01 §2.1).
+  rateLimits:
+    rpm: 6000
+    tpm: 1000000
+  # Pass-through bag — operator's 7 structural overlays
+  # (team_alias, max_budget, budget_duration, rpm_limit, tpm_limit,
+  # rpm_limit_type, tpm_limit_type) plus team_id ALL win over
+  # spec.params on key collision; a ProjectionOverride Warning Event
+  # fires per colliding key. spec.params is empty for the dogfood
+  # team — kept for forward-compat with future pass-through keys.
+  params: {}

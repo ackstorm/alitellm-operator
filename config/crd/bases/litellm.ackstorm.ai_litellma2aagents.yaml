@@ -1,0 +1,372 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.0
+  name: litellma2aagents.litellm.ackstorm.ai
+spec:
+  group: litellm.ackstorm.ai
+  names:
+    kind: LiteLLMA2AAgent
+    listKind: LiteLLMA2AAgentList
+    plural: litellma2aagents
+    shortNames:
+    - a2a
+    singular: litellma2aagent
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: Ready
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Ready')].reason
+      name: Reason
+      type: string
+    - jsonPath: .status.lastRendered.agentID
+      name: AgentID
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          LiteLLMA2AAgent is the Schema for the litellma2aagents API per spec §6.6 (`_FINALv3`).
+
+          A2A-01.06: a LiteLLMA2AAgent CR registers one A2A agent entry against
+          LiteLLM via the admin-immediate path (`POST /v1/agents`).
+
+          Finalizer (spec §7.5): `a2aagents.litellm.ackstorm.ai/finalizer` —
+          issues `DELETE /v1/agents/<agent_id>` before the CR is removed from
+          etcd. The finalizer constant lives in
+          internal/controller/a2aagent_controller.go.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              A2AAgentSpec defines the desired state of A2AAgent per spec §6.6
+              (`_FINALv3` flat shape).
+
+              A2A-01.06 collectively: a user can declare an A2AAgent CR registering
+              one A2A agent entry against the LiteLLM instance referenced by
+              LiteLLMConnection/default. The shape is flat per `_FINALv3`: NO
+              `spec.type` discriminator and NO nested `spec.litellm.*` sub-object.
+              `spec.endpoint` is the modeled typed field (overlays
+              `agent_card_params.url` per spec §6.6); `spec.agentCard` is a REQUIRED
+              JSON pass-through bag carrying the agent's published A2A protocol card;
+              `spec.params` is an OPTIONAL JSON pass-through bag forwarded verbatim
+              to `AgentConfig` top-level (NOT inside `agent_card_params`, per spec
+              §6.6 — diverges from MCP and is the source of the `agent_card_params`
+              collision in the ProjectionOverride taxonomy).
+
+              Two-pass substitution (Phase 5 D-04): on each reconcile, `spec.params`
+              is walked first, then `spec.agentCard`, sharing a single resolved
+              Secret map. Placeholders `{{NAME}}` in EITHER bag are resolved from
+              `spec.secrets[]` before the body reaches LiteLLM. The shared map
+              ensures a Secret referenced in both bags is fetched from the
+              Kubernetes API exactly once per reconcile.
+
+              Four-collision ProjectionOverride taxonomy (Phase 5 D-05) — fired as
+              Kubernetes Events with `reason=ProjectionOverride`, `type=Warning`,
+              each at most once per reconcile pass:
+              - agent_name — `spec.params.agent_name` overlaid by metadata.name.
+              - agent_card_params — `spec.params.agent_card_params` overlaid by spec.agentCard.
+              - agent_card_params.url — `spec.agentCard.url` overlaid by spec.endpoint.
+              - model_info — `spec.params.model_info` reserved by LiteLLM §6.6.
+            properties:
+              agentCard:
+                description: |-
+                  AgentCard is a REQUIRED JSON pass-through bag carrying the
+                  agent's A2A protocol "agent card" structure (name, description,
+                  capabilities, defaultInputModes, defaultOutputModes, skills,
+                  etc.). Any JSON object is accepted
+                  (x-kubernetes-preserve-unknown-fields: true) — the operator
+                  validates only well-formedness; A2A protocol semantics are
+                  enforced by LiteLLM and downstream agent runtimes.
+
+                  String-typed leaves at ANY depth (including nested arrays like
+                  `skills[].description`, `defaultInputModes[]`, `capabilities.*`
+                  string leaves) may contain `{{NAME}}` placeholders resolved
+                  from `spec.secrets[]` (§5.2; Phase 3 D-05; Phase 5 D-04
+                  second-pass scope). Non-string leaves pass through unchanged.
+
+                  If `spec.agentCard.url` is set, the operator overlays it with
+                  `spec.endpoint` and emits a `ProjectionOverride` Event keyed
+                  `agent_card_params.url` (Phase 5 D-05).
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+              endpoint:
+                description: |-
+                  Endpoint is the A2A agent URL forwarded verbatim as the `url`
+                  field inside `agent_card_params` of LiteLLM's `AgentConfig`.
+                  Required + non-empty per spec §6.6. The reconciler does NOT
+                  validate scheme/host structure beyond MinLength=1; users are
+                  responsible for supplying a well-formed URL their A2A agent
+                  runtime accepts. Collides with `spec.agentCard.url` if present
+                  — the operator overlay always wins and emits a
+                  `ProjectionOverride` Event keyed `agent_card_params.url`
+                  (Phase 5 D-05).
+                minLength: 1
+                type: string
+              params:
+                description: |-
+                  Params is an OPTIONAL JSON pass-through bag forwarded verbatim
+                  to LiteLLM's `AgentConfig` body at the TOP level (NOT inside
+                  `agent_card_params` — diverges from MCP and is the source of
+                  the `agent_card_params` collision in the ProjectionOverride
+                  taxonomy). Any JSON object is accepted
+                  (x-kubernetes-preserve-unknown-fields: true). String-typed leaf
+                  values may contain `{{NAME}}` placeholders resolved from
+                  `spec.secrets[]` (§5.2; Phase 5 D-04 first-pass scope).
+
+                  The operator NEVER adds or removes keys inside this bag — the
+                  user's declared keyset IS the desired state. Per Phase 5 D-05,
+                  the operator applies structural overlays after substitution:
+                  - `mergedBody.agent_name` is overlaid by metadata.name.
+                  - `mergedBody.agent_card_params` is overlaid by spec.agentCard.
+
+                  Collisions surface as `ProjectionOverride` Events keyed by the
+                  offending top-level key. `model_info` triggers a warning Event
+                  (LiteLLM-reserved per spec §6.6) but is NOT overlaid by the
+                  operator (the user's value is preserved on its way to LiteLLM;
+                  LiteLLM may itself reject the body).
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+              secrets:
+                description: |-
+                  Secrets is the substitution map for resolving `{{NAME}}`
+                  placeholders in `spec.params` AND `spec.agentCard` string-typed
+                  leaves (Phase 5 D-04 — two-pass with shared resolvedSecrets
+                  map). Each entry maps an uppercase NAME (the `as` field) to a
+                  Kubernetes Secret key (`secretRef`). Placeholders in either bag
+                  are replaced with the resolved plaintext value before the body
+                  is forwarded to LiteLLM. Secret material NEVER appears in logs,
+                  Events, or `status.conditions[].message` (§9.1, AC-S1).
+
+                  SEC-03 uniqueness of `spec.secrets[].as` values is enforced as a
+                  runtime check in the A2AAgent reconciler (same pattern as Model
+                  And MCPServer — CEL list-uniqueness was
+                  deferred to v1beta1).
+
+                  SEC-07: if a declared `as` is unreferenced by ANY placeholder
+                  across both bags (union of refs from the two-pass), the
+                  reconciler emits a `UnusedSecretRef` Event (type=Normal).
+                items:
+                  description: |-
+                    SecretSubstitution maps a Kubernetes Secret key to an uppercase NAME that
+                    can be referenced as {{NAME}} in spec.params and spec.info string-typed
+                    leaves (§5.2). The as value is the NAME; the secretRef points to the
+                    Kubernetes Secret and key that carry the plaintext value (SEC-01.SEC-03).
+
+                    SEC-03: the as value is validated at admission by the CEL pattern
+                    ^[A-Z_][A-Z0-9_]*$; lowercase letters, digits-first names, and whitespace
+                    are rejected. Uniqueness of as values within a Model is enforced by a CEL
+                    XValidation on ModelSpec.Secrets (see above).
+                  properties:
+                    as:
+                      description: |-
+                        As is the placeholder NAME used in {{NAME}} substitution expressions
+                        within spec.params and spec.info string-typed leaves. Must match the
+                        pattern ^[A-Z_][A-Z0-9_]*$ (§5.2, SEC-03). Unique within the enclosing
+                        Model CR (SEC-03 uniqueness — enforced via CEL on spec.secrets).
+
+                        Example: as=ANTHROPIC_API_KEY matches the placeholder
+                        "{{ANTHROPIC_API_KEY}}" anywhere in spec.params or spec.info strings.
+                      minLength: 1
+                      pattern: ^[A-Z_][A-Z0-9_]*$
+                      type: string
+                    secretRef:
+                      description: |-
+                        SecretRef identifies the Kubernetes Secret and key whose plaintext
+                        value replaces the {{As}} placeholder at reconcile time. The Secret
+                        MUST reside in the same namespace as the Model CR (no cross-namespace
+                        resolution in v1alpha1). A missing Secret or key surfaces as
+                        Ready=False, reason=SecretNotFound (§6.0).
+
+                        Reuses SecretKeyRef from litellmconnection_types.go (same package —
+                        no additional type definition needed). SEC-01, SEC-06.
+                      properties:
+                        key:
+                          description: |-
+                            Key inside the referenced Secret's `data` map whose value is the
+                            LiteLLM master key.
+                          minLength: 1
+                          type: string
+                        name:
+                          description: |-
+                            Name of the Kubernetes Secret resource in the LiteLLMConnection's
+                            namespace.
+                          minLength: 1
+                          type: string
+                      required:
+                      - key
+                      - name
+                      type: object
+                  required:
+                  - as
+                  - secretRef
+                  type: object
+                type: array
+            required:
+            - agentCard
+            - endpoint
+            type: object
+          status:
+            description: |-
+              A2AAgentStatus defines the observed state of A2AAgent per spec §6.6 +
+              Phase 5 D-03 (nested `lastRendered` substruct).
+            properties:
+              conditions:
+                description: |-
+                  Conditions carries the standard metav1.Condition list. The single
+                  type defined for A2AAgent is `Ready`, with reason values from §6.0:
+                  - Synced — rendered body matches LiteLLM; no drift.
+                  - LiteLLMUnavailable — LiteLLMConnection/default not Ready
+                  (D-08 echo-reason from connection cache).
+                  - LiteLLMRejected — LiteLLM returned a 4xx (non-401) on mutation.
+                  - SecretNotFound — a spec.secrets[].secretRef is missing OR
+                  a `{{NAME}}` placeholder has no matching
+                  spec.secrets[].as entry.
+                  - InvalidConfig — spec.params or spec.agentCard not valid
+                  JSON, or duplicate spec.secrets[].as
+                  values.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              lastRendered:
+                description: |-
+                  LastRendered is the operator-side drift source of truth per Phase 3
+                  D-01 / D-07 (extended for A2AAgent per Phase 5 D-03). It records
+                  the post-substitution rendered state that was last successfully
+                  applied to LiteLLM. The reconciler compares the current desired
+                  state hash against `lastRendered.hash` to detect drift without
+                  querying the LiteLLM API on every reconcile.
+                properties:
+                  agentCardKeys:
+                    description: |-
+                      AgentCardKeys is the sorted list of top-level keys present in
+                      spec.agentCard at the time of the last successful render.
+                      Phase 5 D-04 informational field — not load-bearing for
+                      shrinkage detection (Probe 7 ✓ — PUT IS wholesale-replace on
+                      A2A).
+                    items:
+                      type: string
+                    type: array
+                  agentID:
+                    description: |-
+                      AgentID is the LiteLLM-assigned UUID (agent_id) for this A2A
+                      agent entry. Pinned per Phase 5 D-02 so the reconciler can call
+                      `DELETE /v1/agents/<agent_id>` directly on the finalizer path
+                      without re-resolving by name. On first reconcile, resolved from
+                      the POST /v1/agents response body's `agent_id` field.
+
+                      Diverges from spec §6.6: documented in
+                      spec/DEFECTS-1.82.6.md row `DEF-§6.4/§6.6-ID-PERSIST`.
+                    type: string
+                  at:
+                    description: |-
+                      At is the timestamp of the last SUCCESSFUL render (NOT every
+                      reconcile attempt — transient failures do not update this field).
+                    format: date-time
+                    type: string
+                  hash:
+                    description: |-
+                      Hash is the SHA-256 hex of the RFC 8785–canonicalized merged
+                      post-substitution body (spec.params merged with spec.agentCard
+                      and structural overlays {agent_name, agent_card_params,
+                      agent_card_params.url}). An empty hash indicates the A2AAgent
+                      has not yet been successfully reconciled.
+                    type: string
+                  paramsKeys:
+                    description: |-
+                      ParamsKeys is the sorted list of top-level keys present in
+                      spec.params at the time of the last successful render. Phase 5
+                      D-04 informational field — not load-bearing for shrinkage
+                      detection (Probe 7 ✓ — PUT IS wholesale-replace on A2A).
+                    items:
+                      type: string
+                    type: array
+                type: object
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the metadata.generation of the A2AAgent CR
+                  the reconciler most recently processed successfully (OWN-08
+                  carry-forward).
+                format: int64
+                type: integer
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

@@ -1,0 +1,3 @@
+go test fuzz v1
+string("{\"url\":\"https://{{HOST}}/path?key={{TOKEN}}\"}")
+string("HOST=example.com,TOKEN=abc")
