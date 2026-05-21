@@ -1,0 +1,4960 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Kubernetes operator that reconciles LiteLLM proxy resources declaratively">
+      
+      
+      
+        <link rel="canonical" href="https://ackstorm.github.io/alitellm-operator/dev/api-reference/litellm.ackstorm.ai/">
+      
+      
+        <link rel="prev" href="../../developer-guide/contributions/">
+      
+      
+        <link rel="next" href="../../metrics/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Overview - alitellm-operator</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#api-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="alitellm-operator" class="md-header__button md-logo" aria-label="alitellm-operator" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            alitellm-operator
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Overview
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="Share" aria-label="Share" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/ackstorm/alitellm-operator" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    ackstorm/alitellm-operator
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../getting-started/installation/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../user-guide/" class="md-tabs__link">
+          
+  
+  
+  User Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../developer-guide/architecture/" class="md-tabs__link">
+          
+  
+  
+  Developer Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../metrics/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Metrics
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../community/code-of-conduct/" class="md-tabs__link">
+          
+  
+  
+  Community
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="alitellm-operator" class="md-nav__button md-logo" aria-label="alitellm-operator" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    alitellm-operator
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/ackstorm/alitellm-operator" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    ackstorm/alitellm-operator
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/connection/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMConnection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/team/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMTeam
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMModel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/a2a-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMA2AAgent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/mcp-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMMCPServer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/mcp-server-discovery/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMMCPServerDiscovery
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/model-discovery/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMModelDiscovery
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Developer Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-guide/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-guide/development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-guide/release-process/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release Process
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-guide/contributions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#packages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Packages
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#litellmackstormaiv1alpha1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        litellm.ackstorm.ai/v1alpha1
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="litellm.ackstorm.ai/v1alpha1">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#resource-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resource Types
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Resource Types">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a2aagentspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A2AAgentSpec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a2aagentstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A2AAgentStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a2alastrenderedstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A2ALastRenderedStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#budgetspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BudgetSpec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#failedcandidate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FailedCandidate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lastrenderedstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LastRenderedStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellma2aagent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMA2AAgent
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellma2aagentlist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMA2AAgentList
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmconnection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMConnection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmconnectionlist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMConnectionList
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmconnectionspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMConnectionSpec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmconnectionstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMConnectionStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmmcpserver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMMCPServer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmmcpserverdiscovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMMCPServerDiscovery
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmmcpserverdiscoverylist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMMCPServerDiscoveryList
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmmcpserverlist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMMCPServerList
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmmodel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMModel
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmmodeldiscovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMModelDiscovery
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmmodeldiscoverylist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMModelDiscoveryList
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmmodellist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMModelList
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmteam" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMTeam
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmteamlist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMTeamList
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpserverdiscoveryfilters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPServerDiscoveryFilters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpserverdiscoveryrefresh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPServerDiscoveryRefresh
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpserverdiscoveryspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPServerDiscoverySpec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpserverdiscoverystatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPServerDiscoveryStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpserverdiscoverytoolhive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPServerDiscoveryToolhive
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpserverfailedcandidate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPServerFailedCandidate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpserverlastrenderedstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPServerLastRenderedStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpserverskippedcandidate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPServerSkippedCandidate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpserverspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPServerSpec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpserverstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPServerStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#modeldiscoveryfilters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ModelDiscoveryFilters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#modeldiscoveryrefresh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ModelDiscoveryRefresh
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#modeldiscoveryspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ModelDiscoverySpec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#modeldiscoverystatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ModelDiscoveryStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#modelspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ModelSpec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#modelstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ModelStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ratelimitsspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RateLimitsSpec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#secretkeyref" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SecretKeyRef
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#secretobjectref" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SecretObjectRef
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#secretsubstitution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SecretSubstitution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#skippedcandidate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SkippedCandidate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#teamlastrenderedstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TeamLastRenderedStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#teamspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TeamSpec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#teamstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TeamStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Community
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Community
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../community/code-of-conduct/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code of Conduct
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../community/security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security Policy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#packages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Packages
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#litellmackstormaiv1alpha1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        litellm.ackstorm.ai/v1alpha1
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="litellm.ackstorm.ai/v1alpha1">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#resource-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resource Types
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Resource Types">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a2aagentspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A2AAgentSpec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a2aagentstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A2AAgentStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a2alastrenderedstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A2ALastRenderedStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#budgetspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BudgetSpec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#failedcandidate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FailedCandidate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lastrenderedstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LastRenderedStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellma2aagent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMA2AAgent
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellma2aagentlist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMA2AAgentList
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmconnection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMConnection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmconnectionlist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMConnectionList
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmconnectionspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMConnectionSpec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmconnectionstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMConnectionStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmmcpserver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMMCPServer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmmcpserverdiscovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMMCPServerDiscovery
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmmcpserverdiscoverylist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMMCPServerDiscoveryList
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmmcpserverlist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMMCPServerList
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmmodel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMModel
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmmodeldiscovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMModelDiscovery
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmmodeldiscoverylist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMModelDiscoveryList
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmmodellist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMModelList
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmteam" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMTeam
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmteamlist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMTeamList
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpserverdiscoveryfilters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPServerDiscoveryFilters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpserverdiscoveryrefresh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPServerDiscoveryRefresh
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpserverdiscoveryspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPServerDiscoverySpec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpserverdiscoverystatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPServerDiscoveryStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpserverdiscoverytoolhive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPServerDiscoveryToolhive
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpserverfailedcandidate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPServerFailedCandidate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpserverlastrenderedstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPServerLastRenderedStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpserverskippedcandidate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPServerSkippedCandidate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpserverspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPServerSpec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mcpserverstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCPServerStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#modeldiscoveryfilters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ModelDiscoveryFilters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#modeldiscoveryrefresh" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ModelDiscoveryRefresh
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#modeldiscoveryspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ModelDiscoverySpec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#modeldiscoverystatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ModelDiscoveryStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#modelspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ModelSpec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#modelstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ModelStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ratelimitsspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RateLimitsSpec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#secretkeyref" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SecretKeyRef
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#secretobjectref" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SecretObjectRef
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#secretsubstitution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SecretSubstitution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#skippedcandidate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SkippedCandidate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#teamlastrenderedstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TeamLastRenderedStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#teamspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TeamSpec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#teamstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TeamStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="api-reference">API Reference<a class="headerlink" href="#api-reference" title="Permanent link">&para;</a></h1>
+<h2 id="packages">Packages<a class="headerlink" href="#packages" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="#litellmackstormaiv1alpha1">litellm.ackstorm.ai/v1alpha1</a></li>
+</ul>
+<h2 id="litellmackstormaiv1alpha1">litellm.ackstorm.ai/v1alpha1<a class="headerlink" href="#litellmackstormaiv1alpha1" title="Permanent link">&para;</a></h2>
+<p>Package v1alpha1 contains API Schema definitions for the litellm v1alpha1 API group.</p>
+<h3 id="resource-types">Resource Types<a class="headerlink" href="#resource-types" title="Permanent link">&para;</a></h3>
+<ul>
+<li><a href="#litellma2aagent">LiteLLMA2AAgent</a></li>
+<li><a href="#litellma2aagentlist">LiteLLMA2AAgentList</a></li>
+<li><a href="#litellmconnection">LiteLLMConnection</a></li>
+<li><a href="#litellmconnectionlist">LiteLLMConnectionList</a></li>
+<li><a href="#litellmmcpserver">LiteLLMMCPServer</a></li>
+<li><a href="#litellmmcpserverdiscovery">LiteLLMMCPServerDiscovery</a></li>
+<li><a href="#litellmmcpserverdiscoverylist">LiteLLMMCPServerDiscoveryList</a></li>
+<li><a href="#litellmmcpserverlist">LiteLLMMCPServerList</a></li>
+<li><a href="#litellmmodel">LiteLLMModel</a></li>
+<li><a href="#litellmmodeldiscovery">LiteLLMModelDiscovery</a></li>
+<li><a href="#litellmmodeldiscoverylist">LiteLLMModelDiscoveryList</a></li>
+<li><a href="#litellmmodellist">LiteLLMModelList</a></li>
+<li><a href="#litellmteam">LiteLLMTeam</a></li>
+<li><a href="#litellmteamlist">LiteLLMTeamList</a></li>
+</ul>
+<h4 id="a2aagentspec">A2AAgentSpec<a class="headerlink" href="#a2aagentspec" title="Permanent link">&para;</a></h4>
+<p>A2AAgentSpec defines the desired state of A2AAgent per spec §6.6
+(<code>_FINALv3</code> flat shape).</p>
+<p>A2A-01.06 collectively: a user can declare an A2AAgent CR registering
+one A2A agent entry against the LiteLLM instance referenced by
+LiteLLMConnection/default. The shape is flat per <code>_FINALv3</code>: NO
+<code>spec.type</code> discriminator and NO nested <code>spec.litellm.*</code> sub-object.
+<code>spec.endpoint</code> is the modeled typed field (overlays
+<code>agent_card_params.url</code> per spec §6.6); <code>spec.agentCard</code> is a REQUIRED
+JSON pass-through bag carrying the agent's published A2A protocol card;
+<code>spec.params</code> is an OPTIONAL JSON pass-through bag forwarded verbatim
+to <code>AgentConfig</code> top-level (NOT inside <code>agent_card_params</code>, per spec
+§6.6 — diverges from MCP and is the source of the <code>agent_card_params</code>
+collision in the ProjectionOverride taxonomy).</p>
+<p>Two-pass substitution (Phase 5 D-04): on each reconcile, <code>spec.params</code>
+is walked first, then <code>spec.agentCard</code>, sharing a single resolved
+Secret map. Placeholders <code>{{NAME}}</code> in EITHER bag are resolved from
+<code>spec.secrets[]</code> before the body reaches LiteLLM. The shared map
+ensures a Secret referenced in both bags is fetched from the
+Kubernetes API exactly once per reconcile.</p>
+<p>Four-collision ProjectionOverride taxonomy (Phase 5 D-05) — fired as
+Kubernetes Events with <code>reason=ProjectionOverride</code>, <code>type=Warning</code>,
+each at most once per reconcile pass:
+- agent_name — <code>spec.params.agent_name</code> overlaid by metadata.name.
+- agent_card_params — <code>spec.params.agent_card_params</code> overlaid by spec.agentCard.
+- agent_card_params.url — <code>spec.agentCard.url</code> overlaid by spec.endpoint.
+- model_info — <code>spec.params.model_info</code> reserved by LiteLLM §6.6.</p>
+<p><em>Appears in:</em>
+- <a href="#litellma2aagent">LiteLLMA2AAgent</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>endpoint</code> <em>string</em></td>
+<td>Endpoint is the A2A agent URL forwarded verbatim as the <code>url</code><br />field inside <code>agent_card_params</code> of LiteLLM's <code>AgentConfig</code>.<br />Required + non-empty per spec §6.6. The reconciler does NOT<br />validate scheme/host structure beyond MinLength=1; users are<br />responsible for supplying a well-formed URL their A2A agent<br />runtime accepts. Collides with <code>spec.agentCard.url</code> if present<br />— the operator overlay always wins and emits a<br /><code>ProjectionOverride</code> Event keyed <code>agent_card_params.url</code><br />(Phase 5 D-05).</td>
+<td></td>
+<td>MinLength: 1 <br />Required: {} <br /></td>
+</tr>
+<tr>
+<td><code>agentCard</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#rawextension-runtime-pkg">RawExtension</a></em></td>
+<td>AgentCard is a REQUIRED JSON pass-through bag carrying the<br />agent's A2A protocol "agent card" structure (name, description,<br />capabilities, defaultInputModes, defaultOutputModes, skills,<br />etc.). Any JSON object is accepted<br />(x-kubernetes-preserve-unknown-fields: true) — the operator<br />validates only well-formedness; A2A protocol semantics are<br />enforced by LiteLLM and downstream agent runtimes.<br />String-typed leaves at ANY depth (including nested arrays like<br /><code>skills[].description</code>, <code>defaultInputModes[]</code>, <code>capabilities.*</code><br />string leaves) may contain <code>\{\{NAME\}\}</code> placeholders resolved<br />from <code>spec.secrets[]</code> (§5.2; Phase 3 D-05; Phase 5 D-04<br />second-pass scope). Non-string leaves pass through unchanged.<br />If <code>spec.agentCard.url</code> is set, the operator overlays it with<br /><code>spec.endpoint</code> and emits a <code>ProjectionOverride</code> Event keyed<br /><code>agent_card_params.url</code> (Phase 5 D-05).</td>
+<td></td>
+<td>Required: {} <br /></td>
+</tr>
+<tr>
+<td><code>params</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#rawextension-runtime-pkg">RawExtension</a></em></td>
+<td>Params is an OPTIONAL JSON pass-through bag forwarded verbatim<br />to LiteLLM's <code>AgentConfig</code> body at the TOP level (NOT inside<br /><code>agent_card_params</code> — diverges from MCP and is the source of<br />the <code>agent_card_params</code> collision in the ProjectionOverride<br />taxonomy). Any JSON object is accepted<br />(x-kubernetes-preserve-unknown-fields: true). String-typed leaf<br />values may contain <code>\{\{NAME\}\}</code> placeholders resolved from<br /><code>spec.secrets[]</code> (§5.2; Phase 5 D-04 first-pass scope).<br />The operator NEVER adds or removes keys inside this bag — the<br />user's declared keyset IS the desired state. Per Phase 5 D-05,<br />the operator applies structural overlays after substitution:<br />- <code>mergedBody.agent_name</code> is overlaid by metadata.name.<br />- <code>mergedBody.agent_card_params</code> is overlaid by spec.agentCard.<br />Collisions surface as <code>ProjectionOverride</code> Events keyed by the<br />offending top-level key. <code>model_info</code> triggers a warning Event<br />(LiteLLM-reserved per spec §6.6) but is NOT overlaid by the<br />operator (the user's value is preserved on its way to LiteLLM;<br />LiteLLM may itself reject the body).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>secrets</code> <em><a href="#secretsubstitution">SecretSubstitution</a> array</em></td>
+<td>Secrets is the substitution map for resolving <code>\{\{NAME\}\}</code><br />placeholders in <code>spec.params</code> AND <code>spec.agentCard</code> string-typed<br />leaves (Phase 5 D-04 — two-pass with shared resolvedSecrets<br />map). Each entry maps an uppercase NAME (the <code>as</code> field) to a<br />Kubernetes Secret key (<code>secretRef</code>). Placeholders in either bag<br />are replaced with the resolved plaintext value before the body<br />is forwarded to LiteLLM. Secret material NEVER appears in logs,<br />Events, or <code>status.conditions[].message</code> (§9.1, AC-S1).<br />SEC-03 uniqueness of <code>spec.secrets[].as</code> values is enforced as a<br />runtime check in the A2AAgent reconciler (same pattern as Model<br />And MCPServer — CEL list-uniqueness was<br />deferred to v1beta1).<br />SEC-07: if a declared <code>as</code> is unreferenced by ANY placeholder<br />across both bags (union of refs from the two-pass), the<br />reconciler emits a <code>UnusedSecretRef</code> Event (type=Normal).</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="a2aagentstatus">A2AAgentStatus<a class="headerlink" href="#a2aagentstatus" title="Permanent link">&para;</a></h4>
+<p>A2AAgentStatus defines the observed state of A2AAgent per spec §6.6 +
+Phase 5 D-03 (nested <code>lastRendered</code> substruct).</p>
+<p><em>Appears in:</em>
+- <a href="#litellma2aagent">LiteLLMA2AAgent</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>observedGeneration</code> <em>integer</em></td>
+<td>ObservedGeneration is the metadata.generation of the A2AAgent CR<br />the reconciler most recently processed successfully (OWN-08<br />carry-forward).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>conditions</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#condition-v1-meta">Condition</a> array</em></td>
+<td>Conditions carries the standard metav1.Condition list. The single<br />type defined for A2AAgent is <code>Ready</code>, with reason values from §6.0:<br />- Synced — rendered body matches LiteLLM; no drift.<br />- LiteLLMUnavailable — LiteLLMConnection/default not Ready<br />(D-08 echo-reason from connection cache).<br />- LiteLLMRejected — LiteLLM returned a 4xx (non-401) on mutation.<br />- SecretNotFound — a spec.secrets[].secretRef is missing OR<br />a <code>\{\{NAME\}\}</code> placeholder has no matching<br />spec.secrets[].as entry.<br />- InvalidConfig — spec.params or spec.agentCard not valid<br />JSON, or duplicate spec.secrets[].as<br />values.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>lastRendered</code> <em><a href="#a2alastrenderedstatus">A2ALastRenderedStatus</a></em></td>
+<td>LastRendered is the operator-side drift source of truth per Phase 3<br />D-01 / D-07 (extended for A2AAgent per Phase 5 D-03). It records<br />the post-substitution rendered state that was last successfully<br />applied to LiteLLM. The reconciler compares the current desired<br />state hash against <code>lastRendered.hash</code> to detect drift without<br />querying the LiteLLM API on every reconcile.</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="a2alastrenderedstatus">A2ALastRenderedStatus<a class="headerlink" href="#a2alastrenderedstatus" title="Permanent link">&para;</a></h4>
+<p>A2ALastRenderedStatus records the post-substitution rendered A2AAgent
+state last successfully applied to LiteLLM (Phase 5 D-03).</p>
+<p>Per Phase 5 D-02, <code>AgentID</code> is pinned across reconciles — the
+reconciler resolves the LiteLLM-assigned agent_id once (via POST
+/v1/agents response or, on the stale-status fallback path, via
+<code>GET /v1/agents?health_check=false</code> + in-memory name filter) then
+reads from status thereafter. Diverges from spec §6.6 (silent on
+persistence); documented in spec/DEFECTS-1.82.6.md row
+<code>DEF-§6.4/§6.6-ID-PERSIST</code>.</p>
+<p><code>PUT /v1/agents/{agent_id}</code> IS wholesale-replace per Phase 1 Probe 7
+(verified on 1.82.6; not impacted by the Prisma defect that gated
+MCP's PUT semantics). <code>AgentCardKeys</code> is therefore informational
+only — no shrinkage delete-and-recreate path is committed for
+A2AAgent.</p>
+<p><em>Appears in:</em>
+- <a href="#a2aagentstatus">A2AAgentStatus</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>hash</code> <em>string</em></td>
+<td>Hash is the SHA-256 hex of the RFC 8785–canonicalized merged<br />post-substitution body (spec.params merged with spec.agentCard<br />and structural overlays {agent_name, agent_card_params,<br />agent_card_params.url}). An empty hash indicates the A2AAgent<br />has not yet been successfully reconciled.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>paramsKeys</code> <em>string array</em></td>
+<td>ParamsKeys is the sorted list of top-level keys present in<br />spec.params at the time of the last successful render. Phase 5<br />D-04 informational field — not load-bearing for shrinkage<br />detection (Probe 7 ✓ — PUT IS wholesale-replace on A2A).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>agentCardKeys</code> <em>string array</em></td>
+<td>AgentCardKeys is the sorted list of top-level keys present in<br />spec.agentCard at the time of the last successful render.<br />Phase 5 D-04 informational field — not load-bearing for<br />shrinkage detection (Probe 7 ✓ — PUT IS wholesale-replace on<br />A2A).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>agentID</code> <em>string</em></td>
+<td>AgentID is the LiteLLM-assigned UUID (agent_id) for this A2A<br />agent entry. Pinned per Phase 5 D-02 so the reconciler can call<br /><code>DELETE /v1/agents/&lt;agent_id&gt;</code> directly on the finalizer path<br />without re-resolving by name. On first reconcile, resolved from<br />the POST /v1/agents response body's <code>agent_id</code> field.<br />Diverges from spec §6.6: documented in<br />spec/DEFECTS-1.82.6.md row <code>DEF-§6.4/§6.6-ID-PERSIST</code>.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>at</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#time-v1-meta">Time</a></em></td>
+<td>At is the timestamp of the last SUCCESSFUL render (NOT every<br />reconcile attempt — transient failures do not update this field).</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="budgetspec">BudgetSpec<a class="headerlink" href="#budgetspec" title="Permanent link">&para;</a></h4>
+<p>BudgetSpec is the optional sub-block on TeamSpec that carries the LiteLLM
+team budget (per spec §6.7). It MUST be modeled as a pointer at the
+TeamSpec level (<code>Budget *BudgetSpec</code>) so that whole-block absence is
+distinguishable from <code>Budget{}</code> — when the user omits <code>spec.budget</code>
+entirely, the reconciler emits <code>max_budget: null</code> AND
+<code>budget_duration: null</code> on the <code>POST /team/update</code> body (§6.7 "Clearing
+budget" — relies on the wholesale-replace semantic of POST /team/update
+per §5.1, Q10). Both LiteLLM fields are <code>anyOf: [&lt;type&gt;, null]</code> in the
+1.82.6 OpenAPI, so the null form is the canonical "no budget set"
+signal.</p>
+<p>Float64 precision is adopted for v1alpha1 per spec §6.7; a string-encoded
+resource.Quantity-style form is deferred unless penny-precision-at-scale
+becomes a concern.</p>
+<p><em>Appears in:</em>
+- <a href="#teamspec">TeamSpec</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>limit</code> <em>float</em></td>
+<td>Limit is the USD budget cap for the LiteLLM team, projected<br />verbatim onto <code>max_budget</code> (number). Modeled as <code>*float64</code> so the<br />reconciler can distinguish "user set 0.0" from "user omitted the<br />field" — the former projects to <code>max_budget: 0.0</code>, the latter to<br /><code>max_budget: null</code> (per spec §6.7 "Clearing budget").</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>period</code> <em>string</em></td>
+<td>Period is the budget reset interval as a duration string, projected<br />verbatim onto <code>budget_duration</code> (string). CEL admission rejects any<br />value that does not match <code>^[0-9]+[smhd]$</code> (seconds | minutes |<br />hours | days — per spec §6.7). MinLength=1 is NOT applied<br />independently: the regex pattern + <code>omitempty</code> together cover<br />absence (no pattern check fires when the field is absent), and a<br />present-but-empty value (<code>""</code>) is rejected by the regex itself.</td>
+<td></td>
+<td>Pattern: <code>^[0-9]+[smhd]$</code> <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="failedcandidate">FailedCandidate<a class="headerlink" href="#failedcandidate" title="Permanent link">&para;</a></h4>
+<p>FailedCandidate records a candidate whose K8s apiserver write
+(Server-Side Apply patch) failed for a non-collision reason. The
+Reason enum is intentionally single-valued in _FINALv3: Discovery
+never calls LiteLLM, so LiteLLMRejected / LiteLLMUnavailable are NOT
+Discovery-level reasons (MDISC-26 / D-10). See CONTEXT.md
+<specifics> line 284 and PATTERNS.md line 1037.</p>
+<p><em>Appears in:</em>
+- <a href="#modeldiscoverystatus">ModelDiscoveryStatus</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code> <em>string</em></td>
+<td>Name is the normalized candidate name (post-prefix +<br />normalization, the value that would have become the child Model's<br />metadata.name).</td>
+<td></td>
+<td>MinLength: 1 <br />Required: {} <br /></td>
+</tr>
+<tr>
+<td><code>reason</code> <em>string</em></td>
+<td>Reason classifies the failure. Single-valued enum per _FINALv3<br />(MDISC-26): only ChildCRWriteFailed is valid; LiteLLMRejected and<br />LiteLLMUnavailable have been retired from Discovery-level reasons<br />(MDISC-27 — Discovery never calls LiteLLM; those reasons surface<br />on the child Model's status instead).</td>
+<td></td>
+<td>Enum: [ChildCRWriteFailed] <br />Required: {} <br /></td>
+</tr>
+<tr>
+<td><code>message</code> <em>string</em></td>
+<td>Message is a free-form diagnostic. Per §9.1, MUST NOT contain<br />secret material — AWS error strings are sanitized via the<br />reconciler's sanitizeAWSError helper before surfacing here.</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="lastrenderedstatus">LastRenderedStatus<a class="headerlink" href="#lastrenderedstatus" title="Permanent link">&para;</a></h4>
+<p>LastRenderedStatus records the post-substitution rendered state that was
+last successfully applied to LiteLLM. This is the operator-side drift
+source of truth (D-01): the reconciler compares the current desired hash
+against Hash to decide whether a LiteLLM mutation is needed.</p>
+<p>D-02 (delete-and-recreate pivot): ParamsKeys and InfoKeys are required for
+per-bag shrinkage detection. If any key is removed from either bag
+(persistedKeys \ desiredKeys is non-empty), the reconciler deletes the
+existing LiteLLM entry and re-creates it, then re-pins LiteLLMModelID to
+the freshly-assigned UUID. See spec/DEFECTS-1.82.6.md row 2.</p>
+<p>D-04: LiteLLMModelID diverges from spec §6.2 ("operator does not persist
+the assigned model_info.id"). Persistence is a pragmatic win for a low-rate
+operator — saves a GET /model/info per reconcile. Documented deviation.</p>
+<p><em>Appears in:</em>
+- <a href="#modelstatus">ModelStatus</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>hash</code> <em>string</em></td>
+<td>Hash is the SHA-256 hex of the RFC 8785–canonicalized merged<br />post-substitution body (spec.params merged with spec.info, after<br />{{NAME}} substitution, before the model_info.id overlay). The hash<br />deliberately excludes model_info.id so that CREATE vs UPDATE reconciles<br />do not oscillate (D-01). An empty hash indicates the Model has not yet<br />been successfully reconciled.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>paramsKeys</code> <em>string array</em></td>
+<td>ParamsKeys is the sorted list of dotted-path keys present in spec.params<br />at the time of the last successful render (D-02). The reconciler diffs<br />this against the current spec.params keyset: if any key is absent in the<br />desired state (a shrinkage), the full delete-and-recreate path is taken<br />instead of POST /model/update (D-02, see spec/DEFECTS-1.82.6.md row 2).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>infoKeys</code> <em>string array</em></td>
+<td>InfoKeys is the sorted list of dotted-path keys present in spec.info at<br />the time of the last successful render (D-02). Same shrinkage-detection<br />semantics as ParamsKeys — any key removal in EITHER bag triggers<br />delete-and-recreate.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>litellmModelID</code> <em>string</em></td>
+<td>LiteLLMModelID is the LiteLLM-assigned UUID (model_info.id) for this<br />Model entry. Persisted here so the reconciler can reference it directly<br />on subsequent reconciles without an extra GET /model/info call (D-04).<br />IMPORTANT (D-02 consequence): on every delete-and-recreate cycle, LiteLLM<br />assigns a fresh UUID. The reconciler MUST re-pin this field to the new<br />UUID inside the same reconcile that performed the delete+recreate, before<br />returning success, to avoid a stale-ID 404 on the next reconcile.<br />Diverges from spec §6.2: documented in spec/DEFECTS-1.82.6.md row 7 (D-04).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>at</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#time-v1-meta">Time</a></em></td>
+<td>At is the timestamp of the last SUCCESSFUL render (NOT every reconcile<br />attempt — transient failures do not update this field). Reconcile<br />attempt frequency is observable via controller-runtime workqueue metrics<br />and cr_status_age_seconds (§10 / OBS-03).</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="litellma2aagent">LiteLLMA2AAgent<a class="headerlink" href="#litellma2aagent" title="Permanent link">&para;</a></h4>
+<p>LiteLLMA2AAgent is the Schema for the litellma2aagents API per spec §6.6 (<code>_FINALv3</code>).</p>
+<p>A2A-01.06: a LiteLLMA2AAgent CR registers one A2A agent entry against
+LiteLLM via the admin-immediate path (<code>POST /v1/agents</code>).</p>
+<p>Finalizer (spec §7.5): <code>a2aagents.litellm.ackstorm.ai/finalizer</code> —
+issues <code>DELETE /v1/agents/&lt;agent_id&gt;</code> before the CR is removed from
+etcd. The finalizer constant lives in
+internal/controller/a2aagent_controller.go.</p>
+<p><em>Appears in:</em>
+- <a href="#litellma2aagentlist">LiteLLMA2AAgentList</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td><code>litellm.ackstorm.ai/v1alpha1</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td><code>LiteLLMA2AAgent</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td>Kind is a string value representing the REST resource this object represents.<br />Servers may infer this from the endpoint the client submits requests to.<br />Cannot be updated.<br />In CamelCase.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td>APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>metadata</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta">ObjectMeta</a></em></td>
+<td>Refer to Kubernetes API documentation for fields of <code>metadata</code>.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>spec</code> <em><a href="#a2aagentspec">A2AAgentSpec</a></em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>status</code> <em><a href="#a2aagentstatus">A2AAgentStatus</a></em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="litellma2aagentlist">LiteLLMA2AAgentList<a class="headerlink" href="#litellma2aagentlist" title="Permanent link">&para;</a></h4>
+<p>LiteLLMA2AAgentList contains a list of LiteLLMA2AAgent.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td><code>litellm.ackstorm.ai/v1alpha1</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td><code>LiteLLMA2AAgentList</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td>Kind is a string value representing the REST resource this object represents.<br />Servers may infer this from the endpoint the client submits requests to.<br />Cannot be updated.<br />In CamelCase.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td>APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>metadata</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#listmeta-v1-meta">ListMeta</a></em></td>
+<td>Refer to Kubernetes API documentation for fields of <code>metadata</code>.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>items</code> <em><a href="#litellma2aagent">LiteLLMA2AAgent</a> array</em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="litellmconnection">LiteLLMConnection<a class="headerlink" href="#litellmconnection" title="Permanent link">&para;</a></h4>
+<p>LiteLLMConnection is the Schema for the litellmconnections API.</p>
+<p>CONN-02: the CEL XValidation rule above (placed on the resource root,
+not on Spec) rejects any LiteLLMConnection with metadata.name != "default"
+at admission time — the operator never sees the CR. This is the v1alpha1
+singleton-by-name enforcement strategy (no admission webhook needed).</p>
+<p><em>Appears in:</em>
+- <a href="#litellmconnectionlist">LiteLLMConnectionList</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td><code>litellm.ackstorm.ai/v1alpha1</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td><code>LiteLLMConnection</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td>Kind is a string value representing the REST resource this object represents.<br />Servers may infer this from the endpoint the client submits requests to.<br />Cannot be updated.<br />In CamelCase.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td>APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>metadata</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta">ObjectMeta</a></em></td>
+<td>Refer to Kubernetes API documentation for fields of <code>metadata</code>.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>spec</code> <em><a href="#litellmconnectionspec">LiteLLMConnectionSpec</a></em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>status</code> <em><a href="#litellmconnectionstatus">LiteLLMConnectionStatus</a></em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="litellmconnectionlist">LiteLLMConnectionList<a class="headerlink" href="#litellmconnectionlist" title="Permanent link">&para;</a></h4>
+<p>LiteLLMConnectionList contains a list of LiteLLMConnection.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td><code>litellm.ackstorm.ai/v1alpha1</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td><code>LiteLLMConnectionList</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td>Kind is a string value representing the REST resource this object represents.<br />Servers may infer this from the endpoint the client submits requests to.<br />Cannot be updated.<br />In CamelCase.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td>APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>metadata</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#listmeta-v1-meta">ListMeta</a></em></td>
+<td>Refer to Kubernetes API documentation for fields of <code>metadata</code>.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>items</code> <em><a href="#litellmconnection">LiteLLMConnection</a> array</em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="litellmconnectionspec">LiteLLMConnectionSpec<a class="headerlink" href="#litellmconnectionspec" title="Permanent link">&para;</a></h4>
+<p>LiteLLMConnectionSpec defines the desired state of LiteLLMConnection.</p>
+<p>CONN-01: a user can declare a LiteLLMConnection with spec.endpoint and
+spec.masterKeySecretRef{name, key}, where both <code>name</code> and <code>key</code> are
+required and non-empty. Field-level CEL constraints are enforced by
+the +kubebuilder:validation:Required + MinLength=1 markers below.</p>
+<p><em>Appears in:</em>
+- <a href="#litellmconnection">LiteLLMConnection</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>endpoint</code> <em>string</em></td>
+<td>Endpoint is the base URL of the LiteLLM instance the operator<br />will probe and mutate against. Example:<br />"http://litellm.default.svc.cluster.local:4000".<br />The endpoint is used for both the periodic GET /models probe<br />(CONN-03, see internal/litellm/keyinfo.go for the §6.1 deviation<br />note) and every Phase 3+ domain mutation call. The value is<br />trimmed of any trailing slash by litellm.NewClient at the wire<br />layer; users may include or omit the trailing slash without<br />observable effect.</td>
+<td></td>
+<td>MinLength: 1 <br />Required: {} <br /></td>
+</tr>
+<tr>
+<td><code>masterKeySecretRef</code> <em><a href="#secretkeyref">SecretKeyRef</a></em></td>
+<td>MasterKeySecretRef points to the Kubernetes Secret that carries<br />the LiteLLM master key (sk-.). Both <code>name</code> and <code>key</code> are<br />required per CONN-01; the SecretKeyRef type enforces non-empty<br />values via its own MinLength=1 markers. The Secret MUST live in<br />the same namespace as the LiteLLMConnection CR (no cross-namespace<br />resolution in v1alpha1).<br />The reconciler reads the Secret with the operator's ServiceAccount<br />at probe time; missing Secret or missing key surfaces as<br />Ready=False, reason=SecretNotFound (§6.0 reason set).</td>
+<td></td>
+<td>Required: {} <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="litellmconnectionstatus">LiteLLMConnectionStatus<a class="headerlink" href="#litellmconnectionstatus" title="Permanent link">&para;</a></h4>
+<p>LiteLLMConnectionStatus defines the observed state of LiteLLMConnection.</p>
+<p>The status surface is intentionally minimal per Claude's Discretion
+default in 02-CONTEXT.md: only <code>observedGeneration</code> and <code>conditions</code>
+are surfaced. Diagnostic fields (lastProbeAt, probeCount, echoed
+endpoint) are deferred — envtests cover probe outcomes
+via the Ready condition itself, no extra fields needed.</p>
+<p><em>Appears in:</em>
+- <a href="#litellmconnection">LiteLLMConnection</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>observedGeneration</code> <em>integer</em></td>
+<td>ObservedGeneration is the metadata.generation of the CR the<br />reconciler most recently processed. Surfaced here even though<br />OWN-08 itself lands in Phase 3 — the reconciler<br />populates this so Phase 3's contract is in place from day one.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>conditions</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#condition-v1-meta">Condition</a> array</em></td>
+<td>Conditions carries the standard metav1.Condition list. The single<br />type defined for LiteLLMConnection is <code>Ready</code>, with reason values<br />drawn from the §6.0 reason set:<br />- Synced — probe succeeded; cache is fresh.<br />- Connecting — entry state, no probe outcome yet.<br />- Unreachable — transient probe failure (5xx, network).<br />- BadMasterKey — 401 from the LiteLLM master-key probe.<br />- SecretNotFound — masterKeySecretRef Secret or key missing.<br />Phase 3+ dependents read this condition via the cache snapshot<br />(internal/connection.Cache), never via direct CR Get.</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="litellmmcpserver">LiteLLMMCPServer<a class="headerlink" href="#litellmmcpserver" title="Permanent link">&para;</a></h4>
+<p>LiteLLMMCPServer is the Schema for the litellmmcpservers API per spec §6.4 (<code>_FINALv3</code>).</p>
+<p>MCP-01: a LiteLLMMCPServer CR registers one MCP server entry against LiteLLM
+via the admin-immediate path (<code>POST /v1/mcp/server</code>). User-authored and
+LiteLLMMCPServerDiscovery-generated CRs are reconciled identically — the
+reconciler does NOT branch on ownerRef state (AC-MS1).</p>
+<p>Finalizer (spec §7.5): <code>mcpservers.litellm.ackstorm.ai/finalizer</code> —
+issues <code>DELETE /v1/mcp/server/&lt;server_id&gt;</code> before the CR is removed
+from etcd. The finalizer constant lives in
+internal/controller/mcpserver_controller.go (Phase 5 PATTERNS.md L129).</p>
+<p><em>Appears in:</em>
+- <a href="#litellmmcpserverlist">LiteLLMMCPServerList</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td><code>litellm.ackstorm.ai/v1alpha1</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td><code>LiteLLMMCPServer</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td>Kind is a string value representing the REST resource this object represents.<br />Servers may infer this from the endpoint the client submits requests to.<br />Cannot be updated.<br />In CamelCase.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td>APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>metadata</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta">ObjectMeta</a></em></td>
+<td>Refer to Kubernetes API documentation for fields of <code>metadata</code>.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>spec</code> <em><a href="#mcpserverspec">MCPServerSpec</a></em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>status</code> <em><a href="#mcpserverstatus">MCPServerStatus</a></em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="litellmmcpserverdiscovery">LiteLLMMCPServerDiscovery<a class="headerlink" href="#litellmmcpserverdiscovery" title="Permanent link">&para;</a></h4>
+<p>LiteLLMMCPServerDiscovery is the Schema for the litellmmcpserverdiscoveries API — the
+second Pipeline B CRD in the operator (after LiteLLMModelDiscovery). It points
+the operator at the cluster's ToolHive deployment and reconciles
+discovered ToolHive <code>MCPServer</code> / <code>VirtualMCPServer</code> objects into a
+fan-out of Kubernetes LiteLLMMCPServer child CRs in WATCH_NAMESPACE.</p>
+<p>Discovery NEVER calls LiteLLM directly; each child reconciles into
+LiteLLM via the Phase 5 LiteLLMMCPServer controller (Pipeline A).</p>
+<p>The two CR-level XValidation rules above enforce:
+- Defensive Type == 'toolhive' (Enum already enforces this; the CEL
+rule documents intent and survives any future Enum expansion).
+- MSDISC-05: refresh.interval &gt;= 1m floor.</p>
+<p>Per Phase 5 D-04 (and MSDISC-04 specifically): MCPServerDiscovery has
+NO upstream-credential reference field. ToolHive reads are authorized
+via the operator's cluster-scoped ServiceAccount RBAC (Phase 5 D-07,
+config/rbac/toolhive_clusterrole.yaml). This is a SCHEMA-LEVEL
+prohibition — the field is structurally absent.</p>
+<p>The Discovery finalizer is <code>mcpserverdiscoveries.litellm.ackstorm.ai/
+finalizer</code>. It issues NO LiteLLM call — its only work is waiting for
+owned children to drain via blockOwnerDeletion=true cascade, then
+removing itself. Each child MCPServer's own finalizer issues
+<code>DELETE /v1/mcp/server/&lt;server_id&gt;</code> on the LiteLLM side (Phase 5 plan
+05-01 mcpserver_controller.go).</p>
+<p><em>Appears in:</em>
+- <a href="#litellmmcpserverdiscoverylist">LiteLLMMCPServerDiscoveryList</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td><code>litellm.ackstorm.ai/v1alpha1</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td><code>LiteLLMMCPServerDiscovery</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td>Kind is a string value representing the REST resource this object represents.<br />Servers may infer this from the endpoint the client submits requests to.<br />Cannot be updated.<br />In CamelCase.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td>APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>metadata</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta">ObjectMeta</a></em></td>
+<td>Refer to Kubernetes API documentation for fields of <code>metadata</code>.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>spec</code> <em><a href="#mcpserverdiscoveryspec">MCPServerDiscoverySpec</a></em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>status</code> <em><a href="#mcpserverdiscoverystatus">MCPServerDiscoveryStatus</a></em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="litellmmcpserverdiscoverylist">LiteLLMMCPServerDiscoveryList<a class="headerlink" href="#litellmmcpserverdiscoverylist" title="Permanent link">&para;</a></h4>
+<p>LiteLLMMCPServerDiscoveryList contains a list of LiteLLMMCPServerDiscovery.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td><code>litellm.ackstorm.ai/v1alpha1</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td><code>LiteLLMMCPServerDiscoveryList</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td>Kind is a string value representing the REST resource this object represents.<br />Servers may infer this from the endpoint the client submits requests to.<br />Cannot be updated.<br />In CamelCase.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td>APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>metadata</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#listmeta-v1-meta">ListMeta</a></em></td>
+<td>Refer to Kubernetes API documentation for fields of <code>metadata</code>.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>items</code> <em><a href="#litellmmcpserverdiscovery">LiteLLMMCPServerDiscovery</a> array</em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="litellmmcpserverlist">LiteLLMMCPServerList<a class="headerlink" href="#litellmmcpserverlist" title="Permanent link">&para;</a></h4>
+<p>LiteLLMMCPServerList contains a list of LiteLLMMCPServer.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td><code>litellm.ackstorm.ai/v1alpha1</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td><code>LiteLLMMCPServerList</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td>Kind is a string value representing the REST resource this object represents.<br />Servers may infer this from the endpoint the client submits requests to.<br />Cannot be updated.<br />In CamelCase.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td>APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>metadata</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#listmeta-v1-meta">ListMeta</a></em></td>
+<td>Refer to Kubernetes API documentation for fields of <code>metadata</code>.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>items</code> <em><a href="#litellmmcpserver">LiteLLMMCPServer</a> array</em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="litellmmodel">LiteLLMModel<a class="headerlink" href="#litellmmodel" title="Permanent link">&para;</a></h4>
+<p>LiteLLMModel is the Schema for the litellmmodels API.</p>
+<p>MODEL-01: a LiteLLMModel CR registers one LiteLLM model entry (a litellm_params +
+model_info pair) against the LiteLLM instance referenced by
+LiteLLMConnection/default. User-authored and Discovery-generated CRs are
+treated identically by the reconciler (OWN-04 silent-overwrite on
+first-reconcile name collision).</p>
+<p>Shape: flat _FINALv3 — no spec.type discriminator, no nested litellm
+sub-object. spec.params and spec.info are pass-through bags. spec.secrets[]
+provides {{NAME}} substitution (§5.2). See ModelSpec for field details.</p>
+<p>LiteLLMModel names are chosen freely by the user (MODEL-01 — not a singleton).
+There is NO CEL singleton-by-name rule on this resource. The spec §7.5
+finalizer name is "models.litellm.ackstorm.ai/finalizer".</p>
+<p><em>Appears in:</em>
+- <a href="#litellmmodellist">LiteLLMModelList</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td><code>litellm.ackstorm.ai/v1alpha1</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td><code>LiteLLMModel</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td>Kind is a string value representing the REST resource this object represents.<br />Servers may infer this from the endpoint the client submits requests to.<br />Cannot be updated.<br />In CamelCase.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td>APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>metadata</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta">ObjectMeta</a></em></td>
+<td>Refer to Kubernetes API documentation for fields of <code>metadata</code>.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>spec</code> <em><a href="#modelspec">ModelSpec</a></em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>status</code> <em><a href="#modelstatus">ModelStatus</a></em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="litellmmodeldiscovery">LiteLLMModelDiscovery<a class="headerlink" href="#litellmmodeldiscovery" title="Permanent link">&para;</a></h4>
+<p>LiteLLMModelDiscovery is the Schema for the litellmmodeldiscoveries API — the
+first Pipeline B CRD (spec §3.3 / §7.1, _FINALv3 two-pipeline model).
+A LiteLLMModelDiscovery CR points the operator at one upstream provider
+(anthropic, bedrock, gemini, kubeai, or openai) and reconciles
+discovered IDs into a fan-out of Kubernetes LiteLLMModel child CRs in
+WATCH_NAMESPACE. Discovery NEVER calls LiteLLM directly; each child
+reconciles into LiteLLM via the Phase 3 LiteLLMModel controller.</p>
+<p>The six CR-level XValidation rules above enforce the per-type
+required/forbidden field matrix from spec §6.3 (provider table) plus
+the MDISC-05 refresh-interval 1-minute floor. SEC-03 list-uniqueness
+for spec.secrets[].as is deferred to the child LiteLLMModel's runtime check
+(same Kubernetes 1.31 CEL-library limitation documented in
+model_types.go:87-93 — reuse the same runtime check from).</p>
+<p>MDISC-22 — required Secret keys per provider are FIXED per spec §6.3:</p>
+<div class="highlight"><pre><span></span><code>anthropic: ANTHROPIC_API_KEY
+bedrock: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY (AWS_SESSION_TOKEN optional)
+gemini: GEMINI_API_KEY (or GOOGLE_API_KEY per provider docs)
+openai: OPENAI_API_KEY
+kubeai: n/a (no credentialsSecretRef)
+</code></pre></div>
+<p>The reconciler validates required keys at credential-resolution time
+and surfaces SecretNotFound if any required key is missing.</p>
+<p>The Discovery finalizer is "modeldiscoveries.litellm.ackstorm.ai/
+finalizer" (mirrors Phase 3's models.litellm.ackstorm.ai/finalizer).
+It issues NO LiteLLM call — its only work is waiting for owned
+children to drain via blockOwnerDeletion=true cascade, then removing
+itself. Each child LiteLLMModel's own finalizer issues POST /model/delete on
+the LiteLLM side (Phase 3 model_controller.go).</p>
+<p><em>Appears in:</em>
+- <a href="#litellmmodeldiscoverylist">LiteLLMModelDiscoveryList</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td><code>litellm.ackstorm.ai/v1alpha1</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td><code>LiteLLMModelDiscovery</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td>Kind is a string value representing the REST resource this object represents.<br />Servers may infer this from the endpoint the client submits requests to.<br />Cannot be updated.<br />In CamelCase.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td>APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>metadata</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta">ObjectMeta</a></em></td>
+<td>Refer to Kubernetes API documentation for fields of <code>metadata</code>.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>spec</code> <em><a href="#modeldiscoveryspec">ModelDiscoverySpec</a></em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>status</code> <em><a href="#modeldiscoverystatus">ModelDiscoveryStatus</a></em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="litellmmodeldiscoverylist">LiteLLMModelDiscoveryList<a class="headerlink" href="#litellmmodeldiscoverylist" title="Permanent link">&para;</a></h4>
+<p>LiteLLMModelDiscoveryList contains a list of LiteLLMModelDiscovery.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td><code>litellm.ackstorm.ai/v1alpha1</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td><code>LiteLLMModelDiscoveryList</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td>Kind is a string value representing the REST resource this object represents.<br />Servers may infer this from the endpoint the client submits requests to.<br />Cannot be updated.<br />In CamelCase.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td>APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>metadata</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#listmeta-v1-meta">ListMeta</a></em></td>
+<td>Refer to Kubernetes API documentation for fields of <code>metadata</code>.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>items</code> <em><a href="#litellmmodeldiscovery">LiteLLMModelDiscovery</a> array</em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="litellmmodellist">LiteLLMModelList<a class="headerlink" href="#litellmmodellist" title="Permanent link">&para;</a></h4>
+<p>LiteLLMModelList contains a list of LiteLLMModel.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td><code>litellm.ackstorm.ai/v1alpha1</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td><code>LiteLLMModelList</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td>Kind is a string value representing the REST resource this object represents.<br />Servers may infer this from the endpoint the client submits requests to.<br />Cannot be updated.<br />In CamelCase.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td>APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>metadata</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#listmeta-v1-meta">ListMeta</a></em></td>
+<td>Refer to Kubernetes API documentation for fields of <code>metadata</code>.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>items</code> <em><a href="#litellmmodel">LiteLLMModel</a> array</em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="litellmteam">LiteLLMTeam<a class="headerlink" href="#litellmteam" title="Permanent link">&para;</a></h4>
+<p>LiteLLMTeam is the Schema for the litellmteams API per spec §6.7 (<code>_FINALv3</code>).</p>
+<p>TEAM-01.04 acceptance criteria + AC-T1 (projection assertions) + AC-T6
+(<code>Team/default</code> carve-out behavior — implemented in reconciler,
+NOT in this type).</p>
+<p>The operator uses the bare <code>metadata.name</code> as the LiteLLM <code>team_alias</code>
+for every Team, including the reserved <code>default</code>. There is no
+team-name prefix and no overlay metadata. Spec §6.7 explicitly allows
+a user-authored <code>Team/default</code> override (ownership transition handled by
+the reconciler); a CEL singleton-by-name rule would block AC-T2 and is
+NOT applied to this resource.</p>
+<p>Default-team carve-out:
+- If no <code>Team/default</code> CR exists, the operator bootstraps the LiteLLM
+<code>team_alias=default</code> with no budget via a synthetic reconcile on
+manager start (after the cached <code>LiteLLMConnection/default</code> first
+reaches <code>Ready=True</code>) and on each 30-min safety re-list (§7.4, §7.6).
+- If a <code>Team/default</code> CR exists, the operator reconciles it normally
+(ownership transition: re-uses the LiteLLM team, does NOT recreate).
+- Deletion of <code>Team/default</code> is suppressed: the operator re-applies
+the implicit empty spec to the LiteLLM team <code>default</code>, then removes
+the finalizer. <code>POST /team/delete</code> is NEVER called for the alias
+<code>default</code>.</p>
+<p>Finalizer (spec §7.5): <code>teams.litellm.ackstorm.ai/finalizer</code> — issues
+<code>POST /team/delete</code> with body <code>{"team_ids": [&lt;lastRendered.teamID&gt;]}</code>
+before the CR is removed from etcd. The default-team
+carve-out short-circuits the LiteLLM call.</p>
+<p><em>Appears in:</em>
+- <a href="#litellmteamlist">LiteLLMTeamList</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td><code>litellm.ackstorm.ai/v1alpha1</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td><code>LiteLLMTeam</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td>Kind is a string value representing the REST resource this object represents.<br />Servers may infer this from the endpoint the client submits requests to.<br />Cannot be updated.<br />In CamelCase.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td>APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>metadata</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta">ObjectMeta</a></em></td>
+<td>Refer to Kubernetes API documentation for fields of <code>metadata</code>.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>spec</code> <em><a href="#teamspec">TeamSpec</a></em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>status</code> <em><a href="#teamstatus">TeamStatus</a></em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="litellmteamlist">LiteLLMTeamList<a class="headerlink" href="#litellmteamlist" title="Permanent link">&para;</a></h4>
+<p>LiteLLMTeamList contains a list of LiteLLMTeam.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td><code>litellm.ackstorm.ai/v1alpha1</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td><code>LiteLLMTeamList</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td>Kind is a string value representing the REST resource this object represents.<br />Servers may infer this from the endpoint the client submits requests to.<br />Cannot be updated.<br />In CamelCase.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td>APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>metadata</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#listmeta-v1-meta">ListMeta</a></em></td>
+<td>Refer to Kubernetes API documentation for fields of <code>metadata</code>.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>items</code> <em><a href="#litellmteam">LiteLLMTeam</a> array</em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="mcpserverdiscoveryfilters">MCPServerDiscoveryFilters<a class="headerlink" href="#mcpserverdiscoveryfilters" title="Permanent link">&para;</a></h4>
+<p>MCPServerDiscoveryFilters carries the RE2 include/exclude pattern lists
+applied to the POST-DERIVATION dotted three-part name (per spec §6.5).
+The filter target is the DOTTED name, NOT the bare ToolHive object
+name; this is the most common source of user confusion at runtime and
+Will land a regression test exercising the dotted form.</p>
+<p>RE2 compile validity is a RUNTIME concern (CEL has no regex-compile
+primitive). codes the compile + classification — invalid
+patterns surface as Ready=False, reason=InvalidConfig with a message
+naming the offending pattern.</p>
+<p><em>Appears in:</em>
+- <a href="#mcpserverdiscoveryspec">MCPServerDiscoverySpec</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>include</code> <em>string array</em></td>
+<td>Include narrows the candidate set: a candidate dotted name is<br />admitted only if it matches at least one pattern in Include. Empty<br />(or absent) Include means "admit all". If Include is non-empty<br />and matches ZERO candidates, the reconcile surfaces Ready=False,<br />reason=UpstreamInvalid (operator-intent vs upstream-reality drift).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>exclude</code> <em>string array</em></td>
+<td>Exclude removes candidates from the post-Include set: a candidate<br />is filtered out if it matches any pattern in Exclude. Empty (or<br />absent) Exclude means "exclude nothing". Exclude is forward-looking<br />defense — zero matches is fine (lenient semantics per spec §6.5).</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="mcpserverdiscoveryrefresh">MCPServerDiscoveryRefresh<a class="headerlink" href="#mcpserverdiscoveryrefresh" title="Permanent link">&para;</a></h4>
+<p>MCPServerDiscoveryRefresh controls the periodic refresh cadence. The
+reconciler returns ctrl.Result{RequeueAfter: Interval} on every
+successful refresh. The 1-minute floor is enforced at the resource
+root via a +kubebuilder:validation:XValidation CEL rule (MSDISC-05):
+duration(self.spec.refresh.interval) &gt;= duration('1m').</p>
+<p><em>Appears in:</em>
+- <a href="#mcpserverdiscoveryspec">MCPServerDiscoverySpec</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>interval</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#duration-v1-meta">Duration</a></em></td>
+<td>Interval is the cadence between two successive ToolHive-list<br />reconciles. metav1.Duration accepts kubectl-friendly strings like<br />"5m", "1h", "30m". CEL floor of 1m is enforced at admission.</td>
+<td></td>
+<td>Required: {} <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="mcpserverdiscoveryspec">MCPServerDiscoverySpec<a class="headerlink" href="#mcpserverdiscoveryspec" title="Permanent link">&para;</a></h4>
+<p>MCPServerDiscoverySpec defines the desired state of MCPServerDiscovery —
+the flat <code>_FINALv3</code> shape (spec §6.5). One MCPServerDiscovery CR points
+the operator at the cluster's ToolHive deployment (the only allowed
+<code>spec.type</code> value in v1alpha1) and generates a fan-out of Kubernetes
+MCPServer child CRs (Pipeline B per spec §3.3).</p>
+<p>Discovery NEVER calls LiteLLM directly; each generated child reconciles
+into LiteLLM via the Phase 5 MCPServer controller (Pipeline A). This
+mirrors the Phase 4 ModelDiscovery → Model relationship.</p>
+<p>MSDISC-01 narrows spec.type to {toolhive} via the Enum marker. MSDISC-04
+(no upstream-credential reference field — schema-level prohibition) is
+structurally enforced by the <em>absence</em> of any such field. MSDISC-05
+(refresh.interval 1m floor) is enforced via CEL XValidation on the
+resource root. MSDISC-14 (toolhive sub-block presence + minItems=1 on
+namespaces) is enforced at the schema level.</p>
+<p><em>Appears in:</em>
+- <a href="#litellmmcpserverdiscovery">LiteLLMMCPServerDiscovery</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>type</code> <em>string</em></td>
+<td>Type discriminates the upstream Discovery source. In v1alpha1 the<br />ONLY allowed value is <code>toolhive</code>. The Enum marker below admits<br />nothing else; future Discovery sources (e.g. an A2A-side directory,<br />a Kubernetes-API-server-side scan) would expand this Enum without<br />breaking the existing schema (additive Enum values are non-breaking).<br />MSDISC-01 enforces this at admission.</td>
+<td></td>
+<td>Enum: [toolhive] <br />Required: {} <br /></td>
+</tr>
+<tr>
+<td><code>toolhive</code> <em><a href="#mcpserverdiscoverytoolhive">MCPServerDiscoveryToolhive</a></em></td>
+<td>Toolhive carries the toolhive-specific configuration sub-block.<br />Required because in v1alpha1 <code>spec.type</code> is always <code>toolhive</code>; a<br />future discriminator-aware schema (when other Discovery sources<br />land) will gate this with a CEL XValidation rule similar to<br />ModelDiscovery's per-provider matrix.</td>
+<td></td>
+<td>Required: {} <br /></td>
+</tr>
+<tr>
+<td><code>params</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#rawextension-runtime-pkg">RawExtension</a></em></td>
+<td>Params is a pass-through bag of fields PROPAGATED VERBATIM into<br />every generated child MCPServer's spec.params (AC-SEC4-PROPAGATE).<br />Discovery does NOT perform substitution itself; the Phase 5 MCPServer<br />reconciler substitutes them on the child's own reconcile (§5.2).<br />Any JSON object is accepted (x-kubernetes-preserve-unknown-fields:<br />true). String-typed leaves may carry {{NAME}} placeholders matched<br />against spec.secrets[] on the child's reconcile.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>secrets</code> <em><a href="#secretsubstitution">SecretSubstitution</a> array</em></td>
+<td>Secrets is the substitution map PROPAGATED verbatim into every<br />generated child MCPServer's spec.secrets[] (AC-SEC4-PROPAGATE).<br />Discovery does NOT perform substitution itself — the propagated<br />entries ride along and the Phase 5 MCPServer reconciler substitutes<br />them on the child's own reconcile.<br />MSDisc has NO field for upstream-source credentials — ToolHive<br />reads are authorized via the operator's cluster-scoped<br />ServiceAccount RBAC (config/rbac/toolhive_clusterrole.yaml) per<br />Phase 5 D-07. MSDISC-04 makes the schema-level prohibition<br />load-bearing — credentials for the upstream source and credentials<br />for inference MUST be expressed via DIFFERENT mechanisms (cluster<br />RBAC vs spec.secrets[]).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>filters</code> <em><a href="#mcpserverdiscoveryfilters">MCPServerDiscoveryFilters</a></em></td>
+<td>Filters narrows the post-derivation candidate set via RE2<br />include/exclude patterns matched against the POST-DERIVATION<br />dotted three-part name (<code>&lt;discovery-name&gt;.&lt;toolhive-namespace&gt;.&lt;br /&gt;&lt;toolhive-name&gt;</code>) per spec §6.5. Empty (absent) Filters means<br />"no filtering" (every discovered ToolHive object becomes a<br />candidate).<br />Per spec §6.5: include FIRST (strict — empty match-set surfaces<br />as Ready=False, reason=UpstreamInvalid), then exclude (lenient —<br />empty match-set is fine). The reconciler in enforces<br />the order; this CRD type only carries the patterns.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>refresh</code> <em><a href="#mcpserverdiscoveryrefresh">MCPServerDiscoveryRefresh</a></em></td>
+<td>Refresh controls the periodic ToolHive-list cadence. The<br />reconciler returns ctrl.Result{RequeueAfter: spec.refresh.interval}<br />on success (Phase 4 D-08 inherited). The CEL floor of 1 minute<br />(MSDISC-05) is enforced at the resource root via the</td>
+<td></td>
+<td>Required: {} <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="mcpserverdiscoverystatus">MCPServerDiscoveryStatus<a class="headerlink" href="#mcpserverdiscoverystatus" title="Permanent link">&para;</a></h4>
+<p>MCPServerDiscoveryStatus defines the observed state of MCPServerDiscovery —
+the <code>_FINALv3</code> Pipeline B status surface. Mirrors ModelDiscoveryStatus
+with MCP-side renames (MCPServerSkippedCandidate / MCPServerFailedCandidate)
+to avoid Go name collision with the Phase 4 ModelDiscovery types in the
+same package.</p>
+<p>Spec §6.5 invariant:</p>
+<div class="highlight"><pre><span></span><code>discoveredCount == generatedCount
+</code></pre></div>
+<p>(Filtered-out names are NOT counted in discoveredCount.)</p>
+<p>Two condition types are written on every reconcile (each idempotent
+via apimeta.SetStatusCondition):</p>
+<div class="highlight"><pre><span></span><code>Ready — top-level readiness with reasons:
+ {Synced, SourceUnreachable, SecretNotFound,
+ InvalidConfig, UpstreamInvalid}
+ NOTE: LiteLLMUnavailable / LiteLLMRejected are
+ NOT Discovery-level reasons (Discovery never
+ calls LiteLLM — MSDISC-16). Those reasons surface
+ on the child MCPServer&#39;s status.
+
+SourceReachable — ToolHive-list reachability with reasons:
+ {Ok, Unreachable}
+ Used as the gate for vanish-detection (Phase 4
+ D-09 inherited): diff-and-delete is skipped when
+ this is False.
+</code></pre></div>
+<p><em>Appears in:</em>
+- <a href="#litellmmcpserverdiscovery">LiteLLMMCPServerDiscovery</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>observedGeneration</code> <em>integer</em></td>
+<td>ObservedGeneration is the metadata.generation of the<br />MCPServerDiscovery the reconciler most recently processed<br />successfully (OWN-08 carry-forward).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>conditions</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#condition-v1-meta">Condition</a> array</em></td>
+<td>Conditions carries the metav1.Condition list. Two condition types<br />are populated on every reconcile:<br />Ready — reasons: Synced, SourceUnreachable,<br />SecretNotFound, InvalidConfig, UpstreamInvalid.<br />LiteLLMUnavailable / LiteLLMRejected are NOT<br />valid here (MSDISC-16).<br />SourceReachable — reasons: Ok, Unreachable.<br />The atomic-refresh-snapshot vanish guard<br />(Phase 4 D-09 inherited) gates diff-and-delete<br />on SourceReachable=True.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>discoveredCount</code> <em>integer</em></td>
+<td>DiscoveredCount is the size of the post-filter candidate set on<br />the most recent successful refresh (filtered-out IDs are NOT<br />counted). Maintains the invariant noted on<br />MCPServerDiscoveryStatus's godoc above.</td>
+<td>0</td>
+<td></td>
+</tr>
+<tr>
+<td><code>generatedCount</code> <em>integer</em></td>
+<td>GeneratedCount is len(GeneratedChildren) — the number of child<br />MCPServer CRs the Discovery currently owns (SSA-applied with<br />ownerReferences[controller=true, blockOwnerDeletion=true] +<br />labels[litellm.ackstorm.ai/generated-by=<this>]).</td>
+<td>0</td>
+<td></td>
+</tr>
+<tr>
+<td><code>generatedChildren</code> <em>string array</em></td>
+<td>GeneratedChildren lists the metadata.name of every owned child<br />MCPServer CR (sorted for deterministic kubectl get -o yaml<br />output). On the next reconcile, the reconciler uses a label-<br />selector (litellm.ackstorm.ai/generated-by=<this>) for ACTUAL<br />ownership enumeration; this list is a status echo for human<br />inspection, not the source of truth.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>skippedCandidates</code> <em><a href="#mcpserverskippedcandidate">MCPServerSkippedCandidate</a> array</em></td>
+<td>SkippedCandidates records candidates that were NOT generated as<br />child MCPServers because of K8s-native conflict resolution OR<br />because of a Discovery-side validation skip. Each entry names<br />the candidate and the reason.<br />Reason enum per spec §6.5 + Phase 5 D-10 (exhaustive):<br />ExplicitMCPServerExists — a child with the same name already<br />exists and its controller ownerRef<br />does NOT point at this Discovery.<br />DuplicateDiscovery — a child with the same name exists and<br />is owned by a DIFFERENT Discovery<br />(structurally rare under dotted naming).<br />OwnedBy names the winner.<br />EndpointUnknown — the ToolHive object has empty/absent<br />status.url (MSDISC-12).<br />InvalidTransport — the ToolHive object's status.transport<br />value is not in the normalization map<br />(<code>streamable-http → http</code>, <code>sse → sse</code>,<br />absent → <code>http</code>). Anything else<br />(e.g. <code>stdio</code>, <code>unknown</code>, custom) is<br />skipped. Added per Phase 5 D-10.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>failedCandidates</code> <em><a href="#mcpserverfailedcandidate">MCPServerFailedCandidate</a> array</em></td>
+<td>FailedCandidates records candidates whose SSA write to the K8s<br />apiserver failed for a reason other than name collision. Each<br />entry names the candidate and the reason.<br />Reason enum (single-valued under <code>_FINALv3</code>):<br />ChildCRWriteFailed — the K8s apiserver rejected the SSA patch<br />(server timeout, rate-limit, service<br />unavailable, SSA field conflict, etc.).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>lastRefreshAt</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#time-v1-meta">Time</a></em></td>
+<td>LastRefreshAt is the timestamp of the most recent SUCCESSFUL<br />ToolHive-list reconcile (NOT every reconcile attempt — transient<br />failures do not update this field). Mirrors Phase 4<br />ModelDiscoveryStatus.LastRefreshAt semantics.</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="mcpserverdiscoverytoolhive">MCPServerDiscoveryToolhive<a class="headerlink" href="#mcpserverdiscoverytoolhive" title="Permanent link">&para;</a></h4>
+<p>MCPServerDiscoveryToolhive carries the toolhive-source-specific
+configuration. Per Phase 5 D-06: the ToolHive API group is
+<code>toolhive.stacklok.dev/v1beta1</code> (NOT the autoconfig-divergent
+v1alpha1); the informer is cluster-scoped per kind (D-07);
+<code>Namespaces[]</code> is an in-memory filter on event handlers — no
+informer reconfig on live namespace-list change.</p>
+<p><em>Appears in:</em>
+- <a href="#mcpserverdiscoveryspec">MCPServerDiscoverySpec</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>namespaces</code> <em>string array</em></td>
+<td>Namespaces enumerates the Kubernetes namespaces from which<br />ToolHive <code>MCPServer</code> / <code>VirtualMCPServer</code> objects should be<br />considered for discovery. ToolHive objects in OTHER namespaces<br />are silently ignored.<br />MUST contain at least one entry (MinItems=1). Each entry MUST be<br />a non-empty DNS-1123-friendly string (MinLength=1); CRD-layer<br />validation does NOT enforce DNS-1123 format because the cluster's<br />own namespace creation already enforces that contract.</td>
+<td></td>
+<td>MinItems: 1 <br />Required: {} <br /></td>
+</tr>
+<tr>
+<td><code>kinds</code> <em>string array</em></td>
+<td>Kinds enumerates the ToolHive resource kinds to watch. Defaults<br />to both <code>MCPServer</code> and <code>VirtualMCPServer</code> (per spec §6.5). A user<br />who wants Discovery limited to one kind (e.g. only <code>MCPServer</code>)<br />specifies a singleton list.<br />Empty list is REJECTED at admission via the Enum constraint on<br />each item — but the default ensures the omitted-field case is<br />"watch both", not "watch nothing".</td>
+<td>[MCPServer VirtualMCPServer]</td>
+<td>items:Enum: [MCPServer VirtualMCPServer] <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="mcpserverfailedcandidate">MCPServerFailedCandidate<a class="headerlink" href="#mcpserverfailedcandidate" title="Permanent link">&para;</a></h4>
+<p>MCPServerFailedCandidate records a candidate whose K8s apiserver write
+(SSA patch) failed for a non-collision reason. Single-valued enum per
+<code>_FINALv3</code>: Discovery never calls LiteLLM, so LiteLLM-side reasons are
+NOT valid here.</p>
+<p>The MCPServer- prefix on the Go type avoids a name collision with the
+Phase 4 ModelDiscovery <code>FailedCandidate</code> type in the same package.</p>
+<p><em>Appears in:</em>
+- <a href="#mcpserverdiscoverystatus">MCPServerDiscoveryStatus</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code> <em>string</em></td>
+<td>Name is the candidate dotted three-part name<br />(<code>&lt;discovery-name&gt;.&lt;toolhive-namespace&gt;.&lt;toolhive-name&gt;</code>).</td>
+<td></td>
+<td>MinLength: 1 <br />Required: {} <br /></td>
+</tr>
+<tr>
+<td><code>reason</code> <em>string</em></td>
+<td>Reason classifies the failure. Single-valued enum: only<br />ChildCRWriteFailed is valid; LiteLLM-side reasons surface on<br />the child MCPServer's status instead.</td>
+<td></td>
+<td>Enum: [ChildCRWriteFailed] <br />Required: {} <br /></td>
+</tr>
+<tr>
+<td><code>message</code> <em>string</em></td>
+<td>Message is a free-form diagnostic.</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="mcpserverlastrenderedstatus">MCPServerLastRenderedStatus<a class="headerlink" href="#mcpserverlastrenderedstatus" title="Permanent link">&para;</a></h4>
+<p>MCPServerLastRenderedStatus records the post-substitution rendered MCPServer
+state last successfully applied to LiteLLM (Phase 5 D-03).</p>
+<p>Per Phase 5 D-02, <code>ServerID</code> is pinned across reconciles — the reconciler
+resolves the LiteLLM-assigned server_id once (via <code>GET /v1/mcp/server</code> +
+in-memory name filter on first reconcile) then reads from status
+thereafter. Diverges from spec §6.4 (silent on persistence); documented
+in spec/DEFECTS-1.82.6.md row <code>DEF-§6.4/§6.6-ID-PERSIST</code>.</p>
+<p>Per Phase 5 D-01, the Probe 10c verdict on LiteLLM 1.83.10-stable is ✓
+(PUT /v1/mcp/server IS wholesale-replace). <code>ParamsKeys</code> is therefore
+informational only on this path — it is recorded for observability /
+the create→update boundary but is NOT load-bearing for shrinkage
+detection (no delete-and-recreate path is committed in the MCPServer
+reconciler — see 05-CONTEXT.md D-01 "If positive" branch).</p>
+<p><em>Appears in:</em>
+- <a href="#mcpserverstatus">MCPServerStatus</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>hash</code> <em>string</em></td>
+<td>Hash is the SHA-256 hex of the RFC 8785–canonicalized merged<br />post-substitution body (spec.params merged with structural<br />overlays {server_name, url, transport}). An empty hash indicates<br />the MCPServer has not yet been successfully reconciled.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>paramsKeys</code> <em>string array</em></td>
+<td>ParamsKeys is the sorted list of top-level keys present in<br />spec.params at the time of the last successful render. Per Phase 5<br />D-01 (✓ verdict on Probe 10c — PUT IS wholesale-replace on<br />1.83.10-stable), this field is informational only: the simple PUT<br />update path does not need per-bag shrinkage detection. The field<br />is retained for observability and forward-compat with any future<br />downgrade path.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>serverID</code> <em>string</em></td>
+<td>ServerID is the LiteLLM-assigned UUID (server_id) for this MCP<br />server entry. Pinned per Phase 5 D-02 so the reconciler can call<br /><code>DELETE /v1/mcp/server/&lt;server_id&gt;</code> directly on the finalizer<br />path without re-resolving by name. On first reconcile, resolved<br />via <code>GET /v1/mcp/server</code> + in-memory filter on metadata.name.<br />Diverges from spec §6.4: documented in<br />spec/DEFECTS-1.82.6.md row <code>DEF-§6.4/§6.6-ID-PERSIST</code>.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>at</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#time-v1-meta">Time</a></em></td>
+<td>At is the timestamp of the last SUCCESSFUL render (NOT every<br />reconcile attempt — transient failures do not update this field).</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="mcpserverskippedcandidate">MCPServerSkippedCandidate<a class="headerlink" href="#mcpserverskippedcandidate" title="Permanent link">&para;</a></h4>
+<p>MCPServerSkippedCandidate records a candidate that was NOT generated
+as a child MCPServer due to K8s-native conflict resolution or a
+Discovery-side validation skip. The Reason enum is exhaustive per spec
+§6.5 + Phase 5 D-10 (which added the <code>InvalidTransport</code> value).</p>
+<p>The MCPServer- prefix on the Go type avoids a name collision with the
+Phase 4 ModelDiscovery <code>SkippedCandidate</code> type in the same package.</p>
+<p><em>Appears in:</em>
+- <a href="#mcpserverdiscoverystatus">MCPServerDiscoveryStatus</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code> <em>string</em></td>
+<td>Name is the candidate dotted three-part name<br />(<code>&lt;discovery-name&gt;.&lt;toolhive-namespace&gt;.&lt;toolhive-name&gt;</code>) that<br />would have become the child MCPServer's metadata.name.</td>
+<td></td>
+<td>MinLength: 1 <br />Required: {} <br /></td>
+</tr>
+<tr>
+<td><code>reason</code> <em>string</em></td>
+<td>Reason classifies the skip. Exhaustive enum per spec §6.5 +<br />Phase 5 D-10:<br />ExplicitMCPServerExists — name collides with a user-authored<br />MCPServer (no controller ownerRef<br />back at this Discovery).<br />DuplicateDiscovery — name collides with a child owned by<br />a different MCPServerDiscovery.<br />OwnedBy names the winning Discovery<br />(<namespace>/<name>).<br />EndpointUnknown — ToolHive object's status.url is empty<br />or absent (MSDISC-12).<br />InvalidTransport — ToolHive object's status.transport<br />value is not in the normalization<br />map; the candidate is dropped to<br />avoid emitting an MCPServer with a<br />transport that fails CEL admission<br />on the child CR (CRD enum is<br />{http, sse}; ToolHive may emit<br /><code>streamable-http</code>, <code>sse</code>, <code>stdio</code>,<br />custom strings).</td>
+<td></td>
+<td>Enum: [ExplicitMCPServerExists DuplicateDiscovery EndpointUnknown InvalidTransport] <br />Required: {} <br /></td>
+</tr>
+<tr>
+<td><code>ownedBy</code> <em>string</em></td>
+<td>OwnedBy is the <namespace>/<name> of the MCPServerDiscovery<br />winning a DuplicateDiscovery collision (or the explicit MCPServer<br />owner for ExplicitMCPServerExists). Empty for EndpointUnknown<br />and InvalidTransport (no collision — the candidate's own data<br />was rejected).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>message</code> <em>string</em></td>
+<td>Message is a free-form diagnostic. Per §9.1, MUST NOT contain<br />secret material (the operator only handles ToolHive metadata<br />fields, not secret payloads, so this is structurally easy to<br />satisfy).</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="mcpserverspec">MCPServerSpec<a class="headerlink" href="#mcpserverspec" title="Permanent link">&para;</a></h4>
+<p>MCPServerSpec defines the desired state of MCPServer per spec §6.4
+(<code>_FINALv3</code> flat shape).</p>
+<p>MCP-01: a user can declare an MCPServer CR registering one MCP server
+entry against the LiteLLM instance referenced by LiteLLMConnection/default.
+<code>spec.endpoint</code> (required) and <code>spec.transport ∈ {http, sse}</code> (CEL enum)
+are the modeled typed fields; <code>spec.params</code> is a JSON pass-through bag
+forwarded verbatim to LiteLLM's <code>NewMCPServerRequest</code>/<code>UpdateMCPServerRequest</code>
+body. The operator NEVER adds operator-side defaults to the bag and never
+branches its LiteLLM-write path on <code>metadata.ownerReferences[].kind ==
+MCPServerDiscovery</code> — user-authored and Discovery-generated MCPServers
+reconcile identically (MCP-01 / AC-MS1).</p>
+<p>MCP-02: <code>spec.params</code> accepts arbitrary nested JSON
+(x-kubernetes-preserve-unknown-fields: true). String-typed leaves may
+contain <code>{{NAME}}</code> placeholders resolved from <code>spec.secrets[]</code> (§5.2,
+Phase 3 D-05); non-string leaves pass through unchanged.</p>
+<p>MCP-03: <code>spec.transport</code> is admission-validated against the enum
+<code>{http, sse}</code> (spec §6.4). <code>stdio</code> and any other value are rejected at
+admission — the MCPServer reconciler ships the value verbatim to LiteLLM
+and does NOT translate (translation belongs to MCPServerDiscovery per
+Phase 5 D-10 — <code>streamable-http → http</code>).</p>
+<p>MCP-04: the operator updates via <code>PUT /v1/mcp/server</code> (wholesale-replace,
+empirically validated by Probe 10c on 1.83.10-stable per Phase 5 plan
+05-00) and deletes via <code>DELETE /v1/mcp/server/&lt;id&gt;</code>.</p>
+<p><em>Appears in:</em>
+- <a href="#litellmmcpserver">LiteLLMMCPServer</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>endpoint</code> <em>string</em></td>
+<td>Endpoint is the MCP server URL forwarded verbatim as the <code>url</code><br />field of LiteLLM's <code>NewMCPServerRequest</code>/<code>UpdateMCPServerRequest</code>.<br />Required + non-empty per spec §6.4. The reconciler does NOT<br />validate scheme/host structure beyond MinLength=1; users are<br />responsible for supplying a well-formed URL their MCP runtime<br />accepts.</td>
+<td></td>
+<td>MinLength: 1 <br />Required: {} <br /></td>
+</tr>
+<tr>
+<td><code>transport</code> <em>string</em></td>
+<td>Transport is the wire transport vocabulary the MCP server speaks.<br />Admitted values: <code>http</code> and <code>sse</code> (spec §6.4). <code>stdio</code> and any<br />other value are rejected at admission by the CEL enum below.<br />The MCPServer reconciler ships this value verbatim to LiteLLM —<br />no operator-side translation. Discovery-side normalization<br />(<code>streamable-http → http</code>) is implemented in the MCPServerDiscovery<br />controller per Phase 5 D-10; explicit MCPServer CRs already arrive<br />post-normalization (the user types <code>http</code> or <code>sse</code> directly).</td>
+<td></td>
+<td>Enum: [http sse] <br />Required: {} <br /></td>
+</tr>
+<tr>
+<td><code>params</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#rawextension-runtime-pkg">RawExtension</a></em></td>
+<td>Params is a pass-through bag of fields forwarded verbatim to<br />LiteLLM's <code>NewMCPServerRequest</code> / <code>UpdateMCPServerRequest</code> body.<br />Any JSON object is accepted (x-kubernetes-preserve-unknown-fields:<br />true). String-typed leaf values may contain <code>\{\{NAME\}\}</code> placeholders<br />resolved from <code>spec.secrets[]</code> before the body reaches LiteLLM<br />(§5.2, Phase 3 D-05). Non-string leaves are forwarded unchanged<br />(Phase 3 SEC-02 contract carry-forward).<br />The operator NEVER adds, defaults, or removes keys inside this<br />bag — the user's declared keyset IS the desired state. Per spec<br />§6.4, "anything outside the modeled set belongs inside <code>mcp_info</code>"<br />is the USER's contract, not the operator's: the operator does NOT<br />auto-route unknown top-level keys into <code>mcp_info</code>.<br />On each reconcile, the rendered post-substitution body is hashed<br />(SHA-256) and compared against <code>status.lastRendered.hash</code> to<br />detect drift (Phase 3 D-01).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>secrets</code> <em><a href="#secretsubstitution">SecretSubstitution</a> array</em></td>
+<td>Secrets is the substitution map for resolving <code>\{\{NAME\}\}</code><br />placeholders in <code>spec.params</code> string-typed leaves (§5.2, Phase 3<br />D-05). Each entry maps an uppercase NAME (the <code>as</code> field) to a<br />Kubernetes Secret key (<code>secretRef</code>). Placeholders in the bag are<br />replaced with the resolved plaintext value before the body is<br />forwarded to LiteLLM. Secret material NEVER appears in logs,<br />Events, or <code>status.conditions[].message</code> (§9.1, AC-S1).<br />SEC-03 uniqueness of <code>spec.secrets[].as</code> values is enforced as a<br />runtime check in the MCPServer reconciler (same pattern as Model<br />— CEL list-uniqueness was deferred to v1beta1).</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="mcpserverstatus">MCPServerStatus<a class="headerlink" href="#mcpserverstatus" title="Permanent link">&para;</a></h4>
+<p>MCPServerStatus defines the observed state of MCPServer per spec §6.4 +
+Phase 5 D-03 (nested <code>lastRendered</code> substruct).</p>
+<p><em>Appears in:</em>
+- <a href="#litellmmcpserver">LiteLLMMCPServer</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>observedGeneration</code> <em>integer</em></td>
+<td>ObservedGeneration is the metadata.generation of the MCPServer CR<br />the reconciler most recently processed successfully. Consumers can<br />compare this against metadata.generation to detect whether the<br />current spec has been reconciled yet (Phase 3 OWN-08 carry-forward).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>conditions</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#condition-v1-meta">Condition</a> array</em></td>
+<td>Conditions carries the standard metav1.Condition list. The single<br />type defined for MCPServer is <code>Ready</code>, with reason values from §6.0:<br />- Synced — rendered body matches LiteLLM; no drift.<br />- LiteLLMUnavailable — LiteLLMConnection/default not Ready<br />(D-08 echo-reason from connection cache).<br />- LiteLLMRejected — LiteLLM returned a 4xx (non-401) on mutation.<br />- SecretNotFound — a spec.secrets[].secretRef is missing OR<br />a <code>\{\{NAME\}\}</code> placeholder has no matching<br />spec.secrets[].as entry.<br />- InvalidConfig — spec.params not valid JSON, or duplicate<br />spec.secrets[].as values.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>lastRendered</code> <em><a href="#mcpserverlastrenderedstatus">MCPServerLastRenderedStatus</a></em></td>
+<td>LastRendered is the operator-side drift source of truth per Phase 3<br />D-01 / D-07 (extended for MCPServer per Phase 5 D-03). It records<br />the post-substitution rendered state that was last successfully<br />applied to LiteLLM. The reconciler compares the current desired<br />state hash against <code>lastRendered.hash</code> to detect drift without<br />querying the LiteLLM API on every reconcile.</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="modeldiscoveryfilters">ModelDiscoveryFilters<a class="headerlink" href="#modeldiscoveryfilters" title="Permanent link">&para;</a></h4>
+<p>ModelDiscoveryFilters carries the RE2 include/exclude pattern lists
+applied to the raw provider-returned candidate IDs. Empty (absent)
+means "no filtering"; an empty slice on either side is identical to
+absent. Per spec §6.3, both lists use RE2 syntax and are
+anchored-from-start (the autoconfig matches_any semantics).</p>
+<p>RE2 compile validity is a RUNTIME concern (CEL has no regex-compile
+primitive). codes the compile + classification — invalid
+patterns surface as Ready=False, reason=InvalidConfig with a message
+naming the offending pattern.</p>
+<p><em>Appears in:</em>
+- <a href="#modeldiscoveryspec">ModelDiscoverySpec</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>include</code> <em>string array</em></td>
+<td>Include narrows the candidate set: a candidate ID is admitted only<br />if it matches at least one pattern in Include. Empty (or absent)<br />Include means "admit all" (no narrowing). If Include is non-empty<br />and matches ZERO provider IDs, the reconcile surfaces Ready=False,<br />reason=UpstreamInvalid (operator-intent vs upstream-reality drift).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>exclude</code> <em>string array</em></td>
+<td>Exclude removes candidates from the post-Include set: a candidate<br />is filtered out if it matches any pattern in Exclude. Empty (or<br />absent) Exclude means "exclude nothing". Exclude is forward-looking<br />defense — zero matches is fine (lenient semantics per spec §6.3).</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="modeldiscoveryrefresh">ModelDiscoveryRefresh<a class="headerlink" href="#modeldiscoveryrefresh" title="Permanent link">&para;</a></h4>
+<p>ModelDiscoveryRefresh controls the periodic refresh cadence. The
+reconciler returns ctrl.Result{RequeueAfter: Interval} on every
+successful refresh (D-08). The 1-minute floor is enforced at the
+resource root via a +kubebuilder:validation:XValidation CEL rule
+(MDISC-05): duration(self.spec.refresh.interval) &gt;= duration('1m').</p>
+<p><em>Appears in:</em>
+- <a href="#modeldiscoveryspec">ModelDiscoverySpec</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>interval</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#duration-v1-meta">Duration</a></em></td>
+<td>Interval is the cadence between two successive provider-list<br />reconciles. metav1.Duration accepts kubectl-friendly strings like<br />"5m", "1h", "30m". CEL floor of 1m is enforced at admission.</td>
+<td></td>
+<td>Required: {} <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="modeldiscoveryspec">ModelDiscoverySpec<a class="headerlink" href="#modeldiscoveryspec" title="Permanent link">&para;</a></h4>
+<p>ModelDiscoverySpec defines the desired state of ModelDiscovery — the
+flat _FINALv3 shape (spec §6.3). One ModelDiscovery CR points the
+operator at a single upstream provider (anthropic, bedrock, gemini,
+kubeai, or openai) and generates a fan-out of Kubernetes Model child
+CRs (Pipeline B per spec §3.3). Discovery NEVER calls LiteLLM directly;
+each generated child reconciles into LiteLLM via the Phase 3 Model
+controller (Pipeline A).</p>
+<p>Provider field matrix (CR-level CEL XValidation, see markers on the
+ModelDiscovery struct below) per spec §6.3 provider table:</p>
+<div class="highlight"><pre><span></span><code>anthropic — requires credentialsSecretRef; forbids region, baseUrl.
+bedrock — requires region; forbids baseUrl; credentialsSecretRef optional.
+gemini — requires credentialsSecretRef; forbids region, baseUrl.
+kubeai — requires baseUrl; forbids credentialsSecretRef, region.
+openai — requires credentialsSecretRef; baseUrl optional; forbids region.
+</code></pre></div>
+<p>MDISC-01 enforces spec.type ∈ {anthropic, bedrock, gemini, kubeai, openai}
+at admission via the +kubebuilder:validation:Enum marker. MDISC-04
+(prefix), MDISC-05 (refresh.interval floor), MDISC-15 (credential
+surface), and MDISC-22/23 (propagation bags) are all schema-side.</p>
+<p><em>Appears in:</em>
+- <a href="#litellmmodeldiscovery">LiteLLMModelDiscovery</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>type</code> <em>string</em></td>
+<td>Type discriminates the upstream provider. Enforced at admission via<br />the +kubebuilder:validation:Enum marker (MDISC-01). The reconciler<br />dispatches to internal/providers/<type>.go via the registry; per-type<br />branching outside the registry is prohibited (CONTEXT.md D-01).</td>
+<td></td>
+<td>Enum: [anthropic bedrock gemini kubeai openai] <br />Required: {} <br /></td>
+</tr>
+<tr>
+<td><code>prefix</code> <em>string</em></td>
+<td>Prefix is the lowercase DNS-1123 segment prepended to each<br />discovered ID when generating the child Model's metadata.name<br />(final shape: <prefix>.<normalized-id>). The prefix is OPTIONAL at<br />the CRD layer; the reconciler defaults it to lowercased(spec.type)<br />at reconcile time (MDISC-04). The default is NOT a CRD-layer default<br />— keeping the schema thin lets the reconciler own the substitution<br />(matches spec §6.3 prefix semantics line 689-878).<br />Pattern is the DNS-1123 subdomain segment: lowercase alphanumerics<br />with internal hyphens and optional dotted sub-segments. MaxLength=63<br />matches the K8s DNS label budget; the generated child name's full<br />length is validated again at reconcile time against DNS-1123<br />subdomain (253 chars) — see normalization step.</td>
+<td></td>
+<td>MaxLength: 63 <br />Pattern: <code>^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$</code> <br /></td>
+</tr>
+<tr>
+<td><code>credentialsSecretRef</code> <em><a href="#secretobjectref">SecretObjectRef</a></em></td>
+<td>CredentialsSecretRef points to the Kubernetes Secret carrying the<br />upstream provider's API credentials. Required for anthropic, gemini,<br />openai; required-or-default-chain for bedrock; FORBIDDEN for kubeai<br />(the kubeai provider runs in-cluster without auth — see CONTEXT.md<br /><specifics> line 278). The Secret MUST reside in the same namespace<br />as the ModelDiscovery CR (no cross-namespace resolution in v1alpha1).<br />Required Secret keys per provider (spec §6.3 line 721-737 normative):<br />anthropic: ANTHROPIC_API_KEY<br />bedrock: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY (AWS_SESSION_TOKEN optional)<br />gemini: GEMINI_API_KEY (or GOOGLE_API_KEY)<br />openai: OPENAI_API_KEY<br />kubeai: n/a (no credentialsSecretRef)<br />MDISC-15 is non-negotiable: the credential material is operator-side<br />ONLY. The reconciler MUST NOT propagate any value from this Secret<br />into the generated child Model's spec.params / spec.info /<br />spec.secrets[]. Inference-time credentials flow via spec.secrets[]<br />(the propagation bag), NOT via this field.<br />Discovery uses NEW SecretObjectRef (single Name field) — NOT the<br />SecretKeyRef{Name, Key} used by LiteLLMConnection and Model. The<br />Secret keys are fixed per provider per the normative table above,<br />so the user does not pick a per-key lookup; only the Secret's name<br />is parameterized.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>region</code> <em>string</em></td>
+<td>Region is the AWS region for Bedrock control-plane discovery<br />(required when spec.type=bedrock, forbidden otherwise — see the<br />CR-level CEL rule on the ModelDiscovery struct). One region per<br />CR per PROJECT.md Key Decision; multi-region requires multiple CRs<br />with distinct spec.prefix (e.g. bedrock-use1, bedrock-euw1).<br />The value is overlaid as aws_region_name in each generated child<br />Model's spec.params (the operator's only typed-field overlay per<br />CONTEXT.md D-07 line 79-85). Plain string — AWS region codes are<br />open-ended and not enumerated here; CEL gates presence per provider.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>baseUrl</code> <em>string</em></td>
+<td>BaseURL is the upstream provider's base endpoint. Required for<br />kubeai (e.g. "http://kubeai.kubeai.svc/openai/v1"); optional for<br />openai (default OpenAI-platform endpoint applies on omit); forbidden<br />for anthropic, bedrock, gemini.<br />Discovery calls <BaseURL>/models (OpenAI-compatible wire shape) for<br />kubeai + openai variants. For OpenAI-compatible providers (vLLM,<br />Together, Groq, OpenRouter) the user sets spec.type=openai and<br />spec.baseUrl=<provider URL>; the per-request Bearer key comes from<br />spec.credentialsSecretRef. No URL pattern is enforced at the CRD<br />layer; CEL only gates presence/absence per provider type.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>params</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#rawextension-runtime-pkg">RawExtension</a></em></td>
+<td>Params is a pass-through bag of fields propagated VERBATIM into<br />every generated child Model's spec.params (MDISC-23). On top of this<br />bag, the Discovery reconciler overlays two typed fields per child:<br />- model: "<litellm-provider>/<raw-id>" (e.g. "anthropic/claude-3-5-sonnet-20241022")<br />- aws_region_name: <spec.region> (bedrock only)<br />All other keys are forwarded unchanged. {{NAME}} substitution<br />happens on the child Model's own reconcile (§5.2 propagation rule<br />per AC-SEC4-PROPAGATE), NOT on Discovery's reconcile.<br />Any JSON object is accepted (x-kubernetes-preserve-unknown-fields:<br />true). String-typed leaves may carry {{NAME}} placeholders matched<br />against spec.secrets[] on the child's reconcile.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>info</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#rawextension-runtime-pkg">RawExtension</a></em></td>
+<td>Info is a pass-through bag of fields propagated VERBATIM into every<br />generated child Model's spec.info (MDISC-23). The Discovery<br />reconciler does NOT overlay any field here — the child's own<br />reconciler handles the model_info.id overlay (D-04 in Phase 3).<br />Any JSON object is accepted (x-kubernetes-preserve-unknown-fields:<br />true). Same {{NAME}} substitution semantics as Params apply on the<br />child's reconcile.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>secrets</code> <em><a href="#secretsubstitution">SecretSubstitution</a> array</em></td>
+<td>Secrets is the substitution map PROPAGATED verbatim into every<br />generated child Model's spec.secrets[] (MDISC-23). Discovery does<br />NOT perform substitution itself — the propagated entries ride along<br />and the Phase 3 Model reconciler substitutes them on the child's<br />own reconcile (AC-SEC4-PROPAGATE).<br />MDISC-15 enforces a STRICT boundary with spec.credentialsSecretRef:<br />credentials used to call the upstream provider's discovery endpoint<br />are NEVER reused for inference. Users who need an inference-time<br />secret declare it here independently of credentialsSecretRef. A<br />post-render canary asserts no credentialsSecretRef material appears<br />in any generated child's rendered fields (CONTEXT.md anti-pattern<br />line 1021).<br />SEC-03 uniqueness of spec.secrets[].as values is enforced as a<br />runtime check on the child Model's reconcile;<br />the CEL admission alternative is deferred per the same v1alpha1<br />limitation documented in model_types.go:87-93.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>filters</code> <em><a href="#modeldiscoveryfilters">ModelDiscoveryFilters</a></em></td>
+<td>Filters narrows the post-provider-list candidate set via RE2<br />include/exclude patterns matched against the raw provider-returned<br />ID. Empty (absent) Filters means "no filtering" (all provider IDs<br />become candidates). Per spec §6.3: include FIRST (strict — empty<br />match-set surfaces as Ready=False, reason=UpstreamInvalid), then<br />exclude (lenient — empty match-set is fine).<br />Filter-order divergence from autoconfig is intentional: autoconfig<br />applies exclude first then include (src/generator.py:324); the spec<br />mandates include first then exclude. <strong>Spec wins</strong> — see<br />CONTEXT.md D-11 line 118 and PATTERNS.md anti-pattern line 1031.<br />Codes this and ships a regression test exercising the<br />order with overlapping patterns.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>refresh</code> <em><a href="#modeldiscoveryrefresh">ModelDiscoveryRefresh</a></em></td>
+<td>Refresh controls the periodic provider-list cadence. The<br />reconciler returns ctrl.Result{RequeueAfter: spec.refresh.interval}<br />on success (D-08); transient errors short-circuit through the<br />controller-runtime workqueue exponential backoff (REL-02 pattern).<br />The CEL floor of 1 minute (MDISC-05) is enforced at the resource<br />root, see the +kubebuilder:validation:XValidation marker on<br />ModelDiscovery.</td>
+<td></td>
+<td>Required: {} <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="modeldiscoverystatus">ModelDiscoveryStatus<a class="headerlink" href="#modeldiscoverystatus" title="Permanent link">&para;</a></h4>
+<p>ModelDiscoveryStatus defines the observed state of ModelDiscovery —
+the _FINALv3 status surface (MDISC-26, renamed from _FINALv2's
+"registeredNames[]" vocabulary to "generatedChildren[]" to reflect
+the Pipeline B K8s-child-CR-emission model).</p>
+<p>Spec §6.3 invariant:</p>
+<div class="highlight"><pre><span></span><code>discoveredCount == generatedCount
+</code></pre></div>
+<p>(Filtered-out names are NOT counted in discoveredCount.)</p>
+<p>Two condition types are written on every reconcile (each idempotent
+via apimeta.SetStatusCondition):</p>
+<div class="highlight"><pre><span></span><code>Ready — top-level readiness with reasons:
+ {Synced, SourceUnreachable, AuthFailed,
+ SecretNotFound, InvalidConfig, UpstreamInvalid}
+ NOTE: LiteLLMUnavailable and LiteLLMRejected are
+ NOT Discovery-level reasons (MDISC-27 — Discovery
+ never calls LiteLLM). Those reasons surface on the
+ child Model&#39;s status.
+
+SourceReachable — provider-list reachability with reasons:
+ {Ok, Unreachable, AuthFailed}
+ Used as the gate for vanish-detection (D-09): the
+ diff-and-delete step is skipped when this is False.
+</code></pre></div>
+<p><em>Appears in:</em>
+- <a href="#litellmmodeldiscovery">LiteLLMModelDiscovery</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>observedGeneration</code> <em>integer</em></td>
+<td>ObservedGeneration is the metadata.generation of the ModelDiscovery<br />the reconciler most recently processed successfully (OWN-08).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>conditions</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#condition-v1-meta">Condition</a> array</em></td>
+<td>Conditions carries the metav1.Condition list. Two condition types<br />are populated on every reconcile:<br />Ready — reasons: Synced, SourceUnreachable, AuthFailed,<br />SecretNotFound, InvalidConfig, UpstreamInvalid.<br />LiteLLMUnavailable and LiteLLMRejected are<br />NOT valid here (MDISC-27 + spec §6.0).<br />SourceReachable — reasons: Ok, Unreachable, AuthFailed.<br />The atomic-refresh-snapshot vanish guard<br />(D-09) gates diff-and-delete on<br />SourceReachable=True.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>discoveredCount</code> <em>integer</em></td>
+<td>DiscoveredCount is the size of the post-filter candidate set on<br />the most recent successful refresh (filtered-out IDs are NOT<br />counted). Maintains the invariant noted on ModelDiscoveryStatus's<br />godoc above.</td>
+<td>0</td>
+<td></td>
+</tr>
+<tr>
+<td><code>generatedCount</code> <em>integer</em></td>
+<td>GeneratedCount is len(GeneratedChildren) — the number of child<br />Model CRs the Discovery currently owns (SSA-applied with<br />ownerReferences[controller=true, blockOwnerDeletion=true] +<br />labels[litellm.ackstorm.ai/generated-by=<this>]).</td>
+<td>0</td>
+<td></td>
+</tr>
+<tr>
+<td><code>generatedChildren</code> <em>string array</em></td>
+<td>GeneratedChildren lists the metadata.name of every owned child<br />Model CR (sorted for deterministic kubectl get -o yaml output).<br />On the next reconcile, the reconciler uses a label-selector<br />(litellm.ackstorm.ai/generated-by=<this>) for ACTUAL ownership<br />enumeration; this list is a status echo for human inspection, not<br />the source of truth.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>skippedCandidates</code> <em><a href="#skippedcandidate">SkippedCandidate</a> array</em></td>
+<td>SkippedCandidates records candidates that were NOT generated as<br />child Models because of K8s-native conflict resolution. Each entry<br />names the candidate and the reason.<br />Reason enum (spec §6.3 line 870 normative — exhaustive):<br />ExplicitModelExists — a child with the same name already exists<br />and its controller ownerRef does NOT point<br />at this Discovery (MDISC-14).<br />DuplicateDiscovery — a child with the same name exists and is<br />owned by a DIFFERENT ModelDiscovery<br />(MDISC-13). OwnedBy names the winner.<br />InvalidDiscoveredName — the candidate's normalized name failed<br />DNS-1123 subdomain validation (MDISC-11).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>failedCandidates</code> <em><a href="#failedcandidate">FailedCandidate</a> array</em></td>
+<td>FailedCandidates records candidates whose SSA write to the K8s<br />apiserver failed for a reason other than name collision. Each<br />entry names the candidate and the reason.<br />Reason enum (spec §6.3 + MDISC-26 _FINALv3 narrowing):<br />ChildCRWriteFailed — the K8s apiserver rejected the SSA patch<br />(server timeout, rate-limit, service<br />unavailable, SSA field conflict, etc.).<br />_FINALv3 narrowed this enum to a SINGLE value (MDISC-26 / D-10):<br />LiteLLMRejected and LiteLLMUnavailable are NOT valid here because<br />Discovery never calls LiteLLM (MDISC-27). Those reasons surface on<br />the child Model's status instead.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>lastRefreshAt</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#time-v1-meta">Time</a></em></td>
+<td>LastRefreshAt is the timestamp of the most recent SUCCESSFUL<br />provider-list reconcile (NOT every reconcile attempt — transient<br />failures do not update this field). Mirrors Phase 3's<br />LastRendered.At pattern (model_types.go:237-243).</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="modelspec">ModelSpec<a class="headerlink" href="#modelspec" title="Permanent link">&para;</a></h4>
+<p>ModelSpec defines the desired state of Model.</p>
+<p>MODEL-01: a user can declare a Model CR with spec.params (pass-through bag
+forwarded to LiteLLM litellm_params) and spec.info (pass-through bag
+forwarded to LiteLLM model_info). Both bags are x-kubernetes-preserve-unknown-
+fields: true (any JSON is accepted). spec.secrets[] maps Kubernetes Secrets
+into {{NAME}} placeholders inside the bags (§5.2 substitution).</p>
+<p>The shape is flat per _FINALv3: no spec.type discriminator and no
+nested litellm sub-object. The operator's only typed-field overlay is
+model_info.id (null on create, resolved remote ID on update — D-04).</p>
+<p>MODEL-02: spec.secrets[].as values are validated at admission via the CEL
+XValidation rule on this struct; uniqueness within a Model is also
+enforced (SEC-03).</p>
+<p>MODEL-05: spec.params and spec.info pass-through bags carry
+x-kubernetes-preserve-unknown-fields: true so any future litellm_params /
+model_info fields are accepted without a CRD schema change.</p>
+<p><em>Appears in:</em>
+- <a href="#litellmmodel">LiteLLMModel</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>params</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#rawextension-runtime-pkg">RawExtension</a></em></td>
+<td>Params is a pass-through bag of fields forwarded verbatim to<br />LiteLLM's litellm_params on POST /model/new and POST /model/update.<br />Any JSON object is accepted (x-kubernetes-preserve-unknown-fields: true).<br />String-typed leaf values may contain {{NAME}} placeholders that are<br />resolved from spec.secrets[] before the body reaches LiteLLM (§5.2,<br />D-05). Non-string leaves are forwarded unchanged (SEC-02).<br />The operator NEVER adds or removes keys inside this bag; the user's<br />declared keyset is the desired state. On each reconcile, the rendered<br />post-substitution body is hashed (SHA-256) and compared against<br />status.lastRendered.hash to detect drift (D-01).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>info</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#rawextension-runtime-pkg">RawExtension</a></em></td>
+<td>Info is a pass-through bag of fields forwarded verbatim to<br />LiteLLM's model_info on POST /model/new and POST /model/update,<br />except that the operator overlays model_info.id (null on CREATE,<br />resolved LiteLLM UUID on UPDATE — D-04). Any JSON object is accepted<br />(x-kubernetes-preserve-unknown-fields: true). Same {{NAME}} substitution<br />rules as spec.params apply (§5.2, D-05).<br />If the user supplies spec.info.id, the operator's overlay always wins<br />and a type=Warning, reason=ProjectionOverride Event is emitted per<br />spec §5.1 (Identity tier — operator-set field).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>secrets</code> <em><a href="#secretsubstitution">SecretSubstitution</a> array</em></td>
+<td>Secrets is the substitution map for resolving {{NAME}} placeholders in<br />spec.params and spec.info string-typed leaves (§5.2, D-05, SEC-03).<br />Each entry maps an uppercase NAME (the as field) to a Kubernetes Secret<br />key (secretRef). Placeholders in the bags are replaced with the resolved<br />plaintext value before the body is forwarded to LiteLLM. Secret material<br />NEVER appears in logs, Events, or status conditions (§9.1, AC-S1).<br />CEL constraints: each as value must match ^[A-Z_][A-Z0-9_]*$ and all as<br />values within a Model must be unique (SEC-03). Violations are rejected<br />at admission — no reconcile is triggered.<br />NOTE: SEC-03 uniqueness of spec.secrets[].as values is enforced as a<br />runtime check in the Model reconciler (see<br />internal/controller/model_controller.go Step 3.5). The CEL XValidation<br />list-uniqueness expression was not expressible in the Kubernetes 1.31<br />CRD CEL environment (toSet and map-then-unique patterns require a<br />newer CEL library version). The admission-time CEL alternative is<br />deferred to v1beta1 when a higher Kubernetes floor can be assumed.</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="modelstatus">ModelStatus<a class="headerlink" href="#modelstatus" title="Permanent link">&para;</a></h4>
+<p>ModelStatus defines the observed state of Model.</p>
+<p>The status surface per D-07 (CONTEXT.md): a nested lastRendered struct
+carries the operator-side drift source of truth (D-01) alongside the
+standard observedGeneration + conditions fields. The flat D-07 structure
+is the rejected alternative (Q3.1 Option B); nested is preferred for
+kubectl get -o yaml readability.</p>
+<p>OWN-08: observedGeneration is populated on every successful reconcile so
+that consumers can detect whether the reconciler has processed the latest
+spec version.</p>
+<p><em>Appears in:</em>
+- <a href="#litellmmodel">LiteLLMModel</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>observedGeneration</code> <em>integer</em></td>
+<td>ObservedGeneration is the metadata.generation of the Model CR the<br />reconciler most recently processed successfully. Consumers can compare<br />this against metadata.generation to detect whether the current spec<br />has been reconciled yet (OWN-08).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>conditions</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#condition-v1-meta">Condition</a> array</em></td>
+<td>Conditions carries the standard metav1.Condition list. The single type<br />defined for Model is <code>Ready</code>, with reason values from §6.0:<br />- Synced — rendered body matches LiteLLM; no drift.<br />- LiteLLMUnavailable — LiteLLMConnection/default not Ready (CONN-06).<br />- LiteLLMRejected — LiteLLM returned a 4xx/5xx on mutation.<br />- SecretNotFound — a spec.secrets[].secretRef is missing (SEC-06).<br />- UnresolvedPlaceholder — a {{NAME}} in spec.params/info has no matching<br />spec.secrets[] entry (SEC-05).<br />Phase 3+ dependents read this via kubectl or by listing Model CRs; the<br />Model reconciler does not expose a cache equivalent to the connection cache.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>lastRendered</code> <em><a href="#lastrenderedstatus">LastRenderedStatus</a></em></td>
+<td>LastRendered is the operator-side drift source of truth (D-01, D-07).<br />It records the post-substitution rendered state that was last<br />successfully applied to LiteLLM. The reconciler compares the current<br />desired state hash against lastRendered.hash to detect drift without<br />querying the LiteLLM API (bypassing Probe 4a/4b encrypted-response<br />issues — see spec/DEFECTS-1.82.6.md).</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="ratelimitsspec">RateLimitsSpec<a class="headerlink" href="#ratelimitsspec" title="Permanent link">&para;</a></h4>
+<p>RateLimitsSpec is the optional sub-block on TeamSpec that carries the LiteLLM
+team RPM/TPM rate limits (per Feature 01 §1). It MUST be modeled as a
+pointer at the TeamSpec level (<code>RateLimits *RateLimitsSpec</code>) so that
+whole-block absence is distinguishable from <code>RateLimitsSpec{}</code> — when the
+user omits <code>spec.rateLimits</code> entirely OR sets <code>spec.rateLimits: {}</code> with no
+leaves, the reconciler emits <code>rpm_limit: null</code> AND <code>tpm_limit: null</code> on the
+<code>POST /team/update</code> body AND OMITS both <code>rpm_limit_type</code> and
+<code>tpm_limit_type</code> keys (Feature 01 §2.1). The empty-block-equals-absent
+semantic mirrors <code>BudgetSpec</code> precedent (spec §6.7) so the two parallel
+sub-blocks behave identically.</p>
+<p>The <code>*_type</code> keys are NEVER exposed as CR fields — they are hardcoded to
+<code>best_effort_throughput</code> by the operator whenever the corresponding
+<code>*_limit</code> is non-null (Feature 01 §1.2, §1.3, §2.1). Promoting them to
+typed CR fields is deferred until LiteLLM models them on
+<code>UpdateTeamRequest</code> (currently only <code>NewTeamRequest</code> carries them).</p>
+<p>Per-leaf admission uses an OpenAPI <code>minimum: 0</code> schema constraint
+(kubebuilder Minimum annotation, NOT CEL XValidation) — equivalent to
+Feature 01 §1.1's <code>self.rpm &gt;= 0</code> / <code>self.tpm &gt;= 0</code> constraint but rendered
+as a built-in OpenAPI schema constraint. The K8s API server still rejects
+negative values at admission.</p>
+<p><em>Appears in:</em>
+- <a href="#teamspec">TeamSpec</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>rpm</code> <em>integer</em></td>
+<td>RPM is the requests-per-minute cap, projected verbatim onto<br /><code>rpm_limit</code> (integer) on the POST /team/{new,update} body. Modeled<br />as <code>*int32</code> so the reconciler can distinguish <code>0</code> (explicit zero —<br />projects to <code>rpm_limit: 0</code> + <code>rpm_limit_type: "best_effort_throughput"</code>)<br />from omitted (user did not set the field — projection emits<br /><code>rpm_limit: null</code> and OMITS <code>rpm_limit_type</code> per Feature 01 §2.1).</td>
+<td></td>
+<td>Minimum: 0 <br /></td>
+</tr>
+<tr>
+<td><code>tpm</code> <em>integer</em></td>
+<td>TPM is the tokens-per-minute cap, projected verbatim onto<br /><code>tpm_limit</code> (integer) on the POST /team/{new,update} body. Modeled<br />as <code>*int32</code> so the reconciler can distinguish <code>0</code> (explicit zero —<br />projects to <code>tpm_limit: 0</code> + <code>tpm_limit_type: "best_effort_throughput"</code>)<br />from omitted (user did not set the field — projection emits<br /><code>tpm_limit: null</code> and OMITS <code>tpm_limit_type</code> per Feature 01 §2.1).</td>
+<td></td>
+<td>Minimum: 0 <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="secretkeyref">SecretKeyRef<a class="headerlink" href="#secretkeyref" title="Permanent link">&para;</a></h4>
+<p>SecretKeyRef identifies a key inside a Kubernetes Secret living in
+the same namespace as the referring CR. The shape is intentionally
+minimal — no namespace field, no optional fallback — because v1alpha1
+requires both fields to be present and same-namespace per CONN-01.
+Phase 3 may promote this type to a shared package if other kinds reuse
+it; today it is internal to the connection types.</p>
+<p><em>Appears in:</em>
+- <a href="#litellmconnectionspec">LiteLLMConnectionSpec</a>
+- <a href="#secretsubstitution">SecretSubstitution</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code> <em>string</em></td>
+<td>Name of the Kubernetes Secret resource in the LiteLLMConnection's<br />namespace.</td>
+<td></td>
+<td>MinLength: 1 <br />Required: {} <br /></td>
+</tr>
+<tr>
+<td><code>key</code> <em>string</em></td>
+<td>Key inside the referenced Secret's <code>data</code> map whose value is the<br />LiteLLM master key.</td>
+<td></td>
+<td>MinLength: 1 <br />Required: {} <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="secretobjectref">SecretObjectRef<a class="headerlink" href="#secretobjectref" title="Permanent link">&para;</a></h4>
+<p>SecretObjectRef is the v1alpha1 ModelDiscovery-only shape for
+referencing a Kubernetes Secret by Name (NO Key field). The Secret
+MUST reside in the same namespace as the referring CR.</p>
+<p>Diverges intentionally from SecretKeyRef{Name, Key} (used by
+LiteLLMConnection.masterKeySecretRef and Model.spec.secrets[]
+SecretSubstitution.SecretRef): the keys are FIXED per provider per
+spec §6.3 (e.g. ANTHROPIC_API_KEY for anthropic, AWS_ACCESS_KEY_ID
+per-key lookup; only the Secret's name is parameterized. See
+CONTEXT.md <canonical_refs> line 227 and PATTERNS.md line 104.</p>
+<p><em>Appears in:</em>
+- <a href="#modeldiscoveryspec">ModelDiscoverySpec</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code> <em>string</em></td>
+<td>Name of the Kubernetes Secret resource in the ModelDiscovery's<br />namespace. Required and non-empty.</td>
+<td></td>
+<td>MinLength: 1 <br />Required: {} <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="secretsubstitution">SecretSubstitution<a class="headerlink" href="#secretsubstitution" title="Permanent link">&para;</a></h4>
+<p>SecretSubstitution maps a Kubernetes Secret key to an uppercase NAME that
+can be referenced as {{NAME}} in spec.params and spec.info string-typed
+leaves (§5.2). The as value is the NAME; the secretRef points to the
+Kubernetes Secret and key that carry the plaintext value (SEC-01.SEC-03).</p>
+<p>SEC-03: the as value is validated at admission by the CEL pattern
+^[A-Z_][A-Z0-9_]*$; lowercase letters, digits-first names, and whitespace
+are rejected. Uniqueness of as values within a Model is enforced by a CEL
+XValidation on ModelSpec.Secrets (see above).</p>
+<p><em>Appears in:</em>
+- <a href="#a2aagentspec">A2AAgentSpec</a>
+- <a href="#mcpserverdiscoveryspec">MCPServerDiscoverySpec</a>
+- <a href="#mcpserverspec">MCPServerSpec</a>
+- <a href="#modeldiscoveryspec">ModelDiscoverySpec</a>
+- <a href="#modelspec">ModelSpec</a>
+- <a href="#teamspec">TeamSpec</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>as</code> <em>string</em></td>
+<td>As is the placeholder NAME used in {{NAME}} substitution expressions<br />within spec.params and spec.info string-typed leaves. Must match the<br />pattern ^[A-Z_][A-Z0-9_]*$ (§5.2, SEC-03). Unique within the enclosing<br />Model CR (SEC-03 uniqueness — enforced via CEL on spec.secrets).<br />Example: as=ANTHROPIC_API_KEY matches the placeholder<br />"{{ANTHROPIC_API_KEY}}" anywhere in spec.params or spec.info strings.</td>
+<td></td>
+<td>MinLength: 1 <br />Pattern: <code>^[A-Z_][A-Z0-9_]*$</code> <br />Required: {} <br /></td>
+</tr>
+<tr>
+<td><code>secretRef</code> <em><a href="#secretkeyref">SecretKeyRef</a></em></td>
+<td>SecretRef identifies the Kubernetes Secret and key whose plaintext<br />value replaces the {{As}} placeholder at reconcile time. The Secret<br />MUST reside in the same namespace as the Model CR (no cross-namespace<br />resolution in v1alpha1). A missing Secret or key surfaces as<br />Ready=False, reason=SecretNotFound (§6.0).<br />Reuses SecretKeyRef from litellmconnection_types.go (same package —<br />no additional type definition needed). SEC-01, SEC-06.</td>
+<td></td>
+<td>Required: {} <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="skippedcandidate">SkippedCandidate<a class="headerlink" href="#skippedcandidate" title="Permanent link">&para;</a></h4>
+<p>SkippedCandidate records a candidate that was NOT generated as a
+child Model due to K8s-native conflict resolution (MDISC-13 / 14 / 11).
+The Reason enum is exhaustive per spec §6.3 line 870.</p>
+<p><em>Appears in:</em>
+- <a href="#modeldiscoverystatus">ModelDiscoveryStatus</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code> <em>string</em></td>
+<td>Name is the normalized candidate name (post-prefix +<br />normalization, the value that would have become the child Model's<br />metadata.name).</td>
+<td></td>
+<td>MinLength: 1 <br />Required: {} <br /></td>
+</tr>
+<tr>
+<td><code>reason</code> <em>string</em></td>
+<td>Reason classifies the skip. Exhaustive enum per spec §6.3:<br />ExplicitModelExists — name collides with a user-authored Model<br />(no controller ownerRef back at this<br />Discovery) — MDISC-14.<br />DuplicateDiscovery — name collides with a child owned by a<br />different ModelDiscovery — MDISC-13. The<br />OwnedBy field names the winning<br />Discovery (<namespace>/<name>).<br />InvalidDiscoveredName — normalized name failed DNS-1123 subdomain<br />validation — MDISC-11.</td>
+<td></td>
+<td>Enum: [ExplicitModelExists DuplicateDiscovery InvalidDiscoveredName] <br />Required: {} <br /></td>
+</tr>
+<tr>
+<td><code>ownedBy</code> <em>string</em></td>
+<td>OwnedBy is the <namespace>/<name> of the ModelDiscovery winning a<br />DuplicateDiscovery collision. Empty for ExplicitModelExists (no<br />Discovery owns the conflicting child) and InvalidDiscoveredName<br />(no collision — the candidate's own name was rejected).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>message</code> <em>string</em></td>
+<td>Message is a free-form diagnostic. Per §9.1, MUST NOT contain<br />secret material (no leaked AWS keys, no Anthropic API keys, no<br />Bearer tokens — the post-render canary asserts this).</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="teamlastrenderedstatus">TeamLastRenderedStatus<a class="headerlink" href="#teamlastrenderedstatus" title="Permanent link">&para;</a></h4>
+<p>TeamLastRenderedStatus records the post-substitution rendered Team state
+last successfully applied to LiteLLM. Structural analog of
+<code>MCPServerLastRenderedStatus</code> (Phase 5 D-03) with <code>ServerID</code> → <code>TeamID</code>.</p>
+<p>Per Phase 5 D-02 (extended to Team as the third member of the ID-pin
+family alongside MCPServer and A2AAgent — see <code>spec/DEFECTS-1.82.6.md</code>
+row <code>DEF-§6.4/§6.6-ID-PERSIST</code>), <code>TeamID</code> is pinned across reconciles:
+the reconciler resolves the LiteLLM-assigned <code>team_id</code> UUID once (via
+<code>ListTeamsByAlias</code> + smallest-<code>team_id</code> duplicate rule from spec §7.1)
+then reads from status thereafter. The finalizer DELETE path (plan
+06-04) issues <code>POST /team/delete</code> against the pinned <code>TeamID</code> directly,
+without re-resolving by alias.</p>
+<p><code>Hash</code> and <code>ParamsKeys</code> are informational on this path — <code>POST /team/update</code>
+IS wholesale-replace per spec §5.1 (Q10), so no delete-and-recreate path
+is committed in the Team reconciler. The fields are retained for
+observability and forward-compat (mirrors the Phase 5 D-01 rationale).</p>
+<p><em>Appears in:</em>
+- <a href="#teamstatus">TeamStatus</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>hash</code> <em>string</em></td>
+<td>Hash is the SHA-256 hex of the RFC 8785-canonicalized merged<br />post-substitution body (<code>spec.params</code> merged with the seven operator<br />overlays <code>\{team_alias, max_budget, budget_duration, rpm_limit,&lt;br /&gt;tpm_limit, rpm_limit_type, tpm_limit_type\}</code> — the two <code>*_type</code> keys<br />are conditional-add per Feature 01 §2.1, so the hash incorporates<br />5–7 overlay keys depending on which <code>*_limit</code> leaves are non-nil).<br />An empty hash indicates the Team has not yet been successfully<br />reconciled (Phase 3 D-01, Phase 5 D-03).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>paramsKeys</code> <em>string array</em></td>
+<td>ParamsKeys is the sorted list of top-level keys present in<br /><code>spec.params</code> at the time of the last successful render.<br />Informational only on this path — <code>POST /team/update</code> IS<br />wholesale-replace per spec §5.1 (Q10), so the simple update path<br />does not need per-bag shrinkage detection. The field is retained<br />for observability and forward-compat with any future downgrade<br />path.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>teamID</code> <em>string</em></td>
+<td>TeamID is the LiteLLM-assigned UUID (<code>team_id</code>) for this team<br />entry. Pinned per Phase 3 D-04 + Phase 5 D-02 so the reconciler<br />can call <code>POST /team/delete</code> (with body <code>\{"team_ids": [.]\}</code>)<br />directly on the finalizer path without re-resolving by alias. On<br />first reconcile, resolved via <code>ListTeamsByAlias</code> + smallest-<br /><code>team_id</code> duplicate rule from spec §7.1.<br />Diverges from spec §6.7 (silent on persistence — the spec says<br />"the operator resolves the LiteLLM team ID by alias" on deletion;<br />pinning saves the list call). Documented in<br /><code>spec/DEFECTS-1.82.6.md</code> row <code>DEF-§6.4/§6.6-ID-PERSIST</code> (Team is<br />the third member of the ID-pin family).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>at</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#time-v1-meta">Time</a></em></td>
+<td>At is the timestamp of the last SUCCESSFUL render (NOT every<br />reconcile attempt — transient failures do not update this field).</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="teamspec">TeamSpec<a class="headerlink" href="#teamspec" title="Permanent link">&para;</a></h4>
+<p>TeamSpec defines the desired state of Team per spec §6.7 (<code>_FINALv3</code> shape).</p>
+<p>TEAM-01: a user can declare a Team CR that projects a LiteLLM team alias
+(taken bare-from-<code>metadata.name</code>, no <code>team-</code> prefix) plus an optional
+budget. <code>metadata.name</code> IS the LiteLLM <code>team_alias</code> — there is no
+<code>spec.alias</code> and no overlay-metadata indirection.</p>
+<p>TEAM-02: <code>spec.budget.limit</code> (USD float64, pointer so absence → null
+on wire) and <code>spec.budget.period</code> (duration string, CEL-validated against
+<code>^[0-9]+[smhd]$</code>) project verbatim onto LiteLLM's <code>max_budget</code> and
+<code>budget_duration</code> fields. Whole-block <code>spec.budget</code> absence clears BOTH
+LiteLLM fields by emitting explicit nulls in the <code>POST /team/update</code> body
+(§6.7 "Clearing budget" + §5.1 wholesale-replace, Q10).</p>
+<p>TEAM-03: TeamSpec carries EXACTLY four fields — <code>Budget</code>,
+<code>RateLimits</code>, <code>Params</code>, <code>Secrets</code> — and explicitly omits the
+following Go-level fields that <code>_FINALv3</code> removed from earlier
+scaffolds (spec changelog lines 37–38):
+- any resource-allowlist field projecting to LiteLLM <code>models</code> /
+<code>object_permission.*</code>: runtime resource gating is delegated to an
+external system at the per-Environment level, NOT on the Team. Spec §6.7.
+- any team-membership field projecting to LiteLLM
+<code>members_with_roles</code>: user-to-team assignment is delegated to an
+external system, not represented in GitOps. Spec §6.7 "Semantics".
+- any access-control field projecting to LiteLLM <code>object_permission</code>
+or per-team-member permissions: unmanaged LiteLLM Team fields per
+spec §5.1 + §7.4.
+- any overlay naming field — the bare <code>metadata.name</code> IS the
+<code>team_alias</code>; no two-level naming indirection.</p>
+<p>TEAM-04: <code>spec.params</code> is a JSON pass-through bag
+(x-kubernetes-preserve-unknown-fields: true) merged into the LiteLLM
+<code>POST /team/new</code> / <code>POST /team/update</code> body at the top level of
+<code>NewTeamRequest</code>. The seven operator structural overlays
+(<code>team_alias</code>, <code>max_budget</code>, <code>budget_duration</code>, <code>rpm_limit</code>,
+<code>tpm_limit</code>, <code>rpm_limit_type</code>, <code>tpm_limit_type</code>) WIN over
+<code>spec.params</code> per spec §5.1 + Feature 01 §2.1 (typed-field overlay
+tier) — collisions emit a <code>reason=ProjectionOverride</code> Event from the
+reconciler (06-02 + Phase 10). Unmanaged top-level fields
+(<code>members_with_roles</code>, <code>models</code>, <code>object_permission</code>) are still
+unmanaged if the user puts them inside <code>params</code>; LiteLLM accepts them on
+create, the operator does not enumerate or revert them on subsequent
+reconciles.</p>
+<p><code>spec.secrets[]</code> is the standard substitution map (§5.2, Phase 3 D-05)
+shared with Model / MCPServer / A2AAgent; same <code>{{NAME}}</code> placeholder
+semantics inside <code>params</code> string-typed leaves.</p>
+<p>Phase 10 (TRL-01..TRL-07) adds <code>spec.rateLimits.{rpm,tpm}</code> — a typed
+sub-block parallel to <code>spec.budget</code>, projecting onto top-level <code>rpm_limit</code>
+and <code>tpm_limit</code> (with operator-hardcoded <code>rpm_limit_type</code> /
+<code>tpm_limit_type</code> overlays — see Feature 01 §1.2/§1.3 for why the *_type
+fields are not exposed as CR knobs). Pointer-modeled (so <code>0</code> is
+distinguishable from omitted), an OpenAPI minimum-0 schema constraint
+admits only non-negative values, and clearing follows the same
+explicit-null contract as Budget (§6.7 + Feature 01 §2.1). The 4 new
+top-level overlay keys join the existing 3 (<code>team_alias</code>, <code>max_budget</code>,
+<code>budget_duration</code>) for 7 structural overlays total — worst-case 7
+ProjectionOverride Warning Events per reconcile when <code>spec.params</code>
+collides on all 7 keys.</p>
+<p>Forward-reference (NOT codified in this type): implements the
+<code>Team/default</code> carve-out — synthetic reconcile on manager start +
+30-min safety re-list, plus deletion protection (<code>POST /team/delete</code>
+suppressed when <code>metadata.name == "default"</code> — operator re-applies the
+implicit empty spec instead). implements the finalizer DELETE
+path for non-default teams, keyed on <code>status.lastRendered.teamID</code>.</p>
+<p><em>Appears in:</em>
+- <a href="#litellmteam">LiteLLMTeam</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>budget</code> <em><a href="#budgetspec">BudgetSpec</a></em></td>
+<td>Budget is the optional budget sub-block. Modeled as <code>*BudgetSpec</code><br />(pointer) so the reconciler can distinguish whole-block absence<br />from an empty <code>BudgetSpec\{\}</code>. When absent, the reconciler emits<br /><code>max_budget: null</code> AND <code>budget_duration: null</code> on the<br /><code>POST /team/update</code> body (spec §6.7 "Clearing budget").</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>rateLimits</code> <em><a href="#ratelimitsspec">RateLimitsSpec</a></em></td>
+<td>RateLimits is the optional rate-limits sub-block (per Feature 01 §1,<br />parallel to <code>spec.budget</code>). Modeled as <code>*RateLimitsSpec</code> (pointer)<br />so the reconciler can distinguish whole-block absence from an empty<br /><code>RateLimitsSpec\{\}</code>. When absent (whole-block or empty-struct —<br />mirrors Budget §6.7 precedent), the reconciler emits <code>rpm_limit:&lt;br /&gt;null</code> AND <code>tpm_limit: null</code> on the <code>POST /team/update</code> body AND<br />OMITS both <code>rpm_limit_type</code> and <code>tpm_limit_type</code> keys (Feature 01<br />§2.1). The <code>*_type</code> keys are hardcoded to <code>best_effort_throughput</code><br />by the operator whenever the corresponding <code>*_limit</code> is non-null —<br />they are never exposed as CR fields (Feature 01 §1.2, §1.3).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>params</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#rawextension-runtime-pkg">RawExtension</a></em></td>
+<td>Params is a pass-through bag of fields forwarded verbatim to the<br />LiteLLM <code>POST /team/new</code> / <code>POST /team/update</code> body at the top<br />level of <code>NewTeamRequest</code>. Any JSON object is accepted<br />(x-kubernetes-preserve-unknown-fields: true). String-typed leaf<br />values may contain <code>\{\{NAME\}\}</code> placeholders resolved from<br /><code>spec.secrets[]</code> before the body reaches LiteLLM (§5.2, Phase 3<br />D-05). Non-string leaves are forwarded unchanged (Phase 3 SEC-02<br />carry-forward).<br />The operator NEVER adds, defaults, or removes keys inside this bag<br />— the user's declared keyset IS the desired state. The operator's<br />seven structural overlays (<code>team_alias</code>, <code>max_budget</code>,<br /><code>budget_duration</code>, <code>rpm_limit</code>, <code>tpm_limit</code>, <code>rpm_limit_type</code>,<br /><code>tpm_limit_type</code>) ALWAYS win over <code>spec.params</code> per spec §5.1 +<br />Feature 01 §2.1; if the user sets any of those keys inside <code>params</code>,<br />the reconciler emits a per-key <code>reason=ProjectionOverride</code> Event<br />after the merge (worst-case 7 events on one reconcile).<br />On each reconcile, the rendered post-substitution body is hashed<br />(SHA-256) and compared against <code>status.lastRendered.hash</code> to detect<br />drift without polling LiteLLM (Phase 3 D-01).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>secrets</code> <em><a href="#secretsubstitution">SecretSubstitution</a> array</em></td>
+<td>Secrets is the substitution map for resolving <code>\{\{NAME\}\}</code><br />placeholders in <code>spec.params</code> string-typed leaves (§5.2, Phase 3<br />D-05). Each entry maps an uppercase NAME (the <code>as</code> field) to a<br />Kubernetes Secret key (<code>secretRef</code>). Placeholders in the bag are<br />replaced with the resolved plaintext value before the body is<br />forwarded to LiteLLM. Secret material NEVER appears in logs,<br />Events, or <code>status.conditions[].message</code> (§9.1, AC-S1 — exercised<br />in envtest redaction canaries).<br />SEC-03 uniqueness of <code>spec.secrets[].as</code> values is enforced as a<br />runtime check in the Team reconciler (same pattern as Model plan<br />03-06 and MCPServer — CEL list-uniqueness was deferred<br />to v1beta1).</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="teamstatus">TeamStatus<a class="headerlink" href="#teamstatus" title="Permanent link">&para;</a></h4>
+<p>TeamStatus defines the observed state of Team per spec §6.7 +
+Phase 5 D-03 (nested <code>lastRendered</code> substruct).</p>
+<p><em>Appears in:</em>
+- <a href="#litellmteam">LiteLLMTeam</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>observedGeneration</code> <em>integer</em></td>
+<td>ObservedGeneration is the metadata.generation of the Team CR the<br />reconciler most recently processed successfully. Consumers compare<br />this against <code>metadata.generation</code> to detect whether the current<br />spec has been reconciled yet (Phase 3 OWN-08 carry-forward).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>conditions</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#condition-v1-meta">Condition</a> array</em></td>
+<td>Conditions carries the standard metav1.Condition list. The single<br />type defined for Team is <code>Ready</code>, with reason values drawn from<br />§6.0 (spec line 521):<br />- Synced — rendered body matches LiteLLM; no drift.<br />- LiteLLMUnavailable — LiteLLMConnection/default not Ready<br />(Phase 3 D-08 echo-reason from the<br />connection cache snapshot).<br />- LiteLLMRejected — LiteLLM returned a 4xx (non-401) on<br />mutation.<br />- SecretNotFound — a <code>spec.secrets[].secretRef</code> is missing<br />OR a <code>\{\{NAME\}\}</code> placeholder has no<br />matching <code>spec.secrets[].as</code> entry.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>lastRendered</code> <em><a href="#teamlastrenderedstatus">TeamLastRenderedStatus</a></em></td>
+<td>LastRendered is the operator-side drift source of truth (Phase 3<br />D-01 / Phase 5 D-03). It records the post-substitution rendered<br />state that was last successfully applied to LiteLLM. The reconciler<br />compares the current desired-state hash against <code>lastRendered.hash</code><br />to detect drift without querying the LiteLLM API on every reconcile.</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/ackstorm/alitellm-operator" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "search.share", "content.code.copy", "content.code.annotate"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"alias": true, "default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
