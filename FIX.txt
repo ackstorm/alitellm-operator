@@ -437,3 +437,43 @@ Team                      1 / 1 Ready
 MCPServer manual          1 / 1 Ready  (exa-mcp, transport=sse)
 MCPServerDiscovery        1 / 1 Ready status but 0 / 22 children
                                          Ready — blocked by HIGH-1
+
+
+────────────────────────────────────────────────────────────────
+[STATUS] FIX.txt remediation post-mortem (2026-05-22)
+────────────────────────────────────────────────────────────────
+
+The FIX.txt findings shipped in v0.1.2 via the prior plan
+(docs/plans/2026-05-22-fix-txt-remediation.md). Post-deploy smoke
+test against EKS revealed regressions and residual gaps documented
+in FIX2.txt; the v0.1.3 branch fix/fix2-txt-remediation lands the
+real fixes. STATUS per FIX.txt entry:
+
+  HIGH-1   SHIPPED v0.1.2 (sanitizer + Connection.spec field added).
+           SUPERSEDED by FIX2 HIGH-1 (default-direction was wrong;
+           "-" forbade hyphens, but LiteLLM v1.85.1 rejects ".") and
+           FIX2 HIGH-9 (sanitizer mangled already-safe inputs). Final
+           fix in v0.1.3 (commit 8482eac on fix/fix2-txt-remediation).
+
+  HIGH-2   SHIPPED v0.1.2 (KubeAI discovery now seeds api_base).
+           No FIX2 follow-up.
+
+  MEDIUM-3 SHIPPED v0.1.2 (connectionReadyTransition predicate +
+           connectionTo<Kind> mapping). SUPPLEMENTED by FIX2 MEDIUM-3
+           (predicate extended to fire on GenericEvent) and FIX2
+           HIGH-2 (BootSweeper covers cold-start re-reconcile for
+           CRs whose connection is already Ready at boot).
+
+  MEDIUM-4 SHIPPED v0.1.2 (active probe added). No FIX2 follow-up.
+
+  LOW-5    SHIPPED v0.1.2 (discovery vanish-detection tightened).
+           No FIX2 follow-up.
+
+  LOW-6    SHIPPED v0.1.2 (OpenAI canonical-only filter pattern
+           documented). UNRELATED to FIX2 LOW-6 (new Prometheus
+           counter); the slot reuse is incidental.
+
+  LOW-7    SHIPPED v0.1.2 (per-tuple dedup throttle implemented).
+           SUPPLEMENTED by FIX2 MEDIUM-4 (throttle math was correct
+           but operationally noisy at V(0); FIX2 demotes to V(2)
+           and adds a coalesced V(0) summary at most once per 5m).
