@@ -58,12 +58,31 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Detected release version: v$VERSION"
 
+  run-tests:
+    name: Run tests
+    needs: parse
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Run tests
+        # ci.yml uses envtest-fast (no -race) because the race detector
+        # adds 2-5x overhead and inflates AC_CF2b adoption-recognition's
+        # reconciler-converge time past the in-test poll budget. release.yml
+        # mirrors ci.yml here to avoid CI/release skew on the same commit.
+        run: |
+          make unit
+          make envtest-fast
+
   build-and-release:
     name: Build + release
-    # TEMP: run-tests job removed while iterating on GHCR publishing.
-    # Restore `needs: [parse, run-tests]` and the run-tests job below
-    # once releases are landing reliably.
-    needs: [parse]
+    needs: [parse, run-tests]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
