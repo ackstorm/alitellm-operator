@@ -878,9 +878,9 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `hash` _string_ | Hash is the SHA-256 hex of the RFC 8785–canonicalized merged<br />post-substitution body (spec.params merged with structural<br />overlays \{server_name, url, transport\}). `server_name` in this<br />overlay is the LiteLLM-side sanitized name (dots replaced with<br />dashes per MCP-05); the K8s `metadata.name` retains the dotted<br />form. An empty hash indicates the MCPServer has not yet been<br />successfully reconciled. |  |  |
+| `hash` _string_ | Hash is the SHA-256 hex of the RFC 8785–canonicalized merged<br />post-substitution body (spec.params merged with structural<br />overlays \{server_name, url, transport\}). An empty hash indicates<br />the MCPServer has not yet been successfully reconciled. |  |  |
 | `paramsKeys` _string array_ | ParamsKeys is the sorted list of top-level keys present in<br />spec.params at the time of the last successful render. Per Phase 5<br />D-01 (✓ verdict on Probe 10c — PUT IS wholesale-replace on<br />1.83.10-stable), this field is informational only: the simple PUT<br />update path does not need per-bag shrinkage detection. The field<br />is retained for observability and forward-compat with any future<br />downgrade path. |  |  |
-| `serverID` _string_ | ServerID is the LiteLLM-assigned UUID (server_id) for this MCP<br />server entry. Pinned per Phase 5 D-02 so the reconciler can call<br />`DELETE /v1/mcp/server/<server_id>` directly on the finalizer<br />path without re-resolving by name. On first reconcile, resolved<br />via `GET /v1/mcp/server` + in-memory filter on the LiteLLM-side<br />sanitized name (MCP-05; dots replaced with dashes).<br />Diverges from spec §6.4: documented in<br />spec/DEFECTS-1.82.6.md row `DEF-§6.4/§6.6-ID-PERSIST`. |  |  |
+| `serverID` _string_ | ServerID is the LiteLLM-assigned UUID (server_id) for this MCP<br />server entry. Pinned per Phase 5 D-02 so the reconciler can call<br />`DELETE /v1/mcp/server/<server_id>` directly on the finalizer<br />path without re-resolving by name. On first reconcile, resolved<br />via `GET /v1/mcp/server` + in-memory filter on metadata.name.<br />Diverges from spec §6.4: documented in<br />spec/DEFECTS-1.82.6.md row `DEF-§6.4/§6.6-ID-PERSIST`. |  |  |
 | `at` _[Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#time-v1-meta)_ | At is the timestamp of the last SUCCESSFUL render (NOT every<br />reconcile attempt — transient failures do not update this field). |  |  |
 
 
@@ -940,16 +940,6 @@ Phase 5 D-10 — `streamable-http → http`).
 MCP-04: the operator updates via `PUT /v1/mcp/server` (wholesale-replace,
 empirically validated by Probe 10c on 1.83.10-stable per Phase 5 plan
 05-00) and deletes via `DELETE /v1/mcp/server/<id>`.
-
-MCP-05: LiteLLM v1.83.10+ rejects `.` in `server_name` with HTTP 400.
-The reconciler sanitizes wire-side `server_name` and `alias` by
-replacing every `.` with `-` (FIX.txt H-1, 2026-05-22). The K8s-side
-`metadata.name` is left untouched — the dotted form is the documented
-MCPServerDiscovery child template (`<discovery>.<source-ns>.<source-name>`),
-and the divergence between K8s identity and LiteLLM identity is
-confined to the wire boundary. Finalizer name-resolve and the
-canonical hash both use the sanitized form so drift detection stays
-consistent with what LiteLLM actually stores.
 
 
 
