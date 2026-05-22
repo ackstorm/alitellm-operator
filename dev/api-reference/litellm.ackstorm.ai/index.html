@@ -3019,6 +3019,12 @@ the +kubebuilder:validation:Required + MinLength=1 markers below.</p>
 <td></td>
 <td>Required: {} <br /></td>
 </tr>
+<tr>
+<td><code>mcpToolPrefixSeparator</code> <em>string</em></td>
+<td>MCPToolPrefixSeparator mirrors LiteLLM's <code>MCP_TOOL_PREFIX_SEPARATOR</code><br />environment variable on the target LiteLLM instance. LiteLLM uses<br />this character as the delimiter between server prefix and tool name<br />in fully-qualified MCP tool identifiers, and it REJECTS the same<br />character inside <code>server_name</code> at <code>POST /v1/mcp/server</code> time (HTTP<br />400 "Server name cannot contain '<sep>'."). The opposite member of<br />the {".", "-"} pair is allowed inside <code>server_name</code>.<br />The operator reads this field to sanitize the LiteLLM-side<br /><code>server_name</code> and <code>alias</code> for every MCPServer routed through this<br />Connection. The K8s <code>metadata.name</code> is left untouched — sanitization<br />is wire-boundary only.<br />Valid values:<br />  - "-" (default; matches LiteLLM's own default). Forbids '-' in<br />    server_name; the operator rewrites '-' → '.' in the wire payload.<br />  - "." Forbids '.' in server_name (the ackstorm prod config since<br />    the MCPServerDiscovery dotted-child template requires '-' inside<br />    server_name). The operator rewrites '.' → '-' in the wire payload.<br />FIX.txt HIGH-1 (2026-05-22): without this field, dotted Discovery<br />children failed at the LiteLLM-side validator on default deploys.</td>
+<td>-</td>
+<td>Enum: [- .] <br /></td>
+</tr>
 </tbody>
 </table>
 <h4 id="litellmconnectionstatus">LiteLLMConnectionStatus<a class="headerlink" href="#litellmconnectionstatus" title="Permanent link">&para;</a></h4>
@@ -4000,7 +4006,7 @@ reconciler — see 05-CONTEXT.md D-01 "If positive" branch).</p>
 <tbody>
 <tr>
 <td><code>hash</code> <em>string</em></td>
-<td>Hash is the SHA-256 hex of the RFC 8785–canonicalized merged<br />post-substitution body (spec.params merged with structural<br />overlays {server_name, url, transport}). An empty hash indicates<br />the MCPServer has not yet been successfully reconciled.</td>
+<td>Hash is the SHA-256 hex of the RFC 8785–canonicalized merged<br />post-substitution body (spec.params merged with structural<br />overlays {server_name, url, transport}). <code>server_name</code> in this<br />overlay is the LiteLLM-side sanitized name per MCP-05 (the<br /><code>litellm.SanitizeMCPServerName</code> rewrite of metadata.name driven by<br />the parent Connection's spec.mcpToolPrefixSeparator). An empty<br />hash indicates the MCPServer has not yet been successfully<br />reconciled.</td>
 <td></td>
 <td></td>
 </tr>
@@ -4012,7 +4018,7 @@ reconciler — see 05-CONTEXT.md D-01 "If positive" branch).</p>
 </tr>
 <tr>
 <td><code>serverID</code> <em>string</em></td>
-<td>ServerID is the LiteLLM-assigned UUID (server_id) for this MCP<br />server entry. Pinned per Phase 5 D-02 so the reconciler can call<br /><code>DELETE /v1/mcp/server/&lt;server_id&gt;</code> directly on the finalizer<br />path without re-resolving by name. On first reconcile, resolved<br />via <code>GET /v1/mcp/server</code> + in-memory filter on metadata.name.<br />Diverges from spec §6.4: documented in<br />spec/DEFECTS-1.82.6.md row <code>DEF-§6.4/§6.6-ID-PERSIST</code>.</td>
+<td>ServerID is the LiteLLM-assigned UUID (server_id) for this MCP<br />server entry. Pinned per Phase 5 D-02 so the reconciler can call<br /><code>DELETE /v1/mcp/server/&lt;server_id&gt;</code> directly on the finalizer<br />path without re-resolving by name. On first reconcile, resolved<br />via <code>GET /v1/mcp/server</code> + in-memory filter on the LiteLLM-side<br />sanitized name (MCP-05; the rewrite of metadata.name driven by<br />the parent Connection's spec.mcpToolPrefixSeparator).<br />Diverges from spec §6.4: documented in<br />spec/DEFECTS-1.82.6.md row <code>DEF-§6.4/§6.6-ID-PERSIST</code>.</td>
 <td></td>
 <td></td>
 </tr>
@@ -4093,6 +4099,19 @@ Phase 5 D-10 — <code>streamable-http → http</code>).</p>
 <p>MCP-04: the operator updates via <code>PUT /v1/mcp/server</code> (wholesale-replace,
 empirically validated by Probe 10c on 1.83.10-stable per Phase 5 plan
 05-00) and deletes via <code>DELETE /v1/mcp/server/&lt;id&gt;</code>.</p>
+<p>MCP-05: LiteLLM rejects its <code>MCP_TOOL_PREFIX_SEPARATOR</code> env value inside
+<code>server_name</code> at <code>POST /v1/mcp/server</code> time (HTTP 400 "Server name
+cannot contain '<sep>'."). The MCPServer reconciler sanitizes the
+LiteLLM-side <code>server_name</code> and <code>alias</code> per the parent
+LiteLLMConnection's <code>spec.mcpToolPrefixSeparator</code> (default <code>-</code>), swapping
+the configured separator for the opposite valid character (<code>-</code> ↔ <code>.</code>)
+via <code>litellm.SanitizeMCPServerName</code>. The K8s-side <code>metadata.name</code> is
+left untouched — the dotted MCPServerDiscovery child template
+(<code>&lt;discovery&gt;.&lt;source-ns&gt;.&lt;source-name&gt;</code>) survives unchanged, and the
+divergence between K8s identity and LiteLLM identity is confined to
+the wire boundary (FIX.txt HIGH-1, 2026-05-22). The canonical hash
+input and the finalizer name-resolve fallback both use the sanitized
+form so drift detection stays consistent with what LiteLLM stores.</p>
 <p><em>Appears in:</em>
 - <a href="#litellmmcpserver">LiteLLMMCPServer</a></p>
 <table>
@@ -4280,13 +4299,13 @@ surface), and MDISC-22/23 (propagation bags) are all schema-side.</p>
 </tr>
 <tr>
 <td><code>region</code> <em>string</em></td>
-<td>Region is the AWS region for Bedrock control-plane discovery<br />(required when spec.type=bedrock, forbidden otherwise — see the<br />CR-level CEL rule on the ModelDiscovery struct). One region per<br />CR per PROJECT.md Key Decision; multi-region requires multiple CRs<br />with distinct spec.prefix (e.g. bedrock-use1, bedrock-euw1).<br />The value is overlaid as aws_region_name in each generated child<br />Model's spec.params (the operator's only typed-field overlay per<br />CONTEXT.md D-07 line 79-85). Plain string — AWS region codes are<br />open-ended and not enumerated here; CEL gates presence per provider.</td>
+<td>Region is the AWS region for Bedrock control-plane discovery<br />(required when spec.type=bedrock, forbidden otherwise — see the<br />CR-level CEL rule on the ModelDiscovery struct). One region per<br />CR per PROJECT.md Key Decision; multi-region requires multiple CRs<br />with distinct spec.prefix (e.g. bedrock-use1, bedrock-euw1).<br />The value is overlaid as aws_region_name in each generated child<br />Model's spec.params. This is one of two typed-field overlays the<br />reconciler applies per CONTEXT.md D-07: bedrock spec.region →<br />aws_region_name (overwrite-wins) and kubeai spec.baseUrl →<br />api_base (user-supplied wins; see BaseURL doc, FIX.txt H-2). Plain<br />string — AWS region codes are open-ended and not enumerated here;<br />CEL gates presence per provider.</td>
 <td></td>
 <td></td>
 </tr>
 <tr>
 <td><code>baseUrl</code> <em>string</em></td>
-<td>BaseURL is the upstream provider's base endpoint. Required for<br />kubeai (e.g. "http://kubeai.kubeai.svc/openai/v1"); optional for<br />openai (default OpenAI-platform endpoint applies on omit); forbidden<br />for anthropic, bedrock, gemini.<br />Discovery calls <BaseURL>/models (OpenAI-compatible wire shape) for<br />kubeai + openai variants. For OpenAI-compatible providers (vLLM,<br />Together, Groq, OpenRouter) the user sets spec.type=openai and<br />spec.baseUrl=<provider URL>; the per-request Bearer key comes from<br />spec.credentialsSecretRef. No URL pattern is enforced at the CRD<br />layer; CEL only gates presence/absence per provider type.</td>
+<td>BaseURL is the upstream provider's base endpoint. Required for<br />kubeai (e.g. "http://kubeai.kubeai.svc/openai/v1"); optional for<br />openai (default OpenAI-platform endpoint applies on omit); forbidden<br />for anthropic, bedrock, gemini.<br />Discovery calls <BaseURL>/models (OpenAI-compatible wire shape) for<br />kubeai + openai variants. For OpenAI-compatible providers (vLLM,<br />Together, Groq, OpenRouter) the user sets spec.type=openai and<br />spec.baseUrl=<provider URL>; the per-request Bearer key comes from<br />spec.credentialsSecretRef. No URL pattern is enforced at the CRD<br />layer; CEL only gates presence/absence per provider type.<br />kubeai-only typed-field overlay (D-07, FIX.txt H-2 2026-05-22):<br />when spec.type=kubeai, the reconciler also overlays<br />spec.baseUrl → spec.params.api_base on each generated child Model,<br />so the LiteLLM proxy can route hosted_vllm/<id> inference requests<br />at runtime. User-supplied params.api_base wins over the auto-overlay<br />(presence check). Diverges from the bedrock region overlay's<br />overwrite-wins semantics on purpose: api_base is a legitimate per-<br />child routing override.</td>
 <td></td>
 <td></td>
 </tr>
