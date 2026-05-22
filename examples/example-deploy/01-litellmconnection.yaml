@@ -42,3 +42,10 @@ spec:
   masterKeySecretRef:
     name: litellm-master-key
     key: LITELLM_MASTER_KEY
+  # Optional: tell the operator's wire-side MCP sanitizer which character
+  # LiteLLM treats as MCP_TOOL_PREFIX_SEPARATOR (and therefore rejects
+  # inside `server_name`). LiteLLM's own default is "-"; set to "." if
+  # the LiteLLM Deployment overrides MCP_TOOL_PREFIX_SEPARATOR="." (e.g.
+  # to allow dashes in dotted-DNS MCPServerDiscovery child names — the
+  # ackstorm prod posture). Default "-" matches stock LiteLLM.
+  # mcpToolPrefixSeparator: "-"
