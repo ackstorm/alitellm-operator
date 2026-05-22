@@ -5,6 +5,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -119,6 +120,11 @@ type LiteLLMConnectionReconciler struct {
 	// (`/default`) which the informer cache cannot match.
 	Namespace string
 	Log       logr.Logger
+	// separatorDefaultLogged tracks which Connection NamespacedNames
+	// we've already logged a "default applied" INFO line for, so the
+	// LOW-12 emit fires at most once per Connection per pod lifetime
+	// (FIX2.txt L-12, 2026-05-22). map[string]struct{} via sync.Map.
+	separatorDefaultLogged sync.Map
 }
 
 // fastPathRequest returns the reconcile.Request the 401 fast-path
@@ -372,6 +378,24 @@ func (r *LiteLLMConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	if werr := r.writeStatus(ctx, &conn, metav1.ConditionTrue, reasonSynced, "probe ok"); werr != nil {
 		logStatusUpdateErr(logger, werr, "reason", reasonSynced)
 	}
+	// FIX2.txt L-12 (2026-05-22): GitOps tools (Flux, kustomize)
+	// frequently strip unset fields from the apiserver representation, so
+	// the kubebuilder default on spec.mcpToolPrefixSeparator may not
+	// land on the live CR. The sanitizer already treats empty-string as
+	// the operator-side default, but admins running under GitOps had no
+	// signal that the default was in play. Emit one INFO line per
+	// Connection per pod lifetime when the field is empty.
+	if conn.Spec.MCPToolPrefixSeparator == "" {
+		key := conn.Namespace + "/" + conn.Name
+		if _, seen := r.separatorDefaultLogged.LoadOrStore(key, struct{}{}); !seen {
+			logger.Info("mcpToolPrefixSeparator default applied",
+				"namespace", conn.Namespace,
+				"name", conn.Name,
+				"default", litellm.MCPToolPrefixSeparatorDefault,
+				"note", "spec field is unset; consider pinning explicitly under GitOps to avoid silent default changes across operator upgrades")
+		}
+	}
+
 	r.Cache.Rebuild(connection.ConnectionSnapshot{
 		Ready:                  true,
 		Reason:                 reasonSynced,
