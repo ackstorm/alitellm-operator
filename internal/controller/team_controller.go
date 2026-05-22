@@ -28,6 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
@@ -173,6 +174,12 @@ type TeamReconciler struct {
 	Namespace string
 	Log       logr.Logger
 
+	// BootEvents (FIX2.txt H-2) is optionally wired by main.go to the
+	// BootSweeper's per-kind channel. When non-nil, SetupWithManager
+	// adds a source.Channel watch so a sweep-time enqueue fires a
+	// reconcile. Nil-safe: nil channel = no boot sweep wiring.
+	BootEvents <-chan event.GenericEvent
+
 	// implicitDefaultMu guards the implicitDefault* fields below. The
 	// synthetic LiteLLMTeam/default reconcile runs without a
 	// Kubernetes CR — there is no status subresource to persist the
@@ -290,7 +297,7 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 					logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
 				}
 				metrics.ReconcileTotal.WithLabelValues(teamKind, "success").Inc()
-				return ctrl.Result{}, nil
+				return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
 			}
 			return ctrl.Result{}, err
 		}
@@ -301,7 +308,7 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 				logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
 			}
 			metrics.ReconcileTotal.WithLabelValues(teamKind, "success").Inc()
-			return ctrl.Result{}, nil
+			return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
 		}
 		secretMap[entry.As] = string(val)
 	}
@@ -326,7 +333,7 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
 		}
 		metrics.ReconcileTotal.WithLabelValues(teamKind, "success").Inc()
-		return ctrl.Result{}, nil
+		return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
 	}
 
 	// ─── Step 5: SEC-07 UnusedSecretRef detection ──────────────────────────
@@ -525,7 +532,8 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 				logStatusUpdateErr(logger, werr, "reason", "LiteLLMRejected")
 			}
 			metrics.ReconcileTotal.WithLabelValues(teamKind, "success").Inc()
-			return ctrl.Result{}, nil
+			// FIX2.txt H-2: periodic requeue on deterministic 4xx.
+			return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
 		}
 		// 401 → fast-path; other transient → backoff.
 		return r.classifyMutationError(ctx, &team, logger, listErr, "GET /v2/team/list")
@@ -933,7 +941,9 @@ func (r *TeamReconciler) reconcileDeletion(ctx context.Context, team *litellmv1a
 							logStatusUpdateErr(logger, werr, "reason", "LiteLLMRejected")
 						}
 						metrics.ReconcileTotal.WithLabelValues(teamKind, "success").Inc()
-						return ctrl.Result{}, nil
+						// FIX2.txt H-2: periodic requeue so an upstream fix
+						// unblocks finalizer drain without external poke.
+						return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
 					} else if isTransientLiteLLMError(listErr) {
 						// 5xx / network — return err for controller-runtime
 						// backoff; finalizer stays.
@@ -946,7 +956,7 @@ func (r *TeamReconciler) reconcileDeletion(ctx context.Context, team *litellmv1a
 							logStatusUpdateErr(logger, werr, "reason", "LiteLLMRejected")
 						}
 						metrics.ReconcileTotal.WithLabelValues(teamKind, "success").Inc()
-						return ctrl.Result{}, nil
+						return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
 					}
 				} else if len(entries) > 0 {
 					// spec §7.1 smallest-team_id rule on the
@@ -988,7 +998,7 @@ func (r *TeamReconciler) reconcileDeletion(ctx context.Context, team *litellmv1a
 							logStatusUpdateErr(logger, werr, "reason", "LiteLLMRejected")
 						}
 						metrics.ReconcileTotal.WithLabelValues(teamKind, "success").Inc()
-						return ctrl.Result{}, nil
+						return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
 					}
 				} else {
 					// Happy path — POST /team/delete returned 2xx.
@@ -1121,7 +1131,8 @@ func (r *TeamReconciler) classifyMutationError(ctx context.Context, team *litell
 		}
 		logger.Info("LiteLLM rejected request", "op", opDesc, "error", errStr)
 		metrics.ReconcileTotal.WithLabelValues(teamKind, "success").Inc()
-		return ctrl.Result{}, nil
+		// FIX2.txt H-2: periodic requeue on deterministic 4xx.
+		return ctrl.Result{RequeueAfter: r.Cache.Snapshot().NormalizedRequeueOnRejectedAfter()}, nil
 	}
 
 	// 5xx / network transient — return err for controller-runtime backoff.
@@ -1212,6 +1223,10 @@ func (r *TeamReconciler) SetupWithManager(mgr ctrl.Manager, requeueCh ...chan re
 		).
 		WithOptions(transientBackoffOptions()).
 		Named("team")
+
+	if src := BootEventsSource(r.BootEvents); src != nil {
+		b = b.WatchesRawSource(src)
+	}
 
 	// Wire optional LiteLLMTeam/default synthetic reconcile channel as a
 	// typed-func source. Mirrors the ModelReconciler Phase 3 	// pattern — drain in a goroutine so controller-runtime's Start

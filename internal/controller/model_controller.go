@@ -25,6 +25,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -112,6 +113,8 @@ type ModelReconciler struct {
 	Recorder  record.EventRecorder
 	Namespace string
 	Log       logr.Logger
+	// BootEvents (FIX2.txt H-2) — optional BootSweeper channel. nil-safe.
+	BootEvents <-chan event.GenericEvent
 }
 
 // Reconcile implements the LiteLLMModel state machine.
@@ -279,7 +282,7 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 					logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
 				}
 				metrics.ReconcileTotal.WithLabelValues(modelKind, "success").Inc()
-				return ctrl.Result{}, nil
+				return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
 			}
 			return ctrl.Result{}, err
 		}
@@ -290,7 +293,7 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 				logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
 			}
 			metrics.ReconcileTotal.WithLabelValues(modelKind, "success").Inc()
-			return ctrl.Result{}, nil
+			return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
 		}
 		secretMap[entry.As] = string(val)
 	}
@@ -330,7 +333,7 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
 		}
 		metrics.ReconcileTotal.WithLabelValues(modelKind, "success").Inc()
-		return ctrl.Result{}, nil
+		return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
 	}
 
 	// ─── Step 6: SEC-07 UnusedSecretRef detection ──────────────────────────
@@ -621,7 +624,8 @@ func (r *ModelReconciler) classifyMutationError(ctx context.Context, model *lite
 		}
 		logger.Info("LiteLLM rejected request", "op", opDesc, "error", errStr)
 		metrics.ReconcileTotal.WithLabelValues(modelKind, "success").Inc()
-		return ctrl.Result{}, nil
+		// FIX2.txt H-2: periodic requeue on deterministic 4xx.
+		return ctrl.Result{RequeueAfter: r.Cache.Snapshot().NormalizedRequeueOnRejectedAfter()}, nil
 	}
 
 	// 5xx / network transient — return err for controller-runtime backoff (REL-02).
@@ -730,6 +734,10 @@ func (r *ModelReconciler) SetupWithManager(mgr ctrl.Manager, safetyRelistCh ...c
 		).
 		WithOptions(transientBackoffOptions()).
 		Named("model")
+
+	if src := BootEventsSource(r.BootEvents); src != nil {
+		b = b.WatchesRawSource(src)
+	}
 
 	// Wire optional safety re-list channel as a typed-func source so the
 	// Runnable can enqueue Models without adding a RequeueAfter path

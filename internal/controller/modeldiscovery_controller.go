@@ -66,11 +66,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
+	"github.com/ackstorm/alitellm-operator/internal/connection"
 	"github.com/ackstorm/alitellm-operator/internal/filters"
 	"github.com/ackstorm/alitellm-operator/internal/metrics"
 	"github.com/ackstorm/alitellm-operator/internal/normalize"
@@ -211,6 +213,8 @@ type ModelDiscoveryReconciler struct {
 	Recorder   record.EventRecorder
 	Namespace  string
 	Log        logr.Logger
+	// BootEvents (FIX2.txt H-2) — optional BootSweeper channel. nil-safe.
+	BootEvents <-chan event.GenericEvent
 }
 
 // Reconcile implements the 13-step state machine. See package doc above.
@@ -292,19 +296,25 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	case providerTypeAnthropic:
 		key, err := r.resolveStringKey(ctx, md.Namespace, md.Spec.CredentialsSecretRef, "ANTHROPIC_API_KEY")
 		if err != nil {
-			return r.writeReady(ctx, &md, metav1.ConditionFalse, reasonSecretNotFound, err.Error()), nil
+			res := r.writeReady(ctx, &md, metav1.ConditionFalse, reasonSecretNotFound, err.Error())
+			res.RequeueAfter = connection.DefaultRequeueOnRejectedAfter
+			return res, nil
 		}
 		cfg.APIKey = key
 	case providerTypeGemini:
 		key, err := r.resolveStringKey(ctx, md.Namespace, md.Spec.CredentialsSecretRef, "GEMINI_API_KEY")
 		if err != nil {
-			return r.writeReady(ctx, &md, metav1.ConditionFalse, reasonSecretNotFound, err.Error()), nil
+			res := r.writeReady(ctx, &md, metav1.ConditionFalse, reasonSecretNotFound, err.Error())
+			res.RequeueAfter = connection.DefaultRequeueOnRejectedAfter
+			return res, nil
 		}
 		cfg.APIKey = key
 	case providerTypeOpenAI:
 		key, err := r.resolveStringKey(ctx, md.Namespace, md.Spec.CredentialsSecretRef, "OPENAI_API_KEY")
 		if err != nil {
-			return r.writeReady(ctx, &md, metav1.ConditionFalse, reasonSecretNotFound, err.Error()), nil
+			res := r.writeReady(ctx, &md, metav1.ConditionFalse, reasonSecretNotFound, err.Error())
+			res.RequeueAfter = connection.DefaultRequeueOnRejectedAfter
+			return res, nil
 		}
 		cfg.APIKey = key
 	case providerTypeBedrock:
@@ -313,7 +323,9 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		if md.Spec.CredentialsSecretRef != nil && md.Spec.CredentialsSecretRef.Name != "" {
 			creds, err := r.resolveAWSCredentials(ctx, md.Namespace, md.Spec.CredentialsSecretRef)
 			if err != nil {
-				return r.writeReady(ctx, &md, metav1.ConditionFalse, reasonSecretNotFound, err.Error()), nil
+				res := r.writeReady(ctx, &md, metav1.ConditionFalse, reasonSecretNotFound, err.Error())
+			res.RequeueAfter = connection.DefaultRequeueOnRejectedAfter
+			return res, nil
 			}
 			cfg.AWSCreds = creds
 		}
@@ -1270,7 +1282,7 @@ func (r *ModelDiscoveryReconciler) secretToModelDiscoveries(ctx context.Context,
 //
 // Named("modeldiscovery") — controller registry name.
 func (r *ModelDiscoveryReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+	b := ctrl.NewControllerManagedBy(mgr).
 		For(&litellmv1alpha1.LiteLLMModelDiscovery{}, builder.WithPredicates()).
 		Watches(
 			&corev1.Secret{},
@@ -1278,6 +1290,9 @@ func (r *ModelDiscoveryReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		).
 		Owns(&litellmv1alpha1.LiteLLMModel{}).
 		WithOptions(transientBackoffOptions()).
-		Named("modeldiscovery").
-		Complete(r)
+		Named("modeldiscovery")
+	if src := BootEventsSource(r.BootEvents); src != nil {
+		b = b.WatchesRawSource(src)
+	}
+	return b.Complete(r)
 }

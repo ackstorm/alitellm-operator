@@ -3,6 +3,8 @@
 package connection
 
 import (
+	"time"
+
 	"github.com/ackstorm/alitellm-operator/internal/litellm"
 )
 
@@ -95,7 +97,39 @@ type ConnectionSnapshot struct {
 	// mcpToolPrefixSeparator). Carried on the snapshot so MCPServer and
 	// MCPServerDiscovery reconcilers can sanitize wire-side server_name +
 	// alias without re-reading the Connection CR. Valid values: "." or
-	// "-"; empty string is treated as the LiteLLM default "-" (FIX.txt
-	// HIGH-1, 2026-05-22).
+	// "-"; empty string is treated as the operator-side default ("." per
+	// FIX2.txt HIGH-1, 2026-05-22).
 	MCPToolPrefixSeparator string
+
+	// RequeueOnRejectedAfter controls how often each dependent reconciler
+	// retries CRs that hit a deterministic upstream error (LiteLLMRejected,
+	// SecretNotFound). Surfaced from LiteLLMConnection.spec.
+	// requeueOnRejectedAfter (default 5m, range [1m, 1h] enforced via CEL
+	// on the spec field). FIX2.txt HIGH-2 (2026-05-22).
+	//
+	// Dependents pattern at every deterministic-error return site:
+	//   return ctrl.Result{RequeueAfter: snap.RequeueOnRejectedAfter}, nil
+	//
+	// Zero value (when no Connection has loaded yet OR snapshot is the
+	// not-Ready zero value) means callers fall back to
+	// DefaultRequeueOnRejectedAfter via NormalizedRequeueOnRejectedAfter.
+	RequeueOnRejectedAfter time.Duration
+}
+
+// DefaultRequeueOnRejectedAfter is the fallback retry cadence applied
+// when a snapshot's RequeueOnRejectedAfter is zero — i.e. the operator
+// has not yet loaded a Connection CR, or the dependent is acting on the
+// zero-value snapshot returned for not-Ready cases. Matches the
+// kubebuilder default of "5m" on
+// LiteLLMConnection.spec.requeueOnRejectedAfter (FIX2.txt H-2).
+const DefaultRequeueOnRejectedAfter = 5 * time.Minute
+
+// NormalizedRequeueOnRejectedAfter returns RequeueOnRejectedAfter when
+// it is positive; otherwise DefaultRequeueOnRejectedAfter. Use this at
+// reconciler return sites so the requeue cadence is always bounded.
+func (s ConnectionSnapshot) NormalizedRequeueOnRejectedAfter() time.Duration {
+	if s.RequeueOnRejectedAfter > 0 {
+		return s.RequeueOnRejectedAfter
+	}
+	return DefaultRequeueOnRejectedAfter
 }

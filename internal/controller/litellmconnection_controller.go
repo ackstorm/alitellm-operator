@@ -367,6 +367,7 @@ func (r *LiteLLMConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		Client:                 liteLLMClient,
 		Generation:             conn.Generation,
 		MCPToolPrefixSeparator: conn.Spec.MCPToolPrefixSeparator,
+		RequeueOnRejectedAfter: conn.Spec.RequeueOnRejectedAfter.Duration,
 	})
 	metrics.ReconcileTotal.WithLabelValues("LiteLLMConnection", "success").Inc()
 	// OBS-03: RecordSuccess tracks time of last successful status write;
