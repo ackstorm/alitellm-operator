@@ -324,8 +324,8 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			creds, err := r.resolveAWSCredentials(ctx, md.Namespace, md.Spec.CredentialsSecretRef)
 			if err != nil {
 				res := r.writeReady(ctx, &md, metav1.ConditionFalse, reasonSecretNotFound, err.Error())
-			res.RequeueAfter = connection.DefaultRequeueOnRejectedAfter
-			return res, nil
+				res.RequeueAfter = connection.DefaultRequeueOnRejectedAfter
+				return res, nil
 			}
 			cfg.AWSCreds = creds
 		}

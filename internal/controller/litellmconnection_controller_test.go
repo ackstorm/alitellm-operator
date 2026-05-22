@@ -36,6 +36,18 @@ func connDefaultCR() *litellmv1alpha1.LiteLLMConnection {
 				Name: "litellm-master-key",
 				Key:  "masterKey",
 			},
+			// FIX2.txt M-10 (2026-05-22): effectively disable rate
+			// limiting in envtest by pinning to a high value. The
+			// production default of 5 rps + burst 10 throttles
+			// cross-suite tests that fire many mutations in quick
+			// succession; the rate limiter delays past assertion
+			// windows and bleeds artifacts across t.Cleanup boundaries
+			// via the shared mockServer counter. 10000 rps is well
+			// above any envtest workload but stays inside the CRD
+			// Maximum=1000... — bump to 1000 (max allowed) which is
+			// effectively unlimited for the envtest workload.
+			MaxRequestsPerSecond: 1000,
+			MaxBurst:             1000,
 		},
 	}
 }
