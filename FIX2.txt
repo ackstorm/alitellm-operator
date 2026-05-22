@@ -827,3 +827,54 @@ Net: v0.1.2 fixed the no-helper-at-all situation but the default
 configuration on a stock LiteLLM v1.85.1 install still produces
 0/22 MCP children Ready. HIGH-1 in this file is the blocker; the
 rest is observability + restart-recovery hardening.
+
+
+────────────────────────────────────────────────────────────────
+[STATUS] FIX2.txt remediation — v0.1.3 (2026-05-22 / branch fix/fix2-txt-remediation)
+────────────────────────────────────────────────────────────────
+
+All 11 findings landed on branch fix/fix2-txt-remediation. Plan:
+docs/plans/2026-05-22-fix2-txt-remediation.md. Commit map:
+
+  HIGH-1  + HIGH-9     SHIPPED 8482eac  sanitizer no-op-on-safe + default flip "-"→"."
+                                          + orphan-adoption on resolveServerIDByName
+  HIGH-2               SHIPPED 3ad62aa  periodic requeue on deterministic 4xx /
+                                          SecretNotFound + BootSweeper one-shot
+                                          manager.Runnable
+  MEDIUM-3             SHIPPED 732b401  connectionReadyTransition extended to fire
+                                          on GenericEvent; requeue cadence clamped
+                                          operator-side to [1m, 1h]
+  MEDIUM-4 + LOW-11    SHIPPED 74a617a  per-tuple dedup line demoted to V(2);
+                                          coalesced V(0) summary line at most
+                                          once per 5m; tryRegister broadened so
+                                          all 4 GVKs register eagerly + the
+                                          startup INFO line is honest
+  MEDIUM-5             SHIPPED 0c77ac4  *RejectedError carries parsed envelope
+                                          message; reconcilers surface .Message
+                                          in condition.Message (200-byte clip);
+                                          Error() output stays body-free (§9.1)
+  MEDIUM-8             SHIPPED 413d9e0  internal/identity ldflags-injected;
+                                          Model CREATE/UPDATE/D-02 sites stamp
+                                          model_info.created_by/updated_by =
+                                          "alitellm-operator/<version>";
+                                          Team/MCPServer/A2AAgent skipped (no
+                                          audit field on 1.85.1 schema)
+  MEDIUM-10            SHIPPED b18f9a9  Client gained golang.org/x/time/rate
+                                          limiter via WithRateLimit option;
+                                          Connection.spec.maxRequestsPerSecond
+                                          (default 5) + maxBurst (default 10)
+  LOW-6                SHIPPED 6d2af7a  Prometheus
+                                          litellm_operator_reconcile_total
+                                          {kind,namespace,result}; result enum
+                                          via ReasonToReconcileResult helper;
+                                          wired at every writeStatus call site
+  LOW-7                SHIPPED <this commit>  STATUS block on FIX2.txt + FIX.txt
+                                          superseded entries
+  LOW-12               SHIPPED 03c2ed1  Connection reconciler logs once-per-
+                                          NN INFO line when
+                                          spec.mcpToolPrefixSeparator is
+                                          empty + the operator-side default
+                                          is being applied
+
+Diagnostic tests for M-4 + L-11 pinned in d215301 before any code change.
+
