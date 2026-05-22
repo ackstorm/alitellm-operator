@@ -837,6 +837,19 @@ func buildChildModel(
 	if md.Spec.Type == providerTypeBedrock {
 		paramsMap["aws_region_name"] = md.Spec.Region
 	}
+	// FIX.txt H-2 (2026-05-22): kubeai requires api_base on every child so
+	// the LiteLLM proxy can route inference requests (hosted_vllm/<id>).
+	// Parallel to the bedrock spec.region → aws_region_name overlay above.
+	// Diverges from bedrock's overlay-wins precedence on purpose:
+	// user-supplied params.api_base is a legitimate routing override (e.g.
+	// pointing at a test sidecar), whereas bedrock's region is identity-
+	// bearing for the AWS API. Presence-check makes the precedence visible
+	// in the diff.
+	if md.Spec.Type == providerTypeKubeAI {
+		if _, userSet := paramsMap["api_base"]; !userSet {
+			paramsMap["api_base"] = md.Spec.BaseURL
+		}
+	}
 
 	// Step 3: re-marshal.
 	paramsBytes, err := json.Marshal(paramsMap)

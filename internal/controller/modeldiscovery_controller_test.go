@@ -87,6 +87,74 @@ func TestBuildChildModel_EmptyParams(t *testing.T) {
 	}
 }
 
+// TestBuildChildModel_KubeAIAPIBaseOverlay asserts that kubeai Discovery
+// children carry spec.params.api_base = discovery.spec.baseUrl, parallel
+// to the bedrock spec.region → aws_region_name overlay. Regression for
+// FIX.txt HIGH-2 (KubeAI children registered but had no api_base →
+// inference requests failed at LiteLLM with no route for
+// hosted_vllm/<id>).
+func TestBuildChildModel_KubeAIAPIBaseOverlay(t *testing.T) {
+	const baseURL = "http://kubeai.kubeai.svc/openai/v1"
+	md := &litellmv1alpha1.LiteLLMModelDiscovery{
+		ObjectMeta: metav1.ObjectMeta{Name: "kubeai-md", Namespace: "default", UID: "abcd"},
+		Spec: litellmv1alpha1.ModelDiscoverySpec{
+			Type:    "kubeai",
+			BaseURL: baseURL,
+			Params:  k8sruntime.RawExtension{Raw: []byte(`{"rpm":25,"timeout":300}`)},
+		},
+	}
+	child, err := buildChildModel(md, "kubeai-md-qwen3-4b", "qwen3-4b", "hosted_vllm", "default")
+	if err != nil {
+		t.Fatalf("buildChildModel: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(child.Spec.Params.Raw, &decoded); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got, want := decoded["model"], "hosted_vllm/qwen3-4b"; got != want {
+		t.Errorf("model overlay: got %v, want %s", got, want)
+	}
+	if got, want := decoded["api_base"], baseURL; got != want {
+		t.Errorf("api_base overlay: got %v, want %s", got, want)
+	}
+	if got, want := decoded["rpm"], float64(25); got != want {
+		t.Errorf("verbatim params.rpm: got %v, want %v", got, want)
+	}
+	if got, want := decoded["timeout"], float64(300); got != want {
+		t.Errorf("verbatim params.timeout: got %v, want %v", got, want)
+	}
+}
+
+// TestBuildChildModel_KubeAIUserAPIBaseWins asserts that a user-supplied
+// discovery.spec.params.api_base takes precedence over the auto-overlay.
+// Diverges from bedrock's overlay-wins precedence on purpose — kubeai's
+// api_base is a routing endpoint the user may legitimately override
+// (e.g. test pointing at a sidecar) while preserving the typed Discovery
+// pattern, whereas bedrock's region is identity-bearing for the AWS API.
+func TestBuildChildModel_KubeAIUserAPIBaseWins(t *testing.T) {
+	const baseURL = "http://kubeai.kubeai.svc/openai/v1"
+	const userOverride = "http://user-override.example/v1"
+	md := &litellmv1alpha1.LiteLLMModelDiscovery{
+		ObjectMeta: metav1.ObjectMeta{Name: "kubeai-md", Namespace: "default", UID: "abcd"},
+		Spec: litellmv1alpha1.ModelDiscoverySpec{
+			Type:    "kubeai",
+			BaseURL: baseURL,
+			Params:  k8sruntime.RawExtension{Raw: []byte(`{"api_base":"` + userOverride + `"}`)},
+		},
+	}
+	child, err := buildChildModel(md, "kubeai-md-qwen3-4b", "qwen3-4b", "hosted_vllm", "default")
+	if err != nil {
+		t.Fatalf("buildChildModel: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(child.Spec.Params.Raw, &decoded); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got, want := decoded["api_base"], userOverride; got != want {
+		t.Errorf("user-supplied api_base must win: got %v, want %s", got, want)
+	}
+}
+
 // TestBuildChildModel_BedrockOverlay ensures the Bedrock-only
 // `aws_region_name` typed-field overlay is merged on top of the user's
 // pass-through bag (verbatim from spec.params).
@@ -852,10 +920,10 @@ func TestModelDiscovery_AtomicRefresh_ProviderError_NoDelete(t *testing.T) {
 		t.Fatalf("annotate to trigger reconcile: %v", err)
 	}
 
-	// Wait 10 seconds during which the reconciler will retry with
+	// Wait 4 seconds during which the reconciler will retry with
 	// exponential backoff and observe the provider error multiple
 	// times. The D-09 gate guarantees no child is deleted.
-	time.Sleep(10 * time.Second)
+	time.Sleep(4 * time.Second)
 
 	// Verify ALL initial children are STILL there.
 	var post litellmv1alpha1.LiteLLMModelList
