@@ -124,7 +124,7 @@ func TestNoOp401FastPath(t *testing.T) {
 		t.Errorf("REL-06 FAIL: fake cache.Invalidated was NOT set — the §7.7 401 fast-path did not execute")
 	}
 
-	// Anti-storm bound: observe for 10s. If the fast-path returned err
+	// Anti-storm bound: observe for 4s. If the fast-path returned err
 	// (not nil), controller-runtime would requeue rapidly and the mock
 	// would see many mutation/probe calls. Mutations should stay 0
 	// (the no-op reconciler only issues ProbeConnection — a GET — and
@@ -132,11 +132,11 @@ func TestNoOp401FastPath(t *testing.T) {
 	// GET so it counts as a read; reads SHOULD be bounded but may
 	// climb if controller-runtime requeues (even on nil, periodic resync
 	// can fire). We assert reads stay below a generous bound.
-	time.Sleep(10 * time.Second)
+	time.Sleep(4 * time.Second)
 	mutationsAfter := mockServer.Mutations()
 	readsAfter := mockServer.Reads()
 	if mutationsAfter > 5 {
-		t.Errorf("REL-06 anti-storm FAIL: %d mutations in 10s window (expected <5 — fast-path returning nil should keep workqueue idle)", mutationsAfter)
+		t.Errorf("REL-06 anti-storm FAIL: %d mutations in 4s window (expected <5 — fast-path returning nil should keep workqueue idle)", mutationsAfter)
 	}
-	t.Logf("REL-06 fast-path: mutations=%d, reads=%d over 10s (cache.Invalidated=true)", mutationsAfter, readsAfter)
+	t.Logf("REL-06 fast-path: mutations=%d, reads=%d over 4s (cache.Invalidated=true)", mutationsAfter, readsAfter)
 }

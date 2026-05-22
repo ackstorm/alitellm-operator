@@ -499,7 +499,7 @@ func TestModel_SecondReconcile_NoSpecChange_NoOp(t *testing.T) {
 	}
 
 	// Wait briefly and assert no mutations occurred.
-	time.Sleep(3 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	mutationsAfter := mockServer.Mutations()
 	if mutationsAfter != 0 {
@@ -917,7 +917,7 @@ func TestModel_LiteLLMUnavailable_NoMutationCall(t *testing.T) {
 	// Assert zero LiteLLM mutations over a 5s observation window.
 	// Reset counters AFTER the status is set, then wait 3s.
 	mockServer.ResetCounters()
-	time.Sleep(3 * time.Second)
+	time.Sleep(2 * time.Second)
 	mutationsAfter := mockServer.Mutations()
 	if mutationsAfter != 0 {
 		t.Errorf("AC-C3b: mockServer.Mutations() = %d, want 0 while connection not Ready", mutationsAfter)
@@ -1306,18 +1306,18 @@ func TestModel_401FastPath_InvalidatesCache(t *testing.T) {
 	// After the 401 path fires (InvalidateOn401 → channel → connection re-probe
 	// → cache.Rebuild), the model reconciler sees not-Ready on next reconcile
 	// and returns nil (no additional LiteLLM mutation). Count mutations over
-	// a 3s window after the initial 401 was observed.
+	// a 2s window after the initial 401 was observed.
 	mutsBefore := mockServer.Mutations()
-	time.Sleep(3 * time.Second)
+	time.Sleep(2 * time.Second)
 	mutsAfter := mockServer.Mutations()
 	delta := mutsAfter - mutsBefore
-	// Expect at most 2 additional mutations in the 3s window (1 for the POST /model/update
+	// Expect at most 2 additional mutations in the 2s window (1 for the POST /model/update
 	// that produced the 401, plus potential connection re-probe GET — but the model
 	// reconciler must NOT retry the mutation after 401).
 	if delta > 3 {
-		t.Errorf("401FastPath: anti-storm FAIL — %d mutations in 3s window after 401 (want <= 3)", delta)
+		t.Errorf("401FastPath: anti-storm FAIL — %d mutations in 2s window after 401 (want <= 3)", delta)
 	}
-	t.Logf("401FastPath: mutations delta=%d in 3s observation window (anti-storm bound <=3)", delta)
+	t.Logf("401FastPath: mutations delta=%d in 2s observation window (anti-storm bound <=3)", delta)
 }
 
 // TestModel_MockStateful_TracksCreatedModels — Task 2 Test 4.

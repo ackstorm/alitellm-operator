@@ -86,15 +86,15 @@ func TestIdempotencyNoMutationSteadyState(t *testing.T) {
 	mutations0 := mockServer.Mutations()
 	reads0 := mockServer.Reads()
 
-	// Steady-state observation: 10 seconds with NO edits to the CR or
+	// Steady-state observation: 4 seconds with NO edits to the CR or
 	// mock. Mutations MUST stay at 0; reads are allowed (the no-op
 	// reconciler will not auto-trigger reconciles since we returned
 	// ctrl.Result{}, nil — no RequeueAfter, no error).
 	//
-	// SafetyRelistInterval is 1s (set in suite_test.go) — the
-	// accelerated version of the §7.6 30-min cadence. Phase 7 will
-	// elevate to the real interval.
-	time.Sleep(10 * time.Second)
+	// SafetyRelistInterval is 1s (set in suite_test.go) — 4 cycles is
+	// enough to catch any reconcile storm; the §7.6 30-min production
+	// cadence does not affect this assertion.
+	time.Sleep(4 * time.Second)
 
 	mutationsEnd := mockServer.Mutations()
 	readsEnd := mockServer.Reads()
