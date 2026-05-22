@@ -10,7 +10,7 @@ before:
 builds:
   - id: manager
     main: ./cmd/main.go
-    binary: manager
+    binary: alitellm-operator
     env:
       - CGO_ENABLED=0
     goos:

@@ -10,7 +10,7 @@ before:
 builds:
   - id: manager
     main: ./cmd/main.go
-    binary: manager
+    binary: alitellm-operator
     env:
       - CGO_ENABLED=0
     goos:
@@ -62,7 +62,7 @@ archives:
       
 dockers:
   - image_templates:
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:{{ .Version }}-amd64"
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:v{{ .Version }}-amd64"
       - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:latest-amd64"
     dockerfile: Dockerfile.goreleaser
     goos: linux
@@ -78,7 +78,7 @@ dockers:
       - "--label=org.opencontainers.image.source={{.GitURL}}"
 
   - image_templates:
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:{{ .Version }}-arm64"
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:v{{ .Version }}-arm64"
       - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:latest-arm64"
     dockerfile: Dockerfile.goreleaser
     goos: linux
@@ -94,10 +94,10 @@ dockers:
       - "--label=org.opencontainers.image.source={{.GitURL}}"
 
 docker_manifests:
-  - name_template: "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:{{ .Version }}"
+  - name_template: "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:v{{ .Version }}"
     image_templates:
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:{{ .Version }}-amd64"
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:{{ .Version }}-arm64"
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:v{{ .Version }}-amd64"
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:v{{ .Version }}-arm64"
   - name_template: "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:latest"
     image_templates:
       - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:latest-amd64"
@@ -154,7 +154,7 @@ release:
 
     ### Container Images
 
-    - `ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:{{ .Version }}`
+    - `ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:v{{ .Version }}`
     - `ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:latest`
 
     ### Installation

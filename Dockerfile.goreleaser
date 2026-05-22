@@ -1,12 +1,12 @@
-# Use distroless as minimal base image for the manager binary
+# Use distroless as minimal base image for the alitellm-operator binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
 FROM gcr.io/distroless/static:nonroot
 
 WORKDIR /
 
 # Copy the pre-built binary from GoReleaser build context
-COPY manager .
+COPY alitellm-operator .
 
 USER 65532:65532
 
-ENTRYPOINT ["/manager"] 
+ENTRYPOINT ["/alitellm-operator"]

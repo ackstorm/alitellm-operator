@@ -10,7 +10,7 @@ before:
 builds:
   - id: manager
     main: ./cmd/main.go
-    binary: manager
+    binary: alitellm-operator
     env:
       - CGO_ENABLED=0
     goos:
@@ -65,8 +65,8 @@ archives:
       
 dockers:
   - image_templates:
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:{{ .Version }}-amd64"
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:{{ .Major }}.{{ .Minor }}-prerelease-amd64"
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:v{{ .Version }}-amd64"
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:v{{ .Major }}.{{ .Minor }}-prerelease-amd64"
     dockerfile: Dockerfile.goreleaser
     goos: linux
     goarch: amd64
@@ -82,8 +82,8 @@ dockers:
       - "--label=org.opencontainers.image.description=Pre-release build"
 
   - image_templates:
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:{{ .Version }}-arm64"
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:{{ .Major }}.{{ .Minor }}-prerelease-arm64"
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:v{{ .Version }}-arm64"
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:v{{ .Major }}.{{ .Minor }}-prerelease-arm64"
     dockerfile: Dockerfile.goreleaser
     goos: linux
     goarch: arm64
@@ -99,14 +99,14 @@ dockers:
       - "--label=org.opencontainers.image.description=Pre-release build"
 
 docker_manifests:
-  - name_template: "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:{{ .Version }}"
+  - name_template: "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:v{{ .Version }}"
     image_templates:
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:{{ .Version }}-amd64"
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:{{ .Version }}-arm64"
-  - name_template: "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:{{ .Major }}.{{ .Minor }}-prerelease"
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:v{{ .Version }}-amd64"
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:v{{ .Version }}-arm64"
+  - name_template: "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:v{{ .Major }}.{{ .Minor }}-prerelease"
     image_templates:
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:{{ .Major }}.{{ .Minor }}-prerelease-amd64"
-      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:{{ .Major }}.{{ .Minor }}-prerelease-arm64"
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:v{{ .Major }}.{{ .Minor }}-prerelease-amd64"
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:v{{ .Major }}.{{ .Minor }}-prerelease-arm64"
 
 
 
@@ -166,8 +166,8 @@ release:
     
     ### Container Images
     
-    - `ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:{{ .Version }}`
-    - `ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:{{ .Major }}.{{ .Minor }}-prerelease`
+    - `ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:v{{ .Version }}`
+    - `ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/{{ .ProjectName }}:v{{ .Major }}.{{ .Minor }}-prerelease`
     
     ### Installation
     
