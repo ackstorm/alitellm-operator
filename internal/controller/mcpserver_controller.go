@@ -159,7 +159,10 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				if serverID == "" {
 					// Phase 5 D-02 stale-status fallback: re-resolve by name
 					// via ListMCPServers + in-memory filter on metadata.name.
-					if resolved := r.resolveServerIDByName(ctx, snap.Client, litellm.SanitizeMCPServerName(mcp.Name, snap.MCPToolPrefixSeparator), logger); resolved != "" {
+					// FIX2.txt H-9: probe sanitized first, then original
+					// metadata.name (orphan-adoption fallback).
+					sanitized := litellm.SanitizeMCPServerName(mcp.Name, snap.MCPToolPrefixSeparator)
+					if resolved := r.resolveServerIDByName(ctx, snap.Client, sanitized, mcp.Name, logger); resolved != "" {
 						serverID = resolved
 					}
 				}
@@ -356,6 +359,17 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	description, _ := paramsMap["description"].(string)
 
 	var newServerID string
+	// FIX2.txt H-9 orphan adoption (2026-05-22): when ServerID is empty,
+	// probe LiteLLM for an existing record under EITHER the sanitized name
+	// or the original K8s metadata.name BEFORE issuing a CREATE. If found,
+	// adopt the existing record and switch to the UPDATE arm — this heals
+	// the v0.1.1 → v0.1.3 upgrade-orphan scenario without requiring a
+	// kubectl probe-and-edit dance.
+	if mcp.Status.LastRendered.ServerID == "" {
+		if adopted := r.resolveServerIDByName(ctx, snap.Client, sanitizedName, mcp.Name, logger); adopted != "" {
+			mcp.Status.LastRendered.ServerID = adopted
+		}
+	}
 	// Verdict ✓ per 05-00-SUMMARY.md — UPDATE arm uses simple PUT;
 	// delete-and-recreate (with paramsKeys shrinkage detection) is NOT
 	// present in this codebase.
@@ -439,13 +453,30 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	return ctrl.Result{}, nil
 }
 
-// resolveServerIDByName re-resolves a LiteLLMMCPServer's LiteLLM server_id from a
-// metadata.name lookup via ListMCPServers + in-memory filter. Used by the
-// finalizer path when status.lastRendered.ServerID is empty (Phase 5 D-02
-// stale-status fallback). Returns "" if the entry is absent in LiteLLM or
-// the LIST call fails non-fatally; the finalizer drains anyway in that case
-// (the cache may have lost track; nothing to delete).
-func (r *MCPServerReconciler) resolveServerIDByName(ctx context.Context, llm *litellm.Client, name string, logger logr.Logger) string {
+// resolveServerIDByName re-resolves a LiteLLMMCPServer's LiteLLM server_id
+// from a metadata.name lookup via ListMCPServers + in-memory filter.
+//
+// Probes `sanitizedName` first. If no match AND `originalName` differs
+// from sanitizedName, probes `originalName` as a fallback (FIX2.txt
+// HIGH-9 orphan adoption, 2026-05-22): a pre-v0.1.2 LiteLLM record was
+// created under the K8s metadata.name without sanitization; the v0.1.2
+// sanitizer mangled the name and broke the link. With the v0.1.3
+// no-op-on-safe sanitizer, sanitized==original for inputs without the
+// forbidden char, so the fallback only triggers for inputs that DID
+// contain the forbidden char (rare, but heals the upgrade-orphan
+// scenario without operator intervention).
+//
+// Used by:
+//   - finalizer path when status.lastRendered.ServerID is empty (Phase 5
+//     D-02 stale-status fallback).
+//   - CREATE-vs-UPDATE branch in the main reconcile loop (FIX2.txt H-9):
+//     probe before POSTing so an orphaned LiteLLM record gets adopted as
+//     an UPDATE instead of triggering a 4xx duplicate-name CREATE.
+//
+// Returns "" if neither name matches or the LIST call fails non-fatally.
+// The caller decides what to do with "" (finalizer drains anyway; the
+// CREATE branch proceeds with POST).
+func (r *MCPServerReconciler) resolveServerIDByName(ctx context.Context, llm *litellm.Client, sanitizedName, originalName string, logger logr.Logger) string {
 	entries, err := llm.ListMCPServers(ctx)
 	if err != nil {
 		if errors.Is(err, litellm.ErrNotFound) {
@@ -461,8 +492,17 @@ func (r *MCPServerReconciler) resolveServerIDByName(ctx context.Context, llm *li
 		return ""
 	}
 	for _, e := range entries {
-		if e.ServerName == name {
+		if e.ServerName == sanitizedName {
 			return e.ServerID
+		}
+	}
+	if originalName != "" && originalName != sanitizedName {
+		for _, e := range entries {
+			if e.ServerName == originalName {
+				logger.Info("name-resolve: adopted orphan under pre-sanitize name (FIX2.txt H-9)",
+					"sanitizedName", sanitizedName, "originalName", originalName, "serverID", e.ServerID)
+				return e.ServerID
+			}
 		}
 	}
 	return ""

@@ -4,38 +4,47 @@ package litellm
 
 import "strings"
 
-// MCPToolPrefixSeparatorDefault matches LiteLLM's own default value for
-// the MCP_TOOL_PREFIX_SEPARATOR env var ("-"). Used when the
-// LiteLLMConnection CR has not explicitly set spec.mcpToolPrefixSeparator
-// (so an empty snapshot value still produces correct behavior).
-const MCPToolPrefixSeparatorDefault = "-"
-
-// SanitizeMCPServerName rewrites a Kubernetes metadata.name into a
-// LiteLLM-safe server_name + alias by replacing the configured MCP tool
-// prefix separator with the opposite valid character.
+// MCPToolPrefixSeparatorDefault is the operator-side default for the
+// LiteLLMConnection.spec.mcpToolPrefixSeparator field when unset. It is
+// "." — the empirically-confirmed safe direction against LiteLLM
+// v1.85.1's stock configuration, which forbids "." inside server_name
+// regardless of the MCP_TOOL_PREFIX_SEPARATOR env var (FIX2.txt HIGH-1,
+// 2026-05-22).
 //
-// LiteLLM rejects its `MCP_TOOL_PREFIX_SEPARATOR` env value inside
-// `server_name` at `POST /v1/mcp/server` time (HTTP 400 "Server name
-// cannot contain '<sep>'."). The two values in scope are "." and "-";
-// the helper swaps the configured separator for the other character so
-// the wire payload is always accepted regardless of the LiteLLM
-// instance's configuration.
+// Prior to v0.1.3 the default was "-"; users who relied on that and run
+// a non-stock LiteLLM that forbids "-" must set
+// spec.mcpToolPrefixSeparator explicitly to "-".
+const MCPToolPrefixSeparatorDefault = "."
+
+// SanitizeMCPServerName returns name with the LiteLLM-side forbidden
+// character (the configured separator) replaced by the opposite valid
+// character — BUT ONLY IF the input actually contains the forbidden
+// char. Inputs without the forbidden char are returned unchanged so
+// existing records stay stable across upgrade boundaries (FIX2.txt
+// HIGH-9, 2026-05-22).
 //
 // Behavior:
-//   - separator "." → all "." in name replaced with "-"
-//   - separator "-" → all "-" in name replaced with "."
-//   - separator ""  → treated as the LiteLLM default ("-")
+//   - separator "." → if name contains ".", each is replaced with "-"; else unchanged
+//   - separator "-" → if name contains "-", each is replaced with "."; else unchanged
+//   - separator ""  → treated as MCPToolPrefixSeparatorDefault
 //   - any other value → defensive passthrough (CEL on
 //     LiteLLMConnection.spec.mcpToolPrefixSeparator already enforces the
-//     {".", "-"} enum, so this branch is never hit in production)
+//     {".", "-"} enum so this branch is never hit in production)
 //
 // The K8s-side metadata.name is left untouched — sanitization is wire-
-// boundary only. See FIX.txt HIGH-1 (2026-05-22).
+// boundary only.
 func SanitizeMCPServerName(name, separator string) string {
-	switch separator {
+	forbidden := separator
+	if forbidden == "" {
+		forbidden = MCPToolPrefixSeparatorDefault
+	}
+	if !strings.Contains(name, forbidden) {
+		return name
+	}
+	switch forbidden {
 	case ".":
 		return strings.ReplaceAll(name, ".", "-")
-	case "", MCPToolPrefixSeparatorDefault:
+	case "-":
 		return strings.ReplaceAll(name, "-", ".")
 	default:
 		return name
