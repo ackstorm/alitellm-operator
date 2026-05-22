@@ -52,10 +52,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `status.skippedCandidates[Reason=NameCollision]`. Loud-fail, not
   silent-merge — rename one upstream or split the discovery into
   prefix-distinct ones to resolve (FIX4.txt H-2).
-
-## [0.2.1] - TBD
-
-### Added
 - observability: one-shot startup INFO log of `identity.Operator()`
   so the audit literal the binary will stamp into LiteLLM payloads
   is observable at boot without an external probe (FIX4.txt H-1).
@@ -68,7 +64,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   branch in `model_controller.go` so pre-v0.2.0 entries (and any
   out-of-band entries) flip from `Created By: Unknown` to
   `alitellm-operator/<version>` the moment the controller first
-  touches the row (FIX4.txt H-1 root cause).
+  touches the row (FIX4.txt H-1 root cause for the prod symptom
+  observed on v0.2.0).
 - team / mcpserver / a2aagent: stamp `created_by` + `updated_by` on
   CREATE and `updated_by` on UPDATE — best-effort into the
   respective freeform bag (`metadata` for Team, `mcp_info` for
@@ -84,6 +81,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   401 observed in the FIX4 evidence was a secret-rotation race, not
   a LiteLLM-side policy tightening. Virtual keys are out of scope
   for v0.3.0 (FIX4.txt L-3 close-out).
+- `docs/releases/v0.3.0-migration.md`: full migration guide for the
+  MCPServerDiscovery rename (spec.prefix + child-name shape).
 
 ## [0.2.0] - 2026-05-22
 
