@@ -598,6 +598,81 @@ func strContains(s, sub string) bool {
 	return false
 }
 
+// TestModelDiscovery_FIX_L5_PruneOnFilterMutation asserts that mutating
+// spec.filters.exclude on a Discovery drives a prune pass within one
+// reconcile (sub-second envtest latency), NOT only on the refresh-interval
+// tick. Regression for FIX.txt LOW-5 (2026-05-22 prod: openai discovery
+// filter mutation took ~6 min to drain 117 → 49 children even though
+// status.generatedCount flipped to 49 immediately).
+//
+// Hypothesis check: if this test PASSES against current code, the prune
+// path already runs on generation change and the prod symptom is a
+// kubectl/metric-only artifact. If it FAILS, the vanish-detection block
+// is gated on the refresh tick and Task 9 follow-up forces unconditional
+// prune.
+func TestModelDiscovery_FIX_L5_PruneOnFilterMutation(t *testing.T) {
+	ctx := context.Background()
+	const mdName = "fix-l5-prune"
+
+	ensureNoModelDiscovery(t, ctx, mdName)
+	t.Cleanup(func() { ensureNoModelDiscovery(t, context.Background(), mdName) })
+
+	fake := newFakeProvider("anthropic", []providers.Candidate{
+		{ID: "alpha"},
+		{ID: "beta"},
+		{ID: "gamma"},
+		{ID: "delta"},
+		{ID: "epsilon"},
+	})
+	providers.RegisterTestProvider(t, "anthropic", fake)
+	ensureCredentialSecret(t, ctx, mdName+"-creds", "anthropic")
+
+	md := modeldiscoverySampleCR(mdName, "anthropic")
+	// Long refresh — proves the prune is NOT refresh-driven.
+	md.Spec.Refresh.Interval = metav1.Duration{Duration: 30 * time.Minute}
+	if err := k8sClient.Create(ctx, md); err != nil {
+		t.Fatalf("create ModelDiscovery: %v", err)
+	}
+
+	// All 5 candidates → 5 children.
+	if initial := pollChildrenCount(t, ctx, mdName, 5, 30*time.Second); len(initial) != 5 {
+		t.Fatalf("initial child count: got %d, want 5", len(initial))
+	}
+
+	// Reset connection cache so child finalizers short-circuit on delete
+	// (mirrors the DC3 pattern — keeps the test deterministic at <30s).
+	fakeCache.Invalidated.Store(true)
+	t.Cleanup(func() { fakeCache.Invalidated.Store(false) })
+
+	// Mutate spec.filters.exclude to drop 3 of the 5 (keep alpha + beta).
+	if err := updateWithRetry(ctx,
+		client.ObjectKey{Name: mdName, Namespace: WatchNamespace},
+		&litellmv1alpha1.LiteLLMModelDiscovery{},
+		func(obj *litellmv1alpha1.LiteLLMModelDiscovery) error {
+			if obj.Spec.Filters == nil {
+				obj.Spec.Filters = &litellmv1alpha1.ModelDiscoveryFilters{}
+			}
+			obj.Spec.Filters.Exclude = []string{"gamma", "delta", "epsilon"}
+			return nil
+		},
+	); err != nil {
+		t.Fatalf("mutate filters.exclude: %v", err)
+	}
+
+	// Filter mutation must trigger sub-refresh prune. Allow generous slack
+	// for envtest scheduling but well under the 30m refresh interval. If
+	// this fails, prune is gated on refresh tick (FIX.txt LOW-5 root cause).
+	const pruneDeadline = 30 * time.Second
+	if post := pollChildrenCount(t, ctx, mdName, 2, pruneDeadline); len(post) != 2 {
+		names := make([]string, 0, len(post))
+		for _, c := range post {
+			names = append(names, c.Name)
+		}
+		t.Fatalf("filter mutation did NOT drive prune within %s (refresh=30m, FIX.txt L-5): got %d children %v, want 2",
+			pruneDeadline, len(post), names)
+	}
+}
+
 // TestModelDiscovery_AC_DC3_VanishDetection locks the vanish-detection
 // contract (MDISC-20): when a candidate disappears from the upstream
 // feed between reconciles, the corresponding child Model CR is deleted
