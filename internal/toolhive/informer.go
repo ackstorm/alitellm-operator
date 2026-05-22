@@ -244,6 +244,31 @@ type Informer struct {
 	// dedupStore. Lazily initialized on first List call (sync.Once).
 	dedupThrottleOnce sync.Once
 	dedupThrottle     *dedupLogThrottle
+
+	// registered records the GVKs successfully passed through
+	// GetCache().GetInformer in tryRegister. Read via RegisteredGVKs()
+	// under readyMu (shared with kindReady). FIX2.txt LOW-11 diagnostic
+	// surface (2026-05-22): lets tests + the startup summary log assert
+	// exactly which GVKs were eagerly registered (vs. lazy-registered
+	// via Client.List on first dedup pass).
+	registered []schema.GroupVersionKind
+}
+
+// RegisteredGVKs returns a snapshot of GVKs the Informer has eagerly
+// registered dynamic informers for. Read-only; safe for concurrent use.
+// FIX2.txt LOW-11 (2026-05-22).
+//
+// Note: v1beta1 GVKs may not appear here even when v1beta1 objects
+// are reachable via List — controller-runtime's cache lazily registers
+// informers on first Client.List(unstructured) for a previously-unseen
+// GVK. This accessor is the eager set only; for the full reachable
+// set, exercise List for each candidate GVK.
+func (i *Informer) RegisteredGVKs() []schema.GroupVersionKind {
+	i.readyMu.Lock()
+	defer i.readyMu.Unlock()
+	out := make([]schema.GroupVersionKind, len(i.registered))
+	copy(out, i.registered)
+	return out
 }
 
 // Start satisfies controller-runtime's manager.Runnable interface.
@@ -358,6 +383,7 @@ func (i *Informer) tryRegister(ctx context.Context) bool {
 
 		i.Log.V(1).Info("toolhive informer registered", "gvk", gvk.String())
 		i.kindReady[kind] = true
+		i.registered = append(i.registered, gvk)
 	}
 
 	return i.kindReady["MCPServer"] && i.kindReady["VirtualMCPServer"]
