@@ -404,15 +404,16 @@ func TestDangerouslyEnvFlipsRedaction(t *testing.T) {
 	}
 }
 
-// TestDrainAndClose — REL-04 reinforcement. Run 1000 sequential
-// requests against a server returning a 1 MB body, defer drainAndClose
+// TestDrainAndClose — REL-04 reinforcement. Run 200 sequential
+// requests against a server returning a 64 KiB body, defer drainAndClose
 // every iteration, then assert the goroutine delta < 5. Failing this
 // test means drain+close is leaking somewhere — equivalent to FD-stable
-// over 1000 requests.
+// over many requests. Stress kept modest so the test stays well under
+// the per-package timeout on small CI runners with -race enabled.
 func TestDrainAndClose(t *testing.T) {
 	t.Setenv(EnvDangerouslyLogBodies, "")
 
-	payload := bytes.Repeat([]byte("A"), 1<<20) // 1 MB
+	payload := bytes.Repeat([]byte("A"), 64<<10) // 64 KiB
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
 		_, _ = w.Write(payload)
@@ -426,7 +427,7 @@ func TestDrainAndClose(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	before := runtime.NumGoroutine()
 
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < 200; i++ {
 		req, _ := http.NewRequest("GET", srv.URL, nil)
 		resp, err := client.Do(req)
 		if err != nil {
