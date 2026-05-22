@@ -20,7 +20,7 @@ image:
   # artifact pushed by the release.yml workflow.
   repo: ghcr.io/ackstorm/alitellm-operator
   # Tag to deploy. Bumped automatically by release CI on tag push.
-  tag: v0.2.0
+  tag: v0.3.0
   # Pull policy. IfNotPresent is appropriate for pinned tags.
   pullPolicy: IfNotPresent
 # watchNamespace is the Kubernetes namespace the operator watches for CRs.
