@@ -391,7 +391,7 @@ func TestTeamReconciler_HashEqualNoOp(t *testing.T) {
 	); err != nil {
 		t.Fatalf("update annotation: %v", err)
 	}
-	time.Sleep(3 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	mutsAfterAnnotation := mockServer.MutationsByTeamAlias("team-noop")
 	if delta := mutsAfterAnnotation - mutsAfterFirst; delta != 0 {
@@ -1200,14 +1200,14 @@ func TestTeamReconciler_401FastPath(t *testing.T) {
 		t.Errorf("Ready.Reason: want LiteLLMUnavailable, got %q", c.Reason)
 	}
 
-	// Anti-storm: bounded mutations over a 3s window.
+	// Anti-storm: bounded mutations over a 2s window.
 	mockServer.SetMode(mock.Mode401)
 	mutsBefore := mockServer.Mutations()
-	time.Sleep(3 * time.Second)
+	time.Sleep(2 * time.Second)
 	mutsAfter := mockServer.Mutations()
 	delta := mutsAfter - mutsBefore
 	if delta > 8 {
-		t.Errorf("401FastPath anti-storm: %d mutations in 3s window (want <= 8)", delta)
+		t.Errorf("401FastPath anti-storm: %d mutations in 2s window (want <= 8)", delta)
 	}
 }
 

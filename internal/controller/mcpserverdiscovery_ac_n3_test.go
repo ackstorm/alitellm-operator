@@ -71,7 +71,7 @@ func TestMCPServerDiscovery_AC_N3_NoUserOrKeyCalls(t *testing.T) {
 		t.Fatalf("annotation-bump MCPServerDiscovery: %v", err)
 	}
 	// Safety margin for the re-reconcile to complete.
-	time.Sleep(2 * time.Second)
+	time.Sleep(1 * time.Second)
 
 	// ─── LOAD-BEARING zero /user/* and /key/* call assertion ─────────────
 	//

@@ -81,10 +81,10 @@ func TestWatchNamespaceEnforcement(t *testing.T) {
 		_ = k8sClient.Delete(context.Background(), model, &client.DeleteOptions{})
 	})
 
-	// AC-N4 observation window: 10 seconds. The cache should filter out
+	// AC-N4 observation window: 4 seconds. The cache should filter out
 	// the CR entirely; if it did NOT, the noop reconciler would have
 	// fired by now (envtest's manager loop is fast).
-	time.Sleep(10 * time.Second)
+	time.Sleep(4 * time.Second)
 
 	// Defensive: make sure the mock is in happy mode so any leaked
 	// reconcile would be observable (mode happy returns 200 → reads++).

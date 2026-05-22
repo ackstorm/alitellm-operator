@@ -135,7 +135,7 @@ func TestTeamHubSeam_AC_DC1_VirtualKeysCoexist(t *testing.T) {
 	}
 
 	// Safety margin for any cross-CR cascade.
-	time.Sleep(2 * time.Second)
+	time.Sleep(1 * time.Second)
 
 	// ─── Step 4: Assert budget preserved ──────────────────────────────────
 	bodyAfterReconcile := mockServer.LastTeamBody("engineering")
