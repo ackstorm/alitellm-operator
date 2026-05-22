@@ -68,22 +68,57 @@ type versionedObj struct {
 	Version string
 }
 
+// dedupLogWindow is the minimum interval between dedup INFO log emissions
+// per (kind, namespace, name) tuple. FIX.txt LOW-7 (2026-05-22): pre-fix
+// the dedup log fired once per reconcile per MCPServer (22 servers × poll
+// interval = noisy). After the fix, emission at V(0) is capped at once
+// per window; finer-grained traces remain available at V(2).
+const dedupLogWindow = 60 * time.Second
+
+// dedupLogThrottle records the last time the v1alpha1-wins INFO line was
+// emitted for each (kind, namespace, name) tuple. Lives on the Informer
+// (NOT on the per-List dedupStore) so the throttle persists across List
+// calls — without persistence, every reconcile would re-emit because each
+// List builds a fresh dedupStore.
+type dedupLogThrottle struct {
+	mu           sync.Mutex
+	lastLoggedAt map[dedupKey]time.Time
+}
+
+func newDedupLogThrottle() *dedupLogThrottle {
+	return &dedupLogThrottle{lastLoggedAt: make(map[dedupKey]time.Time)}
+}
+
+// shouldLog returns true iff at least `window` has elapsed since the last
+// emission for `key`. On true, the call also records "now" as the new
+// last-logged timestamp.
+func (t *dedupLogThrottle) shouldLog(key dedupKey, window time.Duration) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	now := time.Now()
+	if last, ok := t.lastLoggedAt[key]; ok && now.Sub(last) < window {
+		return false
+	}
+	t.lastLoggedAt[key] = now
+	return true
+}
+
 // dedupStore is a thread-safe aggregating store for ToolHive objects
 // discovered from multiple API versions. It implements the v1alpha1-wins
 // dedup rule: when the same {kind, namespace, name} is observed from both
-// v1alpha1 and v1beta1, the v1alpha1 instance is kept and the v1beta1 entry
-// is logged and discarded.
+// v1alpha1 and v1beta1, the v1alpha1 instance is kept. The store records
+// which keys collided in `collisions` so the caller can log at the
+// appropriate verbosity / throttle (the store itself is verbosity-free).
 type dedupStore struct {
-	mu    sync.RWMutex
-	items map[dedupKey]versionedObj
-	log   logr.Logger
+	mu         sync.RWMutex
+	items      map[dedupKey]versionedObj
+	collisions []dedupKey // keys where v1alpha1 won over an incoming v1beta1
 }
 
-// newDedupStore constructs a dedupStore with the supplied logger.
-func newDedupStore(log logr.Logger) *dedupStore {
+// newDedupStore constructs an empty dedupStore.
+func newDedupStore() *dedupStore {
 	return &dedupStore{
 		items: make(map[dedupKey]versionedObj),
-		log:   log,
 	}
 }
 
@@ -102,13 +137,9 @@ func (s *dedupStore) Upsert(obj *unstructured.Unstructured) {
 
 	existing, found := s.items[key]
 	if found && existing.Version == "v1alpha1" && version == "v1beta1" {
-		// v1alpha1 already in store; incoming v1beta1 loses.
-		s.log.Info("toolhive dedup: v1alpha1 wins",
-			"kind", key.Kind,
-			"namespace", key.Namespace,
-			"name", key.Name,
-			"dedup_reason", "alpha_wins",
-		)
+		// v1alpha1 already in store; incoming v1beta1 loses. Record the
+		// collision so the caller can log with appropriate throttle.
+		s.collisions = append(s.collisions, key)
 		return
 	}
 	s.items[key] = versionedObj{Obj: obj, Version: version}
@@ -206,6 +237,13 @@ type Informer struct {
 	// kindReady tracks whether at least one version per kind is registered.
 	// Keys: "MCPServer", "VirtualMCPServer".
 	kindReady map[string]bool
+
+	// dedupThrottle persists "last logged at" per (kind, ns, name) tuple
+	// across List() calls so the v1alpha1-wins INFO line emits at most
+	// once per dedupLogWindow even though every List builds a fresh
+	// dedupStore. Lazily initialized on first List call (sync.Once).
+	dedupThrottleOnce sync.Once
+	dedupThrottle     *dedupLogThrottle
 }
 
 // Start satisfies controller-runtime's manager.Runnable interface.
@@ -382,7 +420,7 @@ func (i *Informer) List(ctx context.Context, gvk schema.GroupVersionKind) (*unst
 	}
 
 	// Query both versions and feed into the dedup store.
-	store := newDedupStore(i.Log)
+	store := newDedupStore()
 	for _, listGVK := range listGVKs {
 		list := &unstructured.UnstructuredList{}
 		list.SetGroupVersionKind(listGVK)
@@ -396,6 +434,28 @@ func (i *Informer) List(ctx context.Context, gvk schema.GroupVersionKind) (*unst
 		}
 		for idx := range list.Items {
 			store.Upsert(&list.Items[idx])
+		}
+	}
+
+	// FIX.txt LOW-7 (2026-05-22): emit a v1alpha1-wins INFO line per
+	// collision, throttled to once per dedupLogWindow per (kind, ns, name)
+	// tuple. Sub-window collisions log at V(2) for trace-level diagnostics.
+	i.dedupThrottleOnce.Do(func() { i.dedupThrottle = newDedupLogThrottle() })
+	for _, ck := range store.collisions {
+		if i.dedupThrottle.shouldLog(ck, dedupLogWindow) {
+			i.Log.Info("toolhive dedup: v1alpha1 wins",
+				"kind", ck.Kind,
+				"namespace", ck.Namespace,
+				"name", ck.Name,
+				"dedup_reason", "alpha_wins",
+			)
+		} else {
+			i.Log.V(2).Info("toolhive dedup: v1alpha1 wins (throttled)",
+				"kind", ck.Kind,
+				"namespace", ck.Namespace,
+				"name", ck.Name,
+				"dedup_reason", "alpha_wins",
+			)
 		}
 	}
 
