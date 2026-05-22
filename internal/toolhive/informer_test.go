@@ -737,22 +737,12 @@ func containsSubstring(s, sub string) bool {
 	return false
 }
 
-// TestInformer_FIX2_L11_RegisteredGVKsSnapshot — FIX2.txt LOW-11 diagnostic
-// (2026-05-22).
-//
-// Pins the CURRENT contract of RegisteredGVKs(): tryRegister short-circuits
-// the second version per kind once the first is registered, so the eager
-// set after registration is 1 GVK per kind = 2 GVKs total. This is the
-// pre-Task-4 state. Task 4 broadens tryRegister to eagerly register both
-// versions per kind; when that lands, this test's expectation must flip
-// from 2 to 4 and the body must assert both versions appear per kind.
-//
-// The prod-symptom narrative ("startup log only mentions v1alpha1") is the
-// observable consequence of this short-circuit: the V(1) "toolhive informer
-// registered" line only fires for the kindReady-flipping GVKs. v1beta1
-// objects are still reachable via Client.List → lazy-register, so dedup
-// behavior is unaffected — but the startup audit signal is incomplete.
-func TestInformer_FIX2_L11_RegisteredGVKsSnapshot(t *testing.T) {
+// TestInformer_FIX2_L11_RegisteredGVKsFull — FIX2.txt LOW-11
+// (2026-05-22). After the Task-4 broadening of tryRegister (no per-kind
+// short-circuit), RegisteredGVKs returns all 4 GVKs (v1alpha1 + v1beta1
+// for both MCPServer and VirtualMCPServer) when both versions are
+// served. The startup audit log lists this set honestly.
+func TestInformer_FIX2_L11_RegisteredGVKsFull(t *testing.T) {
 	te := setupEnvtest(t)
 	installToolhiveCRDs(t, te)
 
@@ -777,18 +767,15 @@ func TestInformer_FIX2_L11_RegisteredGVKsSnapshot(t *testing.T) {
 	}
 
 	got := inf.RegisteredGVKs()
-	// Pre-Task-4 expectation: 2 eager registrations (one per kind, alpha wins
-	// the per-kind race). Task 4 must flip this to 4 + assert per-kind dual
-	// coverage; failure-to-flip when Task 4 lands is the test's contract.
-	if len(got) != 2 {
-		t.Fatalf("RegisteredGVKs(): got %d, want 2 (pre-Task-4 short-circuit). got=%v", len(got), got)
+	if len(got) != 4 {
+		t.Fatalf("RegisteredGVKs(): got %d, want 4 (both versions per kind). got=%v", len(got), got)
 	}
-	kinds := map[string]int{}
+	perKind := map[string]int{}
 	for _, gvk := range got {
-		kinds[gvk.Kind]++
+		perKind[gvk.Kind]++
 	}
-	if kinds["MCPServer"] != 1 || kinds["VirtualMCPServer"] != 1 {
-		t.Fatalf("expected 1 GVK per kind in pre-Task-4 state; got per-kind counts: %v", kinds)
+	if perKind["MCPServer"] != 2 || perKind["VirtualMCPServer"] != 2 {
+		t.Fatalf("expected 2 GVKs per kind (v1alpha1 + v1beta1); got per-kind counts: %v", perKind)
 	}
 
 	cancel()
