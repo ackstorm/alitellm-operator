@@ -73,6 +73,40 @@ func TestDedupLogThrottle_AfterWindowReopens(t *testing.T) {
 	}
 }
 
+// TestInformer_FIX2_M4_ThrottleBehaviorIsPerTuplePerWindow — FIX2.txt
+// MEDIUM-4 diagnostic (2026-05-22). Pins the documented contract: the
+// throttle is per-(kind, namespace, name) per dedupLogWindow. N distinct
+// tuples within one window each emit once, so "22 lines/min" against a
+// 22-MCPServer cluster IS the expected V(0) behavior of the existing
+// implementation. The prod symptom is therefore signal volume, not a
+// throttle bug. Task 4 demotes the per-tuple line to V(2) and adds a
+// coalesced once-per-5m summary line at V(0).
+func TestInformer_FIX2_M4_ThrottleBehaviorIsPerTuplePerWindow(t *testing.T) {
+	t.Parallel()
+	throttle := newDedupLogThrottle()
+	window := 60 * time.Second
+
+	keys := []dedupKey{
+		{Kind: "MCPServer", Namespace: "mcp", Name: "context7"},
+		{Kind: "MCPServer", Namespace: "mcp", Name: "exa"},
+		{Kind: "MCPServer", Namespace: "mcp", Name: "google-calendar"},
+	}
+	for _, k := range keys {
+		if !throttle.shouldLog(k, window) {
+			t.Fatalf("first call should emit for %v", k)
+		}
+	}
+	for _, k := range keys {
+		if throttle.shouldLog(k, window) {
+			t.Fatalf("second call should be throttled for %v", k)
+		}
+	}
+	fresh := dedupKey{Kind: "MCPServer", Namespace: "other", Name: "x"}
+	if !throttle.shouldLog(fresh, window) {
+		t.Fatalf("fresh key must emit even when peers are within window")
+	}
+}
+
 // TestDedupLogThrottle_ConcurrentSafe asserts the throttle is
 // goroutine-safe (mu protects lastLoggedAt).
 func TestDedupLogThrottle_ConcurrentSafe(t *testing.T) {
