@@ -32,7 +32,6 @@ func TestSanitizeMCPServerName(t *testing.T) {
 		{"unrecognized sep / passthrough", "a.b-c", "_", "a.b-c"},
 	}
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			if got := SanitizeMCPServerName(tc.in, tc.separator); got != tc.want {

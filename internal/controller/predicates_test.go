@@ -41,7 +41,6 @@ func TestConnectionReadyTransition_FalseToTrueFires(t *testing.T) {
 		{"unknown → true: fires (initial probe success)", newConn(metav1.ConditionUnknown), newConn(metav1.ConditionTrue), true},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			got := pred.Update(event.UpdateEvent{ObjectOld: tc.old, ObjectNew: tc.new})
 			if got != tc.want {
