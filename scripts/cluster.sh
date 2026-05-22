@@ -77,7 +77,7 @@ install_toolhive() {
   # (storage: false, new). kubectl apply replaces the OCI chart's CRD with the
   # multi-version fixture; safe in an ephemeral kind cluster. Idempotent.
   echo "[cluster.sh] adding v1beta1 CRD versions (toolhive dual-vintage fixture)..."
-  kubectl apply -f test/e2e/fixtures/toolhive-v1beta1-crds.yaml
+  kubectl apply --server-side --force-conflicts --field-manager=alitellm-cluster-bootstrap -f test/e2e/fixtures/toolhive-v1beta1-crds.yaml
   echo "[cluster.sh] toolhive CRD versions after fixture: $(kubectl get crd mcpservers.toolhive.stacklok.dev -o jsonpath='{.spec.versions[*].name}' 2>/dev/null || echo 'crd-not-found')"
 }
 
