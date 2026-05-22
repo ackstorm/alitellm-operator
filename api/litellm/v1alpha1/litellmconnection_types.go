@@ -92,13 +92,14 @@ type LiteLLMConnectionSpec struct {
 	// Reconcilers read this from the Connection snapshot and apply via:
 	//   return ctrl.Result{RequeueAfter: snap.RequeueOnRejectedAfter}, nil
 	//
-	// Default 5m. Range enforced via CEL XValidation: [1m, 1h]. Values
-	// below 1m would defeat the rate-limiter; values above 1h delay
-	// upstream-fix recovery beyond useful bounds.
+	// Default 5m. Range [1m, 1h] enforced operator-side by
+	// connection.NormalizedRequeueOnRejectedAfter (envtest revealed CEL
+	// validation on metav1.Duration interacts poorly with the apiserver
+	// default-then-validate ordering — values outside the range are
+	// clamped at read time instead).
 	//
 	// +optional
 	// +kubebuilder:default:="5m"
-	// +kubebuilder:validation:XValidation:rule="duration(self) >= duration('1m') && duration(self) <= duration('1h')",message="requeueOnRejectedAfter must be between 1m and 1h"
 	RequeueOnRejectedAfter metav1.Duration `json:"requeueOnRejectedAfter,omitempty"`
 }
 

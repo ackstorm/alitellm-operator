@@ -10,11 +10,26 @@ import (
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 )
 
-// connectionReadyTransition fires on a LiteLLMConnection event ONLY when
-// status.conditions[type=Ready] flips False → True (or appears True for
-// the first time). Used by mcpserver / model / a2aagent / team
-// controllers to re-enqueue all child CRs in the same namespace after an
-// upstream LiteLLM restart recovers (FIX.txt M-3b, 2026-05-22).
+// connectionReadyTransition fires on a LiteLLMConnection event for any
+// of three cases that together fully cover Connection-Ready recovery
+// from the perspective of dependent child CRs:
+//
+//   - Create: the watched Connection arrives Ready=True. This is the
+//     cold-start case (operator restart with a Synced cache, or a
+//     fresh Connection created already Ready).
+//   - Update: status.conditions[type=Ready] flips False → True. The
+//     transient-recovery case (upstream LiteLLM restart, 401-rotation,
+//     cache rebuild).
+//   - Generic: an external publisher (currently reserved; the
+//     connection cache may emit a GenericEvent on snapshot transition
+//     in a future revision) signals that the Connection's effective
+//     readiness changed. Treated identically to Create: fire iff the
+//     object is Ready=True.
+//
+// Used by mcpserver / model / a2aagent / team controllers to
+// re-enqueue all child CRs in the same namespace after an upstream
+// LiteLLM restart recovers (FIX.txt M-3b, 2026-05-22; FIX2.txt M-3
+// Option B, 2026-05-22).
 //
 // Why a transition predicate (not "any change"): without the False→True
 // gate every Connection status write — including the noisy probe-tick
@@ -23,8 +38,6 @@ import (
 // events.
 func connectionReadyTransition() predicate.Predicate {
 	return predicate.Funcs{
-		// On Create: a Connection appearing already Ready is treated as a
-		// transition (covers operator restart with a Synced cache).
 		CreateFunc: func(e event.CreateEvent) bool {
 			conn, ok := e.Object.(*litellmv1alpha1.LiteLLMConnection)
 			return ok && isConnReady(conn)
@@ -37,8 +50,11 @@ func connectionReadyTransition() predicate.Predicate {
 			}
 			return !isConnReady(oldConn) && isConnReady(newConn)
 		},
-		DeleteFunc:  func(_ event.DeleteEvent) bool { return false },
-		GenericFunc: func(_ event.GenericEvent) bool { return false },
+		DeleteFunc: func(_ event.DeleteEvent) bool { return false },
+		GenericFunc: func(e event.GenericEvent) bool {
+			conn, ok := e.Object.(*litellmv1alpha1.LiteLLMConnection)
+			return ok && isConnReady(conn)
+		},
 	}
 }
 

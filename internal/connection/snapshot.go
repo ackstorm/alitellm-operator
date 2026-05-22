@@ -122,14 +122,27 @@ type ConnectionSnapshot struct {
 // zero-value snapshot returned for not-Ready cases. Matches the
 // kubebuilder default of "5m" on
 // LiteLLMConnection.spec.requeueOnRejectedAfter (FIX2.txt H-2).
-const DefaultRequeueOnRejectedAfter = 5 * time.Minute
+const (
+	DefaultRequeueOnRejectedAfter = 5 * time.Minute
+	MinRequeueOnRejectedAfter     = 1 * time.Minute
+	MaxRequeueOnRejectedAfter     = 1 * time.Hour
+)
 
-// NormalizedRequeueOnRejectedAfter returns RequeueOnRejectedAfter when
-// it is positive; otherwise DefaultRequeueOnRejectedAfter. Use this at
-// reconciler return sites so the requeue cadence is always bounded.
+// NormalizedRequeueOnRejectedAfter returns RequeueOnRejectedAfter
+// clamped to [MinRequeueOnRejectedAfter, MaxRequeueOnRejectedAfter].
+// Zero or non-positive values resolve to DefaultRequeueOnRejectedAfter.
+// Used at every reconciler return site so the requeue cadence is
+// always bounded, regardless of what the user set on the spec.
 func (s ConnectionSnapshot) NormalizedRequeueOnRejectedAfter() time.Duration {
-	if s.RequeueOnRejectedAfter > 0 {
-		return s.RequeueOnRejectedAfter
+	d := s.RequeueOnRejectedAfter
+	if d <= 0 {
+		return DefaultRequeueOnRejectedAfter
 	}
-	return DefaultRequeueOnRejectedAfter
+	if d < MinRequeueOnRejectedAfter {
+		return MinRequeueOnRejectedAfter
+	}
+	if d > MaxRequeueOnRejectedAfter {
+		return MaxRequeueOnRejectedAfter
+	}
+	return d
 }
