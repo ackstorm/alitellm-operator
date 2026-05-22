@@ -34,6 +34,16 @@ import (
 // MCP-04: the operator updates via `PUT /v1/mcp/server` (wholesale-replace,
 // empirically validated by Probe 10c on 1.83.10-stable per Phase 5 plan
 // 05-00) and deletes via `DELETE /v1/mcp/server/<id>`.
+//
+// MCP-05: LiteLLM v1.83.10+ rejects `.` in `server_name` with HTTP 400.
+// The reconciler sanitizes wire-side `server_name` and `alias` by
+// replacing every `.` with `-` (FIX.txt H-1, 2026-05-22). The K8s-side
+// `metadata.name` is left untouched — the dotted form is the documented
+// MCPServerDiscovery child template (`<discovery>.<source-ns>.<source-name>`),
+// and the divergence between K8s identity and LiteLLM identity is
+// confined to the wire boundary. Finalizer name-resolve and the
+// canonical hash both use the sanitized form so drift detection stays
+// consistent with what LiteLLM actually stores.
 type MCPServerSpec struct {
 	// Endpoint is the MCP server URL forwarded verbatim as the `url`
 	// field of LiteLLM's `NewMCPServerRequest`/`UpdateMCPServerRequest`.
@@ -155,8 +165,11 @@ type MCPServerStatus struct {
 type MCPServerLastRenderedStatus struct {
 	// Hash is the SHA-256 hex of the RFC 8785–canonicalized merged
 	// post-substitution body (spec.params merged with structural
-	// overlays {server_name, url, transport}). An empty hash indicates
-	// the MCPServer has not yet been successfully reconciled.
+	// overlays {server_name, url, transport}). `server_name` in this
+	// overlay is the LiteLLM-side sanitized name (dots replaced with
+	// dashes per MCP-05); the K8s `metadata.name` retains the dotted
+	// form. An empty hash indicates the MCPServer has not yet been
+	// successfully reconciled.
 	//
 	// +optional
 	Hash string `json:"hash,omitempty"`
@@ -176,7 +189,8 @@ type MCPServerLastRenderedStatus struct {
 	// server entry. Pinned per Phase 5 D-02 so the reconciler can call
 	// `DELETE /v1/mcp/server/<server_id>` directly on the finalizer
 	// path without re-resolving by name. On first reconcile, resolved
-	// via `GET /v1/mcp/server` + in-memory filter on metadata.name.
+	// via `GET /v1/mcp/server` + in-memory filter on the LiteLLM-side
+	// sanitized name (MCP-05; dots replaced with dashes).
 	//
 	// Diverges from spec §6.4: documented in
 	// spec/DEFECTS-1.82.6.md row `DEF-§6.4/§6.6-ID-PERSIST`.
