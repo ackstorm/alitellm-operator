@@ -460,6 +460,25 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		} else if existing != nil && existing.ModelInfo.ID != "" {
 			newLiteLLMModelID = existing.ModelInfo.ID
 			logger.V(1).Info("model already exists in LiteLLM; adopting id (idempotency probe)", "modelID", newLiteLLMModelID)
+			// FIX4.txt H-1 (2026-05-22): the adoption branch skips POST
+			// /model/new, so pre-v0.2.0 entries (or any out-of-band entries
+			// created without a model_info.created_by) never received an
+			// identity stamp — that's exactly what the prod smoke-test
+			// observed under v0.2.0 (UI "Created By: Unknown" on every
+			// operator-managed row). Re-issue POST /model/update with
+			// model_info.updated_by so the next UI refresh shows
+			// alitellm-operator/<version> on adopted rows. CreatedBy is
+			// intentionally NOT stamped — LiteLLM 1.83.x keeps the original
+			// creator across updates and the operator is by definition not
+			// the original creator on the adoption path.
+			if _, uerr := snap.Client.UpdateModel(ctx, &litellm.UpdateDeployment{
+				ID:            newLiteLLMModelID,
+				ModelName:     model.Name,
+				LiteLLMParams: litellm.LiteLLMParams(paramsMap),
+				ModelInfo:     litellm.ModelInfo{UpdatedBy: identity.Operator()},
+			}); uerr != nil {
+				return r.classifyMutationError(ctx, &model, logger, uerr, "POST /model/update (FIX4 H-1 adoption stamp)")
+			}
 		} else {
 			// CR-16 / D-7.1-16 (2026-05-19): leave ModelInfo zero-valued so the
 			// JSON body omits both `model_info` (empty struct → still emitted but
