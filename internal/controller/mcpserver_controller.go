@@ -159,7 +159,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				if serverID == "" {
 					// Phase 5 D-02 stale-status fallback: re-resolve by name
 					// via ListMCPServers + in-memory filter on metadata.name.
-					if resolved := r.resolveServerIDByName(ctx, snap.Client, mcp.Name, logger); resolved != "" {
+					if resolved := r.resolveServerIDByName(ctx, snap.Client, litellm.SanitizeMCPServerName(mcp.Name, snap.MCPToolPrefixSeparator), logger); resolved != "" {
 						serverID = resolved
 					}
 				}
@@ -308,8 +308,16 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// Build the canonical body: structural overlays {server_name, url,
 	// transport} + the pass-through params bag. The structural overlays
 	// participate in the hash so endpoint/transport edits drive UPDATE.
+	//
+	// FIX.txt H-1 (2026-05-22): LiteLLM rejects its MCP_TOOL_PREFIX_SEPARATOR
+	// inside server_name. The reconciler sanitizes the K8s metadata.name
+	// per LiteLLMConnection.spec.mcpToolPrefixSeparator (the snapshot
+	// carries the value). The hash is computed on the SANITIZED form so
+	// drift detection matches what LiteLLM actually stores; K8s
+	// metadata.name remains untouched.
+	sanitizedName := litellm.SanitizeMCPServerName(mcp.Name, snap.MCPToolPrefixSeparator)
 	merged := map[string]any{
-		"server_name": mcp.Name,
+		"server_name": sanitizedName,
 		"url":         mcp.Spec.Endpoint,
 		"transport":   mcp.Spec.Transport,
 		"params":      paramsMap,
@@ -358,8 +366,8 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		// (HTTP 400) did not include alias. The spec marks alias optional, but
 		// 1.83.10 validates it at create time (diagnostic-first diff, 2026-05-19).
 		createReq := &litellm.MCPServerRequest{
-			ServerName:    mcp.Name,
-			Alias:         mcp.Name, // NEW: alias = server_name per 1.83.10 (D-7.1-10)
+			ServerName:    sanitizedName,
+			Alias:         sanitizedName, // alias = server_name per 1.83.10 (D-7.1-10)
 			URL:           mcp.Spec.Endpoint,
 			Transport:     mcp.Spec.Transport,
 			Description:   description,
@@ -386,7 +394,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		// 05-00-SUMMARY.md; PUT IS wholesale-replace on 1.83.10-stable).
 		updateReq := &litellm.MCPServerUpdateRequest{
 			ServerID:      mcp.Status.LastRendered.ServerID,
-			ServerName:    mcp.Name,
+			ServerName:    sanitizedName,
 			URL:           mcp.Spec.Endpoint,
 			Transport:     mcp.Spec.Transport,
 			Description:   description,

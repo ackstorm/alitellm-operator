@@ -330,6 +330,7 @@ _Appears in:_
 | --- | --- | --- | --- |
 | `endpoint` _string_ | Endpoint is the base URL of the LiteLLM instance the operator<br />will probe and mutate against. Example:<br />"http://litellm.default.svc.cluster.local:4000".<br />The endpoint is used for both the periodic GET /models probe<br />(CONN-03, see internal/litellm/keyinfo.go for the §6.1 deviation<br />note) and every Phase 3+ domain mutation call. The value is<br />trimmed of any trailing slash by litellm.NewClient at the wire<br />layer; users may include or omit the trailing slash without<br />observable effect. |  | MinLength: 1 <br />Required: \{\} <br /> |
 | `masterKeySecretRef` _[SecretKeyRef](#secretkeyref)_ | MasterKeySecretRef points to the Kubernetes Secret that carries<br />the LiteLLM master key (sk-.). Both `name` and `key` are<br />required per CONN-01; the SecretKeyRef type enforces non-empty<br />values via its own MinLength=1 markers. The Secret MUST live in<br />the same namespace as the LiteLLMConnection CR (no cross-namespace<br />resolution in v1alpha1).<br />The reconciler reads the Secret with the operator's ServiceAccount<br />at probe time; missing Secret or missing key surfaces as<br />Ready=False, reason=SecretNotFound (§6.0 reason set). |  | Required: \{\} <br /> |
+| `mcpToolPrefixSeparator` _string_ | MCPToolPrefixSeparator mirrors LiteLLM's `MCP_TOOL_PREFIX_SEPARATOR`<br />environment variable on the target LiteLLM instance. LiteLLM uses<br />this character as the delimiter between server prefix and tool name<br />in fully-qualified MCP tool identifiers, and it REJECTS the same<br />character inside `server_name` at `POST /v1/mcp/server` time (HTTP<br />400 "Server name cannot contain '<sep>'."). The opposite member of<br />the \{".", "-"\} pair is allowed inside `server_name`.<br />The operator reads this field to sanitize the LiteLLM-side<br />`server_name` and `alias` for every MCPServer routed through this<br />Connection. The K8s `metadata.name` is left untouched — sanitization<br />is wire-boundary only.<br />Valid values:<br />  - "-" (default; matches LiteLLM's own default). Forbids '-' in<br />    server_name; the operator rewrites '-' → '.' in the wire payload.<br />  - "." Forbids '.' in server_name (the ackstorm prod config since<br />    the MCPServerDiscovery dotted-child template requires '-' inside<br />    server_name). The operator rewrites '.' → '-' in the wire payload.<br />FIX.txt HIGH-1 (2026-05-22): without this field, dotted Discovery<br />children failed at the LiteLLM-side validator on default deploys. | - | Enum: [- .] <br /> |
 
 
 #### LiteLLMConnectionStatus
@@ -878,9 +879,9 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `hash` _string_ | Hash is the SHA-256 hex of the RFC 8785–canonicalized merged<br />post-substitution body (spec.params merged with structural<br />overlays \{server_name, url, transport\}). An empty hash indicates<br />the MCPServer has not yet been successfully reconciled. |  |  |
+| `hash` _string_ | Hash is the SHA-256 hex of the RFC 8785–canonicalized merged<br />post-substitution body (spec.params merged with structural<br />overlays \{server_name, url, transport\}). `server_name` in this<br />overlay is the LiteLLM-side sanitized name per MCP-05 (the<br />`litellm.SanitizeMCPServerName` rewrite of metadata.name driven by<br />the parent Connection's spec.mcpToolPrefixSeparator). An empty<br />hash indicates the MCPServer has not yet been successfully<br />reconciled. |  |  |
 | `paramsKeys` _string array_ | ParamsKeys is the sorted list of top-level keys present in<br />spec.params at the time of the last successful render. Per Phase 5<br />D-01 (✓ verdict on Probe 10c — PUT IS wholesale-replace on<br />1.83.10-stable), this field is informational only: the simple PUT<br />update path does not need per-bag shrinkage detection. The field<br />is retained for observability and forward-compat with any future<br />downgrade path. |  |  |
-| `serverID` _string_ | ServerID is the LiteLLM-assigned UUID (server_id) for this MCP<br />server entry. Pinned per Phase 5 D-02 so the reconciler can call<br />`DELETE /v1/mcp/server/<server_id>` directly on the finalizer<br />path without re-resolving by name. On first reconcile, resolved<br />via `GET /v1/mcp/server` + in-memory filter on metadata.name.<br />Diverges from spec §6.4: documented in<br />spec/DEFECTS-1.82.6.md row `DEF-§6.4/§6.6-ID-PERSIST`. |  |  |
+| `serverID` _string_ | ServerID is the LiteLLM-assigned UUID (server_id) for this MCP<br />server entry. Pinned per Phase 5 D-02 so the reconciler can call<br />`DELETE /v1/mcp/server/<server_id>` directly on the finalizer<br />path without re-resolving by name. On first reconcile, resolved<br />via `GET /v1/mcp/server` + in-memory filter on the LiteLLM-side<br />sanitized name (MCP-05; the rewrite of metadata.name driven by<br />the parent Connection's spec.mcpToolPrefixSeparator).<br />Diverges from spec §6.4: documented in<br />spec/DEFECTS-1.82.6.md row `DEF-§6.4/§6.6-ID-PERSIST`. |  |  |
 | `at` _[Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#time-v1-meta)_ | At is the timestamp of the last SUCCESSFUL render (NOT every<br />reconcile attempt — transient failures do not update this field). |  |  |
 
 
@@ -940,6 +941,20 @@ Phase 5 D-10 — `streamable-http → http`).
 MCP-04: the operator updates via `PUT /v1/mcp/server` (wholesale-replace,
 empirically validated by Probe 10c on 1.83.10-stable per Phase 5 plan
 05-00) and deletes via `DELETE /v1/mcp/server/<id>`.
+
+MCP-05: LiteLLM rejects its `MCP_TOOL_PREFIX_SEPARATOR` env value inside
+`server_name` at `POST /v1/mcp/server` time (HTTP 400 "Server name
+cannot contain '<sep>'."). The MCPServer reconciler sanitizes the
+LiteLLM-side `server_name` and `alias` per the parent
+LiteLLMConnection's `spec.mcpToolPrefixSeparator` (default `-`), swapping
+the configured separator for the opposite valid character (`-` ↔ `.`)
+via `litellm.SanitizeMCPServerName`. The K8s-side `metadata.name` is
+left untouched — the dotted MCPServerDiscovery child template
+(`<discovery>.<source-ns>.<source-name>`) survives unchanged, and the
+divergence between K8s identity and LiteLLM identity is confined to
+the wire boundary (FIX.txt HIGH-1, 2026-05-22). The canonical hash
+input and the finalizer name-resolve fallback both use the sanitized
+form so drift detection stays consistent with what LiteLLM stores.
 
 
 

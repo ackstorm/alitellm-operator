@@ -24,6 +24,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
+	"github.com/ackstorm/alitellm-operator/internal/litellm"
 	"github.com/ackstorm/alitellm-operator/internal/litellm/mock"
 	"github.com/ackstorm/alitellm-operator/internal/metrics"
 	"github.com/ackstorm/alitellm-operator/internal/toolhive"
@@ -1582,12 +1583,16 @@ func TestMCPServerDiscoveryReconciler_AC_SEC4_Propagate(t *testing.T) {
 	// resolved value=initial-value.
 	_ = pollMCPServerCondition(t, ctx, dotted, reasonSynced, 30*time.Second)
 
+	// FIX H-1: mock is keyed by sanitized name (per Connection's
+	// spec.mcpToolPrefixSeparator; default "-" → '-' → '.').
+	wireName := litellm.SanitizeMCPServerName(dotted, "")
+
 	// Verify the LiteLLM-side body now has the resolved initial value
 	// in mcp_info.x (the placeholder location).
 	deadline := time.Now().Add(15 * time.Second)
 	gotInitial := false
 	for time.Now().Before(deadline) {
-		body := mockServer.LastMCPBody(dotted)
+		body := mockServer.LastMCPBody(wireName)
 		if body != nil {
 			if mcpInfo, ok := body["mcp_info"].(map[string]any); ok {
 				if v, ok2 := mcpInfo["x"].(string); ok2 && v == "initial-value" {
@@ -1599,7 +1604,7 @@ func TestMCPServerDiscoveryReconciler_AC_SEC4_Propagate(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	if !gotInitial {
-		t.Logf("[warning] child's initial PUT/POST body did not surface mcp_info.x='initial-value'; current body=%v", mockServer.LastMCPBody(dotted))
+		t.Logf("[warning] child's initial PUT/POST body did not surface mcp_info.x='initial-value'; current body=%v", mockServer.LastMCPBody(wireName))
 	}
 
 	// ── The actual AC-SEC4-PROPAGATE check ──
@@ -1622,7 +1627,7 @@ func TestMCPServerDiscoveryReconciler_AC_SEC4_Propagate(t *testing.T) {
 	rotateDeadline := time.Now().Add(30 * time.Second)
 	gotNew := false
 	for time.Now().Before(rotateDeadline) {
-		body := mockServer.LastMCPBody(dotted)
+		body := mockServer.LastMCPBody(wireName)
 		if body != nil {
 			if mcpInfo, ok := body["mcp_info"].(map[string]any); ok {
 				if v, ok2 := mcpInfo["x"].(string); ok2 && v == "new-value-canary" {

@@ -24,6 +24,7 @@ import (
 
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 	"github.com/ackstorm/alitellm-operator/internal/connection"
+	"github.com/ackstorm/alitellm-operator/internal/litellm"
 	"github.com/ackstorm/alitellm-operator/internal/litellm/mock"
 	"github.com/ackstorm/alitellm-operator/internal/metrics"
 )
@@ -178,13 +179,17 @@ func TestMCPServerReconciler_CreateOnFirstReconcile(t *testing.T) {
 		t.Errorf("POST /v1/mcp/server count: want 1, got %d (recorded: %+v)", postCount, calls)
 	}
 
-	// Mock observed the server with expected name.
-	if !mockServer.HasMCPServer("mcp-create-test") {
-		t.Errorf("mock does not have server name %q; mcpByName populated incorrectly", "mcp-create-test")
+	// Mock observed the server with sanitized name (FIX H-1: server_name is
+	// rewritten per LiteLLMConnection.spec.mcpToolPrefixSeparator before the
+	// wire write; default separator is "-" so "mcp-create-test" becomes
+	// "mcp.create.test" on the LiteLLM side).
+	wireName := litellm.SanitizeMCPServerName("mcp-create-test", "")
+	if !mockServer.HasMCPServer(wireName) {
+		t.Errorf("mock does not have server name %q; mcpByName populated incorrectly", wireName)
 	}
-	if mockServer.GetMCPServerID("mcp-create-test") != m.Status.LastRendered.ServerID {
+	if mockServer.GetMCPServerID(wireName) != m.Status.LastRendered.ServerID {
 		t.Errorf("mock GetMCPServerID(%q) = %q; status.lastRendered.serverID = %q (mismatch)",
-			"mcp-create-test", mockServer.GetMCPServerID("mcp-create-test"), m.Status.LastRendered.ServerID)
+			wireName, mockServer.GetMCPServerID(wireName), m.Status.LastRendered.ServerID)
 	}
 }
 
@@ -323,7 +328,7 @@ func TestMCPServerReconciler_NoCallOnUnchangedSpec(t *testing.T) {
 	); err != nil {
 		t.Fatalf("update annotation: %v", err)
 	}
-	time.Sleep(3 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	if got := mockServer.Mutations(); got != 0 {
 		t.Errorf("idempotency: mockServer.Mutations() = %d, want 0 on annotation-only edit", got)
@@ -454,9 +459,9 @@ func TestMCPServerReconciler_ConnectionGate(t *testing.T) {
 		t.Errorf("Ready.Message: want substring %q, got %q", wantMsg, c.Message)
 	}
 
-	// Zero mock mutations over 3s window.
+	// Zero mock mutations over 2s window.
 	mockServer.ResetCounters()
-	time.Sleep(3 * time.Second)
+	time.Sleep(2 * time.Second)
 	if got := mockServer.Mutations(); got != 0 {
 		t.Errorf("connection-gate: want 0 mutations, got %d", got)
 	}
@@ -518,16 +523,16 @@ func TestMCPServerReconciler_401FastPath(t *testing.T) {
 		t.Errorf("Ready.Reason: want LiteLLMUnavailable, got %q", c.Reason)
 	}
 
-	// Anti-storm: bounded mutations over a 3s window.
+	// Anti-storm: bounded mutations over a 2s window.
 	mockServer.SetMode(mock.Mode401)
 	mutsBefore := mockServer.Mutations()
-	time.Sleep(3 * time.Second)
+	time.Sleep(2 * time.Second)
 	mutsAfter := mockServer.Mutations()
 	delta := mutsAfter - mutsBefore
 	// Allow a small bound — the 401 may produce one retry under controller-runtime,
 	// but it must not storm.
 	if delta > 5 {
-		t.Errorf("401FastPath anti-storm: %d mutations in 3s window (want <= 5)", delta)
+		t.Errorf("401FastPath anti-storm: %d mutations in 2s window (want <= 5)", delta)
 	}
 }
 
