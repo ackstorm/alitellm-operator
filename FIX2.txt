@@ -1,0 +1,829 @@
+FIX2.txt — alitellm-operator follow-up findings (v0.1.2 smoke-test)
+====================================================================
+Generated: 2026-05-22
+Source: live re-test of v0.1.2 on EKS after FIX.txt remediation merged.
+Operator pod: alitellm-operator-controller-manager-67f4d4bd5b-zvclp
+Image: ghcr.io/ackstorm/alitellm-operator:v0.1.2
+Helm release: alitellm-operator-0.1.2 (revision 2, 2026-05-22T13:31:25Z)
+
+Conventions (same as FIX.txt):
+  HIGH    = blocks a feature end-to-end; user-visible 100% failure rate.
+  MEDIUM  = degrades UX or causes false positives; happy path still works.
+  LOW     = polish, observability, docs.
+
+Each finding has: SYMPTOM, EVIDENCE, ROOT CAUSE, FIX, TEST PLAN.
+
+────────────────────────────────────────────────────────────────
+Decisions locked 2026-05-22 (BEFORE BUILD — read first)
+────────────────────────────────────────────────────────────────
+HIGH-1:    Option (a) — change the kubebuilder default for
+           LiteLLMConnection.spec.mcpToolPrefixSeparator from "-" to
+           ".". Skip option (b) (server-side detection) — not worth
+           the extra plumbing now. Release note must call out the
+           default flip for existing users.
+
+HIGH-2:    Retry strategy: combined approach (both bullets from the
+           FIX block):
+             • RequeueAfter: 5*time.Minute on LiteLLMRejected /
+               SecretNotFound paths (deterministic errors).
+               Configurable via
+               LiteLLMConnection.spec.requeueOnRejectedAfter
+               (default 5m, min 1m, max 1h).
+             • On operator boot, force one extra reconcile pass for
+               every CR with status.observedGeneration == generation
+               AND Ready=False. One-shot, idempotent.
+
+HIGH-9:    Sanitizer no-op-on-safe-input + adopt-by-original-name
+           on migration (as written in the FIX block). Combined with
+           HIGH-1's default flip, the regression vanishes for any
+           K8s name that was already valid under v0.1.1.
+
+MEDIUM-3:  Option B from the FIX block — extend the Connection
+           watch predicate to fire on Create + Update(Ready edge) +
+           GenericEvent(cache snapshot publish), and enqueue ALL
+           child CRs in the namespace on each fire. Skip the
+           per-controller boot-reconcile sweep — HIGH-2's boot
+           re-reconcile pass already covers cold-start.
+
+MEDIUM-8:  Identity literal `alitellm-operator/<version>` injected
+           via ldflags. Applied to Model (POST /model/new +
+           /model/update) AND Team, MCPServer, A2AAgent if the
+           respective endpoints accept the field. Probe each
+           endpoint before assuming.
+
+Other findings (MEDIUM-4, MEDIUM-5, MEDIUM-10, LOW-6, LOW-7,
+LOW-11, LOW-12): no open decisions — implement as written in each
+entry's FIX block.
+
+Build order recommendation:
+  1. HIGH-9 (regression — restore prod)
+  2. HIGH-1 (combine with HIGH-9 in the same PR)
+  3. HIGH-2 (sticky-status retry + boot sweep)
+  4. MEDIUM band in parallel
+  5. LOW band as polish
+
+────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────
+[HIGH-1] mcpToolPrefixSeparator default `-` produces WRONG-direction
+         sanitization against LiteLLM v1.85.1
+────────────────────────────────────────────────────────────────
+SYMPTOM
+  After v0.1.2 (which ships SanitizeMCPServerName + the new Connection
+  field spec.mcpToolPrefixSeparator), all 22 MCPServerDiscovery children
+  still fail with the EXACT same 400 as FIX.txt HIGH-1:
+    POST /v1/mcp/server → 400 "Server name cannot contain '.'."
+  Repro:
+    kubectl annotate litellmmcpserver test-toolhive-discovery.mcp.context7 \
+      -n ackstorm test/force-reconcile=$(date -Is) --overwrite
+    # operator log: 13:35:41Z "LiteLLM rejected request" op="POST /v1/mcp/server"
+    # status: lastTransitionTime unchanged (same condition content)
+
+EVIDENCE
+  - LiteLLM v1.85.1 deployed in cluster, MCP_TOOL_PREFIX_SEPARATOR
+    visibly NOT overridden — confirmed by FIX.txt evidence
+    "Server name cannot contain '.'.".
+  - api/litellm/v1alpha1/litellmconnection_types.go:69
+        // +kubebuilder:default:="-"
+    Default value is "-".
+  - internal/litellm/sanitize.go:34
+        case "", MCPToolPrefixSeparatorDefault:  // ""→"-"
+            return strings.ReplaceAll(name, "-", ".")  // wrong direction
+  - The cluster's LiteLLMConnection/default has no explicit value:
+        spec:
+          endpoint: http://litellm.litellm.svc:4000
+          masterKeySecretRef: { ... }
+        # mcpToolPrefixSeparator: <unset → default "-">
+  - With separator="-", sanitizer replaces "-" with "." in
+        test-toolhive-discovery.mcp.context7
+    yielding
+        test.toolhive.discovery.mcp.context7
+    which is exactly the kind of name LiteLLM rejects.
+
+ROOT CAUSE
+  The default ("-") encodes the assumption that LiteLLM also defaults
+  MCP_TOOL_PREFIX_SEPARATOR to "-" AND therefore forbids "-" in
+  server_name. Empirically on this cluster's LiteLLM v1.85.1, the
+  validator forbids "." regardless of env-var configuration — so the
+  default direction is wrong for the most common deploy.
+  Code comment in sanitize.go:38 reads "matches LiteLLM's own default"
+  but the upstream behavior observed is the opposite.
+
+FIX
+  Two options — pick one explicitly:
+  (a) Flip the default from "-" to "." in
+      api/litellm/v1alpha1/litellmconnection_types.go:69 so OOTB
+      deploys against an unmodified LiteLLM v1.85.1 work without the
+      user knowing about the field. Update CRD + Helm rendered CRD,
+      add release note flagging the behavior change for users who
+      relied on the old default.
+  (b) Detect the LiteLLM-side separator at probe time
+      (LiteLLM exposes `MCP_TOOL_PREFIX_SEPARATOR` via /health/config
+      or the server response includes it in the rejection message).
+      Surface it into Connection.status.mcpToolPrefixSeparator and
+      use that, treating spec.mcpToolPrefixSeparator only as override.
+      Removes the foot-gun entirely.
+  Either way: error message from LiteLLM ("Server name cannot
+  contain '<X>'.") should be parsed and echoed into status.message
+  to make the misconfig diagnosable from `kubectl describe` alone.
+
+TEST PLAN
+  1. Unit test: a LiteLLMConnection with no explicit
+     spec.mcpToolPrefixSeparator and the operator running against a
+     LiteLLM that forbids "." produces sanitized names with no "."
+     characters. (Drives the default-flip in option (a).)
+  2. E2E: same setup as FIX.txt HIGH-1 test plan, but using a real
+     LiteLLM v1.85.1 image with default MCP_TOOL_PREFIX_SEPARATOR.
+     Currently 0/22 children Ready; target is 22/22.
+  3. Regression test: a Connection with explicit
+     spec.mcpToolPrefixSeparator="-" against a LiteLLM that forbids "-"
+     still produces dotted names (i.e. the override knob still works).
+
+WORKAROUND (operator-side, until fix)
+  kubectl patch litellmconnection default -n ackstorm --type=merge \
+    -p '{"spec":{"mcpToolPrefixSeparator":"."}}'
+
+────────────────────────────────────────────────────────────────
+[HIGH-2] Stale-status sticky after upstream-rejection: no auto-retry
+         on operator restart
+────────────────────────────────────────────────────────────────
+SYMPTOM
+  Every CR that hit a 4xx from LiteLLM (LiteLLMRejected) BEFORE the
+  v0.1.2 upgrade stays at status.conditions[Ready]=False with the
+  ORIGINAL lastTransitionTime, even after the operator pod restarts
+  on the new version that contains the fix. The reconciler must be
+  poked (annotation bump, spec edit) to retry.
+  Concrete prod evidence (after 2026-05-22T13:31Z restart on v0.1.2):
+    - 22/22 MCPServerDiscovery children:    lastTransitionTime 08:19:07Z
+    - 6/18  Bedrock models (e.g. nova-lite): 09:53:34Z
+    - 38/56 OpenAI models:                   ~08:30Z
+    - 12/27 Gemini models:                   ~08:30Z
+    - 4/4   KubeAI models:                   ~08:30Z
+
+EVIDENCE
+  - kubectl get on all CRs shows AGE > 4h yet conditions stamps from
+    that initial creation, despite Operator pod AGE = 3m29s.
+  - controller-runtime resync DOES enqueue these objects on operator
+    boot (informer cache rehydration). The reconciler runs but writes
+    back the SAME condition (Ready=False, reason=LiteLLMRejected)
+    → k8s deduplicates: lastTransitionTime unchanged → looks "stale".
+  - Commit b1dc4a9 (Watches() on Connection Ready transition) only
+    fires on actual transition; Connection has been Ready=True
+    continuously, so no event ⇒ no enqueue.
+  - Commit 432f680 (backoff cap 30s) prevents hot-loops but doesn't
+    drive periodic re-attempts on errors after the controller has
+    stopped re-queuing.
+
+ROOT CAUSE
+  Two coupled effects:
+  (a) controller-runtime's exponential rate-limiter eventually stops
+      re-enqueuing items whose result has not changed. Capping at 30s
+      means "retry no slower than every 30s WHILE in the queue", not
+      "always retry every 30s forever".
+  (b) The reconciler returns ctrl.Result{} (no RequeueAfter) for
+      LiteLLMRejected errors — they are treated as "deterministic"
+      and never retried until something else (CR mutation, owner
+      reconcile, Connection Ready flip) triggers an enqueue.
+
+FIX
+  Recommended:
+  - For non-deterministic upstream errors (5xx, network) → keep
+    capped-backoff requeue (already done).
+  - For deterministic upstream errors (4xx, LiteLLMRejected,
+    SecretNotFound) → return ctrl.Result{RequeueAfter: 5*time.Minute}
+    so a slow background poll still catches "the upstream changed
+    its mind" (model added to allowlist, IAM grant added, config
+    reloaded). 5 min is a sane default — make it configurable via
+    Connection.spec.requeueOnRejectedAfter (default 5m, min 1m).
+  - On operator boot, force one extra reconcile pass on every CR
+    whose status.observedGeneration matches but Ready=False. This is
+    cheap (the reconciler is idempotent) and recovers the
+    upgrade-fixes-things-but-status-sticky scenario observed here.
+
+TEST PLAN
+  1. envtest: create a CR that hits 400 once, fix the fake LiteLLM
+     to accept, wait the configured requeueOnRejectedAfter, assert
+     Ready=True without external mutation.
+  2. envtest: operator restart with rejected CRs in cluster — assert
+     each CR reconciles within 30s of pod Ready, and that successful
+     CRs flip Ready=True without intervention.
+
+────────────────────────────────────────────────────────────────
+[MEDIUM-3] Cold-start race: Connection-watch fires "Connecting"
+           state to Team/A2AAgent reconcilers; never recovers
+────────────────────────────────────────────────────────────────
+SYMPTOM
+  After operator pod restart on v0.1.2:
+    test-team             False  LiteLLMUnavailable  "LiteLLMConnection/default not Ready (reason: Connecting)"
+    test-noop-agent       False  LiteLLMUnavailable  "LiteLLMConnection/default not Ready (reason: Connecting)"
+  Both transitioned at 13:31:59Z (operator startup + ~30s) and stay
+  stuck even though LiteLLMConnection/default went Ready=True at
+  13:31:32Z and has been Ready ever since.
+
+EVIDENCE
+  - Connection status:
+        type: Ready, status: True, reason: Synced,
+        lastTransitionTime: 07:57:31Z  (NOT the 13:31 restart time)
+    So from the apiserver's POV, the Connection has been Ready since
+    08:00. The "Connecting" message came from the Connection cache's
+    INITIAL state during operator boot before the probe succeeded.
+  - Team + Agent reconcilers ran during that boot window, saw
+    "Connecting" via the cache, wrote LiteLLMUnavailable + Connecting.
+  - The connection-Ready watch (commit b1dc4a9) fires on STATE
+    TRANSITION (False→True). The transition from "no entry" to True
+    on cold-start may not produce a watch event for child reconcilers
+    because the cache snapshot lands without firing the event channel
+    or because the child reconciler races the cache write.
+
+ROOT CAUSE
+  Connection cache snapshot initialization is not atomic with the
+  child reconciler dependency on it. There's a window where the
+  child sees "Connecting" and writes a False status, then never
+  re-reconciles because:
+    (a) the Connection's Ready=True transition fired its event
+        BEFORE the child reconciler subscribed to that channel, OR
+    (b) the child reconciler subscribed but the event was a single
+        edge that landed in the void.
+  The watch in mcpserver_controller / model_controller /
+  team_controller / a2aagent_controller SetupWithManager needs to
+  enqueue ALL children when the Connection's Ready edge is seen
+  AND on the FIRST cache-snapshot publish, not only on
+  False→True transitions.
+
+FIX
+  In each controller's SetupWithManager, register Watches() on
+  LiteLLMConnection with a predicate that fires on:
+    - CreateEvent (cold cache hydration)
+    - UpdateEvent where oldReady != newReady
+    - GenericEvent from the connection cache's snapshot channel
+  Map each fired event to an EnqueueRequestsFromMapFunc that lists
+  all matching child CRs in the same namespace.
+  Also: when the reconciler observes the Connection's cached
+  Ready=true after a previous Ready=false snapshot from the same
+  pod lifetime, force one Re-reconcile regardless of CR generation.
+
+TEST PLAN
+  1. envtest with controlled timing: bring up Connection in
+     Connecting state, create Team. Wait. Flip Connection to Ready.
+     Assert Team reaches Ready=True without restarting the operator.
+  2. envtest cold-start: pre-seed apiserver with a Ready Connection
+     and a non-reconciled Team. Start operator. Assert Team reaches
+     Ready=True without intervention within 60s.
+
+WORKAROUND
+  kubectl annotate litellmteam test-team -n ackstorm \
+    test/force-reconcile=$(date -Is) --overwrite
+  kubectl annotate litellma2aagent test-noop-agent -n ackstorm \
+    test/force-reconcile=$(date -Is) --overwrite
+
+────────────────────────────────────────────────────────────────
+[MEDIUM-4] ToolHive dedup log throttle commit (49134c7) NOT actually
+           throttling
+────────────────────────────────────────────────────────────────
+SYMPTOM
+  Operator log on v0.1.2 still emits one
+    "INFO toolhive-informer toolhive dedup: v1alpha1 wins"
+  line per server per reconcile pass, ~once per minute, for all 22
+  toolhive servers. Commit 49134c7 ("perf(toolhive): throttle
+  v1alpha1-wins dedup log to once-per-60s/tuple") is present on
+  v0.1.2 but observed behavior is unchanged from pre-fix logs.
+  Sample (3 consecutive minutes, all 22 names each):
+    13:35:03Z  ← reconcile A
+    13:36:03Z  ← reconcile B (1m later)
+    13:37:04Z  ← reconcile C (~1m later)
+
+EVIDENCE
+  - git log --oneline shows 49134c7 between HEAD~9 and v0.1.2 tag.
+  - kubectl logs grep counts 66 dedup lines (22×3) within 3 minutes,
+    not 22 (the expected once-per-60s-per-tuple cap).
+  - Either:
+      * the throttle key includes a fast-changing element (reconcileID,
+        pod start time) so it resets every reconcile, OR
+      * the time-window comparison uses a wrong unit, OR
+      * the throttle was guarded behind a flag/env var that is not
+        wired into the helm chart defaults.
+
+ROOT CAUSE
+  Need code inspection of the dedup log site
+  (internal/toolhive/informer.go or similar). Likely candidates:
+    (a) Throttle map keyed by (kind, namespace, name, reconcileID) —
+        reconcileID is unique per pass so cache never hits.
+    (b) Throttle TTL implemented but the map is reset on each
+        reconcile loop entry.
+
+FIX
+  Inspect and harden:
+  - Throttle key: strictly (kind, namespace, name). Nothing else.
+  - Throttle TTL: 60s wall-clock, persisted across reconciles for
+    the controller's lifetime.
+  - Or simpler: drop the log to V(2) so it never appears at default
+    verbosity; production observability lives in metrics, not logs.
+  Add a once-shot startup log "toolhive informer registered with
+  v1alpha1+v1beta1, dedup pick=v1alpha1 (deprecated)" so admins
+  still see the situation once per pod lifetime.
+
+TEST PLAN
+  1. Unit test the throttle helper directly: 100 calls with the
+     same key in 1s should emit 1 log; 100 calls across 65s should
+     emit 2 logs.
+  2. envtest: 5 reconciles within 60s of a single MCPServer name
+     should produce ≤1 dedup log.
+
+────────────────────────────────────────────────────────────────
+[MEDIUM-5] Failure-mode messages don't surface LiteLLM's response body
+────────────────────────────────────────────────────────────────
+SYMPTOM
+  status.conditions[Ready].message is uniformly:
+    "LiteLLM rejected POST /<endpoint>: litellm: 400 on POST
+     /<endpoint> (code=400)"
+  for every 4xx — model rejection, MCP server_name validation,
+  agent config, team quota. No indication of WHY LiteLLM rejected.
+  Operators have to attach to the operator log, find the
+  reconcileID, and correlate to learn the actual reason.
+
+EVIDENCE
+  - kubectl describe litellmmodel kubeai.qwen3-4b -n ackstorm
+        Message: LiteLLM rejected POST /model/update: litellm: 400 on POST /model/update (code=400)
+  - kubectl describe litellmmcpserver test-toolhive-discovery.mcp.context7 -n ackstorm
+        Message: LiteLLM rejected POST /v1/mcp/server: litellm: 400 on POST /v1/mcp/server (code=400)
+  - The actual body (e.g. "Server name cannot contain '.'.") IS in
+    the operator log at the moment of the call but is not threaded
+    into the condition message.
+
+ROOT CAUSE
+  internal/litellm/ HTTP client wraps the response body into the
+  Go error but the reconcilers only call err.Error() with the
+  generic "litellm: 400 on POST <path> (code=400)" formatting and
+  drop the body.
+
+FIX
+  Capture the response body (first ~256 bytes, truncated) into the
+  error type returned by the HTTP client (e.g. add a `.Detail()`
+  method on the typed error) and include it in
+  meta.SetStatusCondition's Message. Truncate aggressively — the
+  condition message has a soft k8s limit around 32KiB but
+  `kubectl get -o wide` truncates at ~80 chars, so keep it short.
+  Already-known reasons should still go to the structured `Reason`
+  enum (LiteLLMRejected, SecretNotFound, …) so the rich detail
+  goes in Message only.
+
+TEST PLAN
+  1. Unit test: fake HTTP client returns 400 with body
+     `{"detail":{"error":"foo"}}`. Reconciler writes
+     status.message containing "foo".
+  2. E2E: kubectl describe after a real LiteLLM 400 shows the
+     actionable substring.
+
+────────────────────────────────────────────────────────────────
+[LOW-6] Bedrock + OpenAI + Gemini model failures look like upstream
+        provider/config issues, not operator bugs — but operator
+        offers no triage signal
+────────────────────────────────────────────────────────────────
+SYMPTOM
+  Observed counts on EKS prod after 5h with v0.1.2:
+    Bedrock        18/18 (manual) → 17/18 Ready; 1 nova-lite-v1-0 rejected
+    Gemini         27/27 (auto)   → 12 rejected (latest, 2.5-flash, pro, …)
+    KubeAI         4/4 (auto)     → 0 Ready (all rejected)
+    OpenAI         49/49 (auto)   → ~38 rejected
+  These are likely upstream LiteLLM/provider config issues — model
+  ID not in LiteLLM's registry, IAM/key missing the scope, project
+  allowlist mismatch — but the operator only says "400".
+
+EVIDENCE
+  See MEDIUM-5 for the generic message. Concrete cases:
+    - kubeai.qwen3-4b: spec.params has api_base ("http://kubeai.kubeai.svc/openai/v1")
+      proving the HIGH-2 overlay from FIX.txt DID land in v0.1.2.
+      Still 400 from LiteLLM — could be model_name pattern
+      ("hosted_vllm/qwen3-4b") not recognized by LiteLLM v1.85.1
+      on /model/update, or a Prisma-side dedup constraint.
+    - bedrock.amazon.nova-lite-v1-0: discovery generated this but it
+      was the SECOND child for the same upstream after we manually
+      created a similar Model earlier — LiteLLM may be rejecting on
+      duplicate model_id.
+
+ROOT CAUSE
+  Likely upstream provider misconfiguration (or LiteLLM's own model
+  catalog gaps). Operator can't fix these directly. But it can
+  improve the triage UX (see MEDIUM-5) and add a metric
+  `litellm_operator_rejected_total{kind, reason}` so the dashboard
+  surfaces "Bedrock has 1 stuck model" instead of requiring a
+  kubectl describe sweep.
+
+FIX
+  - MEDIUM-5 fixes the per-CR message.
+  - Add Prometheus metric:
+      litellm_operator_reconcile_total{kind, namespace, result}
+      where result ∈ {synced, rejected, transient_error, secret_missing}.
+  - Document the most-common rejection patterns in
+    docs/user-guide/<kind>.md ("if model_name uses pattern X, LiteLLM
+    needs Y; common causes for 400: …").
+
+TEST PLAN
+  Documentation-only PR is acceptable for this finding. Metric
+  addition is its own micro-feature with a unit test that the
+  counter increments per call site.
+
+────────────────────────────────────────────────────────────────
+[LOW-7] FIX.txt HIGH-1 entry now stale — code shipped but original
+        text still implies the dotted-name issue is unfixed
+────────────────────────────────────────────────────────────────
+SYMPTOM
+  FIX.txt at HEAD still contains the original HIGH-1 wording
+  describing the unfixed dotted-server_name bug. v0.1.2 actually
+  shipped a fix attempt (commits 20ade71, 44fb0cb, bfc0d8c) but
+  the file pretends nothing happened.
+
+EVIDENCE
+  - FIX.txt line 20: "[HIGH-1] MCPServerDiscovery: LiteLLM rejects
+    server_name containing '.'" — past-tense fix description.
+  - HEAD `git log` shows the helper + sanitization commits merged.
+  - This FIX2.txt now supersedes FIX.txt HIGH-1 with the
+    actual remaining bug (default direction wrong).
+
+ROOT CAUSE
+  No process for marking a FIX.txt entry as "shipped" or
+  "superseded".
+
+FIX
+  Either:
+  (a) Delete the file once all entries are resolved.
+  (b) Append a STATUS block at the top of each entry:
+        STATUS: SHIPPED in v0.1.2 (commits 20ade71..44fb0cb).
+                See FIX2.txt HIGH-1 for residual default-direction bug.
+  Recommend (b) for traceability.
+
+TEST PLAN
+  Doc-only PR.
+
+────────────────────────────────────────────────────────────────
+[HIGH-9] REGRESSION: v0.1.2 upgrade breaks every manual MCPServer
+         whose K8s name has hyphens (no dots). Sanitizer renames the
+         LiteLLM-side server_name to a dotted form that LiteLLM rejects.
+────────────────────────────────────────────────────────────────
+SYMPTOM
+  test-exa-mcp (Ready=True since 2026-05-21 pre-v0.1.1) flipped to
+  Ready=False reason=LiteLLMRejected immediately after the v0.1.2
+  Helm upgrade (revision 2 at 13:31:25Z). Last reconcile at 13:32:00Z:
+    op = PUT /v1/mcp/server
+    error = "litellm: 400 on PUT /v1/mcp/server (code=400)"
+  This is a strict regression — the CR was happy under v0.1.1 and the
+  upgrade alone (no spec change, no CR edit) broke it.
+
+EVIDENCE
+  - LiteLLM-side server still exists under the ORIGINAL name. Direct
+    probe (2026-05-22T13:45Z):
+        GET /v1/mcp/server → "server_name":"test-exa-mcp" (present)
+  - Operator-side: CR.status.lastRendered.ServerID =
+    72452234-c5ec-4a9e-8e25-da41f02d422b (the pre-v0.1.1 record).
+  - Operator now sends a SANITIZED name on every reconcile:
+        SanitizeMCPServerName("test-exa-mcp", "-")  →  "test.exa.mcp"
+    because Connection.spec.mcpToolPrefixSeparator defaulted to "-".
+  - LiteLLM probe with dotted name → same 400 we observed for the
+    discovery children:
+        {"detail":{"error":"Server name cannot contain '.'."}}
+  - LiteLLM probe with hyphenated name (different alias) → 201
+    accepted (test-exa-mcp-probe2 created successfully then cleaned up).
+  - Existing LiteLLM /v1/mcp/server entries that ARE Ready and have
+    hyphens: google-calendar, google-calendar-oauth, google-drive,
+    zoho-desk-ro, zoho-projects-ro, … (14 servers with hyphens).
+    Conclusively: LiteLLM v1.85.1 ACCEPTS "-" in server_name and
+    REJECTS "." regardless of MCP_TOOL_PREFIX_SEPARATOR env value.
+
+ROOT CAUSE
+  Combination of two design choices that are wrong-by-default:
+  (a) `+kubebuilder:default:="-"` on Connection.spec.mcpToolPrefixSeparator.
+  (b) Sanitizer always rewrites when separator is set, even when the
+      input name does NOT contain the forbidden character. The "-"
+      default flips every "-" to "." unconditionally — so a name
+      already safe ("test-exa-mcp" has no dots) gets mangled.
+  Either alone would be a soft footgun; together they produce a hard
+  regression: upgrading the operator silently changes the LiteLLM-side
+  server_name for every manual MCP in the cluster.
+
+FIX
+  Make the sanitizer a no-op on already-safe inputs:
+    func SanitizeMCPServerName(name, separator string) string {
+        forbidden := separator  // the char LiteLLM rejects
+        if forbidden == "" { forbidden = MCPToolPrefixSeparatorDefault }
+        if !strings.Contains(name, forbidden) {
+            return name      // no rewrite needed
+        }
+        var replacement string
+        switch forbidden {
+        case ".": replacement = "-"
+        case "-": replacement = "."
+        default:  return name
+        }
+        return strings.ReplaceAll(name, forbidden, replacement)
+    }
+  This preserves behavior for inputs that ACTUALLY contain the
+  forbidden char (discovery children with dots when separator=".")
+  but stops mangling names that were already valid.
+  Combined with HIGH-1 (default flip to "."): with the new default,
+  the sanitizer only rewrites when an input contains "." — exactly the
+  problematic case.
+
+  Migration path for existing affected manual MCPServers:
+  - Detect LiteLLM-side orphan by comparing
+    status.lastRendered.ServerID with what GET /v1/mcp/server returns
+    for the SANITIZED name. If the sanitized name has no entry but
+    the original name does, the operator should adopt the original
+    record (use the server_id from the original entry) — same idea
+    as the existing resolveServerIDByName probe at
+    mcpserver_controller.go:162, but extended to also try the
+    PRE-SANITIZE name on lookup.
+
+TEST PLAN
+  1. Unit: SanitizeMCPServerName("test-exa-mcp", "-")
+     • Old behavior: "test.exa.mcp"
+     • New behavior: "test-exa-mcp" (unchanged because input has no ".")
+  2. Unit: SanitizeMCPServerName("a.b.c", "-") → "a.b.c" (unchanged)
+     (sep="-" means LiteLLM forbids "-"; input has no "-" so no rewrite)
+  3. Unit: SanitizeMCPServerName("a.b.c", ".") → "a-b-c"
+     (sep="." means LiteLLM forbids "."; rewrite to "-")
+  4. Unit: SanitizeMCPServerName("a-b-c", "-") → "a.b.c"
+     (sep="-" means LiteLLM forbids "-"; rewrite to ".")
+  5. envtest: pre-v0.1.2 CR (server_name "test-exa-mcp") survives
+     v0.1.2 upgrade with mcpToolPrefixSeparator="." (the new default).
+  6. E2E: regression repro of the orphan-on-upgrade scenario, asserting
+     the new sanitizer leaves "test-exa-mcp" untouched and the CR
+     stays Ready across the upgrade boundary.
+
+WORKAROUND
+  kubectl patch litellmconnection default -n ackstorm --type=merge \
+    -p '{"spec":{"mcpToolPrefixSeparator":"."}}'
+  Then kubectl annotate the affected CR to force reconcile.
+  Operator-side: confirm CR returns to Ready=True.
+
+────────────────────────────────────────────────────────────────
+[MEDIUM-10] Operator-startup thundering herd: ~30 LiteLLM POST/PUT
+            requests in <2s after leader-election, with no rate cap
+────────────────────────────────────────────────────────────────
+SYMPTOM
+  At t=0 (leader acquired 2026-05-22T13:31:59Z) the operator fires:
+    - 22 × POST /v1/mcp/server  (toolhive discovery children retry)
+    - ~50 × POST /model/update  (every model in cluster retry)
+    - 1  × PUT  /v1/mcp/server  (test-exa-mcp drift)
+    - N  × GET  /model/info     (probe + per-CR enrichment)
+    - probes interleaved
+  All complete by 13:32:00Z — ~30+ writes per second against the
+  LiteLLM proxy. On a stressed proxy, the operator could push it into
+  5xx territory and trip its own backoff loop.
+
+EVIDENCE
+  Operator log between 13:31:59Z and 13:32:00Z (one-second window)
+  shows >25 distinct "controller.LiteLLMConnection.probe" /
+  "LiteLLM rejected request" lines. Default controller-runtime worker
+  count = 1 per controller, but multiple controllers fire in
+  parallel, and each controller batch-enqueues its full CR list on
+  startup.
+
+ROOT CAUSE
+  controller-runtime's informer cache hydrates with every existing
+  object and enqueues them all at once. No global rate limiter
+  across the LiteLLM client — each controller hits the proxy
+  independently.
+
+FIX
+  Add a shared rate limiter on internal/litellm/Client:
+    - golang.org/x/time/rate.Limiter with a conservative default
+      (e.g. 5 req/s sustained, burst 10).
+    - Wired into the Client constructor; every Do() acquires before
+      making the HTTP call.
+    - Configurable via LiteLLMConnection.spec.maxRequestsPerSecond
+      (default 5, min 1, max 100).
+  Not blocking; just space the storm out. Adding a metric
+  litellm_operator_client_wait_seconds_total{path} surfaces if the
+  limiter becomes the bottleneck.
+
+TEST PLAN
+  1. Unit: 100 concurrent Client.Do() calls against a slow fake
+     LiteLLM complete in approximately (100/rps) seconds.
+  2. envtest: bring up operator with 50 CRs in the cluster, measure
+     POST rate against a fake LiteLLM. Assert ≤ configured rps + burst.
+
+────────────────────────────────────────────────────────────────
+[LOW-11] ToolHive informer registers v1alpha1 + VirtualMCPServer
+         only — never watches v1beta1 despite cluster serving both
+────────────────────────────────────────────────────────────────
+SYMPTOM
+  Startup log:
+    DEBUG toolhive-informer toolhive informer registered
+      {"gvk": "toolhive.stacklok.dev/v1alpha1, Kind=MCPServer"}
+    DEBUG toolhive-informer toolhive informer registered
+      {"gvk": "toolhive.stacklok.dev/v1alpha1, Kind=VirtualMCPServer"}
+    INFO toolhive-informer toolhive informers registered at startup
+      {"mcpserverGVK": "toolhive.stacklok.dev/v1alpha1, Kind=MCPServer",
+       "virtualMCPServerGVK": "toolhive.stacklok.dev/v1alpha1, Kind=VirtualMCPServer"}
+  Cluster apiserver emits deprecation warning AT STARTUP:
+    W warnings.go:70  toolhive.stacklok.dev/v1alpha1 is deprecated;
+                       use v1beta1
+  No v1beta1 informer is ever registered.
+
+EVIDENCE
+  - kubectl api-resources --api-group=toolhive.stacklok.dev shows
+    both v1alpha1 and v1beta1 served by the cluster.
+  - "dedup: v1alpha1 wins" log claims to be deduplicating between
+    v1alpha1 and v1beta1 — but only v1alpha1 is registered, so the
+    "dedup" branch can never actually dedup anything: the v1beta1
+    list is always empty. The log line is misleading at best; at
+    worst the dedup helper is using a List() per call instead of a
+    cached informer (see MEDIUM-4).
+
+ROOT CAUSE
+  ToolHive informer setup hard-codes v1alpha1 GVK. The "wins"
+  comparison may be a List() call against v1beta1 per dedup pass
+  (explaining the per-reconcile per-name log spam from MEDIUM-4) but
+  the result is not a real reconcile-time dedup.
+
+FIX
+  - At startup, RESTMapper-probe both v1alpha1 and v1beta1.
+  - Register the informer for v1beta1 if served (preferred per
+    deprecation warning).
+  - Fall back to v1alpha1 only when v1beta1 is not served.
+  - Drop the dedup pass entirely once a single informer is the
+    canonical source.
+
+TEST PLAN
+  1. Unit: with a fake RESTMapper serving both versions, the
+     informer registration code picks v1beta1.
+  2. Unit: with v1beta1 missing, falls back to v1alpha1.
+  3. envtest: assert exactly one informer GVK is logged at startup.
+
+────────────────────────────────────────────────────────────────
+[LOW-12] kubebuilder defaults (mcpToolPrefixSeparator) don't get
+         applied to existing CRs through Flux/GitOps
+────────────────────────────────────────────────────────────────
+SYMPTOM
+  LiteLLMConnection/default has NO `spec.mcpToolPrefixSeparator` in
+  its on-disk YAML or apiserver representation, despite
+  `+kubebuilder:default:="-"` in the Go type. kubectl get -o yaml
+  shows the spec WITHOUT the field. Operator code reads the snapshot
+  and sees empty string, which the sanitizer treats as "-".
+
+EVIDENCE
+  - kubectl get litellmconnection default -n ackstorm -o yaml shows
+    spec: {endpoint, masterKeySecretRef}. No separator field.
+  - The CR's manifest is owned by Flux (label
+    kustomize.toolkit.fluxcd.io/name=apps-alitellm-operator-post).
+    Flux strips unset fields on diff/apply, so the kubebuilder
+    default — which the apiserver populates ONLY at create/update
+    time — gets continually drift-reconciled-back-to-absent.
+  - Net effect: the kubebuilder default exists but is not the
+    *effective* value the operator sees. The "default" branch in
+    SanitizeMCPServerName (separator=="") fires instead.
+
+ROOT CAUSE
+  CRD defaults via OpenAPI schema (kubebuilder:default) only land
+  on the object at server-side create/update if the field is missing
+  in the incoming request. Flux + SOPS pipelines that strip empty
+  fields can interact badly: the operator's effective behavior is
+  driven by the literal stored value, which is empty after Flux.
+
+FIX
+  Make the operator's snapshot loader treat empty
+  Connection.spec.mcpToolPrefixSeparator as the intended default
+  ("-") loudly — log once per Connection that the default was applied
+  AT RUNTIME with the resolved value. Then HIGH-1 (flip default to
+  ".") becomes a single code change with no GitOps surprise.
+  Optional belt-and-braces: a CEL validation that *requires* the
+  field if mcpserver CRs exist in the namespace.
+
+TEST PLAN
+  1. Unit on the snapshot loader: empty input → loader output has
+     MCPToolPrefixSeparator set to the new default.
+  2. envtest: Connection without the field → sanitizer behaves as
+     if default was set.
+  3. Doc: explicit note in the user guide about always pinning the
+     field in the manifest under GitOps tools.
+
+────────────────────────────────────────────────────────────────
+[MEDIUM-8] LiteLLM UI shows "Created By: Unknown / Unknown date" for
+           every operator-managed model — operator omits
+           model_info.{created_by, updated_by} on /model/new + /model/update
+────────────────────────────────────────────────────────────────
+SYMPTOM
+  In the LiteLLM Admin UI > Models table, every model managed by
+  alitellm-operator shows:
+    Created By: Unknown
+    Updated At: -
+    "Unknown date"
+  Same across all manual + discovery-generated models (openai.gpt-5.1-*,
+  bedrock.amazon.nova-*, gemini.*, kubeai.*, etc.).
+
+EVIDENCE
+  - Probe POST against LiteLLM v1.85.1 with explicit
+    model_info.created_by="alitellm-operator/v0.1.2" returns the field
+    intact:
+        "model_info":{
+          "id":"c7c91ad7-...",
+          "created_by":"alitellm-operator/v0.1.2",
+          "updated_by":"alitellm-operator/v0.1.2"
+        }
+    AND the LiteLLM UI surfaces that exact string in the Created By
+    column for the probe model (verified visually 2026-05-22).
+  - Code path: internal/controller/model_controller.go:466, 507, 530
+        ModelInfo: litellm.ModelInfo{},              // create
+        ModelInfo: litellm.ModelInfo{ID: ""},        // D-02 recreate
+        ModelInfo: litellm.ModelInfo{},              // update
+    Every call leaves CreatedBy/UpdatedBy zero-valued. With
+    `omitempty` on these JSON tags (types.go:25–28) they're dropped
+    from the wire body.
+  - LiteLLM separately stamps TOP-LEVEL created_by/updated_by from
+    the auth principal (master-key call → "default_user_id"). The UI
+    prefers model_info.created_by when present, falls back to the
+    top-level otherwise. With both blank/default, UI renders
+    "Unknown".
+
+ROOT CAUSE
+  Operator never populates the audit fields LiteLLM exposes in the
+  `model_info` block. The types are present in
+  internal/litellm/types.go (lines 25–28) — they were added for
+  inbound parsing only. Outbound population was never wired in any
+  reconciler.
+
+FIX
+  Decision logged (2026-05-22): identity literal `alitellm-operator/<version>`
+  AND apply same scheme across all kinds where LiteLLM accepts an
+  audit identifier (Team, MCPServer, A2AAgent, Model).
+
+  Concrete change set:
+  (1) New package `internal/identity/identity.go`:
+        var (
+            Version  = "dev"                          // overridden by ldflags
+            Operator = "alitellm-operator/" + Version
+        )
+      Wire `-ldflags "-X .../identity.Version=$(VERSION)"` into the
+      goreleaser build hooks (matches the existing version-injection
+      pattern; see .goreleaser.yml `builds[].ldflags`).
+  (2) Model: model_controller.go populate
+        ModelInfo.CreatedBy = identity.Operator      // on create
+        ModelInfo.UpdatedBy = identity.Operator      // on update / D-02 recreate
+      Do NOT set UpdatedAt / CreatedAt — LiteLLM stamps those server-side.
+  (3) Team: confirm /team/new schema accepts the field; if it does,
+      mirror the same population in team_controller's request build.
+      If the OpenAPI snapshot doesn't show the field on /team/new,
+      probe before assuming.
+  (4) MCPServer: /v1/mcp/server probe — confirm field name (`created_by`
+      or `creator` per LiteLLM 1.85.1 schema) and populate the
+      operator's MCPServerRequest in mcpserver_controller.go:369/397.
+  (5) A2AAgent: same probe + populate in a2aagent_controller.
+
+  Tests:
+  - Unit test (model): captured fake-LiteLLM POST /model/new body
+    contains `"model_info":{"created_by":"alitellm-operator/<X>"}`.
+  - Idempotency: a second reconcile (UPDATE path) sends UpdatedBy
+    without changing CreatedBy (LiteLLM stores both; UpdatedBy is
+    advanced, CreatedBy is preserved).
+  - E2E: kubectl describe + LiteLLM UI snapshot confirms the column
+    fills.
+
+TEST PLAN
+  1. Unit (per kind): assert outbound JSON contains the audit fields.
+  2. envtest: round-trip a Model CR; GET /model/info returns the
+     expected created_by/updated_by.
+  3. Manual UI verification post-merge: any new CR shows the operator
+     identity in the Created By column.
+
+NOT-IN-SCOPE
+  - Per-CR identity ("ackstorm/test-team@alitellm-operator/v0.1.2") —
+    deferred; the current decision is the simple literal. Revisit if
+    audit requires per-CR provenance.
+  - LiteLLM-side "user" objects to make the top-level created_by
+    column meaningful (would require POST /user/new for the operator
+    SA and threading its key into Connection). Out of scope.
+
+────────────────────────────────────────────────────────────────
+What is NOT in this list (and why)
+────────────────────────────────────────────────────────────────
+- Charts/OCI tag `0.1.2` without `v` prefix: that's Helm SemVer
+  convention. `helm install --version 0.1.2` works. Documented as a
+  non-issue.
+- LiteLLMRejected on individual models that look like provider/key
+  scope issues: rolled into LOW-6 as observability work, not
+  operator-code bugs.
+- Pre-push hook + signing: untouched in this run, no findings.
+
+────────────────────────────────────────────────────────────────
+Verification snapshot (2026-05-22, EKS prod cluster, v0.1.2)
+────────────────────────────────────────────────────────────────
+Operator pod:               1/1 Running, AGE 3m29s, image v0.1.2
+LiteLLMConnection:          1/1 Ready (probe ok)
+                            spec.mcpToolPrefixSeparator: <unset → default "-">
+LiteLLMTeam:                0/1 Ready (LiteLLMUnavailable from cold-start race)
+LiteLLMA2AAgent:            0/1 Ready (same)
+LiteLLMModel manual:        4/4 Ready (test-claude-haiku, test-openai-gpt4o-mini,
+                                       test-gemini-flash, test-bedrock-claude-haiku)
+LiteLLMModelDiscovery:      4/4 Ready (parent)
+  Bedrock children:         17/18 Ready
+  Gemini children:          15/27 Ready
+  KubeAI children:          0/4 Ready (all LiteLLMRejected — see LOW-6)
+  OpenAI children:          ~11/49 Ready
+LiteLLMMCPServer manual:    0/1 Ready (test-exa-mcp — predates v0.1.2 sanitization)
+LiteLLMMCPServerDiscovery:  1/1 Ready (parent), 0/22 children (HIGH-1)
+ToolHive dedup logs:        ~22 lines/minute (MEDIUM-4, throttle not effective)
+
+Net: v0.1.2 fixed the no-helper-at-all situation but the default
+configuration on a stock LiteLLM v1.85.1 install still produces
+0/22 MCP children Ready. HIGH-1 in this file is the blocker; the
+rest is observability + restart-recovery hardening.
