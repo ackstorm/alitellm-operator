@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr"
+	"golang.org/x/time/rate"
 )
 
 // authHeaderKind selects which HTTP header carries the master key.
@@ -52,13 +53,43 @@ type Client struct {
 	httpClient *http.Client
 	log        logr.Logger
 	authHeader authHeaderKind
+	// limiter caps the sustained rate of outbound HTTP requests to
+	// LiteLLM (FIX2.txt MEDIUM-10, 2026-05-22). Nil → unlimited.
+	limiter *rate.Limiter
+}
+
+// ClientOption configures optional Client behavior. Apply at construction
+// time via NewClient(..., opts...). Stable order: WithRateLimit is
+// idempotent when called multiple times; the LAST WithRateLimit wins.
+type ClientOption func(*Client)
+
+// WithRateLimit attaches a token-bucket limiter that caps sustained
+// outbound HTTP requests at rps with allowed burst. rps <= 0 disables
+// the limiter (no token wait at all). FIX2.txt M-10 (2026-05-22):
+// prevents a boot-time thundering herd of ~30 writes/s from pushing a
+// modestly-stressed LiteLLM proxy into 5xx territory and triggering the
+// operator's own backoff loop.
+func WithRateLimit(rps float64, burst int) ClientOption {
+	return func(c *Client) {
+		if rps > 0 {
+			if burst < 1 {
+				burst = 1
+			}
+			c.limiter = rate.NewLimiter(rate.Limit(rps), burst)
+		} else {
+			c.limiter = nil
+		}
+	}
 }
 
 // NewClient constructs a *Client wired to the redacting RoundTripper.
 // endpoint is the base URL (e.g. "http://litellm.default.svc.cluster.local:4000");
 // masterKey is the LiteLLM master key (sk-.). The logger is wrapped in
 // the redacting RoundTripper — callers may safely log at any verbosity.
-func NewClient(endpoint, masterKey string, log logr.Logger) *Client {
+//
+// Optional opts apply after the defaults. Currently:
+// - WithRateLimit(rps, burst) — see its godoc.
+func NewClient(endpoint, masterKey string, log logr.Logger, opts ...ClientOption) *Client {
 	c := &Client{
 		endpoint:   strings.TrimRight(endpoint, "/"),
 		masterKey:  masterKey,
@@ -73,6 +104,9 @@ func NewClient(endpoint, masterKey string, log logr.Logger) *Client {
 		c.authHeader = AuthBearer
 	default:
 		c.authHeader = AuthBearer
+	}
+	for _, opt := range opts {
+		opt(c)
 	}
 	return c
 }
@@ -118,6 +152,16 @@ func (c *Client) makeRequest(ctx context.Context, method, path string, body any)
 	req.Header.Set("Accept", "application/json")
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+
+	// FIX2.txt M-10: token-wait BEFORE Do so the limiter governs the
+	// outbound request rate. ctx cancellation during the wait surfaces
+	// as a plain error (not a transport error) and short-circuits the
+	// rest of the path.
+	if c.limiter != nil {
+		if err := c.limiter.Wait(ctx); err != nil {
+			return nil, fmt.Errorf("litellm: %s %s: rate limiter wait: %w", method, path, err)
+		}
 	}
 
 	resp, err := c.httpClient.Do(req)

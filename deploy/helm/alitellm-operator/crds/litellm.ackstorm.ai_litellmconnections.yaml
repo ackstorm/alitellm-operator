@@ -106,6 +106,29 @@ spec:
                 - key
                 - name
                 type: object
+              maxBurst:
+                default: 10
+                description: |-
+                  MaxBurst is the token-bucket burst paired with MaxRequestsPerSecond.
+                  Default 10. Set to 0 to fall back to a burst of MaxRequestsPerSecond
+                  (i.e. one bucket-fill at a time).
+                format: int32
+                maximum: 1000
+                minimum: 0
+                type: integer
+              maxRequestsPerSecond:
+                default: 5
+                description: |-
+                  MaxRequestsPerSecond caps the sustained rate of outbound HTTP
+                  requests from the operator's LiteLLM client. Default 5. Set to 0
+                  to disable rate limiting (NOT recommended — boot-time thundering
+                  herd can push a modestly-stressed LiteLLM proxy into 5xx territory
+                  and trigger the operator's own backoff loop). FIX2.txt MEDIUM-10
+                  (2026-05-22).
+                format: int32
+                maximum: 1000
+                minimum: 0
+                type: integer
               mcpToolPrefixSeparator:
                 default: .
                 description: |-

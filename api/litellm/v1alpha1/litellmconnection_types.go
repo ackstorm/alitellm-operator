@@ -101,6 +101,29 @@ type LiteLLMConnectionSpec struct {
 	// +optional
 	// +kubebuilder:default:="5m"
 	RequeueOnRejectedAfter metav1.Duration `json:"requeueOnRejectedAfter,omitempty"`
+
+	// MaxRequestsPerSecond caps the sustained rate of outbound HTTP
+	// requests from the operator's LiteLLM client. Default 5. Set to 0
+	// to disable rate limiting (NOT recommended — boot-time thundering
+	// herd can push a modestly-stressed LiteLLM proxy into 5xx territory
+	// and trigger the operator's own backoff loop). FIX2.txt MEDIUM-10
+	// (2026-05-22).
+	//
+	// +optional
+	// +kubebuilder:default:=5
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=1000
+	MaxRequestsPerSecond int32 `json:"maxRequestsPerSecond,omitempty"`
+
+	// MaxBurst is the token-bucket burst paired with MaxRequestsPerSecond.
+	// Default 10. Set to 0 to fall back to a burst of MaxRequestsPerSecond
+	// (i.e. one bucket-fill at a time).
+	//
+	// +optional
+	// +kubebuilder:default:=10
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=1000
+	MaxBurst int32 `json:"maxBurst,omitempty"`
 }
 
 // SecretKeyRef identifies a key inside a Kubernetes Secret living in
