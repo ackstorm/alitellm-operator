@@ -29,14 +29,14 @@ var ReconcileTotal = prometheus.NewCounterVec(
 // namespace=ackstorm") without a kubectl-describe sweep — the per-CR
 // rejection reason is encoded in the result label.
 //
-// result ∈ {
-//   "synced",         // Ready=True written
-//   "rejected",       // LiteLLMRejected (deterministic upstream 4xx)
-//   "transient_error",// LiteLLMUnavailable (5xx, transport, 401)
-//   "secret_missing", // SecretNotFound
-//   "unreachable",    // Connection cache not Ready
-//   "invalid_config", // CR-side InvalidConfig (CEL miss, JSON parse, etc.)
-// }
+//	result ∈ {
+//	  "synced",         // Ready=True written
+//	  "rejected",       // LiteLLMRejected (deterministic upstream 4xx)
+//	  "transient_error",// LiteLLMUnavailable (5xx, transport, 401)
+//	  "secret_missing", // SecretNotFound
+//	  "unreachable",    // Connection cache not Ready
+//	  "invalid_config", // CR-side InvalidConfig (CEL miss, JSON parse, etc.)
+//	}
 var LitellmOperatorReconcileTotal = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
 		Namespace: "litellm_operator",
