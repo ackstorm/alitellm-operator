@@ -75,6 +75,13 @@ type versionedObj struct {
 // per window; finer-grained traces remain available at V(2).
 const dedupLogWindow = 60 * time.Second
 
+// dedupSummaryWindow caps the coalesced summary INFO line at one emit
+// per window. FIX2.txt M-4 (2026-05-22): even with the per-tuple
+// throttle, 22 unique MCPServers produce 22 INFO lines/min — the
+// documented contract, but operationally noisy. Demote per-tuple lines
+// to V(2) and emit one coalesced summary line at V(0) per window.
+const dedupSummaryWindow = 5 * time.Minute
+
 // dedupLogThrottle records the last time the v1alpha1-wins INFO line was
 // emitted for each (kind, namespace, name) tuple. Lives on the Informer
 // (NOT on the per-List dedupStore) so the throttle persists across List
@@ -239,11 +246,17 @@ type Informer struct {
 	kindReady map[string]bool
 
 	// dedupThrottle persists "last logged at" per (kind, ns, name) tuple
-	// across List() calls so the v1alpha1-wins INFO line emits at most
-	// once per dedupLogWindow even though every List builds a fresh
+	// across List() calls so the V(2) per-tuple line emits at most once
+	// per dedupLogWindow even though every List builds a fresh
 	// dedupStore. Lazily initialized on first List call (sync.Once).
 	dedupThrottleOnce sync.Once
 	dedupThrottle     *dedupLogThrottle
+
+	// dedupSummaryMu + dedupSummaryLastLogged drive the V(0) coalesced
+	// "dedup summary" line — emitted at most once per dedupSummaryWindow
+	// regardless of how many tuples collided. FIX2.txt M-4.
+	dedupSummaryMu         sync.Mutex
+	dedupSummaryLastLogged time.Time
 
 	// registered records the GVKs successfully passed through
 	// GetCache().GetInformer in tryRegister. Read via RegisteredGVKs()
@@ -252,6 +265,53 @@ type Informer struct {
 	// exactly which GVKs were eagerly registered (vs. lazy-registered
 	// via Client.List on first dedup pass).
 	registered []schema.GroupVersionKind
+}
+
+// gvkStrings renders a slice of GVKs as "<group>/<version>/<kind>" strings
+// for structured-log emission. Stable order = caller's order.
+func gvkStrings(gvks []schema.GroupVersionKind) []string {
+	out := make([]string, 0, len(gvks))
+	for _, g := range gvks {
+		out = append(out, g.String())
+	}
+	return out
+}
+
+// shouldLogDedupSummary returns true iff dedupSummaryWindow has elapsed
+// since the last summary emission. Records "now" on true.
+func (i *Informer) shouldLogDedupSummary() bool {
+	i.dedupSummaryMu.Lock()
+	defer i.dedupSummaryMu.Unlock()
+	now := time.Now()
+	if !i.dedupSummaryLastLogged.IsZero() && now.Sub(i.dedupSummaryLastLogged) < dedupSummaryWindow {
+		return false
+	}
+	i.dedupSummaryLastLogged = now
+	return true
+}
+
+// dedupCollisionExamples returns up to n unique "kind/ns/name" strings
+// drawn from collisions, in the order encountered. Used to give an
+// operator a fingerprint of which tuples are colliding without dumping
+// a potentially long list.
+func dedupCollisionExamples(collisions []dedupKey, n int) []string {
+	if n <= 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, n)
+	out := make([]string, 0, n)
+	for _, ck := range collisions {
+		key := ck.Kind + "/" + ck.Namespace + "/" + ck.Name
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, key)
+		if len(out) >= n {
+			break
+		}
+	}
+	return out
 }
 
 // RegisteredGVKs returns a snapshot of GVKs the Informer has eagerly
@@ -295,9 +355,11 @@ func (i *Informer) Start(ctx context.Context) error {
 	// short-circuit if registration succeeded at startup.
 	if i.tryRegister(ctx) {
 		i.ready.Store(true)
+		// FIX2.txt L-11 (2026-05-22): list every eagerly-registered GVK
+		// honestly instead of just the canonical (alpha-wins) names.
 		i.Log.Info("toolhive informers registered at startup",
-			"mcpserverGVK", MCPServerGVK.String(),
-			"virtualMCPServerGVK", VirtualMCPServerGVK.String())
+			"gvks", gvkStrings(i.RegisteredGVKs()),
+			"count", len(i.RegisteredGVKs()))
 		return nil
 	}
 
@@ -323,8 +385,8 @@ func (i *Informer) retryLoop(ctx context.Context) {
 			if i.tryRegister(ctx) {
 				i.ready.Store(true)
 				i.Log.Info("toolhive informers registered after retry",
-					"mcpserverGVK", MCPServerGVK.String(),
-					"virtualMCPServerGVK", VirtualMCPServerGVK.String())
+					"gvks", gvkStrings(i.RegisteredGVKs()),
+					"count", len(i.RegisteredGVKs()))
 				return
 			}
 			i.Log.V(1).Info("toolhive informers still unregistered — will retry")
@@ -364,13 +426,22 @@ func (i *Informer) tryRegister(ctx context.Context) bool {
 	i.readyMu.Lock()
 	defer i.readyMu.Unlock()
 
+	// FIX2.txt L-11 (2026-05-22): attempt ALL 4 GVKs eagerly — no
+	// short-circuit after the first success per kind. Previously the
+	// loop did `if i.kindReady[kind] continue`, so once v1alpha1 was
+	// registered v1beta1 stayed off the eager set. v1beta1 still worked
+	// at runtime because controller-runtime lazy-registers an informer
+	// on first Client.List(unstructured) for an unseen GVK, but the
+	// startup audit log only saw v1alpha1. Eager registration makes
+	// the audit log honest.
+	already := make(map[schema.GroupVersionKind]bool, len(i.registered))
+	for _, g := range i.registered {
+		already[g] = true
+	}
 	for _, gvk := range gvks {
-		kind := gvk.Kind // "MCPServer" or "VirtualMCPServer"
-		if i.kindReady[kind] {
-			// Already registered for this kind (via the other version).
+		if already[gvk] {
 			continue
 		}
-
 		u := &unstructured.Unstructured{}
 		u.SetGroupVersionKind(gvk)
 		if _, err := i.Manager.GetCache().GetInformer(ctx, u); err != nil {
@@ -380,9 +451,8 @@ func (i *Informer) tryRegister(ctx context.Context) bool {
 				"err", err.Error())
 			continue
 		}
-
 		i.Log.V(1).Info("toolhive informer registered", "gvk", gvk.String())
-		i.kindReady[kind] = true
+		i.kindReady[gvk.Kind] = true
 		i.registered = append(i.registered, gvk)
 	}
 
@@ -463,26 +533,31 @@ func (i *Informer) List(ctx context.Context, gvk schema.GroupVersionKind) (*unst
 		}
 	}
 
-	// FIX.txt LOW-7 (2026-05-22): emit a v1alpha1-wins INFO line per
-	// collision, throttled to once per dedupLogWindow per (kind, ns, name)
-	// tuple. Sub-window collisions log at V(2) for trace-level diagnostics.
+	// FIX.txt LOW-7 (2026-05-22): each per-tuple dedup observation logs
+	// at V(2), throttled to once per dedupLogWindow per (kind, ns, name).
+	// FIX2.txt M-4 (2026-05-22): at default verbosity, emit a single
+	// coalesced "dedup summary" INFO line at most once per
+	// dedupSummaryWindow — listing tuple count + a small example slice.
+	// Operational noise drops from "22 lines/min" to "1 line per 5m" at
+	// V(0) without losing per-tuple traceability at V(2).
 	i.dedupThrottleOnce.Do(func() { i.dedupThrottle = newDedupLogThrottle() })
 	for _, ck := range store.collisions {
 		if i.dedupThrottle.shouldLog(ck, dedupLogWindow) {
-			i.Log.Info("toolhive dedup: v1alpha1 wins",
-				"kind", ck.Kind,
-				"namespace", ck.Namespace,
-				"name", ck.Name,
-				"dedup_reason", "alpha_wins",
-			)
-		} else {
-			i.Log.V(2).Info("toolhive dedup: v1alpha1 wins (throttled)",
+			i.Log.V(2).Info("toolhive dedup: v1alpha1 wins",
 				"kind", ck.Kind,
 				"namespace", ck.Namespace,
 				"name", ck.Name,
 				"dedup_reason", "alpha_wins",
 			)
 		}
+	}
+	if len(store.collisions) > 0 && i.shouldLogDedupSummary() {
+		examples := dedupCollisionExamples(store.collisions, 10)
+		i.Log.Info("toolhive dedup summary: v1alpha1 wins",
+			"tuple_count", len(store.collisions),
+			"examples", examples,
+			"dedup_reason", "alpha_wins",
+		)
 	}
 
 	// Collect deduped results.
