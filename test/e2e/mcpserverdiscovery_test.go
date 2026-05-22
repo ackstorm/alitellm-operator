@@ -5,6 +5,7 @@
 package e2e_test
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -13,7 +14,24 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/dynamic"
 )
+
+// tickleMSDisc patches the MCPServerDiscovery CR with a unique annotation to
+// force an out-of-band reconcile. The controller's For() watch fires on the
+// Update event, bypassing the spec.refresh.interval (1m floor) wait that
+// otherwise gates discovery propagation in e2e specs. Errors are intentionally
+// swallowed — the Eventually retry envelope absorbs transient races
+// (CR not yet created, conflicting patches).
+func tickleMSDisc(dyn dynamic.Interface, name, ns string) {
+	patch := []byte(fmt.Sprintf(
+		`{"metadata":{"annotations":{"e2e-tickle":"%d"}}}`,
+		time.Now().UnixNano(),
+	))
+	_, _ = dyn.Resource(msdiscGVR).Namespace(ns).
+		Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+}
 
 var msdiscGVR = schema.GroupVersionResource{
 	Group:    "litellm.ackstorm.ai",
@@ -161,7 +179,13 @@ var _ = Describe("LiteLLMMCPServerDiscovery", Ordered, ContinueOnFailure, func()
 		// Per spec §6.5 dotted naming: <discovery-name>.<toolhive-ns>.<toolhive-name>
 		// But Discovery normalizes; actual child name may differ. Match by
 		// owner-ref scan instead of guessing exact name.
+		//
+		// Tickle the Discovery CR every poll to force out-of-band reconciles —
+		// otherwise we'd wait up to one spec.refresh.interval (1m, CEL floor)
+		// for the controller's periodic requeue to pick up the new ToolHive
+		// source.
 		Eventually(func(g Gomega) {
+			tickleMSDisc(dyn, msdName, ourNs)
 			list, err := dyn.Resource(mcpsrvGVR).Namespace(ourNs).
 				List(ctx, metav1.ListOptions{})
 			g.Expect(err).NotTo(HaveOccurred())
@@ -215,7 +239,10 @@ var _ = Describe("LiteLLMMCPServerDiscovery", Ordered, ContinueOnFailure, func()
 
 		// Assert the operator emits a child litellm.ackstorm.ai/v1alpha1 MCPServer
 		// owned by the MCPServerDiscovery — same ownership rule as the v1alpha1 path.
+		//
+		// Tickle the Discovery CR every poll (see analogous It above for rationale).
 		Eventually(func(g Gomega) {
+			tickleMSDisc(dyn, msdNameV1beta1, ourNs)
 			list, err := dyn.Resource(mcpsrvGVR).Namespace(ourNs).
 				List(ctx, metav1.ListOptions{})
 			g.Expect(err).NotTo(HaveOccurred())
@@ -266,7 +293,10 @@ var _ = Describe("LiteLLMMCPServerDiscovery", Ordered, ContinueOnFailure, func()
 			Delete(ctx, thName, metav1.DeleteOptions{})).To(Succeed())
 
 		// Within one refresh.interval (1m) + reconcile, child should vanish.
+		// Tickle the Discovery CR every poll to force out-of-band reconciles
+		// so the cascade-drain doesn't wait on the periodic requeue tick.
 		Eventually(func(g Gomega) {
+			tickleMSDisc(dyn, msdName, ourNs)
 			_, err := dyn.Resource(mcpsrvGVR).Namespace(ourNs).
 				Get(ctx, childName, metav1.GetOptions{})
 			g.Expect(err).To(HaveOccurred(), "child %q still present", childName)
