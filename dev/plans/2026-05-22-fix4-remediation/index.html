@@ -1,0 +1,2409 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Kubernetes operator that reconciles LiteLLM proxy resources declaratively">
+      
+      
+      
+        <link rel="canonical" href="https://ackstorm.github.io/alitellm-operator/dev/plans/2026-05-22-fix4-remediation/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>FIX4.txt Remediation Implementation Plan - alitellm-operator</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#fix4txt-remediation-implementation-plan" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="alitellm-operator" class="md-header__button md-logo" aria-label="alitellm-operator" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            alitellm-operator
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              FIX4.txt Remediation Implementation Plan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="Share" aria-label="Share" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/ackstorm/alitellm-operator" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    ackstorm/alitellm-operator
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../getting-started/installation/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../user-guide/" class="md-tabs__link">
+          
+  
+  
+  User Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../developer-guide/architecture/" class="md-tabs__link">
+          
+  
+  
+  Developer Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../api-reference/litellm.ackstorm.ai/" class="md-tabs__link">
+          
+  
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../metrics/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Metrics
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../community/code-of-conduct/" class="md-tabs__link">
+          
+  
+  
+  Community
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="alitellm-operator" class="md-nav__button md-logo" aria-label="alitellm-operator" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    alitellm-operator
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/ackstorm/alitellm-operator" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    ackstorm/alitellm-operator
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/connection/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMConnection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/team/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMTeam
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMModel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/a2a-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMA2AAgent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/mcp-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMMCPServer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/mcp-server-discovery/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMMCPServerDiscovery
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/model-discovery/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMModelDiscovery
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Developer Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-guide/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-guide/development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-guide/release-process/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release Process
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../developer-guide/contributions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-reference/litellm.ackstorm.ai/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Community
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Community
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../community/code-of-conduct/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code of Conduct
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../community/security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security Policy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#release-boundaries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Release boundaries
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#h-1-identity-surfacing-v021" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        H-1 — Identity surfacing (v0.2.1)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="H-1 — Identity surfacing (v0.2.1)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#task-1-startup-info-log-of-identityoperator" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 1: Startup INFO log of identity.Operator()
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-2-body-capture-unit-test-for-modelnew" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 2: Body-capture unit test for /model/new
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-3-body-capture-unit-test-for-modelupdate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 3: Body-capture unit test for /model/update
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-4-identify-and-inventory-teammcpservera2aagent-stamping-sites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 4: Identify and inventory Team/MCPServer/A2AAgent stamping sites
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-5-stamp-identity-on-team-create-and-update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 5: Stamp identity on Team CREATE and UPDATE
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-6-stamp-identity-on-mcpserver-create-and-update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 6: Stamp identity on MCPServer CREATE and UPDATE
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-7-stamp-identity-on-a2aagent-create-and-update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 7: Stamp identity on A2AAgent CREATE and UPDATE
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-8-re-stamp-createdby-on-model-adoption-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 8: Re-stamp CreatedBy on Model adoption path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-9-l-3-doc-only-close-out" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 9: L-3 doc-only close-out
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-10-v021-release-commit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 10: v0.2.1 release commit
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#h-2-mcpserverdiscovery-rename-v030-breaking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        H-2 — MCPServerDiscovery rename (v0.3.0 breaking)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="H-2 — MCPServerDiscovery rename (v0.3.0 breaking)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#task-11-add-specprefix-to-litellmmcpserverdiscovery-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 11: Add spec.prefix to LiteLLMMCPServerDiscovery types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-12-refactor-child-name-helper-to-prefix-source-name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 12: Refactor child-name helper to &lt;prefix&gt;-&lt;source-name&gt;
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-13-sanitizer-for-the-litellm-wire-form" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 13: Sanitizer for the LiteLLM wire form
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-14-remove-auto-disambiguation-and-namespace-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 14: Remove auto-disambiguation and namespace handling
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-15-emit-namecollision-status-condition-on-intra-discovery-clashes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 15: Emit NameCollision status condition on intra-discovery clashes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-16-adoption-migration-for-pre-v030-children" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 16: Adoption migration for pre-v0.3.0 children
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-17-update-existing-mcpserverdiscovery-e2e-expectations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 17: Update existing MCPServerDiscovery e2e expectations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-18-update-example-crs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 18: Update example CRs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-19-regenerate-crd-reference-docs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 19: Regenerate CRD reference docs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-20-migration-release-note" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 20: Migration release note
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-21-final-gate-full-e2e-security-pre-push" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 21: Final gate — full E2E + security + pre-push
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-22-v030-release-commit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 22: v0.3.0 release commit
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inventory-task-4-result" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inventory (Task 4 result)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Inventory (Task 4 result)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#findings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Findings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#decisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decisions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#changelog-note-for-v021" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CHANGELOG note for v0.2.1
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="fix4txt-remediation-implementation-plan">FIX4.txt Remediation Implementation Plan<a class="headerlink" href="#fix4txt-remediation-implementation-plan" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p><strong>For Claude:</strong> REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.</p>
+</blockquote>
+<p><strong>Goal:</strong> Remediate the three findings in <code>FIX4.txt</code> against alitellm-operator: (H-1) make <code>model_info.created_by/updated_by</code> reliably surface in the LiteLLM UI for all four operator-managed kinds; (H-2) rename <code>LiteLLMMCPServerDiscovery</code> children to mirror <code>LiteLLMModelDiscovery</code> (<code>&lt;prefix&gt;-&lt;source-name&gt;</code>, drop namespace component) as a v0.3.0 breaking change; (L-3) close out the master-key vs virtual-key clarification with a one-line CHANGELOG / docs note (no code).</p>
+<p><strong>Architecture:</strong>
+- H-1 (v0.2.1 patch release): add a one-shot startup INFO log printing <code>identity.Operator()</code>; add unit body-capture tests on <code>/model/new</code>, <code>/model/update</code>, <code>/team/new</code>, <code>/team/update</code>, <code>/v1/mcp/server</code>, <code>/v1/mcp/server/update</code>, <code>/a2a/agent</code>, <code>/a2a/agent/update</code> asserting <code>created_by</code>/<code>updated_by</code> are non-empty and equal to <code>alitellm-operator/&lt;version&gt;</code>; wire the identity stamp into Team, MCPServer, and A2AAgent controllers (currently only Model is wired); leave Model UPDATE path as-is (intentionally only stamps <code>UpdatedBy</code> — keep the existing comment).
+- H-2 (v0.3.0 breaking): add <code>spec.prefix</code> to <code>LiteLLMMCPServerDiscovery</code> (DNS-1123 label, CEL-validated, required), drop the <code>&lt;source-namespace&gt;</code> component from the rendering helper, emit <code>NameCollision</code> status condition on intra-discovery name clashes, delete the auto-disambiguation logic, document migration impact (children renamed → delete+recreate on LiteLLM side).
+- L-3: no code — one CHANGELOG line + brief note in <code>references/security/</code> clarifying the operator uses the LiteLLM master key against <code>/v1/models</code>, <code>/model/new</code>, <code>/model/update</code>, <code>/model/delete</code>, <code>/v1/mcp/server</code>, <code>/v1/agents</code>, <code>/team/*</code> (and that the prior 401 in FIX4 evidence was transient).</p>
+<p><strong>Tech Stack:</strong> Go 1.24.13, controller-runtime v0.19.4, k8s.io/* v0.31.0, kubebuilder v4.4.0 CEL validators, Ginkgo v2 (envtest), goreleaser v2.</p>
+<p><strong>Test cadence:</strong> Per <code>memory/feedback_test_cadence.md</code>: <code>make unit</code> (or <code>unit-pkg</code>) between plan tasks; <code>make envtest-run</code> / <code>make e2e-full</code> / <code>make security</code> / <code>make pre-push</code> only at the final gate before each release commit.</p>
+<hr />
+<h2 id="release-boundaries">Release boundaries<a class="headerlink" href="#release-boundaries" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>v0.2.1 patch:</strong> Tasks 1–10 (H-1 remediation + L-3 doc note).</li>
+<li><strong>v0.3.0 breaking:</strong> Tasks 11–22 (H-2 MCPServerDiscovery naming rename).</li>
+</ul>
+<p>Each boundary ends with a <code>chore(release): vX.Y.Z</code> commit on <code>main</code> triggering the workflow per <code>CLAUDE.md</code> "Release pipeline" section.</p>
+<hr />
+<h2 id="h-1-identity-surfacing-v021">H-1 — Identity surfacing (v0.2.1)<a class="headerlink" href="#h-1-identity-surfacing-v021" title="Permanent link">&para;</a></h2>
+<h3 id="task-1-startup-info-log-of-identityoperator">Task 1: Startup INFO log of <code>identity.Operator()</code><a class="headerlink" href="#task-1-startup-info-log-of-identityoperator" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Modify: <code>cmd/main.go</code> (after the logger is created and before <code>mgr.Start(ctx)</code>)</p>
+<p><strong>Step 1: Locate insertion point</strong></p>
+<p>Run: <code>grep -n "Operator identity\|mgr.Start\|setupLog\.Info" /home/jcm/Projects/alitellm-operator/cmd/main.go</code>
+Pick the line right before <code>setupLog.Info("starting manager")</code> (or equivalent) for the new line.</p>
+<p><strong>Step 2: Add the log line</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nx">setupLog</span><span class="p">.</span><span class="nx">Info</span><span class="p">(</span><span class="s">&quot;operator identity&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;value&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">identity</span><span class="p">.</span><span class="nx">Operator</span><span class="p">())</span>
+</code></pre></div>
+<p>Add <code>"github.com/ackstorm/alitellm-operator/internal/identity"</code> to the imports if not already present.</p>
+<p><strong>Step 3: Verify it builds</strong></p>
+<p>Run: <code>./scripts/dev.sh go build ./...</code>
+Expected: no errors.</p>
+<p><strong>Step 4: Unit smoke</strong></p>
+<p>Run: <code>./scripts/dev.sh make unit-pkg PKG=./cmd/...</code>
+Expected: PASS or no tests (cmd has no unit suite — that's fine; the build step is the gate).</p>
+<p><strong>Step 5: Commit</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>git<span class="w"> </span>add<span class="w"> </span>cmd/main.go
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(observability): log identity.Operator() at startup (FIX4 H-1)&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-2-body-capture-unit-test-for-modelnew">Task 2: Body-capture unit test for <code>/model/new</code><a class="headerlink" href="#task-2-body-capture-unit-test-for-modelnew" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Create or extend: <code>internal/litellm/model_test.go</code></p>
+<p><strong>Step 1: Write failing test</strong></p>
+<p>Add to <code>internal/litellm/model_test.go</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1">// TestCreateModelBodyStampsCreatedBy — FIX4 H-1: assert /model/new body</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="c1">// carries non-empty model_info.created_by and updated_by.</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="kd">func</span><span class="w"> </span><span class="nx">TestCreateModelBodyStampsCreatedBy</span><span class="p">(</span><span class="nx">t</span><span class="w"> </span><span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="kd">var</span><span class="w"> </span><span class="nx">captured</span><span class="w"> </span><span class="p">[]</span><span class="kt">byte</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">    </span><span class="nx">srv</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">httptest</span><span class="p">.</span><span class="nx">NewServer</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">HandlerFunc</span><span class="p">(</span><span class="kd">func</span><span class="p">(</span><span class="nx">w</span><span class="w"> </span><span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span><span class="w"> </span><span class="nx">r</span><span class="w"> </span><span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">        </span><span class="nx">captured</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">io</span><span class="p">.</span><span class="nx">ReadAll</span><span class="p">(</span><span class="nx">r</span><span class="p">.</span><span class="nx">Body</span><span class="p">)</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">        </span><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">w</span><span class="p">.</span><span class="nx">Write</span><span class="p">([]</span><span class="nb">byte</span><span class="p">(</span><span class="s">`{&quot;model_info&quot;:{&quot;id&quot;:&quot;abc&quot;}}`</span><span class="p">))</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">    </span><span class="p">}))</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">    </span><span class="k">defer</span><span class="w"> </span><span class="nx">srv</span><span class="p">.</span><span class="nx">Close</span><span class="p">()</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="w">    </span><span class="nx">c</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">NewClient</span><span class="p">(</span><span class="nx">srv</span><span class="p">.</span><span class="nx">URL</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;sk-test&quot;</span><span class="p">,</span><span class="w"> </span><span class="kc">nil</span><span class="p">)</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="w">    </span><span class="nx">req</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">Deployment</span><span class="p">{</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="w">        </span><span class="nx">ModelName</span><span class="p">:</span><span class="w">     </span><span class="s">&quot;test-model&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="w">        </span><span class="nx">LiteLLMParams</span><span class="p">:</span><span class="w"> </span><span class="nx">LiteLLMParams</span><span class="p">{},</span>
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="w">        </span><span class="nx">ModelInfo</span><span class="p">:</span><span class="w"> </span><span class="nx">ModelInfo</span><span class="p">{</span>
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="w">            </span><span class="nx">CreatedBy</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;alitellm-operator/v0.2.1-test&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="w">            </span><span class="nx">UpdatedBy</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;alitellm-operator/v0.2.1-test&quot;</span><span class="p">,</span>
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="w">        </span><span class="p">},</span>
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">CreateModel</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nx">Background</span><span class="p">(),</span><span class="w"> </span><span class="nx">req</span><span class="p">);</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Fatalf</span><span class="p">(</span><span class="s">&quot;CreateModel: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="p">)</span>
+<a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a>
+<a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a><span class="w">    </span><span class="kd">var</span><span class="w"> </span><span class="nx">got</span><span class="w"> </span><span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="kt">any</span>
+<a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">json</span><span class="p">.</span><span class="nx">Unmarshal</span><span class="p">(</span><span class="nx">captured</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">got</span><span class="p">);</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Fatalf</span><span class="p">(</span><span class="s">&quot;unmarshal body: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="p">)</span>
+<a id="__codelineno-2-27" name="__codelineno-2-27" href="#__codelineno-2-27"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-2-28" name="__codelineno-2-28" href="#__codelineno-2-28"></a><span class="w">    </span><span class="nx">mi</span><span class="p">,</span><span class="w"> </span><span class="nx">ok</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">got</span><span class="p">[</span><span class="s">&quot;model_info&quot;</span><span class="p">].(</span><span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="kt">any</span><span class="p">)</span>
+<a id="__codelineno-2-29" name="__codelineno-2-29" href="#__codelineno-2-29"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">!</span><span class="nx">ok</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-30" name="__codelineno-2-30" href="#__codelineno-2-30"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Fatalf</span><span class="p">(</span><span class="s">&quot;model_info missing from body: %s&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">captured</span><span class="p">)</span>
+<a id="__codelineno-2-31" name="__codelineno-2-31" href="#__codelineno-2-31"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-2-32" name="__codelineno-2-32" href="#__codelineno-2-32"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">cb</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">mi</span><span class="p">[</span><span class="s">&quot;created_by&quot;</span><span class="p">].(</span><span class="kt">string</span><span class="p">);</span><span class="w"> </span><span class="nx">cb</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s">&quot;&quot;</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-33" name="__codelineno-2-33" href="#__codelineno-2-33"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Errorf</span><span class="p">(</span><span class="s">&quot;model_info.created_by is empty in body: %s&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">captured</span><span class="p">)</span>
+<a id="__codelineno-2-34" name="__codelineno-2-34" href="#__codelineno-2-34"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-2-35" name="__codelineno-2-35" href="#__codelineno-2-35"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">ub</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">mi</span><span class="p">[</span><span class="s">&quot;updated_by&quot;</span><span class="p">].(</span><span class="kt">string</span><span class="p">);</span><span class="w"> </span><span class="nx">ub</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s">&quot;&quot;</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-36" name="__codelineno-2-36" href="#__codelineno-2-36"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Errorf</span><span class="p">(</span><span class="s">&quot;model_info.updated_by is empty in body: %s&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">captured</span><span class="p">)</span>
+<a id="__codelineno-2-37" name="__codelineno-2-37" href="#__codelineno-2-37"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-2-38" name="__codelineno-2-38" href="#__codelineno-2-38"></a><span class="p">}</span>
+</code></pre></div>
+<p>Ensure imports include <code>encoding/json</code>, <code>io</code>, <code>net/http</code>, <code>net/http/httptest</code>.</p>
+<p><strong>Step 2: Run test to verify it passes</strong></p>
+<p>Run: <code>./scripts/dev.sh make unit-pkg PKG=./internal/litellm/...</code>
+Expected: PASS (the production CreateModel path already stamps both fields; this test guards against regression).</p>
+<p><strong>Step 3: Verify the test catches regression</strong></p>
+<p>Temporarily change the test's <code>req.ModelInfo.CreatedBy = ""</code>; run again:
+Expected: FAIL with <code>model_info.created_by is empty in body</code>.
+Revert.</p>
+<p><strong>Step 4: Commit</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>git<span class="w"> </span>add<span class="w"> </span>internal/litellm/model_test.go
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;test(litellm): assert /model/new body stamps created_by/updated_by (FIX4 H-1)&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-3-body-capture-unit-test-for-modelupdate">Task 3: Body-capture unit test for <code>/model/update</code><a class="headerlink" href="#task-3-body-capture-unit-test-for-modelupdate" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Extend: <code>internal/litellm/model_test.go</code></p>
+<p><strong>Step 1: Write the test</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1">// TestUpdateModelBodyStampsUpdatedBy — FIX4 H-1: assert /model/update body</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="c1">// carries non-empty model_info.updated_by. CreatedBy is intentionally not</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="c1">// touched on UPDATE — LiteLLM keeps the original creator.</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="kd">func</span><span class="w"> </span><span class="nx">TestUpdateModelBodyStampsUpdatedBy</span><span class="p">(</span><span class="nx">t</span><span class="w"> </span><span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">    </span><span class="kd">var</span><span class="w"> </span><span class="nx">captured</span><span class="w"> </span><span class="p">[]</span><span class="kt">byte</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">    </span><span class="nx">srv</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">httptest</span><span class="p">.</span><span class="nx">NewServer</span><span class="p">(</span><span class="nx">http</span><span class="p">.</span><span class="nx">HandlerFunc</span><span class="p">(</span><span class="kd">func</span><span class="p">(</span><span class="nx">w</span><span class="w"> </span><span class="nx">http</span><span class="p">.</span><span class="nx">ResponseWriter</span><span class="p">,</span><span class="w"> </span><span class="nx">r</span><span class="w"> </span><span class="o">*</span><span class="nx">http</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">        </span><span class="nx">captured</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">io</span><span class="p">.</span><span class="nx">ReadAll</span><span class="p">(</span><span class="nx">r</span><span class="p">.</span><span class="nx">Body</span><span class="p">)</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">        </span><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">w</span><span class="p">.</span><span class="nx">Write</span><span class="p">([]</span><span class="nb">byte</span><span class="p">(</span><span class="s">`{&quot;model_info&quot;:{&quot;id&quot;:&quot;abc&quot;}}`</span><span class="p">))</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">    </span><span class="p">}))</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">    </span><span class="k">defer</span><span class="w"> </span><span class="nx">srv</span><span class="p">.</span><span class="nx">Close</span><span class="p">()</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="w">    </span><span class="nx">c</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">NewClient</span><span class="p">(</span><span class="nx">srv</span><span class="p">.</span><span class="nx">URL</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;sk-test&quot;</span><span class="p">,</span><span class="w"> </span><span class="kc">nil</span><span class="p">)</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="w">    </span><span class="nx">req</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">updateDeployment</span><span class="p">{</span>
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="w">        </span><span class="nx">ID</span><span class="p">:</span><span class="w">            </span><span class="s">&quot;abc&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="w">        </span><span class="nx">ModelName</span><span class="p">:</span><span class="w">     </span><span class="s">&quot;test-model&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="w">        </span><span class="nx">LiteLLMParams</span><span class="p">:</span><span class="w"> </span><span class="nx">LiteLLMParams</span><span class="p">{},</span>
+<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a><span class="w">        </span><span class="nx">ModelInfo</span><span class="p">:</span><span class="w">     </span><span class="nx">ModelInfo</span><span class="p">{</span><span class="nx">UpdatedBy</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;alitellm-operator/v0.2.1-test&quot;</span><span class="p">},</span>
+<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">UpdateModel</span><span class="p">(</span><span class="nx">context</span><span class="p">.</span><span class="nx">Background</span><span class="p">(),</span><span class="w"> </span><span class="nx">req</span><span class="p">);</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Fatalf</span><span class="p">(</span><span class="s">&quot;UpdateModel: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="p">)</span>
+<a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a>
+<a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a><span class="w">    </span><span class="kd">var</span><span class="w"> </span><span class="nx">got</span><span class="w"> </span><span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="kt">any</span>
+<a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">json</span><span class="p">.</span><span class="nx">Unmarshal</span><span class="p">(</span><span class="nx">captured</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">got</span><span class="p">);</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Fatalf</span><span class="p">(</span><span class="s">&quot;unmarshal: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="p">)</span>
+<a id="__codelineno-4-26" name="__codelineno-4-26" href="#__codelineno-4-26"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-4-27" name="__codelineno-4-27" href="#__codelineno-4-27"></a><span class="w">    </span><span class="nx">mi</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">got</span><span class="p">[</span><span class="s">&quot;model_info&quot;</span><span class="p">].(</span><span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="kt">any</span><span class="p">)</span>
+<a id="__codelineno-4-28" name="__codelineno-4-28" href="#__codelineno-4-28"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">mi</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-29" name="__codelineno-4-29" href="#__codelineno-4-29"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Fatalf</span><span class="p">(</span><span class="s">&quot;model_info missing: %s&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">captured</span><span class="p">)</span>
+<a id="__codelineno-4-30" name="__codelineno-4-30" href="#__codelineno-4-30"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-4-31" name="__codelineno-4-31" href="#__codelineno-4-31"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">ub</span><span class="p">,</span><span class="w"> </span><span class="nx">_</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">mi</span><span class="p">[</span><span class="s">&quot;updated_by&quot;</span><span class="p">].(</span><span class="kt">string</span><span class="p">);</span><span class="w"> </span><span class="nx">ub</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="s">&quot;&quot;</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-32" name="__codelineno-4-32" href="#__codelineno-4-32"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Errorf</span><span class="p">(</span><span class="s">&quot;model_info.updated_by is empty: %s&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">captured</span><span class="p">)</span>
+<a id="__codelineno-4-33" name="__codelineno-4-33" href="#__codelineno-4-33"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-4-34" name="__codelineno-4-34" href="#__codelineno-4-34"></a><span class="p">}</span>
+</code></pre></div>
+<p><strong>Step 2: Run</strong></p>
+<p>Run: <code>./scripts/dev.sh make unit-pkg PKG=./internal/litellm/...</code>
+Expected: PASS.</p>
+<p><strong>Step 3: Commit</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>git<span class="w"> </span>add<span class="w"> </span>internal/litellm/model_test.go
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;test(litellm): assert /model/update body stamps updated_by (FIX4 H-1)&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-4-identify-and-inventory-teammcpservera2aagent-stamping-sites">Task 4: Identify and inventory Team/MCPServer/A2AAgent stamping sites<a class="headerlink" href="#task-4-identify-and-inventory-teammcpservera2aagent-stamping-sites" title="Permanent link">&para;</a></h3>
+<p><strong>Files (read-only inspection):</strong>
+- Read: <code>internal/controller/team_controller.go</code>
+- Read: <code>internal/controller/mcpserver_controller.go</code>
+- Read: <code>internal/controller/a2aagent_controller.go</code>
+- Read: <code>internal/litellm/team.go</code>, <code>internal/litellm/mcpserver.go</code>, <code>internal/litellm/a2aagent.go</code> (or whatever the request constructors are named)
+- Read: <code>internal/litellm/types.go</code> to check whether the Team / MCPServer / A2AAgent request structs even have <code>created_by</code>/<code>updated_by</code>-shaped fields. The LiteLLM OpenAPI may or may not accept them on each endpoint.</p>
+<p><strong>Step 1: For each of the three kinds, document in a scratch note:</strong></p>
+<ul>
+<li>Does the request struct have a <code>created_by</code>/<code>updated_by</code>-shaped field on CREATE? On UPDATE?</li>
+<li>If the field does not exist on the struct, does the spec (<code>spec/litellm_api.json</code>) say the endpoint accepts a generic audit field?</li>
+<li>Conclusion: either (a) field exists → add stamping; (b) field absent + endpoint rejects → drop from scope and add CHANGELOG note; (c) field absent + endpoint accepts → add field to types + stamp.</li>
+</ul>
+<p><strong>Step 2: Write findings into <code>docs/plans/2026-05-22-fix4-remediation.md</code> under a new "## Inventory (Task 4 result)" section appended at the bottom.</strong></p>
+<p><strong>Step 3: Commit the inventory note</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>git<span class="w"> </span>add<span class="w"> </span>docs/plans/2026-05-22-fix4-remediation.md
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;docs(plan): inventory FIX4 H-1 Team/MCP/A2A stamping sites&quot;</span>
+</code></pre></div>
+<blockquote>
+<p>Tasks 5–7 are conditional on Task 4 outcome. If a given kind has no audit field on the endpoint at all (case b above), skip the corresponding task and document it in the CHANGELOG entry for v0.2.1.</p>
+</blockquote>
+<hr />
+<h3 id="task-5-stamp-identity-on-team-create-and-update">Task 5: Stamp identity on Team CREATE and UPDATE<a class="headerlink" href="#task-5-stamp-identity-on-team-create-and-update" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Modify: <code>internal/controller/team_controller.go</code> (CREATE + UPDATE branches)
+- Possibly modify: <code>internal/litellm/types.go</code> (add audit fields to Team request struct if missing)</p>
+<p><strong>Step 1: Write failing test (body-capture pattern)</strong></p>
+<p>Add <code>TestCreateTeamBodyStampsCreatedBy</code> and <code>TestUpdateTeamBodyStampsUpdatedBy</code> in <code>internal/litellm/team_test.go</code> modelled exactly on Tasks 2/3 but against <code>/team/new</code> and <code>/team/update</code>.</p>
+<p><strong>Step 2: Run</strong> — Expected FAIL.
+Run: <code>./scripts/dev.sh make unit-pkg PKG=./internal/litellm/...</code></p>
+<p><strong>Step 3: Implement</strong></p>
+<p>In <code>team_controller.go</code> CREATE branch:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nx">req</span><span class="p">.</span><span class="nx">TeamInfo</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">litellm</span><span class="p">.</span><span class="nx">TeamInfo</span><span class="p">{</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">    </span><span class="nx">CreatedBy</span><span class="p">:</span><span class="w"> </span><span class="nx">identity</span><span class="p">.</span><span class="nx">Operator</span><span class="p">(),</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span><span class="nx">UpdatedBy</span><span class="p">:</span><span class="w"> </span><span class="nx">identity</span><span class="p">.</span><span class="nx">Operator</span><span class="p">(),</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="p">}</span>
+</code></pre></div>
+<p>In UPDATE branch:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nx">req</span><span class="p">.</span><span class="nx">TeamInfo</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">litellm</span><span class="p">.</span><span class="nx">TeamInfo</span><span class="p">{</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">    </span><span class="nx">UpdatedBy</span><span class="p">:</span><span class="w"> </span><span class="nx">identity</span><span class="p">.</span><span class="nx">Operator</span><span class="p">(),</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="p">}</span>
+</code></pre></div>
+<p>Adjust field name to match whatever struct the team request actually uses (per Task 4 inventory). Add identity import.</p>
+<p><strong>Step 4: Run tests</strong> — Expected PASS.
+Run: <code>./scripts/dev.sh make unit-pkg PKG=./internal/controller/... ./internal/litellm/...</code></p>
+<p><strong>Step 5: Commit</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>git<span class="w"> </span>add<span class="w"> </span>internal/controller/team_controller.go<span class="w"> </span>internal/litellm/team_test.go<span class="w"> </span>internal/litellm/types.go
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(team): stamp identity.Operator() on /team/new + /team/update (FIX4 H-1)&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-6-stamp-identity-on-mcpserver-create-and-update">Task 6: Stamp identity on MCPServer CREATE and UPDATE<a class="headerlink" href="#task-6-stamp-identity-on-mcpserver-create-and-update" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Modify: <code>internal/controller/mcpserver_controller.go</code>
+- Possibly modify: <code>internal/litellm/types.go</code>
+- New tests: <code>internal/litellm/mcpserver_test.go</code> (body-capture pattern)</p>
+<p>Same shape as Task 5 against <code>/v1/mcp/server</code> (or whatever the path is per <code>internal/litellm/mcpserver.go</code>).</p>
+<p><strong>Step 1: Write failing test</strong>
+<strong>Step 2: Run → FAIL</strong>
+<strong>Step 3: Implement</strong>
+<strong>Step 4: Run → PASS</strong>
+<strong>Step 5: Commit</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(mcpserver): stamp identity.Operator() on CREATE + UPDATE (FIX4 H-1)&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-7-stamp-identity-on-a2aagent-create-and-update">Task 7: Stamp identity on A2AAgent CREATE and UPDATE<a class="headerlink" href="#task-7-stamp-identity-on-a2aagent-create-and-update" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Modify: <code>internal/controller/a2aagent_controller.go</code>
+- Possibly modify: <code>internal/litellm/types.go</code>
+- New tests: <code>internal/litellm/a2aagent_test.go</code></p>
+<p>Same shape as Tasks 5–6.</p>
+<p><strong>Commit:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(a2aagent): stamp identity.Operator() on CREATE + UPDATE (FIX4 H-1)&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-8-re-stamp-createdby-on-model-adoption-path">Task 8: Re-stamp <code>CreatedBy</code> on Model adoption path<a class="headerlink" href="#task-8-re-stamp-createdby-on-model-adoption-path" title="Permanent link">&para;</a></h3>
+<p><strong>Why:</strong> The CREATE branch in <code>model_controller.go:458-462</code> (idempotency probe) skips the POST when <code>GetModelInfoByName</code> returns a hit. Adopted entries never receive a stamp. After Task 1's startup log confirms the binary has the right version, route through an explicit <code>PATCH</code>/<code>POST /model/update</code> immediately after adoption to retroactively stamp the audit fields.</p>
+<p><strong>Files:</strong>
+- Modify: <code>internal/controller/model_controller.go</code> lines 458-462 (adoption branch)</p>
+<p><strong>Step 1: Write envtest expectation</strong></p>
+<p>Add a test in <code>internal/controller/model_controller_test.go</code>:
+- pre-seed a fake LiteLLM with a model entry that has <code>created_by:null</code>;
+- create the Model CR;
+- reconcile;
+- assert the fake LiteLLM received an UPDATE call carrying <code>updated_by = alitellm-operator/&lt;version&gt;</code>.</p>
+<p><strong>Step 2: Run → FAIL</strong></p>
+<p>Run: <code>./scripts/dev.sh make envtest-pkg PKG=./internal/controller/... FOCUS=ModelAdoptionRestamp</code></p>
+<p><strong>Step 3: Implement</strong></p>
+<p>After the adoption-by-name branch obtains <code>newLiteLLMModelID</code>, issue an UPDATE that stamps <code>UpdatedBy</code> so the UI reflects the operator the moment the operator first touches it. Do NOT stamp <code>CreatedBy</code> (that field is immutable LiteLLM-side per FIX4 evidence; an UPDATE clears it on some 1.83.x versions).</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="nx">existing</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">existing</span><span class="p">.</span><span class="nx">ModelInfo</span><span class="p">.</span><span class="nx">ID</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="s">&quot;&quot;</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">    </span><span class="nx">newLiteLLMModelID</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">existing</span><span class="p">.</span><span class="nx">ModelInfo</span><span class="p">.</span><span class="nx">ID</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">    </span><span class="nx">logger</span><span class="p">.</span><span class="nx">V</span><span class="p">(</span><span class="mi">1</span><span class="p">).</span><span class="nx">Info</span><span class="p">(</span><span class="s">&quot;model already exists in LiteLLM; adopting id (idempotency probe)&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;modelID&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">newLiteLLMModelID</span><span class="p">)</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">    </span><span class="c1">// FIX4 H-1: stamp updated_by immediately on adoption so the UI does</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="w">    </span><span class="c1">// not show &quot;Unknown&quot; for entries that pre-date the operator&#39;s identity</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="w">    </span><span class="c1">// wiring or were imported by an older operator version.</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">snap</span><span class="p">.</span><span class="nx">Client</span><span class="p">.</span><span class="nx">UpdateModel</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">litellm</span><span class="p">.</span><span class="nx">UpdateDeployment</span><span class="p">{</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="w">        </span><span class="nx">ID</span><span class="p">:</span><span class="w">            </span><span class="nx">newLiteLLMModelID</span><span class="p">,</span>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="w">        </span><span class="nx">ModelName</span><span class="p">:</span><span class="w">     </span><span class="nx">model</span><span class="p">.</span><span class="nx">Name</span><span class="p">,</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="w">        </span><span class="nx">LiteLLMParams</span><span class="p">:</span><span class="w"> </span><span class="nx">litellm</span><span class="p">.</span><span class="nx">LiteLLMParams</span><span class="p">(</span><span class="nx">paramsMap</span><span class="p">),</span>
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="w">        </span><span class="nx">ModelInfo</span><span class="p">:</span><span class="w">     </span><span class="nx">litellm</span><span class="p">.</span><span class="nx">ModelInfo</span><span class="p">{</span><span class="nx">UpdatedBy</span><span class="p">:</span><span class="w"> </span><span class="nx">identity</span><span class="p">.</span><span class="nx">Operator</span><span class="p">()},</span>
+<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a><span class="w">    </span><span class="p">});</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nx">classifyMutationError</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">model</span><span class="p">,</span><span class="w"> </span><span class="nx">logger</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;POST /model/update (FIX4 H-1 adoption stamp)&quot;</span><span class="p">)</span>
+<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a><span class="p">}</span>
+</code></pre></div>
+<p><strong>Step 4: Run → PASS</strong></p>
+<p><strong>Step 5: Commit</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;fix(model): stamp updated_by on adoption-by-name (FIX4 H-1)&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-9-l-3-doc-only-close-out">Task 9: L-3 doc-only close-out<a class="headerlink" href="#task-9-l-3-doc-only-close-out" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Modify: <code>CHANGELOG.md</code> (Unreleased / v0.2.1 section)
+- Modify: <code>references/security/govulncheck-acknowledged.md</code> is NOT the right home — instead append to <code>references/</code> a new short doc.
+- Create: <code>references/litellm-auth-model.md</code></p>
+<p><strong>Step 1: Write the file</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="gh"># LiteLLM auth model (master key vs virtual key)</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>This operator authenticates against LiteLLM using the proxy&#39;s master key
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>(<span class="sb">`LITELLM_MASTER_KEY`</span>, <span class="sb">`sk-`</span>-prefixed). The master key reaches the
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>following endpoints used by the operator: <span class="sb">`/v1/models`</span>, <span class="sb">`/model/new`</span>,
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="sb">`/model/update`</span>, <span class="sb">`/model/delete`</span>, <span class="sb">`/v1/mcp/server`</span>, <span class="sb">`/v1/agents`</span>,
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="sb">`/team/*`</span>.
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>Virtual keys (<span class="sb">`POST /key/generate`</span>) carry per-key scopes and quotas
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>and are NOT currently used by the operator. Future per-CR isolation
+<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a>(distinct <span class="sb">`created_by`</span> per CR rather than a single operator identity)
+<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a>would adopt virtual keys, but is OUT OF SCOPE for v0.3.0.
+<a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a>
+<a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a>FIX4 L-3 evidence: a transient 401 observed on 2026-05-22 under v0.1.2
+<a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a>returning &quot;LiteLLM Virtual Key expected. Received=****, expected to
+<a id="__codelineno-14-16" name="__codelineno-14-16" href="#__codelineno-14-16"></a>start with &#39;sk-&#39;.&quot; was a secret-rotation race, NOT a LiteLLM-side
+<a id="__codelineno-14-17" name="__codelineno-14-17" href="#__codelineno-14-17"></a>policy tightening. Re-probe under v0.2.0 with the same key passed
+<a id="__codelineno-14-18" name="__codelineno-14-18" href="#__codelineno-14-18"></a>against all four endpoints.
+</code></pre></div>
+<p><strong>Step 2: CHANGELOG entry</strong></p>
+<p>Append under v0.2.1:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>- docs: clarify LiteLLM master-key vs virtual-key auth model (FIX4 L-3)
+</code></pre></div>
+<p><strong>Step 3: Commit</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>git<span class="w"> </span>add<span class="w"> </span>references/litellm-auth-model.md<span class="w"> </span>CHANGELOG.md
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;docs(auth): clarify master-key vs virtual-key (FIX4 L-3)&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-10-v021-release-commit">Task 10: v0.2.1 release commit<a class="headerlink" href="#task-10-v021-release-commit" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Modify: <code>CHANGELOG.md</code> (Unreleased → v0.2.1 with the H-1 entries from Tasks 1, 5–8 + L-3 from Task 9)</p>
+<p><strong>Step 1: Update CHANGELOG.md</strong> under v0.2.1:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>## [0.2.1] - 2026-MM-DD
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>### Fixed
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>- model: stamp `model_info.updated_by` on adoption-by-name path so the
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>  LiteLLM UI shows the operator identity instead of &quot;Unknown&quot; for
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>  entries adopted from earlier operator versions or out-of-band creates.
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a>  (FIX4 H-1)
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a>- team / mcpserver / a2aagent: stamp `created_by`/`updated_by` on
+<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a>  CREATE + UPDATE paths to match the Model controller (FIX4 H-1
+<a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a>  symmetry).
+<a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a>
+<a id="__codelineno-17-12" name="__codelineno-17-12" href="#__codelineno-17-12"></a>### Added
+<a id="__codelineno-17-13" name="__codelineno-17-13" href="#__codelineno-17-13"></a>- observability: one-shot startup INFO log of `identity.Operator()` so
+<a id="__codelineno-17-14" name="__codelineno-17-14" href="#__codelineno-17-14"></a>  the value the binary will send is visible without external probes.
+<a id="__codelineno-17-15" name="__codelineno-17-15" href="#__codelineno-17-15"></a>  (FIX4 H-1)
+<a id="__codelineno-17-16" name="__codelineno-17-16" href="#__codelineno-17-16"></a>- tests: body-capture unit tests on every audit-stamped endpoint
+<a id="__codelineno-17-17" name="__codelineno-17-17" href="#__codelineno-17-17"></a>  guarding against future regressions.
+<a id="__codelineno-17-18" name="__codelineno-17-18" href="#__codelineno-17-18"></a>
+<a id="__codelineno-17-19" name="__codelineno-17-19" href="#__codelineno-17-19"></a>### Documentation
+<a id="__codelineno-17-20" name="__codelineno-17-20" href="#__codelineno-17-20"></a>- references/litellm-auth-model.md: clarify the operator uses the master
+<a id="__codelineno-17-21" name="__codelineno-17-21" href="#__codelineno-17-21"></a>  key, virtual keys are out of scope for v0.3.0 (FIX4 L-3).
+</code></pre></div>
+<p><strong>Step 2: Run the final gate</strong> (per memory <code>feedback_test_cadence</code>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>./scripts/dev.sh<span class="w"> </span>make<span class="w"> </span>test-all<span class="w">    </span><span class="c1"># unit + envtest-run (race)</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>./scripts/dev.sh<span class="w"> </span>make<span class="w"> </span>security<span class="w">    </span><span class="c1"># gosec + govulncheck + fuzz-short</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>make<span class="w"> </span>pre-push<span class="w">                     </span><span class="c1"># host-only gitleaks + trufflehog + 13 gates</span>
+</code></pre></div>
+<p>Expected: all green.</p>
+<p><strong>Step 3: Release commit</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>git<span class="w"> </span>add<span class="w"> </span>CHANGELOG.md
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>git<span class="w"> </span>commit<span class="w"> </span>--allow-empty<span class="w"> </span>-m<span class="w"> </span><span class="s1">&#39;chore(release): v0.2.1&#39;</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>main
+</code></pre></div>
+<p>Workflow handles the rest (bump manifests, build, sign, tag).</p>
+<hr />
+<h2 id="h-2-mcpserverdiscovery-rename-v030-breaking">H-2 — MCPServerDiscovery rename (v0.3.0 breaking)<a class="headerlink" href="#h-2-mcpserverdiscovery-rename-v030-breaking" title="Permanent link">&para;</a></h2>
+<h3 id="task-11-add-specprefix-to-litellmmcpserverdiscovery-types">Task 11: Add <code>spec.prefix</code> to LiteLLMMCPServerDiscovery types<a class="headerlink" href="#task-11-add-specprefix-to-litellmmcpserverdiscovery-types" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Modify: <code>api/litellm/v1alpha1/litellmmcpserverdiscovery_types.go</code>
+- Run: <code>./scripts/dev.sh make generate manifests</code></p>
+<p><strong>Step 1: Add the field with CEL validator</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="c1">// Prefix is the DNS-1123 label prepended to every child&#39;s metadata.name</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="c1">// as &quot;&lt;prefix&gt;-&lt;source-name&gt;&quot;. Same convention as LiteLLMModelDiscovery.</span>
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="c1">// Required; lowercased; max 30 chars to leave room for the source name</span>
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="c1">// within the 63-char DNS-1123 limit.</span>
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a><span class="c1">// +kubebuilder:validation:Required</span>
+<a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a><span class="c1">// +kubebuilder:validation:MinLength=1</span>
+<a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a><span class="c1">// +kubebuilder:validation:MaxLength=30</span>
+<a id="__codelineno-20-8" name="__codelineno-20-8" href="#__codelineno-20-8"></a><span class="c1">// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`</span>
+<a id="__codelineno-20-9" name="__codelineno-20-9" href="#__codelineno-20-9"></a><span class="nx">Prefix</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="s">`json:&quot;prefix&quot;`</span>
+</code></pre></div>
+<p><strong>Step 2: Regenerate</strong></p>
+<p>Run: <code>./scripts/dev.sh make generate manifests</code>
+Expected: <code>config/crd/bases/litellm.ackstorm.ai_litellmmcpserverdiscoveries.yaml</code> updated.</p>
+<p><strong>Step 3: Run unit</strong></p>
+<p>Run: <code>./scripts/dev.sh make unit</code>
+Expected: PASS.</p>
+<p><strong>Step 4: Commit</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>git<span class="w"> </span>add<span class="w"> </span>api/litellm/v1alpha1/litellmmcpserverdiscovery_types.go<span class="w"> </span>config/<span class="w"> </span>deploy/<span class="w"> </span>docs/api-reference/
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(api)!: require spec.prefix on LiteLLMMCPServerDiscovery (FIX4 H-2)&quot;</span>
+</code></pre></div>
+<blockquote>
+<p>The <code>!</code> in the commit type marks the breaking-change for the changelog generator.</p>
+</blockquote>
+<hr />
+<h3 id="task-12-refactor-child-name-helper-to-prefix-source-name">Task 12: Refactor child-name helper to <code>&lt;prefix&gt;-&lt;source-name&gt;</code><a class="headerlink" href="#task-12-refactor-child-name-helper-to-prefix-source-name" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Modify: <code>internal/controller/mcpserverdiscovery_controller.go</code> (or wherever the helper lives)
+- Modify: existing unit tests that assert the old shape</p>
+<p><strong>Step 1: Find the current helper</strong></p>
+<p>Run: <code>grep -rn "childName\|ChildName\|&lt;source-namespace&gt;\|sourceNamespace" /home/jcm/Projects/alitellm-operator/internal/controller/mcpserverdiscovery_controller.go</code></p>
+<p><strong>Step 2: Write failing test in the appropriate <code>_test.go</code>:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="kd">func</span><span class="w"> </span><span class="nx">TestMCPDiscoveryChildName_NoNamespaceComponent</span><span class="p">(</span><span class="nx">t</span><span class="w"> </span><span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="w">    </span><span class="nx">got</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">childName</span><span class="p">(</span><span class="s">&quot;mcp&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;mcp&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;aws-knowledge&quot;</span><span class="p">)</span>
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">got</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="s">&quot;mcp-aws-knowledge&quot;</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Errorf</span><span class="p">(</span><span class="s">&quot;want mcp-aws-knowledge, got %q&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">got</span><span class="p">)</span>
+<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">strings</span><span class="p">.</span><span class="nx">Contains</span><span class="p">(</span><span class="nx">got</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;.&quot;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Errorf</span><span class="p">(</span><span class="s">&quot;name must not contain dots: %q&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">got</span><span class="p">)</span>
+<a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-22-9" name="__codelineno-22-9" href="#__codelineno-22-9"></a><span class="p">}</span>
+</code></pre></div>
+<p><strong>Step 3: Run → FAIL.</strong></p>
+<p><strong>Step 4: Implement: drop the namespace component</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="kd">func</span><span class="w"> </span><span class="nx">childName</span><span class="p">(</span><span class="nx">prefix</span><span class="p">,</span><span class="w"> </span><span class="nx">_sourceNamespace</span><span class="p">,</span><span class="w"> </span><span class="nx">sourceName</span><span class="w"> </span><span class="kt">string</span><span class="p">)</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">prefix</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">&quot;-&quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nx">sourceName</span>
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="p">}</span>
+</code></pre></div>
+<p>Keep the parameter for compile-compat with callers in this commit; remove the unused parameter in Task 14 once all callers are updated.</p>
+<p><strong>Step 5: Run → PASS.</strong></p>
+<p><strong>Step 6: Commit</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;fix(mcpserverdiscovery)!: drop namespace component from child names (FIX4 H-2)&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-13-sanitizer-for-the-litellm-wire-form">Task 13: Sanitizer for the LiteLLM wire form<a class="headerlink" href="#task-13-sanitizer-for-the-litellm-wire-form" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Modify: <code>internal/litellm/mcpserver_request.go</code> (or wherever the wire payload is built)
+- Test: extend <code>internal/controller/mcpserver_sanitize_test.go</code></p>
+<p><strong>Step 1: Decide K8s-side vs wire-side separator</strong></p>
+<p>Per FIX4 H-2 user feedback ("guion" = hyphen, K8s convention), use:
+- K8s child <code>metadata.name</code>: hyphen-separated <code>&lt;prefix&gt;-&lt;source-name&gt;</code>.
+- LiteLLM wire <code>server_name</code>: dot-separated <code>&lt;prefix&gt;.&lt;source-name&gt;</code> (matches the Model wire form <code>openai.gpt-4o-mini</code>).</p>
+<p>The sanitizer flips the K8s-side hyphen between the <code>&lt;prefix&gt;</code> and the first segment of the source name into a dot.</p>
+<p><strong>Step 2: Failing test</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="kd">func</span><span class="w"> </span><span class="nx">TestMCPServerWireName_DotFlip</span><span class="p">(</span><span class="nx">t</span><span class="w"> </span><span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a><span class="w">    </span><span class="nx">cases</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="kt">string</span><span class="p">{</span>
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a><span class="w">        </span><span class="s">&quot;mcp-aws-knowledge&quot;</span><span class="p">:</span><span class="w">      </span><span class="s">&quot;mcp.aws-knowledge&quot;</span><span class="p">,</span>
+<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a><span class="w">        </span><span class="s">&quot;team-toolhive-context7&quot;</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;team.toolhive-context7&quot;</span><span class="p">,</span>
+<a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-25-6" name="__codelineno-25-6" href="#__codelineno-25-6"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="nx">in</span><span class="p">,</span><span class="w"> </span><span class="nx">want</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="k">range</span><span class="w"> </span><span class="nx">cases</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-25-7" name="__codelineno-25-7" href="#__codelineno-25-7"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="nx">got</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">wireServerName</span><span class="p">(</span><span class="nx">in</span><span class="p">);</span><span class="w"> </span><span class="nx">got</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="nx">want</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-25-8" name="__codelineno-25-8" href="#__codelineno-25-8"></a><span class="w">            </span><span class="nx">t</span><span class="p">.</span><span class="nx">Errorf</span><span class="p">(</span><span class="s">&quot;wireServerName(%q): want %q, got %q&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">in</span><span class="p">,</span><span class="w"> </span><span class="nx">want</span><span class="p">,</span><span class="w"> </span><span class="nx">got</span><span class="p">)</span>
+<a id="__codelineno-25-9" name="__codelineno-25-9" href="#__codelineno-25-9"></a><span class="w">        </span><span class="p">}</span>
+<a id="__codelineno-25-10" name="__codelineno-25-10" href="#__codelineno-25-10"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-25-11" name="__codelineno-25-11" href="#__codelineno-25-11"></a><span class="p">}</span>
+</code></pre></div>
+<p><strong>Step 3: Implement</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="c1">// wireServerName converts the K8s-side &lt;prefix&gt;-&lt;source-name&gt; into the</span>
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a><span class="c1">// LiteLLM wire form &lt;prefix&gt;.&lt;source-name&gt;. Only the FIRST hyphen is</span>
+<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a><span class="c1">// flipped — source names with internal hyphens (e.g. aws-knowledge)</span>
+<a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a><span class="c1">// are preserved verbatim past the first segment.</span>
+<a id="__codelineno-26-5" name="__codelineno-26-5" href="#__codelineno-26-5"></a><span class="kd">func</span><span class="w"> </span><span class="nx">wireServerName</span><span class="p">(</span><span class="nx">k8sName</span><span class="w"> </span><span class="kt">string</span><span class="p">)</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-26-6" name="__codelineno-26-6" href="#__codelineno-26-6"></a><span class="w">    </span><span class="nx">i</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">strings</span><span class="p">.</span><span class="nx">Index</span><span class="p">(</span><span class="nx">k8sName</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;-&quot;</span><span class="p">)</span>
+<a id="__codelineno-26-7" name="__codelineno-26-7" href="#__codelineno-26-7"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-26-8" name="__codelineno-26-8" href="#__codelineno-26-8"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nx">k8sName</span>
+<a id="__codelineno-26-9" name="__codelineno-26-9" href="#__codelineno-26-9"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-26-10" name="__codelineno-26-10" href="#__codelineno-26-10"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">k8sName</span><span class="p">[:</span><span class="nx">i</span><span class="p">]</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="s">&quot;.&quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="nx">k8sName</span><span class="p">[</span><span class="nx">i</span><span class="o">+</span><span class="mi">1</span><span class="p">:]</span>
+<a id="__codelineno-26-11" name="__codelineno-26-11" href="#__codelineno-26-11"></a><span class="p">}</span>
+</code></pre></div>
+<p><strong>Step 4: Run → PASS.</strong></p>
+<p><strong>Step 5: Commit</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(mcpserverdiscovery): wire-name sanitizer flips first hyphen to dot (FIX4 H-2)&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-14-remove-auto-disambiguation-and-namespace-handling">Task 14: Remove auto-disambiguation and namespace handling<a class="headerlink" href="#task-14-remove-auto-disambiguation-and-namespace-handling" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Modify: <code>internal/controller/mcpserverdiscovery_controller.go</code> — drop the auto-disambiguation code (whichever helper currently splices namespace into the name on collisions).
+- Modify: child-name callers — drop the now-unused <code>sourceNamespace</code> argument from Task 12 signature.</p>
+<p><strong>Step 1: Locate and remove</strong></p>
+<p>Run: <code>grep -n "disambig\|namespace.*collis\|nameCollision\|autoSuffix" /home/jcm/Projects/alitellm-operator/internal/controller/mcpserverdiscovery_controller.go</code></p>
+<p>Delete the relevant blocks. Adjust callers.</p>
+<p><strong>Step 2: Run unit</strong></p>
+<p>Run: <code>./scripts/dev.sh make unit-pkg PKG=./internal/controller/...</code>
+Expected: PASS.</p>
+<p><strong>Step 3: Commit</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;refactor(mcpserverdiscovery): drop auto-disambiguation; use spec.prefix (FIX4 H-2)&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-15-emit-namecollision-status-condition-on-intra-discovery-clashes">Task 15: Emit <code>NameCollision</code> status condition on intra-discovery clashes<a class="headerlink" href="#task-15-emit-namecollision-status-condition-on-intra-discovery-clashes" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Modify: <code>internal/controller/mcpserverdiscovery_controller.go</code>
+- Possibly: <code>api/litellm/v1alpha1/litellmmcpserverdiscovery_types.go</code> (add the condition type constant)</p>
+<p><strong>Step 1: Add the condition constant</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a><span class="c1">// ConditionTypeNameCollision is set Reason=NameCollision Status=True when</span>
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a><span class="c1">// two upstream servers from different source namespaces share the same</span>
+<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a><span class="c1">// `name` within a single discovery. The second occurrence is skipped</span>
+<a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a><span class="c1">// loud-fail rather than silently merged.</span>
+<a id="__codelineno-29-5" name="__codelineno-29-5" href="#__codelineno-29-5"></a><span class="nx">ConditionTypeNameCollision</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s">&quot;NameCollision&quot;</span>
+</code></pre></div>
+<p><strong>Step 2: Write envtest expectation</strong></p>
+<p>In <code>mcpserverdiscovery_controller_test.go</code> (or new file), seed two upstream MCPServers in different namespaces both named <code>foo</code>, single discovery sourcing from both namespaces. Expect:</p>
+<ul>
+<li>exactly one child created;</li>
+<li>the discovery's status carries <code>NameCollision=True</code> listing the offending pair.</li>
+</ul>
+<p>Run: <code>./scripts/dev.sh make envtest-pkg PKG=./internal/controller/... FOCUS=NameCollision</code>
+Expected: FAIL.</p>
+<p><strong>Step 3: Implement</strong></p>
+<p>In the rendering loop:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a><span class="nx">seen</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="kt">string</span><span class="p">{}</span><span class="w"> </span><span class="c1">// name → first-seen ns</span>
+<a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a><span class="k">for</span><span class="w"> </span><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">ups</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="k">range</span><span class="w"> </span><span class="nx">upstreams</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">firstNs</span><span class="p">,</span><span class="w"> </span><span class="nx">dup</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">seen</span><span class="p">[</span><span class="nx">ups</span><span class="p">.</span><span class="nx">Name</span><span class="p">];</span><span class="w"> </span><span class="nx">dup</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-30-4" name="__codelineno-30-4" href="#__codelineno-30-4"></a><span class="w">        </span><span class="nx">meta</span><span class="p">.</span><span class="nx">SetStatusCondition</span><span class="p">(</span><span class="o">&amp;</span><span class="nx">disc</span><span class="p">.</span><span class="nx">Status</span><span class="p">.</span><span class="nx">Conditions</span><span class="p">,</span><span class="w"> </span><span class="nx">metav1</span><span class="p">.</span><span class="nx">Condition</span><span class="p">{</span>
+<a id="__codelineno-30-5" name="__codelineno-30-5" href="#__codelineno-30-5"></a><span class="w">            </span><span class="nx">Type</span><span class="p">:</span><span class="w">    </span><span class="nx">ConditionTypeNameCollision</span><span class="p">,</span>
+<a id="__codelineno-30-6" name="__codelineno-30-6" href="#__codelineno-30-6"></a><span class="w">            </span><span class="nx">Status</span><span class="p">:</span><span class="w">  </span><span class="nx">metav1</span><span class="p">.</span><span class="nx">ConditionTrue</span><span class="p">,</span>
+<a id="__codelineno-30-7" name="__codelineno-30-7" href="#__codelineno-30-7"></a><span class="w">            </span><span class="nx">Reason</span><span class="p">:</span><span class="w">  </span><span class="s">&quot;NameCollision&quot;</span><span class="p">,</span>
+<a id="__codelineno-30-8" name="__codelineno-30-8" href="#__codelineno-30-8"></a><span class="w">            </span><span class="nx">Message</span><span class="p">:</span><span class="w"> </span><span class="nx">fmt</span><span class="p">.</span><span class="nx">Sprintf</span><span class="p">(</span><span class="s">&quot;upstream %q from ns %q skipped — already seen in ns %q&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">ups</span><span class="p">.</span><span class="nx">Name</span><span class="p">,</span><span class="w"> </span><span class="nx">ups</span><span class="p">.</span><span class="nx">Namespace</span><span class="p">,</span><span class="w"> </span><span class="nx">firstNs</span><span class="p">),</span>
+<a id="__codelineno-30-9" name="__codelineno-30-9" href="#__codelineno-30-9"></a><span class="w">        </span><span class="p">})</span>
+<a id="__codelineno-30-10" name="__codelineno-30-10" href="#__codelineno-30-10"></a><span class="w">        </span><span class="k">continue</span>
+<a id="__codelineno-30-11" name="__codelineno-30-11" href="#__codelineno-30-11"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-30-12" name="__codelineno-30-12" href="#__codelineno-30-12"></a><span class="w">    </span><span class="nx">seen</span><span class="p">[</span><span class="nx">ups</span><span class="p">.</span><span class="nx">Name</span><span class="p">]</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">ups</span><span class="p">.</span><span class="nx">Namespace</span>
+<a id="__codelineno-30-13" name="__codelineno-30-13" href="#__codelineno-30-13"></a><span class="w">    </span><span class="c1">// ...render child as usual</span>
+<a id="__codelineno-30-14" name="__codelineno-30-14" href="#__codelineno-30-14"></a><span class="p">}</span>
+</code></pre></div>
+<p><strong>Step 4: Run → PASS.</strong></p>
+<p><strong>Step 5: Commit</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(mcpserverdiscovery): emit NameCollision condition on intra-discovery clashes (FIX4 H-2)&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-16-adoption-migration-for-pre-v030-children">Task 16: Adoption migration for pre-v0.3.0 children<a class="headerlink" href="#task-16-adoption-migration-for-pre-v030-children" title="Permanent link">&para;</a></h3>
+<p><strong>Why:</strong> Pre-v0.3.0 children were registered under the old dotted scheme (<code>&lt;discovery&gt;.&lt;source-namespace&gt;.&lt;source-name&gt;</code>). On the v0.3.0 upgrade the operator will recreate them under the new name; the old LiteLLM-side records become orphans.</p>
+<p><strong>Files:</strong>
+- Modify: <code>internal/controller/mcpserverdiscovery_controller.go</code> — add an adoption lookup that matches by <code>(url, transport)</code> to detect a pre-v0.3.0 record under the old name and DELETE it before the new CREATE.</p>
+<p><strong>Step 1: Write envtest expectation</strong></p>
+<p>Seed a fake LiteLLM with a pre-existing MCP server record named under the OLD scheme (<code>mcp.mcp.aws-knowledge</code>) for some <code>(url, transport)</code>. Apply a v0.3.0 discovery with <code>spec.prefix: mcp</code> pointing at the same upstream. Expect:</p>
+<ul>
+<li>the new child <code>mcp-aws-knowledge</code> exists under the NEW name;</li>
+<li>the old record under the OLD name is deleted (not orphaned);</li>
+<li>exactly one LiteLLM-side record exists for that <code>(url, transport)</code>.</li>
+</ul>
+<p>Run: <code>./scripts/dev.sh make envtest-pkg PKG=./internal/controller/... FOCUS=Migration</code>
+Expected: FAIL.</p>
+<p><strong>Step 2: Implement</strong></p>
+<p>Before the CREATE on each child:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a><span class="c1">// FIX4 H-2 migration: scan LiteLLM for pre-v0.3.0 records under the OLD</span>
+<a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a><span class="c1">// dotted scheme matching this child&#39;s (url, transport). DELETE the</span>
+<a id="__codelineno-32-3" name="__codelineno-32-3" href="#__codelineno-32-3"></a><span class="c1">// orphan so we don&#39;t leave dangling state after the rename. One-release</span>
+<a id="__codelineno-32-4" name="__codelineno-32-4" href="#__codelineno-32-4"></a><span class="c1">// grace window — remove this block in v0.4.0.</span>
+<a id="__codelineno-32-5" name="__codelineno-32-5" href="#__codelineno-32-5"></a><span class="k">if</span><span class="w"> </span><span class="nx">oldID</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">snap</span><span class="p">.</span><span class="nx">Client</span><span class="p">.</span><span class="nx">FindMCPServerByURL</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">ups</span><span class="p">.</span><span class="nx">URL</span><span class="p">,</span><span class="w"> </span><span class="nx">ups</span><span class="p">.</span><span class="nx">Transport</span><span class="p">);</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nx">oldID</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="s">&quot;&quot;</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-32-6" name="__codelineno-32-6" href="#__codelineno-32-6"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">oldID</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="nx">newID</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-32-7" name="__codelineno-32-7" href="#__codelineno-32-7"></a><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">snap</span><span class="p">.</span><span class="nx">Client</span><span class="p">.</span><span class="nx">DeleteMCPServer</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">oldID</span><span class="p">);</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-32-8" name="__codelineno-32-8" href="#__codelineno-32-8"></a><span class="w">            </span><span class="nx">logger</span><span class="p">.</span><span class="nx">V</span><span class="p">(</span><span class="mi">1</span><span class="p">).</span><span class="nx">Info</span><span class="p">(</span><span class="s">&quot;FIX4 H-2 migration: failed to delete pre-v0.3.0 orphan; manual cleanup may be needed&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;oldID&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">oldID</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;err&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="p">.</span><span class="nx">Error</span><span class="p">())</span>
+<a id="__codelineno-32-9" name="__codelineno-32-9" href="#__codelineno-32-9"></a><span class="w">        </span><span class="p">}</span>
+<a id="__codelineno-32-10" name="__codelineno-32-10" href="#__codelineno-32-10"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-32-11" name="__codelineno-32-11" href="#__codelineno-32-11"></a><span class="p">}</span>
+</code></pre></div>
+<p><strong>Step 3: Run → PASS.</strong></p>
+<p><strong>Step 4: Commit</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;feat(mcpserverdiscovery): one-shot v0.3.0 migration cleans pre-v0.3.0 orphans (FIX4 H-2)&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-17-update-existing-mcpserverdiscovery-e2e-expectations">Task 17: Update existing MCPServerDiscovery e2e expectations<a class="headerlink" href="#task-17-update-existing-mcpserverdiscovery-e2e-expectations" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Modify: <code>test/e2e/*</code> files that assert the old <code>&lt;discovery&gt;.&lt;ns&gt;.&lt;name&gt;</code> shape</p>
+<p><strong>Step 1: Find</strong></p>
+<p>Run: <code>grep -rn "mcp\\..*\\." /home/jcm/Projects/alitellm-operator/test/e2e/</code></p>
+<p><strong>Step 2: Update assertions</strong> to expect <code>&lt;prefix&gt;-&lt;source-name&gt;</code> on the K8s side and <code>&lt;prefix&gt;.&lt;source-name&gt;</code> on the wire side.</p>
+<p><strong>Step 3: Run focused e2e</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a>make<span class="w"> </span>cluster-keep
+<a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a>./scripts/dev.sh<span class="w"> </span>make<span class="w"> </span>e2e-focus<span class="w"> </span><span class="nv">FOCUS</span><span class="o">=</span><span class="s2">&quot;MCPServerDiscovery&quot;</span>
+</code></pre></div>
+<p>Expected: PASS.</p>
+<p><strong>Step 4: Commit</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;test(e2e): update MCPServerDiscovery assertions to v0.3.0 naming (FIX4 H-2)&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-18-update-example-crs">Task 18: Update example CRs<a class="headerlink" href="#task-18-update-example-crs" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Modify: every <code>examples/litellmmcpserverdiscovery*.yaml</code></p>
+<p><strong>Step 1: Add <code>spec.prefix</code> to each example.</strong></p>
+<p><strong>Step 2: Verify they apply against a fresh cluster</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a>make<span class="w"> </span>cluster-down<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>./scripts/dev.sh<span class="w"> </span>make<span class="w"> </span>cluster-up
+<a id="__codelineno-36-2" name="__codelineno-36-2" href="#__codelineno-36-2"></a>./scripts/dev.sh<span class="w"> </span>kubectl<span class="w"> </span>apply<span class="w"> </span>-f<span class="w"> </span>examples/litellmmcpserverdiscovery-*.yaml
+</code></pre></div>
+<p>Expected: no <code>validation</code> errors.</p>
+<p><strong>Step 3: Commit</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;docs(examples): set spec.prefix on MCPServerDiscovery examples (FIX4 H-2)&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-19-regenerate-crd-reference-docs">Task 19: Regenerate CRD reference docs<a class="headerlink" href="#task-19-regenerate-crd-reference-docs" title="Permanent link">&para;</a></h3>
+<p><strong>Step 1: Run</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a>./scripts/dev.sh<span class="w"> </span>make<span class="w"> </span>gen-crd-ref-docs
+</code></pre></div>
+<p><strong>Step 2: Verify</strong></p>
+<p><code>docs/api-reference/litellm.ackstorm.ai.md</code> should show <code>spec.prefix</code> with its CEL pattern.</p>
+<p><strong>Step 3: Commit</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-39-1" name="__codelineno-39-1" href="#__codelineno-39-1"></a>git<span class="w"> </span>add<span class="w"> </span>docs/api-reference/
+<a id="__codelineno-39-2" name="__codelineno-39-2" href="#__codelineno-39-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;docs(api): regenerate CRD reference for spec.prefix (FIX4 H-2)&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-20-migration-release-note">Task 20: Migration release note<a class="headerlink" href="#task-20-migration-release-note" title="Permanent link">&para;</a></h3>
+<p><strong>Files:</strong>
+- Modify: <code>CHANGELOG.md</code> (Unreleased → v0.3.0)
+- Create: <code>docs/releases/v0.3.0-migration.md</code> (or add a section to an existing release-notes doc)</p>
+<p><strong>Step 1: Write the migration note</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-40-1" name="__codelineno-40-1" href="#__codelineno-40-1"></a><span class="gh"># v0.3.0 migration — MCPServerDiscovery naming</span>
+<a id="__codelineno-40-2" name="__codelineno-40-2" href="#__codelineno-40-2"></a>
+<a id="__codelineno-40-3" name="__codelineno-40-3" href="#__codelineno-40-3"></a>This release renames the children produced by <span class="sb">`LiteLLMMCPServerDiscovery`</span>
+<a id="__codelineno-40-4" name="__codelineno-40-4" href="#__codelineno-40-4"></a>from <span class="sb">`&lt;discovery&gt;.&lt;source-namespace&gt;.&lt;source-name&gt;`</span> to
+<a id="__codelineno-40-5" name="__codelineno-40-5" href="#__codelineno-40-5"></a><span class="sb">`&lt;spec.prefix&gt;-&lt;source-name&gt;`</span>.
+<a id="__codelineno-40-6" name="__codelineno-40-6" href="#__codelineno-40-6"></a>
+<a id="__codelineno-40-7" name="__codelineno-40-7" href="#__codelineno-40-7"></a><span class="gu">## Breaking changes</span>
+<a id="__codelineno-40-8" name="__codelineno-40-8" href="#__codelineno-40-8"></a>
+<a id="__codelineno-40-9" name="__codelineno-40-9" href="#__codelineno-40-9"></a><span class="k">-</span><span class="w"> </span><span class="sb">`spec.prefix`</span> is now a required field on <span class="sb">`LiteLLMMCPServerDiscovery`</span>.
+<a id="__codelineno-40-10" name="__codelineno-40-10" href="#__codelineno-40-10"></a>  Existing CRs without <span class="sb">`spec.prefix`</span> will fail validation on
+<a id="__codelineno-40-11" name="__codelineno-40-11" href="#__codelineno-40-11"></a>  <span class="sb">`kubectl apply`</span> after upgrade.
+<a id="__codelineno-40-12" name="__codelineno-40-12" href="#__codelineno-40-12"></a><span class="k">-</span><span class="w"> </span>All currently-managed MCPServer K8s CRs will be deleted and recreated
+<a id="__codelineno-40-13" name="__codelineno-40-13" href="#__codelineno-40-13"></a>  under the new naming scheme. The operator&#39;s finalizer fires per-child,
+<a id="__codelineno-40-14" name="__codelineno-40-14" href="#__codelineno-40-14"></a>  which DELETEs the LiteLLM-side record under the old name; the new
+<a id="__codelineno-40-15" name="__codelineno-40-15" href="#__codelineno-40-15"></a>  CREATE then re-registers under the new name.
+<a id="__codelineno-40-16" name="__codelineno-40-16" href="#__codelineno-40-16"></a><span class="k">-</span><span class="w"> </span>The wire form sent to LiteLLM is <span class="sb">`&lt;prefix&gt;.&lt;source-name&gt;`</span> (dot
+<a id="__codelineno-40-17" name="__codelineno-40-17" href="#__codelineno-40-17"></a>  separator). This matches the Model wire form.
+<a id="__codelineno-40-18" name="__codelineno-40-18" href="#__codelineno-40-18"></a>
+<a id="__codelineno-40-19" name="__codelineno-40-19" href="#__codelineno-40-19"></a><span class="gu">## Pre-upgrade checklist</span>
+<a id="__codelineno-40-20" name="__codelineno-40-20" href="#__codelineno-40-20"></a>
+<a id="__codelineno-40-21" name="__codelineno-40-21" href="#__codelineno-40-21"></a><span class="k">1.</span> Add <span class="sb">`spec.prefix`</span> to every <span class="sb">`LiteLLMMCPServerDiscovery`</span> in your gitops
+<a id="__codelineno-40-22" name="__codelineno-40-22" href="#__codelineno-40-22"></a>   tree.
+<a id="__codelineno-40-23" name="__codelineno-40-23" href="#__codelineno-40-23"></a><span class="k">2.</span> Pick <span class="sb">`spec.prefix`</span> values that do not collide across discoveries —
+<a id="__codelineno-40-24" name="__codelineno-40-24" href="#__codelineno-40-24"></a>   the operator now relies on <span class="sb">`prefix`</span> for cross-discovery disambiguation
+<a id="__codelineno-40-25" name="__codelineno-40-25" href="#__codelineno-40-25"></a>   rather than the namespace component.
+<a id="__codelineno-40-26" name="__codelineno-40-26" href="#__codelineno-40-26"></a><span class="k">3.</span> If two upstream servers from different namespaces share a name within
+<a id="__codelineno-40-27" name="__codelineno-40-27" href="#__codelineno-40-27"></a>   a single discovery, the operator will skip the second occurrence and
+<a id="__codelineno-40-28" name="__codelineno-40-28" href="#__codelineno-40-28"></a>   set a <span class="sb">`NameCollision=True`</span> status condition. Rename one upstream or
+<a id="__codelineno-40-29" name="__codelineno-40-29" href="#__codelineno-40-29"></a>   split the discovery to resolve.
+<a id="__codelineno-40-30" name="__codelineno-40-30" href="#__codelineno-40-30"></a>
+<a id="__codelineno-40-31" name="__codelineno-40-31" href="#__codelineno-40-31"></a><span class="gu">## Orphan cleanup</span>
+<a id="__codelineno-40-32" name="__codelineno-40-32" href="#__codelineno-40-32"></a>
+<a id="__codelineno-40-33" name="__codelineno-40-33" href="#__codelineno-40-33"></a>A one-shot migration routine (released as part of v0.3.0) scans LiteLLM
+<a id="__codelineno-40-34" name="__codelineno-40-34" href="#__codelineno-40-34"></a>for records matching the old dotted scheme on each child&#39;s `(url,
+<a id="__codelineno-40-35" name="__codelineno-40-35" href="#__codelineno-40-35"></a>transport)` and DELETEs the orphan before the new CREATE. The migration
+<a id="__codelineno-40-36" name="__codelineno-40-36" href="#__codelineno-40-36"></a>routine will be removed in v0.4.0.
+</code></pre></div>
+<p><strong>Step 2: CHANGELOG entry</strong></p>
+<p>Under v0.3.0:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-41-1" name="__codelineno-41-1" href="#__codelineno-41-1"></a>### BREAKING CHANGES
+<a id="__codelineno-41-2" name="__codelineno-41-2" href="#__codelineno-41-2"></a>- mcpserverdiscovery: `spec.prefix` is now required; children are renamed
+<a id="__codelineno-41-3" name="__codelineno-41-3" href="#__codelineno-41-3"></a>  from `&lt;discovery&gt;.&lt;ns&gt;.&lt;name&gt;` to `&lt;prefix&gt;-&lt;source-name&gt;` (K8s) /
+<a id="__codelineno-41-4" name="__codelineno-41-4" href="#__codelineno-41-4"></a>  `&lt;prefix&gt;.&lt;source-name&gt;` (wire). Migration: see
+<a id="__codelineno-41-5" name="__codelineno-41-5" href="#__codelineno-41-5"></a>  docs/releases/v0.3.0-migration.md. (FIX4 H-2)
+</code></pre></div>
+<p><strong>Step 3: Commit</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-42-1" name="__codelineno-42-1" href="#__codelineno-42-1"></a>git<span class="w"> </span>add<span class="w"> </span>CHANGELOG.md<span class="w"> </span>docs/releases/v0.3.0-migration.md
+<a id="__codelineno-42-2" name="__codelineno-42-2" href="#__codelineno-42-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;docs(release)!: document v0.3.0 MCPServerDiscovery naming migration (FIX4 H-2)&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-21-final-gate-full-e2e-security-pre-push">Task 21: Final gate — full E2E + security + pre-push<a class="headerlink" href="#task-21-final-gate-full-e2e-security-pre-push" title="Permanent link">&para;</a></h3>
+<p><strong>Step 1: From a clean cluster, run the full gate.</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-43-1" name="__codelineno-43-1" href="#__codelineno-43-1"></a>make<span class="w"> </span>cluster-down
+<a id="__codelineno-43-2" name="__codelineno-43-2" href="#__codelineno-43-2"></a>./scripts/dev.sh<span class="w"> </span>make<span class="w"> </span>e2e-full
+<a id="__codelineno-43-3" name="__codelineno-43-3" href="#__codelineno-43-3"></a>./scripts/dev.sh<span class="w"> </span>make<span class="w"> </span>security
+<a id="__codelineno-43-4" name="__codelineno-43-4" href="#__codelineno-43-4"></a>make<span class="w"> </span>pre-push
+</code></pre></div>
+<p>Expected: all green.</p>
+<p><strong>Step 2: If anything red, fix-and-commit before the release commit. Do not bypass.</strong></p>
+<hr />
+<h3 id="task-22-v030-release-commit">Task 22: v0.3.0 release commit<a class="headerlink" href="#task-22-v030-release-commit" title="Permanent link">&para;</a></h3>
+<p><strong>Step 1: Commit the release marker</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-44-1" name="__codelineno-44-1" href="#__codelineno-44-1"></a>git<span class="w"> </span>commit<span class="w"> </span>--allow-empty<span class="w"> </span>-m<span class="w"> </span><span class="s1">&#39;chore(release): v0.3.0&#39;</span>
+<a id="__codelineno-44-2" name="__codelineno-44-2" href="#__codelineno-44-2"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>main
+</code></pre></div>
+<p><strong>Step 2: Verify the workflow on GHA</strong></p>
+<p>Check: <code>https://github.com/ackstorm/alitellm-operator/actions</code> — the <code>release.yml</code> workflow should run <code>parse → run-tests → build-and-release</code>, push the bot bump commit, tag <code>v0.3.0</code>, sign artifacts via cosign, and produce the OCI chart at <code>oci://ghcr.io/ackstorm/charts/alitellm-operator:0.3.0</code>.</p>
+<p><strong>Step 3: Smoke against prod</strong></p>
+<p>After Flux reconciles the new chart in prod EKS:</p>
+<ol>
+<li>Confirm pod is on v0.3.0 image.</li>
+<li><code>kubectl get litellmmcpserverdiscoveries -A -o yaml</code> — all children should be named per the new scheme.</li>
+<li>Check the LiteLLM UI Models table — entries should show <code>alitellm-operator/0.3.0</code> in Created By.</li>
+<li>Capture findings into a <code>FIX5.txt</code> if any new symptoms appear.</li>
+</ol>
+<hr />
+<h2 id="inventory-task-4-result">Inventory (Task 4 result)<a class="headerlink" href="#inventory-task-4-result" title="Permanent link">&para;</a></h2>
+<p>Source inspection: <code>internal/litellm/types.go</code>,
+<code>internal/controller/{team,mcpserver,a2aagent}_controller.go</code>. The
+frozen LiteLLM OpenAPI snapshot at <code>spec/litellm_api.json</code> is not
+present in this tree (only Models has been previously inspected),
+so the inventory falls back to what each endpoint's request struct
+exposes in practice.</p>
+<h3 id="findings">Findings<a class="headerlink" href="#findings" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Kind</th>
+<th>Request struct</th>
+<th>Native audit field?</th>
+<th>Stamping site (case)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Model</td>
+<td><code>Deployment</code> / <code>updateDeployment</code></td>
+<td>YES — <code>model_info.created_by/updated_by</code></td>
+<td>already wired (case a — leave as is, covered by Tasks 2-3 + 8)</td>
+</tr>
+<tr>
+<td>Team</td>
+<td>map[string]any (CreateTeamRaw)</td>
+<td>NO top-level audit field</td>
+<td>stamp into <code>metadata.created_by/updated_by</code> sub-bag (case c — metadata is freeform per LiteLLM 1.83.10 <code>additionalProperties: true</code>)</td>
+</tr>
+<tr>
+<td>MCPServer</td>
+<td><code>MCPServerRequest</code> / <code>MCPServerUpdateRequest</code></td>
+<td>NO top-level audit field; <code>mcp_info</code> is freeform</td>
+<td>stamp into <code>mcp_info.created_by/updated_by</code> (case c)</td>
+</tr>
+<tr>
+<td>A2AAgent</td>
+<td><code>AgentConfig</code></td>
+<td>NO top-level audit field; <code>agent_card_params</code> is freeform</td>
+<td>stamp into <code>agent_card_params.created_by/updated_by</code> (case c)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="decisions">Decisions<a class="headerlink" href="#decisions" title="Permanent link">&para;</a></h3>
+<ul>
+<li>All three non-Model kinds fall into case (c): the wire request has
+  no native audit field, but each endpoint accepts a freeform bag
+  (<code>metadata</code>, <code>mcp_info</code>, <code>agent_card_params</code>) that LiteLLM persists.
+  Stamping into the freeform bag is best-effort — the LiteLLM UI today
+  may not surface these values on Team/MCPServer/A2AAgent rows, but
+  the value is at least stored on the LiteLLM side and visible to any
+  operator probe or future UI update.</li>
+<li>No request struct needs new typed fields. The stamping is done by
+  injecting two keys into the existing freeform bag <em>before</em> the bag
+  is handed to the request constructor (Team) or before the
+  reconciler assigns it to the typed field (MCPServer, A2AAgent).</li>
+<li>Identity stamping behavior is symmetric with the Model controller:
+  CREATE stamps both <code>created_by</code> + <code>updated_by</code>; UPDATE stamps
+  <code>updated_by</code> only (LiteLLM-side audit semantics — original creator
+  is immutable; the operator records the most recent toucher).</li>
+<li>FIX4 L-3 evidence: the same master key reaches <code>/v1/models</code>,
+  <code>/model/new</code>, <code>/model/update</code>, <code>/model/delete</code>, <code>/v1/mcp/server</code>,
+  <code>/v1/agents</code>, <code>/team/*</code> — no auth-model divergence between the
+  Model path and the other three kinds, so this stamping change is
+  safe to ship without an additional auth review.</li>
+</ul>
+<h3 id="changelog-note-for-v021">CHANGELOG note for v0.2.1<a class="headerlink" href="#changelog-note-for-v021" title="Permanent link">&para;</a></h3>
+<p>The Team/MCPServer/A2AAgent stamping is best-effort into freeform
+bags — note this in the v0.2.1 CHANGELOG entry so users understand
+the LiteLLM UI may not surface the value on those rows until
+LiteLLM ships native audit columns for those resources.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/ackstorm/alitellm-operator" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "search.share", "content.code.copy", "content.code.annotate"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"alias": true, "default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

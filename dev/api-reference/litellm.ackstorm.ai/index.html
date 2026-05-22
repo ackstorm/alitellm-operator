@@ -3021,9 +3021,27 @@ the +kubebuilder:validation:Required + MinLength=1 markers below.</p>
 </tr>
 <tr>
 <td><code>mcpToolPrefixSeparator</code> <em>string</em></td>
-<td>MCPToolPrefixSeparator mirrors LiteLLM's <code>MCP_TOOL_PREFIX_SEPARATOR</code><br />environment variable on the target LiteLLM instance. LiteLLM uses<br />this character as the delimiter between server prefix and tool name<br />in fully-qualified MCP tool identifiers, and it REJECTS the same<br />character inside <code>server_name</code> at <code>POST /v1/mcp/server</code> time (HTTP<br />400 "Server name cannot contain '<sep>'."). The opposite member of<br />the {".", "-"} pair is allowed inside <code>server_name</code>.<br />The operator reads this field to sanitize the LiteLLM-side<br /><code>server_name</code> and <code>alias</code> for every MCPServer routed through this<br />Connection. The K8s <code>metadata.name</code> is left untouched — sanitization<br />is wire-boundary only.<br />Valid values:<br />  - "-" (default; matches LiteLLM's own default). Forbids '-' in<br />    server_name; the operator rewrites '-' → '.' in the wire payload.<br />  - "." Forbids '.' in server_name (the ackstorm prod config since<br />    the MCPServerDiscovery dotted-child template requires '-' inside<br />    server_name). The operator rewrites '.' → '-' in the wire payload.<br />FIX.txt HIGH-1 (2026-05-22): without this field, dotted Discovery<br />children failed at the LiteLLM-side validator on default deploys.</td>
-<td>-</td>
+<td>MCPToolPrefixSeparator names the character that the target LiteLLM<br />instance REJECTS inside <code>server_name</code> at <code>POST /v1/mcp/server</code> time<br />(HTTP 400 "Server name cannot contain '<sep>'."). The opposite<br />member of the {".", "-"} pair is allowed inside <code>server_name</code>.<br />Empirically (FIX2.txt HIGH-1, 2026-05-22, against LiteLLM v1.85.1<br />upstream image), the rejection character is "." regardless of the<br />LiteLLM-side MCP_TOOL_PREFIX_SEPARATOR env var. The "." default<br />matches stock LiteLLM out-of-the-box; users running a non-stock<br />LiteLLM that forbids "-" must set this field explicitly to "-".<br />The operator reads this field to sanitize the LiteLLM-side<br /><code>server_name</code> and <code>alias</code> for every MCPServer routed through this<br />Connection. The K8s <code>metadata.name</code> is left untouched —<br />sanitization is wire-boundary only.<br />Valid values:<br />  - "." (default; matches LiteLLM v1.85.1 stock validator). Forbids<br />    '.' in server_name; the operator rewrites '.' → '-' in the wire<br />    payload when (and only when) the input contains '.'.<br />  - "-" Legacy / non-stock LiteLLM that forbids '-' in server_name;<br />    the operator rewrites '-' → '.' in the wire payload when (and<br />    only when) the input contains '-'.<br />FIX.txt HIGH-1 (2026-05-22): added the field after dotted Discovery<br />  children failed at the LiteLLM-side validator on default deploys.<br />FIX2.txt HIGH-1 (2026-05-22): default flipped from "-" to "." to<br />  match the empirically-observed LiteLLM v1.85.1 behavior.<br />FIX2.txt HIGH-9 (2026-05-22): sanitizer paired with this field<br />  became a no-op on safe inputs, preventing upgrade-orphan of<br />  pre-v0.1.2 hyphenated MCPServers.</td>
+<td>.</td>
 <td>Enum: [- .] <br /></td>
+</tr>
+<tr>
+<td><code>requeueOnRejectedAfter</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#duration-v1-meta">Duration</a></em></td>
+<td>RequeueOnRejectedAfter is the retry cadence used by every dependent<br />reconciler (Team, Model, A2AAgent, MCPServer, ModelDiscovery,<br />MCPServerDiscovery) when a reconcile lands on a deterministic<br />upstream error (LiteLLMRejected, SecretNotFound). Without this,<br />controller-runtime's rate-limited queue drops the item after its<br />initial backoff exhausts; only an external mutation or operator<br />restart retries. After an upstream fix lands but operator state is<br />not externally poked, CRs stay Ready=False indefinitely (FIX2.txt<br />HIGH-2, 2026-05-22, observed on v0.1.2 EKS deploy).<br />Reconcilers read this from the Connection snapshot and apply via:<br />  return ctrl.Result{RequeueAfter: snap.RequeueOnRejectedAfter}, nil<br />Default 5m. Range [1m, 1h] enforced operator-side by<br />connection.NormalizedRequeueOnRejectedAfter (envtest revealed CEL<br />validation on metav1.Duration interacts poorly with the apiserver<br />default-then-validate ordering — values outside the range are<br />clamped at read time instead).</td>
+<td>5m</td>
+<td></td>
+</tr>
+<tr>
+<td><code>maxRequestsPerSecond</code> <em>integer</em></td>
+<td>MaxRequestsPerSecond caps the sustained rate of outbound HTTP<br />requests from the operator's LiteLLM client. Default 5. Set to 0<br />to disable rate limiting (NOT recommended — boot-time thundering<br />herd can push a modestly-stressed LiteLLM proxy into 5xx territory<br />and trigger the operator's own backoff loop). FIX2.txt MEDIUM-10<br />(2026-05-22).</td>
+<td>5</td>
+<td>Maximum: 1000 <br />Minimum: 0 <br /></td>
+</tr>
+<tr>
+<td><code>maxBurst</code> <em>integer</em></td>
+<td>MaxBurst is the token-bucket burst paired with MaxRequestsPerSecond.<br />Default 10. Set to 0 to fall back to a burst of MaxRequestsPerSecond<br />(i.e. one bucket-fill at a time).</td>
+<td>10</td>
+<td>Maximum: 1000 <br />Minimum: 0 <br /></td>
 </tr>
 </tbody>
 </table>
@@ -3781,6 +3799,12 @@ namespaces) is enforced at the schema level.</p>
 </thead>
 <tbody>
 <tr>
+<td><code>prefix</code> <em>string</em></td>
+<td>Prefix is the lowercase DNS-1123 label prepended to every<br />generated child MCPServer's metadata.name (final K8s shape:<br /><code>&lt;prefix&gt;-&lt;source-name&gt;</code>; final LiteLLM wire shape:<br /><code>&lt;prefix&gt;.&lt;source-name&gt;</code> — see internal/litellm/sanitize.go).<br />Mirrors LiteLLMModelDiscovery.spec.prefix exactly for<br />cross-discovery-kind symmetry.<br />FIX4.txt H-2 (v0.3.0 breaking change): pre-v0.3.0 children were<br />named <code>&lt;discovery-name&gt;.&lt;source-namespace&gt;.&lt;source-name&gt;</code> (three<br />dotted components). v0.3.0 drops the source-namespace component<br />entirely; cross-discovery name disambiguation is the user's job<br />via this <code>prefix</code> field. The operator no longer auto-disambiguates<br />— name collisions inside a single discovery surface as a<br /><code>NameCollision=True</code> status condition and the second occurrence<br />is dropped (loud-fail, not silent-merge).<br />MaxLength=30 leaves room for the source name inside the 63-char<br />DNS-1123 label budget (the final K8s child name is<br /><code>&lt;prefix&gt;-&lt;source-name&gt;</code>).</td>
+<td></td>
+<td>MaxLength: 30 <br />MinLength: 1 <br />Pattern: <code>^[a-z0-9]([-a-z0-9]*[a-z0-9])?$</code> <br />Required: {} <br /></td>
+</tr>
+<tr>
 <td><code>type</code> <em>string</em></td>
 <td>Type discriminates the upstream Discovery source. In v1alpha1 the<br />ONLY allowed value is <code>toolhive</code>. The Enum marker below admits<br />nothing else; future Discovery sources (e.g. an A2A-side directory,<br />a Kubernetes-API-server-side scan) would expand this Enum without<br />breaking the existing schema (additive Enum values are non-breaking).<br />MSDISC-01 enforces this at admission.</td>
 <td></td>
@@ -4057,9 +4081,9 @@ Phase 4 ModelDiscovery <code>SkippedCandidate</code> type in the same package.</
 </tr>
 <tr>
 <td><code>reason</code> <em>string</em></td>
-<td>Reason classifies the skip. Exhaustive enum per spec §6.5 +<br />Phase 5 D-10:<br />ExplicitMCPServerExists — name collides with a user-authored<br />MCPServer (no controller ownerRef<br />back at this Discovery).<br />DuplicateDiscovery — name collides with a child owned by<br />a different MCPServerDiscovery.<br />OwnedBy names the winning Discovery<br />(<namespace>/<name>).<br />EndpointUnknown — ToolHive object's status.url is empty<br />or absent (MSDISC-12).<br />InvalidTransport — ToolHive object's status.transport<br />value is not in the normalization<br />map; the candidate is dropped to<br />avoid emitting an MCPServer with a<br />transport that fails CEL admission<br />on the child CR (CRD enum is<br />{http, sse}; ToolHive may emit<br /><code>streamable-http</code>, <code>sse</code>, <code>stdio</code>,<br />custom strings).</td>
+<td>Reason classifies the skip. Exhaustive enum per spec §6.5 +<br />Phase 5 D-10:<br />ExplicitMCPServerExists — name collides with a user-authored<br />MCPServer (no controller ownerRef<br />back at this Discovery).<br />DuplicateDiscovery — name collides with a child owned by<br />a different MCPServerDiscovery.<br />OwnedBy names the winning Discovery<br />(<namespace>/<name>).<br />EndpointUnknown — ToolHive object's status.url is empty<br />or absent (MSDISC-12).<br />InvalidTransport — ToolHive object's status.transport<br />value is not in the normalization<br />map; the candidate is dropped to<br />avoid emitting an MCPServer with a<br />transport that fails CEL admission<br />on the child CR (CRD enum is<br />{http, sse}; ToolHive may emit<br /><code>streamable-http</code>, <code>sse</code>, <code>stdio</code>,<br />custom strings).<br />NameCollision — two upstream ToolHive objects from<br />different namespaces produced the same<br /><code>&lt;spec.prefix&gt;-&lt;source-name&gt;</code> child name<br />within a single discovery. The first<br />occurrence wins; later occurrences are<br />skipped (FIX4.txt H-2 v0.3.0). The user<br />rename one upstream or split the<br />discovery into prefix-distinct ones.</td>
 <td></td>
-<td>Enum: [ExplicitMCPServerExists DuplicateDiscovery EndpointUnknown InvalidTransport] <br />Required: {} <br /></td>
+<td>Enum: [ExplicitMCPServerExists DuplicateDiscovery EndpointUnknown InvalidTransport NameCollision] <br />Required: {} <br /></td>
 </tr>
 <tr>
 <td><code>ownedBy</code> <em>string</em></td>
