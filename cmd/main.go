@@ -208,13 +208,26 @@ func main() {
 		os.Exit(1)
 	}
 
+	// FIX2.txt H-2: BootSweeper one-shot Runnable enqueues every project
+	// CR whose observedGeneration matches metadata.generation but
+	// Ready != True, after a 2s cache hydration delay. Each per-kind
+	// channel is plumbed into the corresponding reconciler's BootEvents
+	// field; SetupWithManager subscribes via source.TypedFunc so a
+	// sweep enqueue fires a reconcile on the right controller.
+	bootSweep := controller.NewBootSweeper(mgr.GetClient())
+	if err := mgr.Add(bootSweep); err != nil {
+		setupLog.Error(err, "unable to add BootSweeper to manager")
+		os.Exit(1)
+	}
+
 	if err := (&controller.ModelReconciler{
-		Client:    mgr.GetClient(),
-		Scheme:    mgr.GetScheme(),
-		Cache:     connCache, // typed as connection.ConnectionCache per D-12
-		Recorder:  mgr.GetEventRecorderFor("model-controller"),
-		Namespace: watchNS,
-		Log:       ctrl.Log.WithName("controller").WithName("Model"),
+		Client:     mgr.GetClient(),
+		Scheme:     mgr.GetScheme(),
+		Cache:      connCache, // typed as connection.ConnectionCache per D-12
+		Recorder:   mgr.GetEventRecorderFor("model-controller"),
+		Namespace:  watchNS,
+		Log:        ctrl.Log.WithName("controller").WithName("Model"),
+		BootEvents: bootSweep.ModelEvents,
 	}).SetupWithManager(mgr, safetyRelistCh); err != nil {
 		setupLog.Error(err, "unable to set up Model reconciler")
 		os.Exit(1)
@@ -254,6 +267,7 @@ func main() {
 		Recorder:   mgr.GetEventRecorderFor("modeldiscovery-controller"),
 		Namespace:  watchNS,
 		Log:        ctrl.Log.WithName("controller").WithName("ModelDiscovery"),
+		BootEvents: bootSweep.ModelDiscoveryEvents,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to set up ModelDiscovery reconciler")
 		os.Exit(1)
@@ -273,12 +287,13 @@ func main() {
 		os.Exit(1)
 	}
 	if err := (&controller.MCPServerReconciler{
-		Client:    mgr.GetClient(),
-		Scheme:    mgr.GetScheme(),
-		Cache:     connCache, // typed as connection.ConnectionCache per D-12
-		Recorder:  mgr.GetEventRecorderFor("mcpserver-controller"),
-		Namespace: watchNS,
-		Log:       ctrl.Log.WithName("controller").WithName("MCPServer"),
+		Client:     mgr.GetClient(),
+		Scheme:     mgr.GetScheme(),
+		Cache:      connCache, // typed as connection.ConnectionCache per D-12
+		Recorder:   mgr.GetEventRecorderFor("mcpserver-controller"),
+		Namespace:  watchNS,
+		Log:        ctrl.Log.WithName("controller").WithName("MCPServer"),
+		BootEvents: bootSweep.MCPServerEvents,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to set up MCPServer reconciler")
 		os.Exit(1)
@@ -303,12 +318,13 @@ func main() {
 		os.Exit(1)
 	}
 	if err := (&controller.A2AAgentReconciler{
-		Client:    mgr.GetClient(),
-		Scheme:    mgr.GetScheme(),
-		Cache:     connCache, // typed as connection.ConnectionCache per D-12
-		Recorder:  mgr.GetEventRecorderFor("a2aagent-controller"),
-		Namespace: watchNS,
-		Log:       ctrl.Log.WithName("controller").WithName("A2AAgent"),
+		Client:     mgr.GetClient(),
+		Scheme:     mgr.GetScheme(),
+		Cache:      connCache, // typed as connection.ConnectionCache per D-12
+		Recorder:   mgr.GetEventRecorderFor("a2aagent-controller"),
+		Namespace:  watchNS,
+		Log:        ctrl.Log.WithName("controller").WithName("A2AAgent"),
+		BootEvents: bootSweep.A2AAgentEvents,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to set up A2AAgent reconciler")
 		os.Exit(1)
@@ -367,12 +383,13 @@ func main() {
 	}
 
 	if err := (&controller.TeamReconciler{
-		Client:    mgr.GetClient(),
-		Scheme:    mgr.GetScheme(),
-		Cache:     connCache, // typed as connection.ConnectionCache per D-12
-		Recorder:  mgr.GetEventRecorderFor("team-controller"),
-		Namespace: watchNS,
-		Log:       ctrl.Log.WithName("controller").WithName("Team"),
+		Client:     mgr.GetClient(),
+		Scheme:     mgr.GetScheme(),
+		Cache:      connCache, // typed as connection.ConnectionCache per D-12
+		Recorder:   mgr.GetEventRecorderFor("team-controller"),
+		Namespace:  watchNS,
+		Log:        ctrl.Log.WithName("controller").WithName("Team"),
+		BootEvents: bootSweep.TeamEvents,
 	}).SetupWithManager(mgr, teamDefaultRequeueCh); err != nil {
 		setupLog.Error(err, "unable to set up Team reconciler")
 		os.Exit(1)
@@ -418,6 +435,7 @@ func main() {
 		Recorder:         mgr.GetEventRecorderFor("mcpserverdiscovery-controller"),
 		Namespace:        watchNS,
 		Log:              ctrl.Log.WithName("controller").WithName("MCPServerDiscovery"),
+		BootEvents:       bootSweep.MCPServerDiscoveryEvents,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to set up MCPServerDiscovery reconciler")
 		os.Exit(1)

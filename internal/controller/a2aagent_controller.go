@@ -22,6 +22,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -142,6 +143,8 @@ type A2AAgentReconciler struct {
 	Recorder  record.EventRecorder
 	Namespace string
 	Log       logr.Logger
+	// BootEvents (FIX2.txt H-2) — optional BootSweeper channel. nil-safe.
+	BootEvents <-chan event.GenericEvent
 }
 
 // Reconcile implements the LiteLLMA2AAgent state machine.
@@ -266,7 +269,7 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 					logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
 				}
 				metrics.ReconcileTotal.WithLabelValues(a2aAgentKind, "success").Inc()
-				return ctrl.Result{}, nil
+				return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
 			}
 			return ctrl.Result{}, err
 		}
@@ -277,7 +280,7 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 				logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
 			}
 			metrics.ReconcileTotal.WithLabelValues(a2aAgentKind, "success").Inc()
-			return ctrl.Result{}, nil
+			return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
 		}
 		secretMap[entry.As] = string(val)
 	}
@@ -318,7 +321,7 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
 		}
 		metrics.ReconcileTotal.WithLabelValues(a2aAgentKind, "success").Inc()
-		return ctrl.Result{}, nil
+		return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
 	}
 	if len(missingAgentCard) > 0 {
 		msg := fmt.Sprintf("placeholder {{%s}} has no matching spec.secrets[].as (in spec.agentCard)", missingAgentCard[0])
@@ -326,7 +329,7 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
 		}
 		metrics.ReconcileTotal.WithLabelValues(a2aAgentKind, "success").Inc()
-		return ctrl.Result{}, nil
+		return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
 	}
 
 	// ─── Step 6: SEC-07 UnusedSecretRef detection (union of both passes) ──
@@ -628,7 +631,8 @@ func (r *A2AAgentReconciler) classifyMutationError(ctx context.Context, a2a *lit
 		}
 		logger.Info("LiteLLM rejected request", "op", opDesc, "error", errStr)
 		metrics.ReconcileTotal.WithLabelValues(a2aAgentKind, "success").Inc()
-		return ctrl.Result{}, nil
+		// FIX2.txt H-2: periodic requeue on deterministic 4xx.
+		return ctrl.Result{RequeueAfter: r.Cache.Snapshot().NormalizedRequeueOnRejectedAfter()}, nil
 	}
 
 	// 5xx / network transient — return err for controller-runtime backoff.
@@ -699,7 +703,7 @@ func (r *A2AAgentReconciler) secretToA2AAgents(ctx context.Context, obj client.O
 // No Owns(.) and no safety re-list channel — Phase 5 may add
 // these if cross-CR vanish detection requires them (Phase 7 dogfood gate).
 func (r *A2AAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+	b := ctrl.NewControllerManagedBy(mgr).
 		For(&litellmv1alpha1.LiteLLMA2AAgent{}, builder.WithPredicates()).
 		Watches(
 			&corev1.Secret{},
@@ -711,6 +715,9 @@ func (r *A2AAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			builder.WithPredicates(connectionReadyTransition()),
 		).
 		WithOptions(transientBackoffOptions()).
-		Named("a2aagent").
-		Complete(r)
+		Named("a2aagent")
+	if src := BootEventsSource(r.BootEvents); src != nil {
+		b = b.WatchesRawSource(src)
+	}
+	return b.Complete(r)
 }

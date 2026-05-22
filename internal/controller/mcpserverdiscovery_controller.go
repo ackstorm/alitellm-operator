@@ -66,6 +66,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
@@ -147,6 +148,8 @@ type MCPServerDiscoveryReconciler struct {
 	Recorder  record.EventRecorder
 	Namespace string
 	Log       logr.Logger
+	// BootEvents (FIX2.txt H-2) — optional BootSweeper channel. nil-safe.
+	BootEvents <-chan event.GenericEvent
 
 	// ReconcileCount is a test-only seam: every Reconcile invocation
 	// increments it atomically at the entry point (before any
@@ -912,10 +915,13 @@ func (r *MCPServerDiscoveryReconciler) writeBothConditionsObj(
 //
 // Named("mcpserverdiscovery") — controller registry name.
 func (r *MCPServerDiscoveryReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+	b := ctrl.NewControllerManagedBy(mgr).
 		For(&litellmv1alpha1.LiteLLMMCPServerDiscovery{}, builder.WithPredicates()).
 		Owns(&litellmv1alpha1.LiteLLMMCPServer{}).
 		WithOptions(transientBackoffOptions()).
-		Named("mcpserverdiscovery").
-		Complete(r)
+		Named("mcpserverdiscovery")
+	if src := BootEventsSource(r.BootEvents); src != nil {
+		b = b.WatchesRawSource(src)
+	}
+	return b.Complete(r)
 }

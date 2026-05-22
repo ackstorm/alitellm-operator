@@ -78,6 +78,28 @@ type LiteLLMConnectionSpec struct {
 	// +kubebuilder:default:="."
 	// +kubebuilder:validation:Enum=-;.
 	MCPToolPrefixSeparator string `json:"mcpToolPrefixSeparator,omitempty"`
+
+	// RequeueOnRejectedAfter is the retry cadence used by every dependent
+	// reconciler (Team, Model, A2AAgent, MCPServer, ModelDiscovery,
+	// MCPServerDiscovery) when a reconcile lands on a deterministic
+	// upstream error (LiteLLMRejected, SecretNotFound). Without this,
+	// controller-runtime's rate-limited queue drops the item after its
+	// initial backoff exhausts; only an external mutation or operator
+	// restart retries. After an upstream fix lands but operator state is
+	// not externally poked, CRs stay Ready=False indefinitely (FIX2.txt
+	// HIGH-2, 2026-05-22, observed on v0.1.2 EKS deploy).
+	//
+	// Reconcilers read this from the Connection snapshot and apply via:
+	//   return ctrl.Result{RequeueAfter: snap.RequeueOnRejectedAfter}, nil
+	//
+	// Default 5m. Range enforced via CEL XValidation: [1m, 1h]. Values
+	// below 1m would defeat the rate-limiter; values above 1h delay
+	// upstream-fix recovery beyond useful bounds.
+	//
+	// +optional
+	// +kubebuilder:default:="5m"
+	// +kubebuilder:validation:XValidation:rule="duration(self) >= duration('1m') && duration(self) <= duration('1h')",message="requeueOnRejectedAfter must be between 1m and 1h"
+	RequeueOnRejectedAfter metav1.Duration `json:"requeueOnRejectedAfter,omitempty"`
 }
 
 // SecretKeyRef identifies a key inside a Kubernetes Secret living in
