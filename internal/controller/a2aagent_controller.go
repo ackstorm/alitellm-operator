@@ -29,6 +29,7 @@ import (
 
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 	"github.com/ackstorm/alitellm-operator/internal/connection"
+	"github.com/ackstorm/alitellm-operator/internal/identity"
 	"github.com/ackstorm/alitellm-operator/internal/litellm"
 	"github.com/ackstorm/alitellm-operator/internal/metrics"
 	"github.com/ackstorm/alitellm-operator/internal/substitution"
@@ -436,6 +437,11 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	var newAgentID string
 	if a2a.Status.LastRendered.AgentID == "" {
 		// CREATE path — first reconcile or stale status.
+		// FIX4.txt H-1: stamp operator identity into agent_card_params.
+		// LiteLLM 1.83.10 /v1/agents has no native audit field at the top
+		// level, but agent_card_params is freeform and persisted verbatim.
+		// CREATE stamps both created_by + updated_by.
+		stampA2AIdentity(agentConfig, true)
 		result, err := snap.Client.CreateAgent(ctx, agentConfig)
 		if err != nil {
 			return r.classifyMutationError(ctx, &a2a, logger, err, "POST /v1/agents")
@@ -453,6 +459,8 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	} else {
 		// UPDATE path — simple PUT /v1/agents/<id> (Phase 1 Probe 7 ✓;
 		// PUT IS wholesale-replace on A2A).
+		// FIX4.txt H-1: stamp updated_by only on UPDATE.
+		stampA2AIdentity(agentConfig, false)
 		if _, err := snap.Client.UpdateAgent(ctx, a2a.Status.LastRendered.AgentID, agentConfig); err != nil {
 			return r.classifyMutationError(ctx, &a2a, logger, err, "PUT /v1/agents/<id>")
 		}
@@ -723,4 +731,20 @@ func (r *A2AAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		b = b.WatchesRawSource(src)
 	}
 	return b.Complete(r)
+}
+
+// stampA2AIdentity injects identity.Operator() into the
+// agent_card_params bag of an AgentConfig. LiteLLM 1.83.10 /v1/agents
+// has no native audit field at the top level; agent_card_params is
+// freeform and persisted verbatim. CREATE stamps both created_by +
+// updated_by; UPDATE stamps only updated_by (LiteLLM-side audit
+// semantics — original creator is immutable). FIX4.txt H-1.
+func stampA2AIdentity(cfg *litellm.AgentConfig, includeCreatedBy bool) {
+	if cfg.AgentCardParams == nil {
+		cfg.AgentCardParams = map[string]any{}
+	}
+	if includeCreatedBy {
+		cfg.AgentCardParams["created_by"] = identity.Operator()
+	}
+	cfg.AgentCardParams["updated_by"] = identity.Operator()
 }

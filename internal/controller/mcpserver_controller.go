@@ -29,6 +29,7 @@ import (
 
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 	"github.com/ackstorm/alitellm-operator/internal/connection"
+	"github.com/ackstorm/alitellm-operator/internal/identity"
 	"github.com/ackstorm/alitellm-operator/internal/litellm"
 	"github.com/ackstorm/alitellm-operator/internal/metrics"
 	"github.com/ackstorm/alitellm-operator/internal/substitution"
@@ -382,6 +383,11 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		// Probe 10c (HTTP 201) sent alias=server_name; the dogfood LiteLLMMCPServer/exa-mcp
 		// (HTTP 400) did not include alias. The spec marks alias optional, but
 		// 1.83.10 validates it at create time (diagnostic-first diff, 2026-05-19).
+		// FIX4.txt H-1: stamp operator identity into the mcp_info bag.
+		// LiteLLM 1.83.10 /v1/mcp/server has no native audit field at the
+		// top level, but mcp_info is freeform and persisted verbatim.
+		// CREATE stamps both created_by + updated_by.
+		mcpInfo = stampMCPIdentity(mcpInfo, true)
 		createReq := &litellm.MCPServerRequest{
 			ServerName:    sanitizedName,
 			Alias:         sanitizedName, // alias = server_name per 1.83.10 (D-7.1-10)
@@ -409,6 +415,9 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	} else {
 		// UPDATE path — simple PUT /v1/mcp/server (verdict ✓ per
 		// 05-00-SUMMARY.md; PUT IS wholesale-replace on 1.83.10-stable).
+		// FIX4.txt H-1: stamp updated_by only on UPDATE (LiteLLM keeps the
+		// original creator).
+		mcpInfo = stampMCPIdentity(mcpInfo, false)
 		updateReq := &litellm.MCPServerUpdateRequest{
 			ServerID:      mcp.Status.LastRendered.ServerID,
 			ServerName:    sanitizedName,
@@ -643,4 +652,21 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		b = b.WatchesRawSource(src)
 	}
 	return b.Complete(r)
+}
+
+// stampMCPIdentity injects identity.Operator() into the mcp_info bag.
+// LiteLLM 1.83.10 /v1/mcp/server has no native audit field at the top
+// level, but mcp_info is freeform and persisted verbatim. On CREATE
+// both created_by + updated_by are stamped; on UPDATE only updated_by
+// (LiteLLM-side audit semantics — original creator is immutable).
+// FIX4.txt H-1.
+func stampMCPIdentity(mcpInfo map[string]any, includeCreatedBy bool) map[string]any {
+	if mcpInfo == nil {
+		mcpInfo = map[string]any{}
+	}
+	if includeCreatedBy {
+		mcpInfo["created_by"] = identity.Operator()
+	}
+	mcpInfo["updated_by"] = identity.Operator()
+	return mcpInfo
 }

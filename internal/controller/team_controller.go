@@ -33,6 +33,7 @@ import (
 
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 	"github.com/ackstorm/alitellm-operator/internal/connection"
+	"github.com/ackstorm/alitellm-operator/internal/identity"
 	"github.com/ackstorm/alitellm-operator/internal/litellm"
 	"github.com/ackstorm/alitellm-operator/internal/metrics"
 	"github.com/ackstorm/alitellm-operator/internal/substitution"
@@ -548,6 +549,12 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		// CREATE arm — operator does not pre-set team_id in the body
 		// (server-assigned). Build body without team_id.
 		delete(body, "team_id")
+		// FIX4.txt H-1: stamp operator identity into the team's metadata
+		// bag. LiteLLM 1.83.10 /team/new has no native audit field at the
+		// top level, but `metadata` is freeform (additionalProperties: true)
+		// and LiteLLM persists it verbatim. CREATE stamps both
+		// created_by + updated_by (symmetric with model_controller.go).
+		stampTeamIdentity(body, true)
 		result, cerr := snap.Client.CreateTeamRaw(ctx, body)
 		if cerr != nil {
 			return r.classifyMutationError(ctx, &team, logger, cerr, "POST /team/new")
@@ -572,6 +579,11 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		// Pin team_id in the body so LiteLLM's required-field schema is
 		// satisfied (spec §6.7 — UpdateTeam requires team_id).
 		body["team_id"] = existing.TeamID
+		// FIX4.txt H-1: stamp updated_by on every UPDATE. CreatedBy is
+		// intentionally NOT stamped — LiteLLM's audit semantics keep the
+		// original creator across updates (same posture as
+		// model_controller.go UPDATE branch).
+		stampTeamIdentity(body, false)
 		if _, uerr := snap.Client.UpdateTeamRaw(ctx, body); uerr != nil {
 			return r.classifyMutationError(ctx, &team, logger, uerr, "POST /team/update")
 		}
@@ -699,6 +711,8 @@ func (r *TeamReconciler) reconcileImplicitDefault(ctx context.Context, logger lo
 	var newTeamID string
 	if len(entries) == 0 {
 		// CREATE arm.
+		// FIX4.txt H-1: stamp identity into the implicit default team body.
+		stampTeamIdentity(body, true)
 		result, cerr := snap.Client.CreateTeamRaw(ctx, body)
 		if cerr != nil {
 			return r.classifyMutationError(ctx, nil, logger, cerr, "POST /team/new (implicit default)")
@@ -733,6 +747,8 @@ func (r *TeamReconciler) reconcileImplicitDefault(ctx context.Context, logger lo
 			"tpm_limit":       nil, // Feature 01 §2.1 — always-emit nil
 			// rpm_limit_type / tpm_limit_type INTENTIONALLY ABSENT (conditional-add).
 		}
+		// FIX4.txt H-1: stamp updated_by on the implicit-default UPDATE.
+		stampTeamIdentity(updateBody, false)
 		if _, uerr := snap.Client.UpdateTeamRaw(ctx, updateBody); uerr != nil {
 			return r.classifyMutationError(ctx, nil, logger, uerr, "POST /team/update (implicit default)")
 		}
@@ -831,6 +847,10 @@ func (r *TeamReconciler) reconcileDeletion(ctx context.Context, team *litellmv1a
 				"tpm_limit":       nil, // Feature 01 §2.1 — AC-T4 re-applies implicit empty spec
 				// rpm_limit_type / tpm_limit_type INTENTIONALLY ABSENT (conditional-add).
 			}
+			// FIX4.txt H-1: stamp updated_by on the protected-default
+			// deletion re-apply (AC-T4 path) — the operator IS touching
+			// the row, even if for a clear-by-re-apply purpose.
+			stampTeamIdentity(body, false)
 			if _, uerr := snap.Client.UpdateTeamRaw(ctx, body); uerr != nil {
 				// 401 fast-path: cache invalidated; remove finalizer
 				// anyway (anti-storm — re-bootstrap on next reconcile).
@@ -1257,4 +1277,22 @@ func (r *TeamReconciler) SetupWithManager(mgr ctrl.Manager, requeueCh ...chan re
 	}
 
 	return b.Complete(r)
+}
+
+// stampTeamIdentity injects identity.Operator() into the team's metadata
+// bag. LiteLLM 1.83.10 /team/{new,update} have no native audit field at
+// the top level, but `metadata` is freeform (additionalProperties: true)
+// and LiteLLM persists it verbatim. On CREATE both created_by +
+// updated_by are stamped; on UPDATE only updated_by (LiteLLM-side audit
+// semantics — original creator is immutable). FIX4.txt H-1.
+func stampTeamIdentity(body map[string]any, includeCreatedBy bool) {
+	meta, _ := body["metadata"].(map[string]any)
+	if meta == nil {
+		meta = map[string]any{}
+	}
+	if includeCreatedBy {
+		meta["created_by"] = identity.Operator()
+	}
+	meta["updated_by"] = identity.Operator()
+	body["metadata"] = meta
 }
