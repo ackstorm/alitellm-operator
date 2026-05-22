@@ -915,6 +915,7 @@ func (r *MCPServerDiscoveryReconciler) SetupWithManager(mgr ctrl.Manager) error 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&litellmv1alpha1.LiteLLMMCPServerDiscovery{}, builder.WithPredicates()).
 		Owns(&litellmv1alpha1.LiteLLMMCPServer{}).
+		WithOptions(transientBackoffOptions()).
 		Named("mcpserverdiscovery").
 		Complete(r)
 }

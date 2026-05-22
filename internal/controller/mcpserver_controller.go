@@ -580,6 +580,7 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&corev1.Secret{},
 			handler.EnqueueRequestsFromMapFunc(r.secretToMCPServers),
 		).
+		WithOptions(transientBackoffOptions()).
 		Named("mcpserver").
 		Complete(r)
 }

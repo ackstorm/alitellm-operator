@@ -1205,6 +1205,7 @@ func (r *TeamReconciler) SetupWithManager(mgr ctrl.Manager, requeueCh ...chan re
 			&corev1.Secret{},
 			handler.EnqueueRequestsFromMapFunc(r.secretToTeams),
 		).
+		WithOptions(transientBackoffOptions()).
 		Named("team")
 
 	// Wire optional LiteLLMTeam/default synthetic reconcile channel as a

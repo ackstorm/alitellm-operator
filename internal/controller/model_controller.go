@@ -723,6 +723,7 @@ func (r *ModelReconciler) SetupWithManager(mgr ctrl.Manager, safetyRelistCh ...c
 			&corev1.Secret{},
 			handler.EnqueueRequestsFromMapFunc(r.secretToModels),
 		).
+		WithOptions(transientBackoffOptions()).
 		Named("model")
 
 	// Wire optional safety re-list channel as a typed-func source so the

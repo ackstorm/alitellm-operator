@@ -705,6 +705,7 @@ func (r *A2AAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&corev1.Secret{},
 			handler.EnqueueRequestsFromMapFunc(r.secretToA2AAgents),
 		).
+		WithOptions(transientBackoffOptions()).
 		Named("a2aagent").
 		Complete(r)
 }
