@@ -541,7 +541,7 @@ func (r *MCPServerReconciler) classifyMutationError(ctx context.Context, mcp *li
 	}
 
 	if is4xx {
-		msg := fmt.Sprintf("LiteLLM rejected %s: %s", opDesc, errStr)
+		msg := rejectedMessage(opDesc, err, errStr)
 		if werr := r.writeStatus(ctx, mcp, metav1.ConditionFalse, "LiteLLMRejected", msg); werr != nil {
 			logStatusUpdateErr(logger, werr, "reason", "LiteLLMRejected")
 		}

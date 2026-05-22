@@ -625,7 +625,7 @@ func (r *A2AAgentReconciler) classifyMutationError(ctx context.Context, a2a *lit
 	}
 
 	if is4xx {
-		msg := fmt.Sprintf("LiteLLM rejected %s: %s", opDesc, errStr)
+		msg := rejectedMessage(opDesc, err, errStr)
 		if werr := r.writeStatus(ctx, a2a, metav1.ConditionFalse, "LiteLLMRejected", msg); werr != nil {
 			logStatusUpdateErr(logger, werr, "reason", "LiteLLMRejected")
 		}

@@ -1124,7 +1124,7 @@ func (r *TeamReconciler) classifyMutationError(ctx context.Context, team *litell
 
 	if is4xx {
 		if team != nil {
-			msg := fmt.Sprintf("LiteLLM rejected %s: %s", opDesc, errStr)
+			msg := rejectedMessage(opDesc, err, errStr)
 			if werr := r.writeStatus(ctx, team, metav1.ConditionFalse, "LiteLLMRejected", msg); werr != nil {
 				logStatusUpdateErr(logger, werr, "reason", "LiteLLMRejected")
 			}

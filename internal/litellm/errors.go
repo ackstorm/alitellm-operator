@@ -79,6 +79,42 @@ type litellmErrorEnvelope struct {
 	} `json:"error"`
 }
 
+// RejectedError is returned by Client.makeRequest for any non-2xx,
+// non-401 response. It carries the parsed envelope's message + code so
+// reconcilers can surface a non-generic LiteLLMRejected condition
+// without re-parsing the body or losing the upstream signal in a
+// hand-rolled "litellm: 400 on <path>" prefix.
+//
+// FIX2.txt MEDIUM-5 (2026-05-22): pre-fix every 4xx wrote the same
+// boilerplate string to condition.Message, hiding actionable detail
+// (e.g. "Server name cannot contain '.'.") in the operator log.
+type RejectedError struct {
+	Method string
+	Path   string
+	Status int
+	// Code is the envelope's error.code field when present; otherwise
+	// the stringified HTTP status.
+	Code string
+	// Message is the envelope's error.message (already truncated to
+	// 512 bytes by processLitellmError on parse). Empty when the body
+	// was unparseable, in which case Error() falls back to the
+	// status+path shape.
+	Message string
+}
+
+// Error implements the error interface. §9.1: NEVER includes the
+// parsed envelope body — Error() output flows into logs and the
+// error-string prefix matchers (is4xxNon401Status etc.) which both
+// must stay body-free. Reconcilers that want the body call .Message
+// directly via errors.As after FIX2.txt M-5 (2026-05-22).
+//
+// Shape preserved bit-for-bit from the pre-FIX2 fmt.Errorf path so
+// existing prefix matchers and tests keep passing.
+func (e *RejectedError) Error() string {
+	return fmt.Sprintf("litellm: %d on %s %s (code=%s)",
+		e.Status, e.Method, e.Path, e.Code)
+}
+
 // processLitellmError parses the {error: {message, type, param, code}}
 // envelope LiteLLM returns on every non-2xx response. On unmarshal
 // failure it returns the raw body capped at 512 bytes and kind="unparsed"

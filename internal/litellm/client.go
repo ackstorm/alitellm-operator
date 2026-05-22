@@ -144,11 +144,22 @@ func (c *Client) makeRequest(ctx context.Context, method, path string, body any)
 		// §7.7: DELETE 404 is treated as success (idempotent delete).
 		return respBody, nil
 	case resp.StatusCode >= 400 && resp.StatusCode < 500:
-		_, _, code := processLitellmError(respBody)
+		// FIX2.txt M-5 (2026-05-22): return a typed *RejectedError that
+		// carries the envelope message so reconcilers can surface the
+		// actionable detail in condition.Message instead of the generic
+		// "litellm: 400 on <path>" string. Error() shape preserved for
+		// existing prefix matchers (is4xxNon401Status).
+		_, msg, code := processLitellmError(respBody)
 		if code == "" {
 			code = fmt.Sprintf("%d", resp.StatusCode)
 		}
-		return nil, fmt.Errorf("litellm: %d on %s %s (code=%s)", resp.StatusCode, method, path, code)
+		return nil, &RejectedError{
+			Method:  method,
+			Path:    path,
+			Status:  resp.StatusCode,
+			Code:    code,
+			Message: msg,
+		}
 	default:
 		// 5xx and anything else — transient. processLitellmError used
 		// only for the code field (NEVER the message — §9.1).
