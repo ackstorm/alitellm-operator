@@ -263,7 +263,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      control-plane: controller-manager
+      control-plane: alitellm-operator
   namespaceSelector:
     matchNames:
       - {{ .Release.Namespace }}

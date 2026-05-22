@@ -16,15 +16,10 @@
 # ToolHive deployment by design).
 #
 # The ClusterRoleBinding subject `name` MUST match the actual operator
-# ServiceAccount. Kustomize's default service_account.yaml does NOT
-# apply a `namePrefix` to the SA at this layer (the prefix is applied
-# at the kustomize root); this file uses the BASE SA name
-# (`controller-manager`) and relies on the kustomize layer above
-# (config/default/kustomization.yaml) to prefix it consistently with
-# the rest of the RBAC.
-#
-# Phase 7 (Helm chart) will template the SA name; in v1alpha1 this
-# binding follows the controller-manager naming.
+# ServiceAccount. As of 2026-05-22 the kustomize namePrefix was removed
+# at config/default/; the SA is named explicitly `alitellm-operator`
+# in config/rbac/service_account.yaml, and this binding references it
+# by the same literal.
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -57,8 +52,7 @@ roleRef:
   name: alitellm-operator-toolhive-reader
 subjects:
 - kind: ServiceAccount
-  # Base SA name — kustomize's namePrefix at config/default/ resolves
-  # this to e.g. `alitellm-operator-controller-manager` at install time.
-  name: controller-manager
-  # Namespace gets resolved by kustomize at the overlay layer too.
+  # SA name is explicit (no namePrefix at config/default/ since 2026-05-22).
+  name: alitellm-operator
+  # Namespace gets resolved by kustomize at the overlay layer.
   namespace: system

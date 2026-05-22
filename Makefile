@@ -56,7 +56,7 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 	# is *float64 (per spec §6.7 "Float64 precision is adopted for v1alpha1").
 	# controller-gen rejects float types by default; the spec explicitly chose
 	# this contract, so the flag is the documented kubebuilder escape hatch.
-	$(CONTROLLER_GEN) rbac:roleName=manager-role crd:allowDangerousTypes=true webhook paths="./api/..." paths="./internal/..." output:crd:artifacts:config=config/crd/bases
+	$(CONTROLLER_GEN) rbac:roleName=alitellm-operator-manager-role crd:allowDangerousTypes=true webhook paths="./api/..." paths="./internal/..." output:crd:artifacts:config=config/crd/bases
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
@@ -469,7 +469,7 @@ wait-cr-ready: ## Wait for a CR Ready condition. Usage: make wait-cr-ready KIND=
 
 .PHONY: wait-operator
 wait-operator: ## Wait operator Deployment Ready (bounded).
-	kubectl -n default rollout status deploy/alitellm-operator-controller-manager --timeout=$(WAIT_TIMEOUT)
+	kubectl -n default rollout status deploy/alitellm-operator --timeout=$(WAIT_TIMEOUT)
 
 .PHONY: wait-litellm
 wait-litellm: ## Wait LiteLLM Deployment Ready (bounded).
@@ -492,12 +492,12 @@ wait-container: ## Wait for named container exit + PASS/FAIL marker. Usage: make
 operator-redeploy: ## rebuild operator image, kind-load, restart deploy (~20s inner loop)
 	$(MAKE) docker-build IMG=alitellm-operator:e2e
 	kind load docker-image alitellm-operator:e2e --name alitellm-operator-test
-	kubectl -n default rollout restart deploy/alitellm-operator-controller-manager
-	kubectl -n default rollout status  deploy/alitellm-operator-controller-manager --timeout=60s
+	kubectl -n default rollout restart deploy/alitellm-operator
+	kubectl -n default rollout status  deploy/alitellm-operator --timeout=60s
 
 .PHONY: logs-operator logs-litellm logs-mocks
 logs-operator: ## tail operator logs with timestamps
-	kubectl -n default logs -f --timestamps deploy/alitellm-operator-controller-manager
+	kubectl -n default logs -f --timestamps deploy/alitellm-operator
 logs-litellm:  ## tail LiteLLM logs with timestamps
 	kubectl -n litellm-system logs -f --timestamps deploy/litellm
 logs-mocks:    ## tail openai-mock + kubeai-mock logs in parallel (uses stern if present, else kubectl)

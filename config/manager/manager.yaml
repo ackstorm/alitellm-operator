@@ -2,7 +2,7 @@ apiVersion: v1
 kind: Namespace
 metadata:
   labels:
-    control-plane: controller-manager
+    control-plane: alitellm-operator
     app.kubernetes.io/name: workspace
     app.kubernetes.io/managed-by: kustomize
   name: system
@@ -10,16 +10,16 @@ metadata:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: controller-manager
+  name: alitellm-operator
   namespace: system
   labels:
-    control-plane: controller-manager
+    control-plane: alitellm-operator
     app.kubernetes.io/name: workspace
     app.kubernetes.io/managed-by: kustomize
 spec:
   selector:
     matchLabels:
-      control-plane: controller-manager
+      control-plane: alitellm-operator
       app.kubernetes.io/name: workspace
   replicas: 1
   template:
@@ -27,7 +27,7 @@ spec:
       annotations:
         kubectl.kubernetes.io/default-container: manager
       labels:
-        control-plane: controller-manager
+        control-plane: alitellm-operator
         app.kubernetes.io/name: workspace
     spec:
       # TODO(user): Uncomment the following code to configure the nodeAffinity expression
@@ -94,5 +94,5 @@ spec:
             memory: 64Mi
         volumeMounts: []
       volumes: []
-      serviceAccountName: controller-manager
+      serviceAccountName: alitellm-operator
       terminationGracePeriodSeconds: 10

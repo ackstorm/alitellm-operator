@@ -19,10 +19,11 @@ mkdir -p "${OUT_DIR}"
 # Stray suite-level logs the test harness writes locally (no-ops in CI).
 cp /tmp/e2e-*.log "${OUT_DIR}/" 2>/dev/null || true
 
-# Operator deployment name is `alitellm-operator-controller-manager` per
-# the chart's release/template naming, not `alitellm-operator`. LiteLLM
-# deployment name is `litellm`.
-kubectl -n default logs deploy/alitellm-operator-controller-manager \
+# Operator deployment is named `alitellm-operator` (as of 2026-05-22 —
+# previously `alitellm-operator-controller-manager` under the kubebuilder
+# scaffolding default; renamed when the kustomize namePrefix was
+# dropped). LiteLLM deployment name is `litellm`.
+kubectl -n default logs deploy/alitellm-operator \
   --tail=2000 --all-containers=true > "${OUT_DIR}/operator-full.log" 2>&1 || true
 
 kubectl -n litellm-system logs deploy/litellm \

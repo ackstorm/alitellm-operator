@@ -46,7 +46,7 @@ var _ = Describe("Scope and metrics", Ordered, ContinueOnFailure, func() {
 		// chatter. "skipping reconcile for kind" / "unknown kind" would
 		// indicate the manager is sieving out an unexpected GVK.
 		logs, err := exec.Command("kubectl", "-n", "default", "logs",
-			"-l", "control-plane=controller-manager",
+			"-l", "control-plane=alitellm-operator",
 			"--tail=-1", "--all-containers=true",
 		).CombinedOutput()
 		Expect(err).NotTo(HaveOccurred(), "logs cmd: %s", string(logs))

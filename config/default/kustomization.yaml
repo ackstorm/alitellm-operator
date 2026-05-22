@@ -1,12 +1,15 @@
 # Adds namespace to all resources.
 namespace: workspace-system
 
-# Value of this field is prepended to the
-# names of all resources, e.g. a deployment named
-# "wordpress" becomes "alices-wordpress".
-# Note that it should also match with the prefix (text before '-') of the namespace
-# field above.
-namePrefix: alitellm-operator-
+# namePrefix removed 2026-05-22 — resources are now named explicitly in
+# their source files (config/manager/manager.yaml, config/rbac/*.yaml,
+# config/default/metrics_service.yaml). The previous namePrefix
+# `alitellm-operator-` left the canonical Deployment named
+# `alitellm-operator-controller-manager` (kubebuilder scaffolding
+# default) which is pleonastic — we're one controller inside one
+# manager. The Deployment / SA / Service are now named
+# `alitellm-operator` (+ `-metrics` for the Service) so the pod
+# appears as `alitellm-operator-<hash>-<pod-id>`.
 
 # Labels to add to all resources and selectors.
 #labels:

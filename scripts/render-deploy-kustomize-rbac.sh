@@ -20,13 +20,14 @@
 #   `make deploy-kustomize-sync-check` and gates CI.
 #
 # Selection criteria:
-#   INCLUDED — files the operator's controller-manager pod needs to
-#     run successfully:
-#       - service_account.yaml
-#       - role.yaml                     (manager-role, controller-gen
-#                                        regenerates from kubebuilder
-#                                        rbac markers)
-#       - role_binding.yaml             (SA -> manager-role)
+#   INCLUDED — files the operator pod needs to run successfully:
+#       - service_account.yaml          (SA `alitellm-operator`)
+#       - role.yaml                     (alitellm-operator-manager-role;
+#                                        controller-gen regenerates from
+#                                        kubebuilder rbac markers per
+#                                        the rbac:roleName= flag in the
+#                                        root Makefile)
+#       - role_binding.yaml             (SA → alitellm-operator-manager-role)
 #       - leader_election_role.yaml     (HA leases)
 #       - leader_election_role_binding.yaml
 #       - toolhive_clusterrole.yaml     (ToolHive MCPServer read,

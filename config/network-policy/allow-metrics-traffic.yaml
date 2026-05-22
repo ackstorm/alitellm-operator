@@ -12,7 +12,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      control-plane: controller-manager
+      control-plane: alitellm-operator
       app.kubernetes.io/name: workspace
   policyTypes:
     - Ingress

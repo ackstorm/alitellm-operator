@@ -46,7 +46,7 @@ var _ = Describe("Metrics AC-O1", func() {
 			"--rm", "-i", "--restart=Never", "--quiet",
 			"--image=curlimages/curl:8.10.1", "--",
 			"curl", "-sS", "--max-time", "10",
-			"http://alitellm-operator-controller-manager-metrics-service.default.svc.cluster.local:8080/metrics",
+			"http://alitellm-operator-metrics.default.svc.cluster.local:8080/metrics",
 		).CombinedOutput()
 		Expect(err).NotTo(HaveOccurred(), "out=%s", string(out))
 

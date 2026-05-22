@@ -106,7 +106,7 @@ controllerManager:
 
 ### Getting Help
 
-- View operator logs: `kubectl logs -n litellm deployment/alitellm-operator-controller-manager`
+- View operator logs: `kubectl logs -n litellm deployment/alitellm-operator`
 - Submit an issue on [GitHub](https://github.com/ackstorm/alitellm-operator/issues/new/choose)
 
 ## Next Steps

@@ -18,6 +18,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   set the field explicitly to `"-"` on their Connection CR. Existing
   CRs whose YAML omits the field will pick up the new default at the
   next reconcile.
+- **BREAKING (install layout):** dropped kustomize `namePrefix:
+  alitellm-operator-` from `config/default/kustomization.yaml`.
+  Resources are now named explicitly in their source files. Net
+  effect on a fresh install:
+  - Deployment: `alitellm-operator-controller-manager` → `alitellm-operator`
+  - ServiceAccount: `alitellm-operator-controller-manager` → `alitellm-operator`
+  - Service (metrics): `alitellm-operator-controller-manager-metrics-service`
+    → `alitellm-operator-metrics`
+  - ClusterRole/Binding names: still prefixed `alitellm-operator-*`
+    (re-added explicitly in source), no scope change.
+  - Pod label selector: `control-plane: controller-manager` →
+    `control-plane: alitellm-operator`.
+  Existing installs upgraded via Helm will create the NEW resources
+  alongside the old ones; the previous `alitellm-operator-controller-manager`
+  Deployment / SA / Service must be manually deleted before the
+  upgrade is clean. Plan a `helm uninstall && helm install` cycle
+  on upgrade to v0.2.0.
 
 ### Deprecated
 

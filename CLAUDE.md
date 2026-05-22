@@ -461,7 +461,7 @@ use the kept-cluster loop:
 # = scripts/cluster.sh keep + make e2e (NO teardown after)
 
 # 2. Diagnose live (cluster is up)
-./scripts/dev.sh bash -c "kubectl -n default logs deploy/alitellm-operator-controller-manager --tail=200"
+./scripts/dev.sh bash -c "kubectl -n default logs deploy/alitellm-operator --tail=200"
 ./scripts/dev.sh bash -c "kubectl -n default describe team <name>"
 
 # 3. Iterate with focused tests

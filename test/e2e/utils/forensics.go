@@ -30,7 +30,7 @@ func DumpForensicsOnFail() {
 		name string
 		args []string
 	}{
-		{"operator.log", []string{"-n", "default", "logs", "deploy/alitellm-operator-controller-manager", "--tail=400"}},
+		{"operator.log", []string{"-n", "default", "logs", "deploy/alitellm-operator", "--tail=400"}},
 		{"litellm.log", []string{"-n", "litellm-system", "logs", "deploy/litellm", "--tail=400"}},
 		{"crs.yaml", []string{"-n", "default", "get",
 			"litellmconnections,models,modeldiscoveries,mcpservers,mcpserverdiscoveries,a2aagents,teams",

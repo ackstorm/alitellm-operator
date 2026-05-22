@@ -5,7 +5,7 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: workspace
-  name: alitellm-operator-controller-manager
+  name: alitellm-operator
   namespace: {{ .Release.Namespace }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -48,523 +48,6 @@ rules:
   verbs:
   - create
   - patch
----
-{{- if .Values.toolhive.enabled }}
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  labels:
-    app.kubernetes.io/component: rbac
-    app.kubernetes.io/name: alitellm-operator
-  name: alitellm-operator-alitellm-operator-toolhive-reader
-rules:
-- apiGroups:
-  - toolhive.stacklok.dev
-  resources:
-  - mcpservers
-  - virtualmcpservers
-  verbs:
-  - get
-  - list
-  - watch
-{{- end }}
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  labels:
-    app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: alitellm-operator
-  name: alitellm-operator-litellm-a2aagent-admin-role
-rules:
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - a2aagents
-  verbs:
-  - '*'
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - a2aagents/status
-  verbs:
-  - get
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  labels:
-    app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: alitellm-operator
-  name: alitellm-operator-litellm-a2aagent-editor-role
-rules:
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - a2aagents
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - a2aagents/status
-  verbs:
-  - get
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  labels:
-    app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: alitellm-operator
-  name: alitellm-operator-litellm-a2aagent-viewer-role
-rules:
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - a2aagents
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - a2aagents/status
-  verbs:
-  - get
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  labels:
-    app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: alitellm-operator
-  name: alitellm-operator-litellm-litellmconnection-admin-role
-rules:
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - litellmconnections
-  verbs:
-  - '*'
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - litellmconnections/status
-  verbs:
-  - get
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  labels:
-    app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: alitellm-operator
-  name: alitellm-operator-litellm-litellmconnection-editor-role
-rules:
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - litellmconnections
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - litellmconnections/status
-  verbs:
-  - get
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  labels:
-    app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: alitellm-operator
-  name: alitellm-operator-litellm-litellmconnection-viewer-role
-rules:
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - litellmconnections
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - litellmconnections/status
-  verbs:
-  - get
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  labels:
-    app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: alitellm-operator
-  name: alitellm-operator-litellm-mcpserver-admin-role
-rules:
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - mcpservers
-  verbs:
-  - '*'
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - mcpservers/status
-  verbs:
-  - get
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  labels:
-    app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: alitellm-operator
-  name: alitellm-operator-litellm-mcpserver-editor-role
-rules:
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - mcpservers
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - mcpservers/status
-  verbs:
-  - get
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  labels:
-    app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: alitellm-operator
-  name: alitellm-operator-litellm-mcpserver-viewer-role
-rules:
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - mcpservers
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - mcpservers/status
-  verbs:
-  - get
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  labels:
-    app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: alitellm-operator
-  name: alitellm-operator-litellm-mcpserverdiscovery-admin-role
-rules:
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - mcpserverdiscoveries
-  verbs:
-  - '*'
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - mcpserverdiscoveries/status
-  verbs:
-  - get
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  labels:
-    app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: alitellm-operator
-  name: alitellm-operator-litellm-mcpserverdiscovery-editor-role
-rules:
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - mcpserverdiscoveries
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - mcpserverdiscoveries/status
-  verbs:
-  - get
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  labels:
-    app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: alitellm-operator
-  name: alitellm-operator-litellm-mcpserverdiscovery-viewer-role
-rules:
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - mcpserverdiscoveries
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - mcpserverdiscoveries/status
-  verbs:
-  - get
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  labels:
-    app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: alitellm-operator
-  name: alitellm-operator-litellm-model-admin-role
-rules:
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - models
-  verbs:
-  - '*'
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - models/status
-  verbs:
-  - get
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  labels:
-    app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: alitellm-operator
-  name: alitellm-operator-litellm-model-editor-role
-rules:
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - models
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - models/status
-  verbs:
-  - get
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  labels:
-    app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: alitellm-operator
-  name: alitellm-operator-litellm-model-viewer-role
-rules:
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - models
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - models/status
-  verbs:
-  - get
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  labels:
-    app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: alitellm-operator
-  name: alitellm-operator-litellm-modeldiscovery-admin-role
-rules:
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - modeldiscoveries
-  verbs:
-  - '*'
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - modeldiscoveries/status
-  verbs:
-  - get
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  labels:
-    app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: alitellm-operator
-  name: alitellm-operator-litellm-modeldiscovery-editor-role
-rules:
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - modeldiscoveries
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - modeldiscoveries/status
-  verbs:
-  - get
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  labels:
-    app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: alitellm-operator
-  name: alitellm-operator-litellm-modeldiscovery-viewer-role
-rules:
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - modeldiscoveries
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - modeldiscoveries/status
-  verbs:
-  - get
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  labels:
-    app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: alitellm-operator
-  name: alitellm-operator-litellm-team-admin-role
-rules:
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - teams
-  verbs:
-  - '*'
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - teams/status
-  verbs:
-  - get
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  labels:
-    app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: alitellm-operator
-  name: alitellm-operator-litellm-team-editor-role
-rules:
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - teams
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - teams/status
-  verbs:
-  - get
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  labels:
-    app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: alitellm-operator
-  name: alitellm-operator-litellm-team-viewer-role
-rules:
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - teams
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - litellm.ackstorm.ai
-  resources:
-  - teams/status
-  verbs:
-  - get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -659,6 +142,523 @@ rules:
   verbs:
   - get
 ---
+{{- if .Values.toolhive.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/name: alitellm-operator
+  name: alitellm-operator-toolhive-reader
+rules:
+- apiGroups:
+  - toolhive.stacklok.dev
+  resources:
+  - mcpservers
+  - virtualmcpservers
+  verbs:
+  - get
+  - list
+  - watch
+{{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: alitellm-operator
+  name: litellm-a2aagent-admin-role
+rules:
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - a2aagents
+  verbs:
+  - '*'
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - a2aagents/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: alitellm-operator
+  name: litellm-a2aagent-editor-role
+rules:
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - a2aagents
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - a2aagents/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: alitellm-operator
+  name: litellm-a2aagent-viewer-role
+rules:
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - a2aagents
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - a2aagents/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: alitellm-operator
+  name: litellm-litellmconnection-admin-role
+rules:
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - litellmconnections
+  verbs:
+  - '*'
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - litellmconnections/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: alitellm-operator
+  name: litellm-litellmconnection-editor-role
+rules:
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - litellmconnections
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - litellmconnections/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: alitellm-operator
+  name: litellm-litellmconnection-viewer-role
+rules:
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - litellmconnections
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - litellmconnections/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: alitellm-operator
+  name: litellm-mcpserver-admin-role
+rules:
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - mcpservers
+  verbs:
+  - '*'
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - mcpservers/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: alitellm-operator
+  name: litellm-mcpserver-editor-role
+rules:
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - mcpservers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - mcpservers/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: alitellm-operator
+  name: litellm-mcpserver-viewer-role
+rules:
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - mcpservers
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - mcpservers/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: alitellm-operator
+  name: litellm-mcpserverdiscovery-admin-role
+rules:
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - mcpserverdiscoveries
+  verbs:
+  - '*'
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - mcpserverdiscoveries/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: alitellm-operator
+  name: litellm-mcpserverdiscovery-editor-role
+rules:
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - mcpserverdiscoveries
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - mcpserverdiscoveries/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: alitellm-operator
+  name: litellm-mcpserverdiscovery-viewer-role
+rules:
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - mcpserverdiscoveries
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - mcpserverdiscoveries/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: alitellm-operator
+  name: litellm-model-admin-role
+rules:
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - models
+  verbs:
+  - '*'
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - models/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: alitellm-operator
+  name: litellm-model-editor-role
+rules:
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - models
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - models/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: alitellm-operator
+  name: litellm-model-viewer-role
+rules:
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - models
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - models/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: alitellm-operator
+  name: litellm-modeldiscovery-admin-role
+rules:
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - modeldiscoveries
+  verbs:
+  - '*'
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - modeldiscoveries/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: alitellm-operator
+  name: litellm-modeldiscovery-editor-role
+rules:
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - modeldiscoveries
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - modeldiscoveries/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: alitellm-operator
+  name: litellm-modeldiscovery-viewer-role
+rules:
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - modeldiscoveries
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - modeldiscoveries/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: alitellm-operator
+  name: litellm-team-admin-role
+rules:
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - teams
+  verbs:
+  - '*'
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - teams/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: alitellm-operator
+  name: litellm-team-editor-role
+rules:
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - teams
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - teams/status
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: alitellm-operator
+  name: litellm-team-viewer-role
+rules:
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - teams
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - litellm.ackstorm.ai
+  resources:
+  - teams/status
+  verbs:
+  - get
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
@@ -673,26 +673,8 @@ roleRef:
   name: alitellm-operator-leader-election-role
 subjects:
 - kind: ServiceAccount
-  name: alitellm-operator-controller-manager
+  name: alitellm-operator
   namespace: {{ .Release.Namespace }}
----
-{{- if .Values.toolhive.enabled }}
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  labels:
-    app.kubernetes.io/component: rbac
-    app.kubernetes.io/name: alitellm-operator
-  name: alitellm-operator-alitellm-operator-toolhive-reader
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: alitellm-operator-alitellm-operator-toolhive-reader
-subjects:
-- kind: ServiceAccount
-  name: alitellm-operator-controller-manager
-  namespace: {{ .Release.Namespace }}
-{{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -707,7 +689,7 @@ roleRef:
   name: alitellm-operator-manager-role
 subjects:
 - kind: ServiceAccount
-  name: alitellm-operator-controller-manager
+  name: alitellm-operator
   namespace: {{ .Release.Namespace }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -720,8 +702,26 @@ roleRef:
   name: alitellm-operator-metrics-auth-role
 subjects:
 - kind: ServiceAccount
-  name: alitellm-operator-controller-manager
+  name: alitellm-operator
   namespace: {{ .Release.Namespace }}
+---
+{{- if .Values.toolhive.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/name: alitellm-operator
+  name: alitellm-operator-toolhive-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alitellm-operator-toolhive-reader
+subjects:
+- kind: ServiceAccount
+  name: alitellm-operator
+  namespace: {{ .Release.Namespace }}
+{{- end }}
 ---
 apiVersion: v1
 kind: Service
@@ -729,8 +729,8 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: workspace
-    control-plane: controller-manager
-  name: alitellm-operator-controller-manager-metrics-service
+    control-plane: alitellm-operator
+  name: alitellm-operator-metrics
   namespace: {{ .Release.Namespace }}
 spec:
   ports:
@@ -740,7 +740,7 @@ spec:
     targetPort: 8080
   selector:
     app.kubernetes.io/name: workspace
-    control-plane: controller-manager
+    control-plane: alitellm-operator
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -748,22 +748,22 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: workspace
-    control-plane: controller-manager
-  name: alitellm-operator-controller-manager
+    control-plane: alitellm-operator
+  name: alitellm-operator
   namespace: {{ .Release.Namespace }}
 spec:
   replicas: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: workspace
-      control-plane: controller-manager
+      control-plane: alitellm-operator
   template:
     metadata:
       annotations:
         kubectl.kubernetes.io/default-container: manager
       labels:
         app.kubernetes.io/name: workspace
-        control-plane: controller-manager
+        control-plane: alitellm-operator
     spec:
       containers:
       - args:
@@ -807,7 +807,7 @@ spec:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
-      serviceAccountName: alitellm-operator-controller-manager
+      serviceAccountName: alitellm-operator
       terminationGracePeriodSeconds: 10
       volumes: []
 
@@ -829,7 +829,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      control-plane: controller-manager
+      control-plane: alitellm-operator
   namespaceSelector:
     matchNames:
       - {{ .Release.Namespace }}
