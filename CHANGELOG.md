@@ -10,6 +10,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 ### Changed
+
+### Deprecated
+
+### Removed
+
+### Fixed
+
+### Security
+
+## [0.2.1] - TBD
+
+### Added
+- observability: one-shot startup INFO log of `identity.Operator()`
+  so the audit literal the binary will stamp into LiteLLM payloads
+  is observable at boot without an external probe (FIX4.txt H-1).
+- tests: body-capture regression guards on `/model/new` and
+  `/model/update` asserting `model_info.created_by`/`updated_by`
+  reach the wire (FIX4.txt H-1).
+
+### Fixed
+- model: stamp `model_info.updated_by` on the adoption-by-name
+  branch in `model_controller.go` so pre-v0.2.0 entries (and any
+  out-of-band entries) flip from `Created By: Unknown` to
+  `alitellm-operator/<version>` the moment the controller first
+  touches the row (FIX4.txt H-1 root cause).
+- team / mcpserver / a2aagent: stamp `created_by` + `updated_by` on
+  CREATE and `updated_by` on UPDATE — best-effort into the
+  respective freeform bag (`metadata` for Team, `mcp_info` for
+  MCPServer, `agent_card_params` for A2AAgent). The LiteLLM UI may
+  not surface these values on Team / MCPServer / A2AAgent rows
+  today (no native audit column), but the values are persisted on
+  the LiteLLM side and visible to any probe (FIX4.txt H-1
+  symmetry).
+
+### Documentation
+- `references/litellm-auth-model.md`: clarify the operator uses the
+  LiteLLM master key against every endpoint it calls; the transient
+  401 observed in the FIX4 evidence was a secret-rotation race, not
+  a LiteLLM-side policy tightening. Virtual keys are out of scope
+  for v0.3.0 (FIX4.txt L-3 close-out).
+
+## [0.2.0] - 2026-05-22
+
+### Changed
 - `LiteLLMConnection.spec.mcpToolPrefixSeparator` default flipped from
   `"-"` to `"."` to match LiteLLM v1.85.1's stock validator behavior,
   which rejects `"."` in `server_name` regardless of the
