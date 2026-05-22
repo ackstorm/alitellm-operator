@@ -933,21 +933,13 @@ func TestMCPServerReconciler_AC_S1_NoSecretInStatusOrEvents(t *testing.T) {
 	t.Run("SecretNotFound", func(t *testing.T) {
 		sink.Reset()
 		mockServer.SetMode(mock.ModeHappy)
-		// Wait for cache recovery from prior 401 sub-test.
-		deadline := time.Now().Add(15 * time.Second)
-		for time.Now().Before(deadline) {
-			if connCache.Snapshot().Ready {
-				break
-			}
-			time.Sleep(25 * time.Millisecond)
-		}
-		if !connCache.Snapshot().Ready {
-			connCache.Rebuild(connection.ConnectionSnapshot{
-				Ready:  true,
-				Reason: reasonSynced,
-				Client: savedConnClient,
-			})
-		}
+		// Force cache Ready immediately — bypasses probe-loop recovery from
+		// prior 401 sub-test (recovery latency is not under test here).
+		connCache.Rebuild(connection.ConnectionSnapshot{
+			Ready:  true,
+			Reason: reasonSynced,
+			Client: savedConnClient,
+		})
 		mockServer.ResetCounters()
 		mockServer.ResetMCPServers()
 		mcpName := "mcp-canary-secretnotfound"
@@ -982,20 +974,13 @@ func TestMCPServerReconciler_AC_S1_NoSecretInStatusOrEvents(t *testing.T) {
 	t.Run("LiteLLMRejected", func(t *testing.T) {
 		sink.Reset()
 		mockServer.SetMode(mock.ModeHappy)
-		deadlineSync := time.Now().Add(10 * time.Second)
-		for time.Now().Before(deadlineSync) {
-			if connCache.Snapshot().Ready {
-				break
-			}
-			time.Sleep(25 * time.Millisecond)
-		}
-		if !connCache.Snapshot().Ready {
-			connCache.Rebuild(connection.ConnectionSnapshot{
-				Ready:  true,
-				Reason: reasonSynced,
-				Client: savedConnClient,
-			})
-		}
+		// Force cache Ready immediately — probe-loop recovery is not under
+		// test here.
+		connCache.Rebuild(connection.ConnectionSnapshot{
+			Ready:  true,
+			Reason: reasonSynced,
+			Client: savedConnClient,
+		})
 		mockServer.SetMode(mock.Mode422)
 		mockServer.ResetCounters()
 		mockServer.ResetMCPServers()

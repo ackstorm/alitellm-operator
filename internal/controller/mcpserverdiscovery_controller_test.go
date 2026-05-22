@@ -63,30 +63,48 @@ func (s *stubToolHiveInformer) List(_ context.Context, _ schema.GroupVersionKind
 // ensureNoMCPServerDiscovery deletes any pre-existing MCPServerDiscovery
 // (and all its owned children) so a test starts from a clean slate.
 // Waits up to 30s for cascade-drain to complete.
+//
+// Uses updateWithRetry on every finalizer strip so concurrent controller
+// status writes (which would otherwise lose the optimistic-lock race and
+// leave the finalizer in place) cannot strand the CR in cascade-drain
+// for the full 30s ceiling. The retry loop converges in 1-3 attempts
+// under -race.
 func ensureNoMCPServerDiscovery(t *testing.T, ctx context.Context, name string) {
 	t.Helper()
-	var existing litellmv1alpha1.LiteLLMMCPServerDiscovery
 	key := client.ObjectKey{Name: name, Namespace: WatchNamespace}
-	if err := k8sClient.Get(ctx, key, &existing); err == nil {
-		// Strip the Discovery finalizer first so the parent deletes even
-		// if children somehow lag.
-		controllerutil.RemoveFinalizer(&existing, mcpServerDiscoveryFinalizer)
-		_ = k8sClient.Update(ctx, &existing)
-		_ = k8sClient.Delete(ctx, &existing)
+	// Strip the Discovery finalizer first (retry on conflict) so the
+	// parent deletes even if children somehow lag.
+	if err := updateWithRetry(ctx, key,
+		&litellmv1alpha1.LiteLLMMCPServerDiscovery{},
+		func(obj *litellmv1alpha1.LiteLLMMCPServerDiscovery) error {
+			controllerutil.RemoveFinalizer(obj, mcpServerDiscoveryFinalizer)
+			return nil
+		},
+	); err == nil || apierrors.IsNotFound(err) {
+		_ = k8sClient.Delete(ctx, &litellmv1alpha1.LiteLLMMCPServerDiscovery{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: WatchNamespace},
+		})
 	}
-	// Strip + delete owned children directly. Mirrors ensureNoModelDiscovery's
-	// cleanup; the cascade path is exercised by the dedicated CascadeDelete
-	// test (Task 2b), not the per-test cleanup.
+	// Strip + delete owned children directly. The cascade path is
+	// exercised by the dedicated CascadeDelete test (Task 2b), not the
+	// per-test cleanup.
 	var owned litellmv1alpha1.LiteLLMMCPServerList
 	if err := k8sClient.List(ctx, &owned,
 		client.InNamespace(WatchNamespace),
 		client.MatchingLabels{generatedByLabel: name},
 	); err == nil {
 		for i := range owned.Items {
-			c := &owned.Items[i]
-			controllerutil.RemoveFinalizer(c, mcpServerFinalizer)
-			_ = k8sClient.Update(ctx, c)
-			_ = k8sClient.Delete(ctx, c)
+			childKey := client.ObjectKeyFromObject(&owned.Items[i])
+			_ = updateWithRetry(ctx, childKey,
+				&litellmv1alpha1.LiteLLMMCPServer{},
+				func(obj *litellmv1alpha1.LiteLLMMCPServer) error {
+					controllerutil.RemoveFinalizer(obj, mcpServerFinalizer)
+					return nil
+				},
+			)
+			_ = k8sClient.Delete(ctx, &litellmv1alpha1.LiteLLMMCPServer{
+				ObjectMeta: metav1.ObjectMeta{Name: childKey.Name, Namespace: childKey.Namespace},
+			})
 		}
 	}
 	deadline := time.Now().Add(30 * time.Second)

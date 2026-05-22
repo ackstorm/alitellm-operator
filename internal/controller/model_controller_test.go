@@ -2075,32 +2075,16 @@ func TestModel_RedactionCanary_AC_S1(t *testing.T) {
 	// ── Sub-test 3: SecretNotFound path ──────────────────────────────────
 	t.Run("SecretNotFound", func(t *testing.T) {
 		sink.Reset()
-		// Restore mock to happy mode + rebuild connection cache to Synced
-		// so the Model reconciler can proceed past connection-gating and
-		// reach the SecretNotFound path (previous 401 sub-test may have
-		// left the cache in a not-Ready state).
+		// Restore mock to happy mode + force connection cache Ready so the
+		// Model reconciler can proceed past connection-gating and reach the
+		// SecretNotFound path. Probe-loop recovery latency is not under test
+		// here — direct rebuild avoids waiting up to 15s for the next probe.
 		mockServer.SetMode(mock.ModeHappy)
-		// Poll until connection cache recovers to Synced (connection
-		// reconciler will re-probe and rebuild the cache on next tick).
-		deadline := time.Now().Add(15 * time.Second)
-		for time.Now().Before(deadline) {
-			if connCache.Snapshot().Ready {
-				break
-			}
-			time.Sleep(25 * time.Millisecond)
-		}
-		if !connCache.Snapshot().Ready {
-			t.Logf("[SecretNotFound] connection cache still not Ready; using direct rebuild with savedConnClient")
-			// If connection CR still exists, the reconciler will restore it.
-			// Direct rebuild as fallback — use savedConnClient (captured before any
-			// sub-test ran) to avoid rebuilding with Client==nil, which causes
-			// nil-pointer panics in subsequent reconcile loops.
-			connCache.Rebuild(connection.ConnectionSnapshot{
-				Ready:  true,
-				Reason: reasonSynced,
-				Client: savedConnClient,
-			})
-		}
+		connCache.Rebuild(connection.ConnectionSnapshot{
+			Ready:  true,
+			Reason: reasonSynced,
+			Client: savedConnClient,
+		})
 
 		mockServer.ResetCounters()
 		mockServer.ResetModels()
@@ -2141,27 +2125,16 @@ func TestModel_RedactionCanary_AC_S1(t *testing.T) {
 	// ── Sub-test 4: 4xx LiteLLMRejected path ─────────────────────────────
 	t.Run("LiteLLMRejected", func(t *testing.T) {
 		sink.Reset()
-		// Ensure connection is Synced before testing LiteLLMRejected path.
-		// Mode422 only returns 422 on POST /model/new — GET /models returns 200 in happy mode.
-		// Set happy mode first so connection reconciler can recover, then flip to 422.
+		// Ensure connection cache is Ready before testing LiteLLMRejected.
+		// Mode422 only returns 422 on POST /model/new — GET /models stays 200.
+		// Force cache Ready directly — probe-loop recovery latency is not
+		// under test here.
 		mockServer.SetMode(mock.ModeHappy)
-		deadlineSync := time.Now().Add(10 * time.Second)
-		for time.Now().Before(deadlineSync) {
-			if connCache.Snapshot().Ready {
-				break
-			}
-			time.Sleep(25 * time.Millisecond)
-		}
-		if !connCache.Snapshot().Ready {
-			t.Logf("[LiteLLMRejected] connection cache still not Ready; using direct rebuild with savedConnClient")
-			// Use savedConnClient (non-nil, captured before any sub-test ran)
-			// to avoid rebuilding with Client==nil.
-			connCache.Rebuild(connection.ConnectionSnapshot{
-				Ready:  true,
-				Reason: reasonSynced,
-				Client: savedConnClient,
-			})
-		}
+		connCache.Rebuild(connection.ConnectionSnapshot{
+			Ready:  true,
+			Reason: reasonSynced,
+			Client: savedConnClient,
+		})
 		// Now set 422 mode — POST /model/new returns 422, GET /models returns 200.
 		mockServer.SetMode(mock.Mode422)
 		mockServer.ResetCounters()

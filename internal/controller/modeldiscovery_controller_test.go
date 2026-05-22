@@ -210,32 +210,47 @@ func modeldiscoverySampleCR(name, providerType string) *litellmv1alpha1.LiteLLMM
 // ensureNoModelDiscovery deletes any pre-existing ModelDiscovery (and
 // all its owned children) so a test starts from a clean slate. Waits
 // up to 30s for cascade-delete to drain.
+//
+// Uses updateWithRetry on every finalizer strip so concurrent controller
+// status writes (which would otherwise lose the optimistic-lock race and
+// leave the finalizer in place) cannot strand the CR in cascade-drain
+// for the full 30s ceiling.
 func ensureNoModelDiscovery(t *testing.T, ctx context.Context, name string) {
 	t.Helper()
-	var existing litellmv1alpha1.LiteLLMModelDiscovery
 	key := client.ObjectKey{Name: name, Namespace: WatchNamespace}
-	if err := k8sClient.Get(ctx, key, &existing); err == nil {
-		// Strip the Discovery finalizer first so the parent deletes
-		// even if the controller is unable to drain children (e.g. on
-		// CR mutation between tests).
-		controllerutil.RemoveFinalizer(&existing, modelDiscoveryFinalizer)
-		_ = k8sClient.Update(ctx, &existing)
-		_ = k8sClient.Delete(ctx, &existing)
+	// Strip the Discovery finalizer first (retry on conflict) so the
+	// parent deletes even if the controller is unable to drain children.
+	if err := updateWithRetry(ctx, key,
+		&litellmv1alpha1.LiteLLMModelDiscovery{},
+		func(obj *litellmv1alpha1.LiteLLMModelDiscovery) error {
+			controllerutil.RemoveFinalizer(obj, modelDiscoveryFinalizer)
+			return nil
+		},
+	); err == nil || apierrors.IsNotFound(err) {
+		_ = k8sClient.Delete(ctx, &litellmv1alpha1.LiteLLMModelDiscovery{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: WatchNamespace},
+		})
 	}
-	// Also remove any owned children directly (mirrors ensureNoModel —
-	// strip finalizer, delete). The cascade-delete drain in the
-	// reconciler is exercised by AC-MD-CASCADE; cleanup should NOT
-	// depend on that path.
+	// Also remove any owned children directly. The cascade-delete drain
+	// in the reconciler is exercised by AC-MD-CASCADE; cleanup should
+	// NOT depend on that path.
 	var owned litellmv1alpha1.LiteLLMModelList
 	if err := k8sClient.List(ctx, &owned,
 		client.InNamespace(WatchNamespace),
 		client.MatchingLabels{generatedByLabel: name},
 	); err == nil {
 		for i := range owned.Items {
-			c := &owned.Items[i]
-			controllerutil.RemoveFinalizer(c, modelFinalizer)
-			_ = k8sClient.Update(ctx, c)
-			_ = k8sClient.Delete(ctx, c)
+			childKey := client.ObjectKeyFromObject(&owned.Items[i])
+			_ = updateWithRetry(ctx, childKey,
+				&litellmv1alpha1.LiteLLMModel{},
+				func(obj *litellmv1alpha1.LiteLLMModel) error {
+					controllerutil.RemoveFinalizer(obj, modelFinalizer)
+					return nil
+				},
+			)
+			_ = k8sClient.Delete(ctx, &litellmv1alpha1.LiteLLMModel{
+				ObjectMeta: metav1.ObjectMeta{Name: childKey.Name, Namespace: childKey.Namespace},
+			})
 		}
 	}
 	deadline := time.Now().Add(30 * time.Second)

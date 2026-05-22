@@ -1281,20 +1281,13 @@ func TestA2AAgentReconciler_AC_S1_NoSecretInStatusOrEvents(t *testing.T) {
 	t.Run("SecretNotFound", func(t *testing.T) {
 		sink.Reset()
 		mockServer.SetMode(mock.ModeHappy)
-		deadline := time.Now().Add(15 * time.Second)
-		for time.Now().Before(deadline) {
-			if connCache.Snapshot().Ready {
-				break
-			}
-			time.Sleep(25 * time.Millisecond)
-		}
-		if !connCache.Snapshot().Ready {
-			connCache.Rebuild(connection.ConnectionSnapshot{
-				Ready:  true,
-				Reason: reasonSynced,
-				Client: savedConnClient,
-			})
-		}
+		// Force cache Ready immediately — bypasses probe-loop recovery from
+		// prior 401 sub-test (recovery latency is not under test here).
+		connCache.Rebuild(connection.ConnectionSnapshot{
+			Ready:  true,
+			Reason: reasonSynced,
+			Client: savedConnClient,
+		})
 		resetMockA2A()
 		agentName := "a2a-canary-secretnotfound"
 		secName := "a2a-canary-secret-missing"
