@@ -300,7 +300,18 @@ func (r *LiteLLMConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// low-rate to need warm connections, and the §9.1 redacting
 	// invariant is preserved across rebuilds because newHTTPClient
 	// (inside NewClient) wraps the transport every time.
-	liteLLMClient := litellm.NewClient(conn.Spec.Endpoint, string(masterKeyValue), r.Log.WithName("probe"))
+	// FIX2.txt M-10: pass through spec.maxRequestsPerSecond /
+	// spec.maxBurst as the Client's shared rate limiter so boot-time
+	// thundering herds don't trigger 5xx-backoff loops upstream.
+	clientOpts := []litellm.ClientOption{}
+	if conn.Spec.MaxRequestsPerSecond > 0 {
+		burst := int(conn.Spec.MaxBurst)
+		if burst <= 0 {
+			burst = int(conn.Spec.MaxRequestsPerSecond)
+		}
+		clientOpts = append(clientOpts, litellm.WithRateLimit(float64(conn.Spec.MaxRequestsPerSecond), burst))
+	}
+	liteLLMClient := litellm.NewClient(conn.Spec.Endpoint, string(masterKeyValue), r.Log.WithName("probe"), clientOpts...)
 
 	// ─── Step 6: Probe + classify ──────────────────────────────────
 	probeErr := liteLLMClient.ProbeConnection(ctx)
