@@ -617,8 +617,10 @@ func (r *ModelReconciler) classifyMutationError(ctx context.Context, model *lite
 	}
 
 	if is4xx {
-		// Deterministic 4xx — LiteLLMRejected. No body in message (§9.1).
-		msg := fmt.Sprintf("LiteLLM rejected %s: %s", opDesc, errStr)
+		// Deterministic 4xx — LiteLLMRejected. FIX2.txt M-5: surface the
+		// parsed envelope message in condition.Message when available
+		// (clipped to 200 bytes for kubectl-friendly wide output).
+		msg := rejectedMessage(opDesc, err, errStr)
 		if werr := r.writeStatus(ctx, model, metav1.ConditionFalse, "LiteLLMRejected", msg); werr != nil {
 			logStatusUpdateErr(logger, werr, "reason", "LiteLLMRejected")
 		}
