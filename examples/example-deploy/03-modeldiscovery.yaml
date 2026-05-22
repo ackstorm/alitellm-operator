@@ -51,6 +51,15 @@ spec:
     include:
       - "gpt-4o.*"
       - "gpt-4\\.1.*"
+    # Optional: canonical-only pattern. Uncomment to drop dated OpenAI
+    # variants (gpt-4o-mini-2024-07-18, gpt-4.1-mini-2025-04-14, ...) and
+    # keep only the rolling aliases (gpt-4o, gpt-4o-mini, gpt-4.1, ...).
+    # Matches the pre-filter that ackstorm-litellm-autoconfig (the Python
+    # predecessor) applies. On 2026-05-22 EKS smoke-test this dropped the
+    # OpenAI child set from 117 → 49, parity 1:1 with autoconfig
+    # (FIX.txt LOW-6).
+    # exclude:
+    #   - ".*[0-9]$"
   # Refresh interval — must be >= 1m (MDISC-05 CEL floor).
   refresh:
     interval: 10m
