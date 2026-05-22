@@ -63,14 +63,26 @@ func TestConnectionReadyTransition_CreateOnReadyFires(t *testing.T) {
 	}
 }
 
-// TestConnectionReadyTransition_DeleteAndGenericSuppressed asserts Delete
-// and Generic events are dropped (they don't represent recovery).
-func TestConnectionReadyTransition_DeleteAndGenericSuppressed(t *testing.T) {
+// TestConnectionReadyTransition_DeleteSuppressed asserts Delete events
+// are dropped (they don't represent recovery).
+func TestConnectionReadyTransition_DeleteSuppressed(t *testing.T) {
 	pred := connectionReadyTransition()
 	if pred.Delete(event.DeleteEvent{Object: newConn(metav1.ConditionTrue)}) {
 		t.Error("Delete unexpectedly fired")
 	}
-	if pred.Generic(event.GenericEvent{Object: newConn(metav1.ConditionTrue)}) {
-		t.Error("Generic unexpectedly fired")
+}
+
+// TestConnectionReadyTransition_GenericFiresOnReady asserts that an
+// externally-injected GenericEvent carrying a Ready=True Connection
+// fans out — the contract added for FIX2.txt M-3 to let an upstream
+// publisher (e.g. connection cache snapshot-flip) trigger child fan-in
+// without requiring a status write on the Connection CR.
+func TestConnectionReadyTransition_GenericFiresOnReady(t *testing.T) {
+	pred := connectionReadyTransition()
+	if !pred.Generic(event.GenericEvent{Object: newConn(metav1.ConditionTrue)}) {
+		t.Error("Generic on Ready=True did not fire")
+	}
+	if pred.Generic(event.GenericEvent{Object: newConn(metav1.ConditionFalse)}) {
+		t.Error("Generic on Ready=False unexpectedly fired")
 	}
 }
