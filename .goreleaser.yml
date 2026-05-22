@@ -23,6 +23,9 @@ builds:
       - -X main.version={{.Version}}
       - -X main.commit={{.Commit}}
       - -X main.date={{.Date}}
+      # FIX2.txt M-8: operator audit identity surfaced as
+      # model_info.created_by/updated_by in LiteLLM.
+      - -X github.com/ackstorm/alitellm-operator/internal/identity.Version={{.Version}}
     flags:
       - -trimpath
     ignore:

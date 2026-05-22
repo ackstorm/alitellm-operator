@@ -24,6 +24,8 @@ builds:
       - -X main.commit={{.Commit}}
       - -X main.date={{.Date}}
       - -X main.buildType=prerelease
+      # FIX2.txt M-8: operator audit identity.
+      - -X github.com/ackstorm/alitellm-operator/internal/identity.Version={{.Version}}
     flags:
       - -trimpath
     ignore:

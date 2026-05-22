@@ -27,6 +27,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+
+	"github.com/ackstorm/alitellm-operator/internal/identity"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
@@ -466,7 +468,13 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			req := &litellm.Deployment{
 				ModelName:     model.Name,
 				LiteLLMParams: litellm.LiteLLMParams(paramsMap),
-				ModelInfo:     litellm.ModelInfo{},
+				// FIX2.txt M-8 (2026-05-22): stamp operator identity so
+				// the LiteLLM UI "Created By" column shows
+				// alitellm-operator/<version> instead of "Unknown".
+				ModelInfo: litellm.ModelInfo{
+					CreatedBy: identity.Operator(),
+					UpdatedBy: identity.Operator(),
+				},
 			}
 			result, err := snap.Client.CreateModel(ctx, req)
 			if err != nil {
@@ -507,7 +515,12 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			createReq := &litellm.Deployment{
 				ModelName:     model.Name,
 				LiteLLMParams: litellm.LiteLLMParams(paramsMap),
-				ModelInfo:     litellm.ModelInfo{ID: ""},
+				// FIX2.txt M-8: stamp identity on D-02 recreate too.
+				ModelInfo: litellm.ModelInfo{
+					ID:        "",
+					CreatedBy: identity.Operator(),
+					UpdatedBy: identity.Operator(),
+				},
 			}
 			result, err := snap.Client.CreateModel(ctx, createReq)
 			if err != nil {
@@ -530,7 +543,12 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 				ID:            model.Status.LastRendered.LiteLLMModelID, // NEW: top-level id per 1.83.10
 				ModelName:     model.Name,
 				LiteLLMParams: litellm.LiteLLMParams(paramsMap),
-				ModelInfo:     litellm.ModelInfo{}, // Drop nested .id — was the 1.82.6 form
+				// FIX2.txt M-8: stamp updated_by on every UPDATE. We do
+				// NOT touch CreatedBy here — LiteLLM keeps the original
+				// creator across updates.
+				ModelInfo: litellm.ModelInfo{
+					UpdatedBy: identity.Operator(),
+				},
 			}
 			if _, err := snap.Client.UpdateModel(ctx, updateReq); err != nil {
 				return r.classifyMutationError(ctx, &model, logger, err, "POST /model/update")
