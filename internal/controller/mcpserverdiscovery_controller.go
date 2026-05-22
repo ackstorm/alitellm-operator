@@ -3,15 +3,26 @@
 // mcpserverdiscovery_controller.go implements the Pipeline B reconciler for
 // `LiteLLMMCPServerDiscovery` CRs (spec §6.5). The reconciler reads cluster-scoped
 // ToolHive `MCPServer` and `VirtualMCPServer` objects via the lazy dynamic
-// informer, filters them per
-// spec.toolhive.{namespaces,kinds}, derives a dotted three-part name
-// (`<discovery>.<toolhive-ns>.<toolhive-name>`), normalizes the transport
-// per Phase 5 D-10, applies the RE2 filter pipeline against the
-// post-derivation dotted name, and SSA-renders one child `LiteLLMMCPServer` per
-// kept candidate via Server-Side Apply with FieldOwner
-// `litellm-mcpserverdiscovery`. The reconciler returns
+// informer, filters them per spec.toolhive.{namespaces,kinds}, derives a
+// hyphen-separated two-part child name (`<spec.prefix>-<source-name>` —
+// FIX4.txt H-2 v0.3.0 breaking change; pre-v0.3.0 was the dotted
+// three-part `<discovery>.<source-ns>.<source-name>`), normalizes the
+// transport per Phase 5 D-10, applies the RE2 filter pipeline against
+// the post-derivation child name, and SSA-renders one child
+// `LiteLLMMCPServer` per kept candidate via Server-Side Apply with
+// FieldOwner `litellm-mcpserverdiscovery`. The reconciler returns
 // `ctrl.Result{RequeueAfter: spec.refresh.interval}` (Phase 4 D-08 +
 // Phase 5 D-08 inherited).
+//
+// FIX4.txt H-2 collision policy (v0.3.0): cross-discovery collisions
+// are the user's responsibility via `spec.prefix`. Intra-discovery
+// collisions (two upstream ToolHive objects with the same source name
+// but different source namespaces) are loud-fail: the first occurrence
+// wins, later occurrences are dropped into status.skippedCandidates
+// with Reason=NameCollision AND a parent-level
+// NameCollision=True/Reason=NameCollision status condition. The user
+// must rename one upstream or split the discovery into prefix-distinct
+// ones to resolve.
 //
 // Pipeline B contract (MSDISC-16): the reconciler does NOT import
 // `internal/litellm`, `internal/connection`, or `internal/substitution`.
@@ -27,10 +38,11 @@
 // stacklok.dev` snapshots via the cluster-scoped informer cache.
 // ToolHive CRDs absent at boot → MSDISC-06 Ready=False, reason=
 // SourceUnreachable.
-// - Naming: dotted three-part name `<discoveryName>.<toolhiveNamespace>.
-// <toolhiveName>` (mirrors Phase 4's two-part naming with the extra
-// namespace segment because ToolHive CRs are cluster-scoped but
-// reference namespaced backends).
+// - Naming: hyphen-separated two-part name `<spec.prefix>-<source-name>`
+// (FIX4.txt H-2 v0.3.0 — matches LiteLLMModelDiscovery's
+// `<prefix>-<source-name>` convention exactly; pre-v0.3.0 was the
+// dotted three-part form which had a redundant source-namespace
+// component).
 // - Transport normalization (D-10): `streamable-http → http`, `sse →
 // sse`, empty/absent → `http`, anything else → SKIP with
 // status.skippedCandidates[reason=InvalidTransport].
@@ -50,6 +62,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -185,11 +198,14 @@ type cascadeDrainState struct {
 const cascadeDrainDeadline = 5 * time.Minute
 
 // candidate is the post-derivation tuple for one ToolHive object that
-// passed the namespace + kind filter. The dotted name is the K8s-name
-// of the to-be-rendered child LiteLLMMCPServer; url + transport are sourced
-// from ToolHive `status.url` / normalized `status.transport`.
+// passed the namespace + kind filter. childName is the K8s metadata.name
+// of the to-be-rendered child LiteLLMMCPServer in the new
+// `<spec.prefix>-<source-name>` form (FIX4.txt H-2 v0.3.0 breaking
+// change — pre-v0.3.0 was `<discovery>.<source-ns>.<source-name>`).
+// url + transport are sourced from ToolHive `status.url` / normalized
+// `status.transport`.
 type candidate struct {
-	dottedName      string
+	childName       string
 	url             string
 	transport       string
 	sourceNamespace string
@@ -419,20 +435,50 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return raw[i].GetName() < raw[j].GetName()
 	})
 
+	// FIX4.txt H-2 (v0.3.0): cross-namespace name-collision tracker.
+	// When two ToolHive objects from different namespaces share the same
+	// metadata.name within a single discovery (e.g. ns=mcp object=foo +
+	// ns=tools object=foo), the new naming scheme `<prefix>-<source-name>`
+	// would produce identical child names and the second SSA write would
+	// either silently overwrite the first or AlreadyExists-classify it
+	// as a cross-Discovery duplicate. Loud-fail instead: skip the second
+	// occurrence and surface a NameCollision=True status condition on
+	// the parent so the user can rename one upstream or split the
+	// discovery into two prefix-distinct ones.
+	seenSourceName := map[string]string{} // sourceName → first-seen sourceNamespace
+	nameCollisions := []string{}
 	for _, obj := range raw {
 		// Namespace filter (in-memory; cluster-scoped informer per D-07).
 		if _, want := nsSet[obj.GetNamespace()]; !want {
 			continue
 		}
 
-		dottedName := fmt.Sprintf("%s.%s.%s", md.Name, obj.GetNamespace(), obj.GetName())
-		ownedBy := obj.GetNamespace() + "/" + obj.GetName()
+		sourceName := obj.GetName()
+		childName := md.Spec.Prefix + "-" + sourceName
+		ownedBy := obj.GetNamespace() + "/" + sourceName
+
+		// FIX4.txt H-2: intra-discovery name collision. The first
+		// occurrence wins; later occurrences are skipped with a
+		// NameCollision skippedCandidate entry AND a parent-level
+		// NameCollision status condition (set after the candidate loop).
+		if firstNs, dup := seenSourceName[sourceName]; dup {
+			skipped = append(skipped, litellmv1alpha1.MCPServerSkippedCandidate{
+				Name:    childName,
+				Reason:  "NameCollision",
+				OwnedBy: ownedBy,
+				Message: fmt.Sprintf("source name %q already seen in namespace %q within this discovery — second occurrence skipped (FIX4 H-2)", sourceName, firstNs),
+			})
+			nameCollisions = append(nameCollisions,
+				fmt.Sprintf("%q (ns %q vs first-seen ns %q)", sourceName, obj.GetNamespace(), firstNs))
+			continue
+		}
+		seenSourceName[sourceName] = obj.GetNamespace()
 
 		// Read status.url (MSDISC-12 — EndpointUnknown if absent).
 		url, _, _ := unstructured.NestedString(obj.Object, "status", "url")
 		if url == "" {
 			skipped = append(skipped, litellmv1alpha1.MCPServerSkippedCandidate{
-				Name:    dottedName,
+				Name:    childName,
 				Reason:  "EndpointUnknown",
 				OwnedBy: ownedBy,
 				Message: "status.url empty",
@@ -445,7 +491,7 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 		transport, ok := normalizeTransport(transportRaw)
 		if !ok {
 			skipped = append(skipped, litellmv1alpha1.MCPServerSkippedCandidate{
-				Name:    dottedName,
+				Name:    childName,
 				Reason:  "InvalidTransport",
 				OwnedBy: ownedBy,
 				Message: fmt.Sprintf("transport=%q not in {http, sse, streamable-http→http}", transportRaw),
@@ -454,15 +500,20 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 		}
 
 		candidates = append(candidates, candidate{
-			dottedName:      dottedName,
+			childName:       childName,
 			url:             url,
 			transport:       transport,
 			sourceNamespace: obj.GetNamespace(),
-			sourceName:      obj.GetName(),
+			sourceName:      sourceName,
 		})
 	}
 
-	// ─── Step 6: RE2 filter pipeline on dottedName (post-derivation) ───────
+	// FIX4.txt H-2: surface the NameCollision condition on the parent
+	// when intra-discovery clashes were detected. Idempotent
+	// (apimeta.SetStatusCondition on Status=False when no collisions).
+	r.setNameCollisionCondition(&md, nameCollisions)
+
+	// ─── Step 6: RE2 filter pipeline on childName (post-derivation) ───────
 	// Per <specifics> line 314: the filter target is the POST-DERIVATION
 	// dotted name, NOT the bare ToolHive object name. Reuse Phase 4's
 	// filters.Apply by mapping the MSDisc-typed filter into the
@@ -472,7 +523,7 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 	if md.Spec.Filters != nil {
 		dotted := make([]string, len(candidates))
 		for i, c := range candidates {
-			dotted[i] = c.dottedName
+			dotted[i] = c.childName
 		}
 		// Adapt MCPServerDiscoveryFilters → ModelDiscoveryFilters (same
 		// shape, same semantics — filter package owns the regex pipeline).
@@ -507,7 +558,7 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 		}
 		filtered := make([]candidate, 0, len(kept))
 		for _, c := range candidates {
-			if _, ok := keptSet[c.dottedName]; ok {
+			if _, ok := keptSet[c.childName]; ok {
 				filtered = append(filtered, c)
 			}
 		}
@@ -562,7 +613,7 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 		// Adoption short-circuit: if this candidate's dotted name matches a
 		// child whose ownerRef the user already stripped, the candidate is
 		// recorded in skipped[] above and MUST NOT trigger a fresh SSA write.
-		if _, adopted := adoptedNames[c.dottedName]; adopted {
+		if _, adopted := adoptedNames[c.childName]; adopted {
 			continue
 		}
 
@@ -570,11 +621,11 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 		// would-be child BEFORE Patch so we can classify cross-Discovery
 		// or user-authored collisions deterministically. The Get is cheap
 		// (single named lookup, cache-served after first reconcile).
-		classifiedSkip, retryable, classifyErr := r.classifyAlreadyExists(ctx, c.dottedName, &md)
+		classifiedSkip, retryable, classifyErr := r.classifyAlreadyExists(ctx, c.childName, &md)
 		if classifyErr != nil {
 			metrics.ChildCRWritesTotal.WithLabelValues(mcpServerDiscoveryKind, "create_or_update", "error").Inc()
 			failed = append(failed, litellmv1alpha1.MCPServerFailedCandidate{
-				Name:    c.dottedName,
+				Name:    c.childName,
 				Reason:  "ChildCRWriteFailed",
 				Message: sanitizeError(classifyErr),
 			})
@@ -584,7 +635,7 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 			metrics.ChildCRWritesTotal.WithLabelValues(mcpServerDiscoveryKind, "create_or_update", "conflict").Inc()
 			skipped = append(skipped, *classifiedSkip)
 			logger.V(1).Info("pre-Patch K8s-native conflict classified",
-				"child", c.dottedName, "reason", classifiedSkip.Reason, "ownedBy", classifiedSkip.OwnedBy)
+				"child", c.childName, "reason", classifiedSkip.Reason, "ownedBy", classifiedSkip.OwnedBy)
 			continue
 		}
 		_ = retryable // retryable==true means: NotFound (proceed to Patch) OR owned-by-this-Discovery (idempotent re-apply).
@@ -599,11 +650,11 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 			// ownerRef belongs to a DIFFERENT controller; SSA+ForceOwnership
 			// is non-overrideable across controllers).
 			if apierrors.IsAlreadyExists(applyErr) {
-				classifiedSkip2, retryable2, classifyErr2 := r.classifyAlreadyExists(ctx, c.dottedName, &md)
+				classifiedSkip2, retryable2, classifyErr2 := r.classifyAlreadyExists(ctx, c.childName, &md)
 				if classifyErr2 != nil {
 					metrics.ChildCRWritesTotal.WithLabelValues(mcpServerDiscoveryKind, "create_or_update", "error").Inc()
 					failed = append(failed, litellmv1alpha1.MCPServerFailedCandidate{
-						Name:    c.dottedName,
+						Name:    c.childName,
 						Reason:  "ChildCRWriteFailed",
 						Message: sanitizeError(classifyErr2),
 					})
@@ -613,9 +664,9 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 					metrics.ChildCRWritesTotal.WithLabelValues(mcpServerDiscoveryKind, "create_or_update", "conflict").Inc()
 					// CR-01: register in pendingRetries so Step 9 keeps the
 					// owned child in desiredSet and does not vanish-delete it.
-					pendingRetries[c.dottedName] = struct{}{}
+					pendingRetries[c.childName] = struct{}{}
 					logger.V(1).Info("AlreadyExists retry-soon (owned-by-this-Discovery; protected from vanish-delete)",
-						"child", c.dottedName)
+						"child", c.childName)
 					continue
 				}
 				if classifiedSkip2 != nil {
@@ -627,14 +678,14 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 			}
 			metrics.ChildCRWritesTotal.WithLabelValues(mcpServerDiscoveryKind, "create_or_update", "error").Inc()
 			failed = append(failed, litellmv1alpha1.MCPServerFailedCandidate{
-				Name:    c.dottedName,
+				Name:    c.childName,
 				Reason:  "ChildCRWriteFailed",
 				Message: sanitizeError(applyErr),
 			})
 			continue
 		}
 		metrics.ChildCRWritesTotal.WithLabelValues(mcpServerDiscoveryKind, "create_or_update", "success").Inc()
-		generated = append(generated, c.dottedName)
+		generated = append(generated, c.childName)
 	}
 
 	sort.Strings(generated)
@@ -807,7 +858,7 @@ func buildChildMCPServer(
 			Kind:       "LiteLLMMCPServer",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      c.dottedName,
+			Name:      c.childName,
 			Namespace: namespace,
 			Labels: map[string]string{
 				generatedByLabel: md.Name,
@@ -914,6 +965,42 @@ func mcpOwnedByThisDiscovery(child *litellmv1alpha1.LiteLLMMCPServer, parent *li
 		}
 	}
 	return false
+}
+
+// ConditionTypeNameCollision is the status condition type fired by the
+// FIX4.txt H-2 v0.3.0 NameCollision detector when two upstream ToolHive
+// objects from different namespaces produce the same
+// `<spec.prefix>-<source-name>` child name within a single discovery.
+// Status=True with Reason="NameCollision" lists the offending source
+// names; Status=False with Reason="NoCollisions" otherwise (idempotent
+// transitions visible to status watchers).
+const ConditionTypeNameCollision = "NameCollision"
+
+// setNameCollisionCondition stamps the NameCollision condition on the
+// parent in-memory; the final Status().Update at the end of the success
+// path picks it up. FIX4.txt H-2.
+func (r *MCPServerDiscoveryReconciler) setNameCollisionCondition(
+	md *litellmv1alpha1.LiteLLMMCPServerDiscovery, collisions []string,
+) {
+	if len(collisions) == 0 {
+		apimeta.SetStatusCondition(&md.Status.Conditions, metav1.Condition{
+			Type:               ConditionTypeNameCollision,
+			Status:             metav1.ConditionFalse,
+			Reason:             "NoCollisions",
+			Message:            "",
+			ObservedGeneration: md.Generation,
+			LastTransitionTime: metav1.Now(),
+		})
+		return
+	}
+	apimeta.SetStatusCondition(&md.Status.Conditions, metav1.Condition{
+		Type:               ConditionTypeNameCollision,
+		Status:             metav1.ConditionTrue,
+		Reason:             "NameCollision",
+		Message:            "intra-discovery source-name collision(s) detected: " + strings.Join(collisions, "; ") + " — rename one upstream or split the discovery (FIX4 H-2)",
+		ObservedGeneration: md.Generation,
+		LastTransitionTime: metav1.Now(),
+	})
 }
 
 // writeBothConditions sets both Ready and SourceReachable conditions and

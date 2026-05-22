@@ -147,6 +147,31 @@ spec:
                   against spec.secrets[] on the child's reconcile.
                 type: object
                 x-kubernetes-preserve-unknown-fields: true
+              prefix:
+                description: |-
+                  Prefix is the lowercase DNS-1123 label prepended to every
+                  generated child MCPServer's metadata.name (final K8s shape:
+                  `<prefix>-<source-name>`; final LiteLLM wire shape:
+                  `<prefix>.<source-name>` — see internal/litellm/sanitize.go).
+                  Mirrors LiteLLMModelDiscovery.spec.prefix exactly for
+                  cross-discovery-kind symmetry.
+
+                  FIX4.txt H-2 (v0.3.0 breaking change): pre-v0.3.0 children were
+                  named `<discovery-name>.<source-namespace>.<source-name>` (three
+                  dotted components). v0.3.0 drops the source-namespace component
+                  entirely; cross-discovery name disambiguation is the user's job
+                  via this `prefix` field. The operator no longer auto-disambiguates
+                  — name collisions inside a single discovery surface as a
+                  `NameCollision=True` status condition and the second occurrence
+                  is dropped (loud-fail, not silent-merge).
+
+                  MaxLength=30 leaves room for the source name inside the 63-char
+                  DNS-1123 label budget (the final K8s child name is
+                  `<prefix>-<source-name>`).
+                maxLength: 30
+                minLength: 1
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                type: string
               refresh:
                 description: |-
                   Refresh controls the periodic ToolHive-list cadence. The
@@ -294,6 +319,7 @@ spec:
                 - toolhive
                 type: string
             required:
+            - prefix
             - refresh
             - toolhive
             - type
@@ -546,11 +572,20 @@ spec:
                         {http, sse}; ToolHive may emit
                         `streamable-http`, `sse`, `stdio`,
                         custom strings).
+                        NameCollision — two upstream ToolHive objects from
+                        different namespaces produced the same
+                        `<spec.prefix>-<source-name>` child name
+                        within a single discovery. The first
+                        occurrence wins; later occurrences are
+                        skipped (FIX4.txt H-2 v0.3.0). The user
+                        rename one upstream or split the
+                        discovery into prefix-distinct ones.
                       enum:
                       - ExplicitMCPServerExists
                       - DuplicateDiscovery
                       - EndpointUnknown
                       - InvalidTransport
+                      - NameCollision
                       type: string
                   required:
                   - name

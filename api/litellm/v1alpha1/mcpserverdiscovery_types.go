@@ -24,6 +24,32 @@ import (
 // resource root. MSDISC-14 (toolhive sub-block presence + minItems=1 on
 // namespaces) is enforced at the schema level.
 type MCPServerDiscoverySpec struct {
+	// Prefix is the lowercase DNS-1123 label prepended to every
+	// generated child MCPServer's metadata.name (final K8s shape:
+	// `<prefix>-<source-name>`; final LiteLLM wire shape:
+	// `<prefix>.<source-name>` — see internal/litellm/sanitize.go).
+	// Mirrors LiteLLMModelDiscovery.spec.prefix exactly for
+	// cross-discovery-kind symmetry.
+	//
+	// FIX4.txt H-2 (v0.3.0 breaking change): pre-v0.3.0 children were
+	// named `<discovery-name>.<source-namespace>.<source-name>` (three
+	// dotted components). v0.3.0 drops the source-namespace component
+	// entirely; cross-discovery name disambiguation is the user's job
+	// via this `prefix` field. The operator no longer auto-disambiguates
+	// — name collisions inside a single discovery surface as a
+	// `NameCollision=True` status condition and the second occurrence
+	// is dropped (loud-fail, not silent-merge).
+	//
+	// MaxLength=30 leaves room for the source name inside the 63-char
+	// DNS-1123 label budget (the final K8s child name is
+	// `<prefix>-<source-name>`).
+	//
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=30
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
+	Prefix string `json:"prefix"`
+
 	// Type discriminates the upstream Discovery source. In v1alpha1 the
 	// ONLY allowed value is `toolhive`. The Enum marker below admits
 	// nothing else; future Discovery sources (e.g. an A2A-side directory,
@@ -349,9 +375,17 @@ type MCPServerSkippedCandidate struct {
 	// {http, sse}; ToolHive may emit
 	// `streamable-http`, `sse`, `stdio`,
 	// custom strings).
+	// NameCollision — two upstream ToolHive objects from
+	// different namespaces produced the same
+	// `<spec.prefix>-<source-name>` child name
+	// within a single discovery. The first
+	// occurrence wins; later occurrences are
+	// skipped (FIX4.txt H-2 v0.3.0). The user
+	// rename one upstream or split the
+	// discovery into prefix-distinct ones.
 	//
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum=ExplicitMCPServerExists;DuplicateDiscovery;EndpointUnknown;InvalidTransport
+	// +kubebuilder:validation:Enum=ExplicitMCPServerExists;DuplicateDiscovery;EndpointUnknown;InvalidTransport;NameCollision
 	Reason string `json:"reason"`
 
 	// OwnedBy is the <namespace>/<name> of the MCPServerDiscovery
