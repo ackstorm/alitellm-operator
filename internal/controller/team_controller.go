@@ -1170,6 +1170,9 @@ func (r *TeamReconciler) writeStatus(
 	}
 	apimeta.SetStatusCondition(&team.Status.Conditions, cond)
 	team.Status.ObservedGeneration = team.Generation
+	metrics.LitellmOperatorReconcileTotal.WithLabelValues(
+		teamKind, team.Namespace, metrics.ReasonToReconcileResult(reason),
+	).Inc()
 	return r.Status().Update(ctx, team)
 }
 

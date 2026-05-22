@@ -667,6 +667,9 @@ func (r *A2AAgentReconciler) writeStatus(
 	}
 	apimeta.SetStatusCondition(&a2a.Status.Conditions, cond)
 	a2a.Status.ObservedGeneration = a2a.Generation
+	metrics.LitellmOperatorReconcileTotal.WithLabelValues(
+		a2aAgentKind, a2a.Namespace, metrics.ReasonToReconcileResult(reason),
+	).Inc()
 	return r.Status().Update(ctx, a2a)
 }
 

@@ -1012,6 +1012,9 @@ func (r *ModelDiscoveryReconciler) writeReady(
 	if err := r.Status().Update(ctx, md); err != nil {
 		logStatusUpdateErr(log.FromContext(ctx), err, "reason", reason)
 	}
+	metrics.LitellmOperatorReconcileTotal.WithLabelValues(
+		modelDiscoveryKind, md.Namespace, metrics.ReasonToReconcileResult(reason),
+	).Inc()
 	return ctrl.Result{}
 }
 

@@ -22,6 +22,52 @@ var ReconcileTotal = prometheus.NewCounterVec(
 	[]string{"kind", "result"},
 )
 
+// LitellmOperatorReconcileTotal — FIX2.txt LOW-6 (2026-05-22). Counter
+// labeled by kind, namespace, result with a richer result enum than
+// ReconcileTotal's {success, error, requeued}. Lets dashboards slice
+// provider rejection patterns (e.g. "Bedrock IAM scope errors on
+// namespace=ackstorm") without a kubectl-describe sweep — the per-CR
+// rejection reason is encoded in the result label.
+//
+// result ∈ {
+//   "synced",         // Ready=True written
+//   "rejected",       // LiteLLMRejected (deterministic upstream 4xx)
+//   "transient_error",// LiteLLMUnavailable (5xx, transport, 401)
+//   "secret_missing", // SecretNotFound
+//   "unreachable",    // Connection cache not Ready
+//   "invalid_config", // CR-side InvalidConfig (CEL miss, JSON parse, etc.)
+// }
+var LitellmOperatorReconcileTotal = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Namespace: "litellm_operator",
+		Name:      "reconcile_total",
+		Help:      "Reconciles by kind/namespace/result with reason-derived result enum (FIX2.txt LOW-6).",
+	},
+	[]string{"kind", "namespace", "result"},
+)
+
+// ReasonToReconcileResult maps a condition Reason string to the result
+// label used on LitellmOperatorReconcileTotal. Unknown reasons map to
+// "synced" (so a Ready=True with no Reason populated still increments
+// the success bucket). Centralized so all reconcilers stamp consistent
+// label values.
+func ReasonToReconcileResult(reason string) string {
+	switch reason {
+	case "LiteLLMRejected":
+		return "rejected"
+	case "LiteLLMUnavailable", "BadMasterKey", "Connecting", "Unreachable":
+		return "transient_error"
+	case "SecretNotFound":
+		return "secret_missing"
+	case "InvalidConfig":
+		return "invalid_config"
+	case "":
+		return "synced"
+	default:
+		return "synced"
+	}
+}
+
 // ReconcileDurationSeconds — spec §10: histogram labeled by kind.
 var ReconcileDurationSeconds = prometheus.NewHistogramVec(
 	prometheus.HistogramOpts{
@@ -235,6 +281,7 @@ func init() {
 		ConnectionReady,
 		CRStatusAgeTracker, // OBS-03: custom Collector — replaces CRStatusAgeSeconds GaugeVec
 		ChildCRWritesTotal,
+		LitellmOperatorReconcileTotal,
 	)
 
 	// Pre-touch every enumerated label combination from spec §10's

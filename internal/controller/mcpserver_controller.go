@@ -585,6 +585,12 @@ func (r *MCPServerReconciler) writeStatus(
 	}
 	apimeta.SetStatusCondition(&mcp.Status.Conditions, cond)
 	mcp.Status.ObservedGeneration = mcp.Generation
+	// FIX2.txt LOW-6: per-CR reconcile-outcome counter labeled by
+	// kind/namespace/result. Fired here so every status-write also
+	// surfaces on the prometheus dashboard without an extra call site.
+	metrics.LitellmOperatorReconcileTotal.WithLabelValues(
+		mcpServerKind, mcp.Namespace, metrics.ReasonToReconcileResult(reason),
+	).Inc()
 	return r.Status().Update(ctx, mcp)
 }
 

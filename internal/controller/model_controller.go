@@ -708,6 +708,9 @@ func (r *ModelReconciler) writeStatus(
 		model.ResourceVersion = fresh.ResourceVersion
 		return nil
 	})
+	metrics.LitellmOperatorReconcileTotal.WithLabelValues(
+		modelKind, model.Namespace, metrics.ReasonToReconcileResult(reason),
+	).Inc()
 	return err
 }
 
