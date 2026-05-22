@@ -4,6 +4,10 @@ package litellm
 
 import "testing"
 
+// TestSanitizeMCPServerName pins both the FIX.txt HIGH-1 rewrite behavior
+// for inputs that contain the forbidden char AND the FIX2.txt HIGH-9
+// no-op-on-safe-input contract that restores upgrade-stability for names
+// like "test-exa-mcp".
 func TestSanitizeMCPServerName(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -12,20 +16,28 @@ func TestSanitizeMCPServerName(t *testing.T) {
 		separator string
 		want      string
 	}{
-		// separator="." — ackstorm prod config; '.' forbidden, '-' allowed.
+		// ── separator="." (NEW default; "." is the forbidden char) ─────────
+		// Dotted discovery child: rewrite "." → "-".
 		{"dot-sep / three-part discovery", "test-toolhive-discovery.mcp.context7", ".", "test-toolhive-discovery-mcp-context7"},
-		{"dot-sep / no dots in name", "context7", ".", "context7"},
 		{"dot-sep / single dot", "a.b", ".", "a-b"},
 		{"dot-sep / trailing dot", "abc.", ".", "abc-"},
+		// HIGH-9 no-op-on-safe: hyphen-name has no ".", stays as-is.
+		{"dot-sep / hyphen-name unchanged", "test-exa-mcp", ".", "test-exa-mcp"},
+		{"dot-sep / no dots in name", "context7", ".", "context7"},
 		{"dot-sep / empty", "", ".", ""},
 
-		// separator="-" — LiteLLM default; '-' forbidden, '.' allowed.
+		// ── separator="-" (legacy; "-" is the forbidden char) ──────────────
+		// Hyphenated name under non-stock LiteLLM that rejects "-".
 		{"dash-sep / hyphenated name", "test-toolhive-discovery", "-", "test.toolhive.discovery"},
+		// HIGH-9 no-op-on-safe: dotted name has no "-", stays as-is.
+		{"dash-sep / dotted name unchanged", "a.b.c", "-", "a.b.c"},
 		{"dash-sep / no dashes", "context7", "-", "context7"},
-		{"dash-sep / dotted name passes through", "a.b.c", "-", "a.b.c"},
 
-		// separator="" — defaults to "-" semantics per LiteLLM upstream.
-		{"empty-sep defaults to dash", "a-b", "", "a.b"},
+		// ── separator="" (defaults to "." — the NEW default) ───────────────
+		// Empty sep + dotted input → rewrite.
+		{"empty-sep defaults to dot / rewrite", "a.b", "", "a-b"},
+		// Empty sep + hyphen-name has no ".", stays unchanged (HIGH-9 path).
+		{"empty-sep defaults to dot / hyphen-name unchanged", "test-exa-mcp", "", "test-exa-mcp"},
 
 		// Defensive: unrecognized separator → passthrough (CEL enforces the
 		// enum at admission, so this branch is never reached in prod).

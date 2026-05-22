@@ -10,12 +10,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 ### Changed
+- `LiteLLMConnection.spec.mcpToolPrefixSeparator` default flipped from
+  `"-"` to `"."` to match LiteLLM v1.85.1's stock validator behavior,
+  which rejects `"."` in `server_name` regardless of the
+  `MCP_TOOL_PREFIX_SEPARATOR` env var (FIX2.txt HIGH-1). Operators
+  running a non-stock LiteLLM that forbids `"-"` in `server_name` must
+  set the field explicitly to `"-"` on their Connection CR. Existing
+  CRs whose YAML omits the field will pick up the new default at the
+  next reconcile.
 
 ### Deprecated
 
 ### Removed
 
 ### Fixed
+- MCPServer sanitizer no longer rewrites already-safe inputs. Names
+  like `test-exa-mcp` that previously got mangled into `test.exa.mcp`
+  on the v0.1.2 upgrade boundary now pass through unchanged (FIX2.txt
+  HIGH-9).
+- MCPServer reconciler adopts a pre-existing LiteLLM record created
+  under the K8s `metadata.name` when the sanitized name has no record
+  but the raw name does. Heals upgrade-orphans without manual
+  `kubectl` intervention; applies on both the CREATE branch
+  (probe-before-POST) and the finalizer name-resolve path.
 
 ### Security
 

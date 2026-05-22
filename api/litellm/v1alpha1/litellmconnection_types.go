@@ -42,31 +42,40 @@ type LiteLLMConnectionSpec struct {
 	// +kubebuilder:validation:Required
 	MasterKeySecretRef SecretKeyRef `json:"masterKeySecretRef"`
 
-	// MCPToolPrefixSeparator mirrors LiteLLM's `MCP_TOOL_PREFIX_SEPARATOR`
-	// environment variable on the target LiteLLM instance. LiteLLM uses
-	// this character as the delimiter between server prefix and tool name
-	// in fully-qualified MCP tool identifiers, and it REJECTS the same
-	// character inside `server_name` at `POST /v1/mcp/server` time (HTTP
-	// 400 "Server name cannot contain '<sep>'."). The opposite member of
-	// the {".", "-"} pair is allowed inside `server_name`.
+	// MCPToolPrefixSeparator names the character that the target LiteLLM
+	// instance REJECTS inside `server_name` at `POST /v1/mcp/server` time
+	// (HTTP 400 "Server name cannot contain '<sep>'."). The opposite
+	// member of the {".", "-"} pair is allowed inside `server_name`.
+	//
+	// Empirically (FIX2.txt HIGH-1, 2026-05-22, against LiteLLM v1.85.1
+	// upstream image), the rejection character is "." regardless of the
+	// LiteLLM-side MCP_TOOL_PREFIX_SEPARATOR env var. The "." default
+	// matches stock LiteLLM out-of-the-box; users running a non-stock
+	// LiteLLM that forbids "-" must set this field explicitly to "-".
 	//
 	// The operator reads this field to sanitize the LiteLLM-side
 	// `server_name` and `alias` for every MCPServer routed through this
-	// Connection. The K8s `metadata.name` is left untouched — sanitization
-	// is wire-boundary only.
+	// Connection. The K8s `metadata.name` is left untouched —
+	// sanitization is wire-boundary only.
 	//
 	// Valid values:
-	//   - "-" (default; matches LiteLLM's own default). Forbids '-' in
-	//     server_name; the operator rewrites '-' → '.' in the wire payload.
-	//   - "." Forbids '.' in server_name (the ackstorm prod config since
-	//     the MCPServerDiscovery dotted-child template requires '-' inside
-	//     server_name). The operator rewrites '.' → '-' in the wire payload.
+	//   - "." (default; matches LiteLLM v1.85.1 stock validator). Forbids
+	//     '.' in server_name; the operator rewrites '.' → '-' in the wire
+	//     payload when (and only when) the input contains '.'.
+	//   - "-" Legacy / non-stock LiteLLM that forbids '-' in server_name;
+	//     the operator rewrites '-' → '.' in the wire payload when (and
+	//     only when) the input contains '-'.
 	//
-	// FIX.txt HIGH-1 (2026-05-22): without this field, dotted Discovery
-	// children failed at the LiteLLM-side validator on default deploys.
+	// FIX.txt HIGH-1 (2026-05-22): added the field after dotted Discovery
+	//   children failed at the LiteLLM-side validator on default deploys.
+	// FIX2.txt HIGH-1 (2026-05-22): default flipped from "-" to "." to
+	//   match the empirically-observed LiteLLM v1.85.1 behavior.
+	// FIX2.txt HIGH-9 (2026-05-22): sanitizer paired with this field
+	//   became a no-op on safe inputs, preventing upgrade-orphan of
+	//   pre-v0.1.2 hyphenated MCPServers.
 	//
 	// +optional
-	// +kubebuilder:default:="-"
+	// +kubebuilder:default:="."
 	// +kubebuilder:validation:Enum=-;.
 	MCPToolPrefixSeparator string `json:"mcpToolPrefixSeparator,omitempty"`
 }
