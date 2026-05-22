@@ -66,14 +66,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `alitellm-operator/<version>` the moment the controller first
   touches the row (FIX4.txt H-1 root cause for the prod symptom
   observed on v0.2.0).
-- team / mcpserver / a2aagent: stamp `created_by` + `updated_by` on
+- mcpserver / a2aagent: stamp `created_by` + `updated_by` on
   CREATE and `updated_by` on UPDATE — best-effort into the
-  respective freeform bag (`metadata` for Team, `mcp_info` for
-  MCPServer, `agent_card_params` for A2AAgent). The LiteLLM UI may
-  not surface these values on Team / MCPServer / A2AAgent rows
-  today (no native audit column), but the values are persisted on
-  the LiteLLM side and visible to any probe (FIX4.txt H-1
-  symmetry).
+  respective freeform bag (`mcp_info` for MCPServer,
+  `agent_card_params` for A2AAgent). The LiteLLM UI may not
+  surface these values on MCPServer / A2AAgent rows today (no
+  native audit column), but the values are persisted on the
+  LiteLLM side and visible to any probe (FIX4.txt H-1 symmetry).
+  Team stamping was attempted but reverted — e2e AC-T4 against
+  LiteLLM 1.83.10 showed metadata-bag stamping breaks the
+  /team/new bootstrap path; tracked as inventory case (b) until
+  LiteLLM ships a native audit column for /team/*.
 
 ### Documentation
 - `references/litellm-auth-model.md`: clarify the operator uses the
