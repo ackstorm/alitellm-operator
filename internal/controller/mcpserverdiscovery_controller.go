@@ -161,7 +161,28 @@ type MCPServerDiscoveryReconciler struct {
 	// race against the next test's local atomic.Int64 once the address
 	// was GC-reused.
 	ReconcileCount atomic.Int64
+
+	// cascadeDrainLog tracks per-CR drain progress so the
+	// "cascade-delete: waiting for children to drain" line is emitted
+	// at INFO only when the remaining count changes or the wait
+	// exceeds cascadeDrainDeadline. All other reconciles log at V(2).
+	// FIX3.txt LOW-3 — prevents one line every 5s during a hung delete.
+	cascadeDrainLogMu sync.Mutex
+	cascadeDrainLog   map[string]cascadeDrainState
 }
+
+// cascadeDrainState carries per-CR throttle state for the
+// "waiting for children to drain" log line. See cascadeDrainLog.
+type cascadeDrainState struct {
+	lastRemaining int
+	startedAt     time.Time
+	lastWarnAt    time.Time
+}
+
+// cascadeDrainDeadline is the elapsed-time threshold after which the
+// drain-wait log line is escalated to WARN with a hint to check
+// finalizer state on the children.
+const cascadeDrainDeadline = 5 * time.Minute
 
 // candidate is the post-derivation tuple for one ToolHive object that
 // passed the namespace + kind filter. The dotted name is the K8s-name
@@ -193,6 +214,49 @@ func (r *MCPServerDiscoveryReconciler) SetToolHive(i ToolHiveInformerReader) {
 	r.toolHiveMu.Lock()
 	defer r.toolHiveMu.Unlock()
 	r.ToolHiveInformer = i
+}
+
+// logCascadeDrain emits the "cascade-delete: waiting for children to
+// drain" line with FIX3.txt LOW-3 throttling: INFO only when the
+// remaining count changes from the last observation OR when the wait
+// has exceeded cascadeDrainDeadline (then WARN with a hint). All other
+// reconciles log at V(2). Per-CR state lives in r.cascadeDrainLog.
+func (r *MCPServerDiscoveryReconciler) logCascadeDrain(_ context.Context, logger logr.Logger, name string, remaining int) {
+	r.cascadeDrainLogMu.Lock()
+	defer r.cascadeDrainLogMu.Unlock()
+	if r.cascadeDrainLog == nil {
+		r.cascadeDrainLog = map[string]cascadeDrainState{}
+	}
+	now := time.Now()
+	prev, ok := r.cascadeDrainLog[name]
+	if !ok {
+		prev = cascadeDrainState{lastRemaining: -1, startedAt: now}
+	}
+	changed := prev.lastRemaining != remaining
+	overdue := now.Sub(prev.startedAt) >= cascadeDrainDeadline &&
+		now.Sub(prev.lastWarnAt) >= cascadeDrainDeadline
+	switch {
+	case overdue:
+		logger.Info("cascade-delete: still draining past deadline; check finalizer state on children",
+			"remaining", remaining,
+			"elapsed", now.Sub(prev.startedAt).Round(time.Second).String())
+		prev.lastWarnAt = now
+	case changed:
+		logger.Info("cascade-delete: waiting for children to drain", "remaining", remaining)
+	default:
+		logger.V(2).Info("cascade-delete: waiting for children to drain", "remaining", remaining)
+	}
+	prev.lastRemaining = remaining
+	r.cascadeDrainLog[name] = prev
+}
+
+// forgetCascadeDrain clears the per-CR drain-log throttle state after
+// the parent's finalizer is removed (drain complete). Prevents
+// monotonic growth of r.cascadeDrainLog over the operator's lifetime.
+func (r *MCPServerDiscoveryReconciler) forgetCascadeDrain(name string) {
+	r.cascadeDrainLogMu.Lock()
+	defer r.cascadeDrainLogMu.Unlock()
+	delete(r.cascadeDrainLog, name)
 }
 
 // Reconcile implements the MCPServerDiscovery state machine. See package
@@ -229,14 +293,32 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 				return ctrl.Result{}, err
 			}
 			if len(owned.Items) > 0 {
-				logger.Info("cascade-delete: waiting for children to drain",
-					"remaining", len(owned.Items))
+				// FIX3.txt HIGH-1: K8s GC cannot propagate the parent
+				// delete to children while the parent's finalizer is
+				// pending (deadlock: GC waits for finalizer, finalizer
+				// waits for GC). The reconciler MUST issue an explicit
+				// Delete against every child that has not yet entered
+				// its own deletion path. Children already being deleted
+				// (DeletionTimestamp set) are skipped — their own
+				// finalizer drives the LiteLLM DELETE.
+				for i := range owned.Items {
+					child := &owned.Items[i]
+					if !child.DeletionTimestamp.IsZero() {
+						continue
+					}
+					if err := r.Delete(ctx, child); err != nil && !apierrors.IsNotFound(err) {
+						return ctrl.Result{}, err
+					}
+				}
+				r.logCascadeDrain(ctx, logger, md.Name, len(owned.Items))
 				return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 			}
 			// All children drained. MSDisc finalizer issues NO LiteLLM
 			// call — just remove the finalizer.
 			// OBS-03: drop the cr_status_age_seconds label before the CR is gone (T-07-01-01).
 			metrics.CRStatusAgeTracker.Forget(mcpServerDiscoveryKind, md.Name)
+			// FIX3.txt LOW-3: drop drain-log throttle state.
+			r.forgetCascadeDrain(md.Name)
 			controllerutil.RemoveFinalizer(&md, mcpServerDiscoveryFinalizer)
 			if err := r.Update(ctx, &md); err != nil {
 				return ctrl.Result{}, err

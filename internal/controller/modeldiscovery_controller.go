@@ -51,6 +51,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	awsv2 "github.com/aws/aws-sdk-go-v2/aws"
@@ -215,6 +216,72 @@ type ModelDiscoveryReconciler struct {
 	Log        logr.Logger
 	// BootEvents (FIX2.txt H-2) — optional BootSweeper channel. nil-safe.
 	BootEvents <-chan event.GenericEvent
+
+	// cascadeDrainLog tracks per-CR drain progress so the
+	// "cascade-delete: waiting for children to drain" line is emitted
+	// at INFO only when the remaining count changes or the wait
+	// exceeds modelDiscoveryCascadeDrainDeadline. All other reconciles
+	// log at V(2). FIX3.txt LOW-3 — prevents one line every 5s during
+	// a hung delete.
+	cascadeDrainLogMu sync.Mutex
+	cascadeDrainLog   map[string]modelDiscoveryCascadeDrainState
+}
+
+// modelDiscoveryCascadeDrainState carries per-CR throttle state for the
+// "waiting for children to drain" log line. See cascadeDrainLog.
+type modelDiscoveryCascadeDrainState struct {
+	lastRemaining int
+	startedAt     time.Time
+	lastWarnAt    time.Time
+}
+
+// modelDiscoveryCascadeDrainDeadline is the elapsed-time threshold
+// after which the drain-wait log line is escalated to WARN with a
+// hint to check finalizer state on the children.
+const modelDiscoveryCascadeDrainDeadline = 5 * time.Minute
+
+// logCascadeDrain emits the "cascade-delete: waiting for children to
+// drain" line with FIX3.txt LOW-3 throttling: INFO only when the
+// remaining count changes from the last observation OR when the wait
+// has exceeded modelDiscoveryCascadeDrainDeadline (then WARN). All
+// other reconciles log at V(2). Per-CR state lives in
+// r.cascadeDrainLog.
+func (r *ModelDiscoveryReconciler) logCascadeDrain(_ context.Context, logger logr.Logger, name string, remaining int) {
+	r.cascadeDrainLogMu.Lock()
+	defer r.cascadeDrainLogMu.Unlock()
+	if r.cascadeDrainLog == nil {
+		r.cascadeDrainLog = map[string]modelDiscoveryCascadeDrainState{}
+	}
+	now := time.Now()
+	prev, ok := r.cascadeDrainLog[name]
+	if !ok {
+		prev = modelDiscoveryCascadeDrainState{lastRemaining: -1, startedAt: now}
+	}
+	changed := prev.lastRemaining != remaining
+	overdue := now.Sub(prev.startedAt) >= modelDiscoveryCascadeDrainDeadline &&
+		now.Sub(prev.lastWarnAt) >= modelDiscoveryCascadeDrainDeadline
+	switch {
+	case overdue:
+		logger.Info("cascade-delete: still draining past deadline; check finalizer state on children",
+			"remaining", remaining,
+			"elapsed", now.Sub(prev.startedAt).Round(time.Second).String())
+		prev.lastWarnAt = now
+	case changed:
+		logger.Info("cascade-delete: waiting for children to drain", "remaining", remaining)
+	default:
+		logger.V(2).Info("cascade-delete: waiting for children to drain", "remaining", remaining)
+	}
+	prev.lastRemaining = remaining
+	r.cascadeDrainLog[name] = prev
+}
+
+// forgetCascadeDrain clears the per-CR drain-log throttle state after
+// the parent's finalizer is removed (drain complete). Prevents
+// monotonic growth of r.cascadeDrainLog over the operator's lifetime.
+func (r *ModelDiscoveryReconciler) forgetCascadeDrain(name string) {
+	r.cascadeDrainLogMu.Lock()
+	defer r.cascadeDrainLogMu.Unlock()
+	delete(r.cascadeDrainLog, name)
 }
 
 // Reconcile implements the 13-step state machine. See package doc above.
@@ -255,14 +322,32 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				return ctrl.Result{}, err
 			}
 			if len(owned.Items) > 0 {
-				logger.Info("cascade-delete: waiting for children to drain",
-					"remaining", len(owned.Items))
+				// FIX3.txt HIGH-1: K8s GC cannot propagate the parent
+				// delete to children while the parent's finalizer is
+				// pending (deadlock: GC waits for finalizer, finalizer
+				// waits for GC). The reconciler MUST issue an explicit
+				// Delete against every child that has not yet entered
+				// its own deletion path. Children already being deleted
+				// (DeletionTimestamp set) are skipped — their own
+				// finalizer drives the LiteLLM DELETE.
+				for i := range owned.Items {
+					child := &owned.Items[i]
+					if !child.DeletionTimestamp.IsZero() {
+						continue
+					}
+					if err := r.Delete(ctx, child); err != nil && !apierrors.IsNotFound(err) {
+						return ctrl.Result{}, err
+					}
+				}
+				r.logCascadeDrain(ctx, logger, md.Name, len(owned.Items))
 				return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 			}
 			// All children drained. Discovery's finalizer issues NO
 			// LiteLLM call — just remove the finalizer.
 			// OBS-03: drop the cr_status_age_seconds label before the CR is gone (T-07-01-01).
 			metrics.CRStatusAgeTracker.Forget(modelDiscoveryKind, md.Name)
+			// FIX3.txt LOW-3: drop drain-log throttle state.
+			r.forgetCascadeDrain(md.Name)
 			controllerutil.RemoveFinalizer(&md, modelDiscoveryFinalizer)
 			if err := r.Update(ctx, &md); err != nil {
 				return ctrl.Result{}, err
