@@ -326,3 +326,86 @@ func TestDeleteModelPath(t *testing.T) {
 		t.Errorf("DeleteModel body missing id=to-delete: %s", captured[0].Body)
 	}
 }
+
+// TestCreateModelBodyStampsCreatedBy — FIX4.txt H-1 regression guard.
+// Asserts that when a caller stamps model_info.created_by + updated_by
+// on the request, the values reach the wire body verbatim. The
+// production code path in model_controller.go stamps identity.Operator()
+// on every CREATE; this guards against a future regression where the
+// model_info bag is dropped or zeroed before serialization.
+func TestCreateModelBodyStampsCreatedBy(t *testing.T) {
+	var captured []capturedRequest
+	srv := httptest.NewServer(captureMock(t, &captured, func(i int, w http.ResponseWriter) {
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"model_id":"abc","model_info":{"id":"abc"}}`))
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv.URL)
+	req := &Deployment{
+		ModelName:     "test-model",
+		LiteLLMParams: LiteLLMParams{},
+		ModelInfo: ModelInfo{
+			CreatedBy: "alitellm-operator/v0.2.1-test",
+			UpdatedBy: "alitellm-operator/v0.2.1-test",
+		},
+	}
+	if _, err := c.CreateModel(context.Background(), req); err != nil {
+		t.Fatalf("CreateModel: %v", err)
+	}
+	if len(captured) != 1 {
+		t.Fatalf("captured: want 1, got %d", len(captured))
+	}
+	var body map[string]any
+	if err := json.Unmarshal(captured[0].Body, &body); err != nil {
+		t.Fatalf("unmarshal body: %v", err)
+	}
+	mi, ok := body["model_info"].(map[string]any)
+	if !ok {
+		t.Fatalf("model_info missing from /model/new body: %s", captured[0].Body)
+	}
+	if cb, _ := mi["created_by"].(string); cb == "" {
+		t.Errorf("model_info.created_by empty in /model/new body: %s", captured[0].Body)
+	}
+	if ub, _ := mi["updated_by"].(string); ub == "" {
+		t.Errorf("model_info.updated_by empty in /model/new body: %s", captured[0].Body)
+	}
+}
+
+// TestUpdateModelBodyStampsUpdatedBy — FIX4.txt H-1 regression guard.
+// CreatedBy is intentionally not asserted on UPDATE — LiteLLM 1.83.10
+// keeps the original creator across updates, and the operator's
+// model_controller.go UPDATE branch stamps UpdatedBy only.
+func TestUpdateModelBodyStampsUpdatedBy(t *testing.T) {
+	var captured []capturedRequest
+	srv := httptest.NewServer(captureMock(t, &captured, func(i int, w http.ResponseWriter) {
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"model_id":"abc","model_info":{"id":"abc"}}`))
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv.URL)
+	req := &updateDeployment{
+		ID:            "abc",
+		ModelName:     "test-model",
+		LiteLLMParams: LiteLLMParams{},
+		ModelInfo:     ModelInfo{UpdatedBy: "alitellm-operator/v0.2.1-test"},
+	}
+	if _, err := c.UpdateModel(context.Background(), req); err != nil {
+		t.Fatalf("UpdateModel: %v", err)
+	}
+	if len(captured) != 1 {
+		t.Fatalf("captured: want 1, got %d", len(captured))
+	}
+	var body map[string]any
+	if err := json.Unmarshal(captured[0].Body, &body); err != nil {
+		t.Fatalf("unmarshal body: %v", err)
+	}
+	mi, ok := body["model_info"].(map[string]any)
+	if !ok {
+		t.Fatalf("model_info missing from /model/update body: %s", captured[0].Body)
+	}
+	if ub, _ := mi["updated_by"].(string); ub == "" {
+		t.Errorf("model_info.updated_by empty in /model/update body: %s", captured[0].Body)
+	}
+}

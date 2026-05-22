@@ -27,6 +27,7 @@ import (
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 	"github.com/ackstorm/alitellm-operator/internal/connection"
 	"github.com/ackstorm/alitellm-operator/internal/controller"
+	"github.com/ackstorm/alitellm-operator/internal/identity"
 	"github.com/ackstorm/alitellm-operator/internal/toolhive"
 
 	// Blank-import the metrics package so its init registers the §10
@@ -451,6 +452,13 @@ func main() {
 		setupLog.Error(err, "unable to set up ready check")
 		os.Exit(1)
 	}
+
+	// FIX4.txt H-1: log the audit identity literal the binary will stamp
+	// into LiteLLM /model/new, /model/update, /team/*, /v1/mcp/server,
+	// /a2a/agent payloads. Confirms ldflags Version injection without an
+	// external probe (prior FIX4 evidence had the field landing as null
+	// in the UI; this surfaces the actual value at boot).
+	setupLog.Info("operator identity", "value", identity.Operator())
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
