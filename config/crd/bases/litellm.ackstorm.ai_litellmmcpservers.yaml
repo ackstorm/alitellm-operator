@@ -91,6 +91,20 @@ spec:
               MCP-04: the operator updates via `PUT /v1/mcp/server` (wholesale-replace,
               empirically validated by Probe 10c on 1.83.10-stable per Phase 5 plan
               05-00) and deletes via `DELETE /v1/mcp/server/<id>`.
+
+              MCP-05: LiteLLM rejects its `MCP_TOOL_PREFIX_SEPARATOR` env value inside
+              `server_name` at `POST /v1/mcp/server` time (HTTP 400 "Server name
+              cannot contain '<sep>'."). The MCPServer reconciler sanitizes the
+              LiteLLM-side `server_name` and `alias` per the parent
+              LiteLLMConnection's `spec.mcpToolPrefixSeparator` (default `-`), swapping
+              the configured separator for the opposite valid character (`-` ↔ `.`)
+              via `litellm.SanitizeMCPServerName`. The K8s-side `metadata.name` is
+              left untouched — the dotted MCPServerDiscovery child template
+              (`<discovery>.<source-ns>.<source-name>`) survives unchanged, and the
+              divergence between K8s identity and LiteLLM identity is confined to
+              the wire boundary (FIX.txt HIGH-1, 2026-05-22). The canonical hash
+              input and the finalizer name-resolve fallback both use the sanitized
+              form so drift detection stays consistent with what LiteLLM stores.
             properties:
               endpoint:
                 description: |-
@@ -303,8 +317,12 @@ spec:
                     description: |-
                       Hash is the SHA-256 hex of the RFC 8785–canonicalized merged
                       post-substitution body (spec.params merged with structural
-                      overlays {server_name, url, transport}). An empty hash indicates
-                      the MCPServer has not yet been successfully reconciled.
+                      overlays {server_name, url, transport}). `server_name` in this
+                      overlay is the LiteLLM-side sanitized name per MCP-05 (the
+                      `litellm.SanitizeMCPServerName` rewrite of metadata.name driven by
+                      the parent Connection's spec.mcpToolPrefixSeparator). An empty
+                      hash indicates the MCPServer has not yet been successfully
+                      reconciled.
                     type: string
                   paramsKeys:
                     description: |-
@@ -324,7 +342,9 @@ spec:
                       server entry. Pinned per Phase 5 D-02 so the reconciler can call
                       `DELETE /v1/mcp/server/<server_id>` directly on the finalizer
                       path without re-resolving by name. On first reconcile, resolved
-                      via `GET /v1/mcp/server` + in-memory filter on metadata.name.
+                      via `GET /v1/mcp/server` + in-memory filter on the LiteLLM-side
+                      sanitized name (MCP-05; the rewrite of metadata.name driven by
+                      the parent Connection's spec.mcpToolPrefixSeparator).
 
                       Diverges from spec §6.4: documented in
                       spec/DEFECTS-1.82.6.md row `DEF-§6.4/§6.6-ID-PERSIST`.

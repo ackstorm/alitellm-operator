@@ -4,6 +4,34 @@ Surgical reference card for AI agents working in this repository. Read the
 sections relevant to your task. Reading MANDATORY Reading Table entries
 before touching the corresponding code is non-negotiable.
 
+## Documentation hygiene — keep this file and `docs/` in sync with the code
+
+Whenever a change alters behavior, contracts, or workflows that this
+`CLAUDE.md` or the user-facing docs describe, update the affected
+documentation in the SAME commit as the code change. No "docs follow-up
+PR later".
+
+Triggers requiring a docs/CLAUDE.md update:
+- New or changed CRD field, condition, or default value → update
+  `docs/api-reference/` (`make gen-crd-ref-docs`) and any CRD examples
+  under `examples/`.
+- New `make` target, renamed target, or changed default behavior →
+  update the relevant table in this file (Test phases, Waiting for
+  state, ...) and `docs/` if user-facing.
+- New `wait-*` target, blessed pattern, or polling rule → update the
+  "Waiting for state" table and the bash anti-patterns section.
+- New pre-push gate, govulncheck ack-list entry, or SPDX/license rule →
+  update the "Publication" section and `references/security/...`.
+- Release pipeline change (`release.yml`, goreleaser configs, bump
+  flow) → update the "Release pipeline" section.
+- New common failure mode encountered while debugging → add a
+  `### ❌ ... ✅ ...` entry under "Common failure modes".
+- New MANDATORY-read file for a workflow → add a row to the
+  "MANDATORY Reading Table".
+
+If a doc claim is found stale during work, fix it in the same change
+that revealed the staleness. Drift is a bug, not tech debt.
+
 ## Quick context
 
 Kubernetes operator that reconciles LiteLLM proxy state — teams, models,
@@ -86,6 +114,7 @@ alitellm-operator/
 | Publication / first-push procedure     | `PUBLISH.md`                             |
 | Helm chart values + defaults           | `deploy/helm/alitellm-operator/values.yaml` |
 | API reference rendering                | `docs/Makefile` (`gen-crd-ref-docs`) + `docs/.crd-ref-docs.yaml` |
+| Docs site, mkdocs, mike, gh-pages flow | `references/docs/documentation.md`       |
 | OLM packaging                          | NOT supported — explicit scope decision (no OperatorHub) |
 
 ## Toolchain — host has NO Go (always Docker)
