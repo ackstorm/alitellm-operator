@@ -277,7 +277,12 @@ func msDiscSampleCR(name string, namespaces []string) *litellmv1alpha1.LiteLLMMC
 			Namespace: WatchNamespace,
 		},
 		Spec: litellmv1alpha1.MCPServerDiscoverySpec{
-			Type: "toolhive",
+			// FIX4 H-2 v0.3.0: spec.prefix is now required; tests use
+			// the discovery name as the prefix so wantChildName ends up
+			// "<mdName>-<thName>" (matches the operator's new
+			// `<prefix>-<source-name>` rendering convention).
+			Prefix: name,
+			Type:   "toolhive",
 			Toolhive: litellmv1alpha1.MCPServerDiscoveryToolhive{
 				Namespaces: namespaces,
 				Kinds:      []string{"MCPServer", "VirtualMCPServer"},
@@ -322,7 +327,7 @@ func touchMCPServerDiscovery(t *testing.T, ctx context.Context, name string) {
 // TestMCPServerDiscoveryReconciler_BasicGeneration locks the MSDISC-03
 // happy path: spec.toolhive.namespaces=[dev], inject ToolHive MCPServer
 // `dev/tool-a` with status.url + status.transport → within 30s a child
-// MCPServer `<discovery>.dev.tool-a` exists in WatchNamespace with the
+// MCPServer `<discovery>-tool-a` exists in WatchNamespace with the
 // full MSDISC-10 metadata shape (ownerRef[controller=true,
 // blockOwnerDeletion=true], generatedByLabel=<discovery>, finalizer,
 // endpoint/transport overlaid).
@@ -347,7 +352,7 @@ func TestMCPServerDiscoveryReconciler_BasicGeneration(t *testing.T) {
 	}
 
 	// Wait for child to land.
-	wantChildName := mdName + "." + thNamespace + "." + thName
+	wantChildName := mdName + "-" + thName
 	children := pollMCPServerDiscoveryChildren(t, ctx, mdName, 1, 30*time.Second)
 	if len(children) != 1 {
 		// Diagnostic dump.
@@ -645,9 +650,12 @@ func TestMCPServerDiscoveryReconciler_FilterOnPostDerivationName(t *testing.T) {
 	createToolhiveMCPServer(t, ctx, "prod", thNameProd, "https://prod.example.com", "http")
 
 	md := msDiscSampleCR(mdName, []string{"dev", "prod"})
-	// Include pattern matching the dotted form `<discovery>.dev.<anything>`.
+	// FIX4 H-2 v0.3.0: filter target is now the new hyphen-separated
+	// `<spec.prefix>-<source-name>` form (no source-namespace component).
+	// Test the include pattern against the source-name suffix that is
+	// unique to the dev entry — same intent, new naming convention.
 	md.Spec.Filters = &litellmv1alpha1.MCPServerDiscoveryFilters{
-		Include: []string{mdName + `\.dev\..*`},
+		Include: []string{mdName + `-tool-dev`},
 	}
 	if err := k8sClient.Create(ctx, md); err != nil {
 		t.Fatalf("create MCPServerDiscovery: %v", err)
@@ -657,10 +665,10 @@ func TestMCPServerDiscoveryReconciler_FilterOnPostDerivationName(t *testing.T) {
 	if len(children) != 1 {
 		t.Fatalf("expected 1 child (dev only via post-derivation include filter), got %d", len(children))
 	}
-	wantDottedDev := mdName + ".dev." + thNameDev
-	if children[0].Name != wantDottedDev {
-		t.Errorf("filtered child name: got %q, want %q (dotted-name include matched the dev entry)",
-			children[0].Name, wantDottedDev)
+	wantChild := mdName + "-" + thNameDev
+	if children[0].Name != wantChild {
+		t.Errorf("filtered child name: got %q, want %q (post-derivation include matched the dev entry)",
+			children[0].Name, wantChild)
 	}
 }
 
@@ -732,7 +740,7 @@ func TestMCPServerDiscoveryReconciler_NoLitellmCalls(t *testing.T) {
 	}
 
 	// Wait for the child to land (proves MSDisc's reconcile completed).
-	wantChild := mdName + "." + thNamespace + "." + thName
+	wantChild := mdName + "-" + thName
 	children := pollMCPServerDiscoveryChildren(t, ctx, mdName, 1, 30*time.Second)
 	if len(children) != 1 {
 		t.Fatalf("expected 1 child, got %d", len(children))
@@ -829,7 +837,7 @@ func TestMCPServerDiscoveryReconciler_ConflictExplicit(t *testing.T) {
 
 	ensureNoMCPServerDiscovery(t, ctx, mdName)
 	ensureNoToolhiveObject(t, ctx, toolhive.MCPServerGVK, thNamespace, thName)
-	dotted := mdName + "." + thNamespace + "." + thName
+	dotted := mdName + "-" + thName
 	ensureNoMCPServer(t, ctx, dotted)
 	t.Cleanup(func() {
 		ensureNoMCPServerDiscovery(t, context.Background(), mdName)
@@ -891,7 +899,7 @@ func TestMCPServerDiscoveryReconciler_Adoption(t *testing.T) {
 	const mdName = "adoption-test"
 	const thNamespace = "dev"
 	const thName = "tool-adoption"
-	dotted := mdName + "." + thNamespace + "." + thName
+	dotted := mdName + "-" + thName
 
 	ensureNoMCPServerDiscovery(t, ctx, mdName)
 	ensureNoToolhiveObject(t, ctx, toolhive.MCPServerGVK, thNamespace, thName)
@@ -986,7 +994,7 @@ func TestMCPServerDiscoveryReconciler_VanishDetection(t *testing.T) {
 	const mdName = "vanish-test"
 	const thNamespace = "dev"
 	const thName = "tool-vanish"
-	dotted := mdName + "." + thNamespace + "." + thName
+	dotted := mdName + "-" + thName
 
 	ensureNoMCPServerDiscovery(t, ctx, mdName)
 	ensureNoToolhiveObject(t, ctx, toolhive.MCPServerGVK, thNamespace, thName)
@@ -1039,7 +1047,7 @@ func TestMCPServerDiscoveryReconciler_AtomicRefresh(t *testing.T) {
 	const mdName = "atomic-refresh"
 	const thNamespace = "dev"
 	const thName = "tool-atomic"
-	dotted := mdName + "." + thNamespace + "." + thName
+	dotted := mdName + "-" + thName
 
 	ensureNoMCPServerDiscovery(t, ctx, mdName)
 	ensureNoToolhiveObject(t, ctx, toolhive.MCPServerGVK, thNamespace, thName)
@@ -1118,7 +1126,7 @@ func TestMCPServerDiscoveryReconciler_CascadeDelete(t *testing.T) {
 	const mdName = "cascade-test"
 	const thNamespace = "dev"
 	const thName = "tool-cascade"
-	dotted := mdName + "." + thNamespace + "." + thName
+	dotted := mdName + "-" + thName
 
 	ensureNoMCPServerDiscovery(t, ctx, mdName)
 	ensureNoToolhiveObject(t, ctx, toolhive.MCPServerGVK, thNamespace, thName)
@@ -1237,7 +1245,7 @@ func TestMCPServerDiscoveryReconciler_PropagationVerbatim(t *testing.T) {
 	const mdName = "propagation"
 	const thNamespace = "dev"
 	const thName = "tool-prop"
-	dotted := mdName + "." + thNamespace + "." + thName
+	dotted := mdName + "-" + thName
 
 	ensureNoMCPServerDiscovery(t, ctx, mdName)
 	ensureNoToolhiveObject(t, ctx, toolhive.MCPServerGVK, thNamespace, thName)
@@ -1322,7 +1330,7 @@ func TestMCPServerDiscoveryReconciler_UrlChangeWithoutCREvent(t *testing.T) {
 	const mdName = "url-change"
 	const thNamespace = "dev"
 	const thName = "tool-urlchange"
-	dotted := mdName + "." + thNamespace + "." + thName
+	dotted := mdName + "-" + thName
 
 	ensureNoMCPServerDiscovery(t, ctx, mdName)
 	ensureNoToolhiveObject(t, ctx, toolhive.MCPServerGVK, thNamespace, thName)
@@ -1390,7 +1398,7 @@ func TestMCPServerDiscoveryReconciler_NoEventLoop_OnChildSpecChange(t *testing.T
 	const mdName = "no-event-loop"
 	const thNamespace = "dev"
 	const thName = "tool-noloop"
-	dotted := mdName + "." + thNamespace + "." + thName
+	dotted := mdName + "-" + thName
 
 	ensureNoMCPServerDiscovery(t, ctx, mdName)
 	ensureNoToolhiveObject(t, ctx, toolhive.MCPServerGVK, thNamespace, thName)
@@ -1486,7 +1494,7 @@ func TestMCPServerDiscoveryReconciler_AC_SEC4_Propagate(t *testing.T) {
 	const thNamespace = "dev"
 	const thName = "tool-sec4"
 	const secName = "sec4-token-secret"
-	dotted := mdName + "." + thNamespace + "." + thName
+	dotted := mdName + "-" + thName
 
 	ensureNoMCPServerDiscovery(t, ctx, mdName)
 	ensureNoToolhiveObject(t, ctx, toolhive.MCPServerGVK, thNamespace, thName)
@@ -1680,7 +1688,7 @@ func TestMCPServerDiscoveryReconciler_AC_DC1_VanishIncrementsOnChild(t *testing.
 	const mdName = "dc1-vanish"
 	const thNamespace = "dev"
 	const thName = "tool-vanish"
-	dotted := mdName + "." + thNamespace + "." + thName
+	dotted := mdName + "-" + thName
 
 	ensureNoMCPServerDiscovery(t, ctx, mdName)
 	ensureNoToolhiveObject(t, ctx, toolhive.MCPServerGVK, thNamespace, thName)
@@ -1818,7 +1826,7 @@ func TestMCPServerDiscoveryReconciler_CR01_AlreadyExistsRetryPreservesChild(t *t
 	const mdName = "cr01-retry-preserve"
 	const thNamespace = "dev"
 	const thName = "tool-cr01"
-	dotted := mdName + "." + thNamespace + "." + thName
+	dotted := mdName + "-" + thName
 
 	ensureNoMCPServerDiscovery(t, ctx, mdName)
 	ensureNoToolhiveObject(t, ctx, toolhive.MCPServerGVK, thNamespace, thName)

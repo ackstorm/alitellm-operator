@@ -26,8 +26,9 @@
 #   (a) Ready=True reason=Synced once ToolHive CRDs are installed and
 #       the lazy informer registers successfully.
 #   (b) Generated child MCPServer CRs named
-#       "toolhive.<toolhive-namespace>.<toolhive-name>" appearing in
-#       default within 30s.
+#       "<spec.prefix>-<toolhive-name>" (FIX4 H-2 v0.3.0) appearing in
+#       default within 30s. With the example below, the prefix is "th",
+#       so a ToolHive object named "ctx7" becomes child "th-ctx7".
 #   (c) Refresh every 1 minute (spec.refresh.interval).
 # When ToolHive is absent: Ready=False reason=SourceUnreachable — acceptable.
 apiVersion: litellm.ackstorm.ai/v1alpha1
@@ -39,6 +40,11 @@ metadata:
     app.kubernetes.io/name: alitellm-operator
     app.kubernetes.io/managed-by: kustomize
 spec:
+  # FIX4 H-2 v0.3.0: spec.prefix is required. DNS-1123 label,
+  # MaxLength=30. Used as the first segment of every generated child's
+  # metadata.name (`<prefix>-<source-name>`). Mirrors
+  # LiteLLMModelDiscovery.spec.prefix for cross-discovery-kind symmetry.
+  prefix: th
   # Discovery type — toolhive is the only supported value in v1alpha1.
   type: toolhive
   # ToolHive namespaces to watch for MCPServer/VirtualMCPServer objects.

@@ -107,7 +107,11 @@ func newToolhiveMSDiscovery(name, ns string, fromNs []string) *unstructured.Unst
 				"namespace": ns,
 			},
 			"spec": map[string]interface{}{
-				"type": "toolhive",
+				// FIX4 H-2 v0.3.0: spec.prefix is required; use the
+				// discovery name so child names land at
+				// "<msdName>-<source-name>".
+				"prefix": name,
+				"type":   "toolhive",
 				"toolhive": map[string]interface{}{
 					"namespaces": nsAny,
 					"kinds":      []interface{}{"MCPServer"},

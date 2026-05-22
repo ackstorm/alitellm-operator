@@ -19,6 +19,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+## [0.3.0] - TBD
+
+### BREAKING CHANGES
+- **mcpserverdiscovery: `spec.prefix` is now required.** Pre-v0.3.0
+  `LiteLLMMCPServerDiscovery` CRs without `spec.prefix` will fail
+  admission on `kubectl apply` after upgrade. Add the field (DNS-1123
+  label, MaxLength=30) to every existing CR in your gitops tree
+  BEFORE upgrading (FIX4.txt H-2).
+- **mcpserverdiscovery: children are renamed.**
+  - Pre-v0.3.0 K8s child name: `<discovery>.<source-ns>.<source-name>`
+  - v0.3.0 K8s child name:     `<spec.prefix>-<source-name>`
+
+  The source-namespace component is dropped. The user picks
+  `spec.prefix` to disambiguate across discoveries.
+
+  All currently-managed K8s MCPServer CRs will be deleted on
+  upgrade (their finalizer fires → LiteLLM DELETE → fine) and
+  recreated under the new name → POST /v1/mcp/server registers
+  fresh records on the LiteLLM side. The LiteLLM-side records
+  under the OLD names become orphans; manual cleanup is required
+  via LiteLLM's admin UI or the `/v1/mcp/server` API. See
+  `docs/releases/v0.3.0-migration.md` for the full migration
+  checklist.
+
+### Added
+- mcpserverdiscovery: `NameCollision` status condition fires
+  (`Status=True`, `Reason=NameCollision`) when two upstream ToolHive
+  objects from different namespaces produce the same
+  `<spec.prefix>-<source-name>` child name within a single discovery.
+  The first occurrence wins; later occurrences are dropped into
+  `status.skippedCandidates[Reason=NameCollision]`. Loud-fail, not
+  silent-merge — rename one upstream or split the discovery into
+  prefix-distinct ones to resolve (FIX4.txt H-2).
+
 ## [0.2.1] - TBD
 
 ### Added
