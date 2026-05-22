@@ -93,9 +93,12 @@ type ModelDiscoverySpec struct {
 	// with distinct spec.prefix (e.g. bedrock-use1, bedrock-euw1).
 	//
 	// The value is overlaid as aws_region_name in each generated child
-	// Model's spec.params (the operator's only typed-field overlay per
-	// CONTEXT.md D-07 line 79-85). Plain string — AWS region codes are
-	// open-ended and not enumerated here; CEL gates presence per provider.
+	// Model's spec.params. This is one of two typed-field overlays the
+	// reconciler applies per CONTEXT.md D-07: bedrock spec.region →
+	// aws_region_name (overwrite-wins) and kubeai spec.baseUrl →
+	// api_base (user-supplied wins; see BaseURL doc, FIX.txt H-2). Plain
+	// string — AWS region codes are open-ended and not enumerated here;
+	// CEL gates presence per provider.
 	//
 	// +optional
 	Region string `json:"region,omitempty"`
@@ -111,6 +114,15 @@ type ModelDiscoverySpec struct {
 	// spec.baseUrl=<provider URL>; the per-request Bearer key comes from
 	// spec.credentialsSecretRef. No URL pattern is enforced at the CRD
 	// layer; CEL only gates presence/absence per provider type.
+	//
+	// kubeai-only typed-field overlay (D-07, FIX.txt H-2 2026-05-22):
+	// when spec.type=kubeai, the reconciler also overlays
+	// spec.baseUrl → spec.params.api_base on each generated child Model,
+	// so the LiteLLM proxy can route hosted_vllm/<id> inference requests
+	// at runtime. User-supplied params.api_base wins over the auto-overlay
+	// (presence check). Diverges from the bedrock region overlay's
+	// overwrite-wins semantics on purpose: api_base is a legitimate per-
+	// child routing override.
 	//
 	// +optional
 	BaseURL string `json:"baseUrl,omitempty"`
