@@ -1,0 +1,252 @@
+FIX3.txt — alitellm-operator follow-up findings (v0.1.2 delete-paths)
+=======================================================================
+Generated: 2026-05-22
+Source: live cluster repro after FIX2.txt smoke-test. User attempted
+        `kubectl delete litellmmcpserverdiscovery test-toolhive-discovery`
+        and the parent + 22 children hung forever.
+
+Conventions (same as FIX.txt / FIX2.txt):
+  HIGH    = blocks a feature end-to-end; user-visible 100% failure rate.
+  MEDIUM  = degrades UX or causes false positives; happy path works.
+  LOW     = polish, observability, docs.
+
+────────────────────────────────────────────────────────────────
+[HIGH-1] MCPServerDiscovery finalizer cascade-delete DEADLOCKS — parent
+         waits for children to drain but never deletes them. K8s GC
+         won't propagate either because parent's finalizer is pending.
+
+STATUS: SHIPPED on branch fix/fix3-txt-remediation (commits 1545748,
+        a015c45) — MSDisc + ModelDiscovery delete paths now issue
+        explicit r.Delete() against every owned child whose
+        DeletionTimestamp is zero before requeueing. Finalizer is only
+        cleared once the owned list drains. NotFound on Delete is
+        tolerated. Envtest cascade-test fixture still passes.
+────────────────────────────────────────────────────────────────
+SYMPTOM
+  `kubectl delete litellmmcpserverdiscovery test-toolhive-discovery
+   -n ackstorm` returns immediately, but the resource and all 22
+  children stay in the cluster indefinitely. The parent has
+  deletionTimestamp set but the finalizer is never removed.
+  Operator log (every 5s, forever):
+    INFO cascade-delete: waiting for children to drain
+      {"controller":"mcpserverdiscovery",
+       "name":"test-toolhive-discovery", "remaining": 22}
+  Children show NO deletionTimestamp — they're not being deleted
+  by anyone.
+
+EVIDENCE
+  - Parent state:
+        deletionTimestamp: 2026-05-22T14:34:28Z
+        finalizers:
+          - mcpserverdiscoveries.litellm.ackstorm.ai/finalizer
+        # cascade-delete loop logs "remaining: 22" forever
+  - Children state (any one of the 22):
+        # No deletionTimestamp set
+        ownerReferences:
+          - apiVersion: litellm.ackstorm.ai/v1alpha1
+            kind: LiteLLMMCPServerDiscovery
+            name: test-toolhive-discovery
+            controller: true
+            blockOwnerDeletion: true
+        finalizers:
+          - mcpservers.litellm.ackstorm.ai/finalizer
+  - The default cascade mode of `kubectl delete` is background.
+    K8s GC handles owned-resource propagation in the background AFTER
+    the owner is gone. But the owner can't be GC'd because its
+    finalizer is pending. Result: GC waits for finalizer; finalizer
+    waits for GC. Classic deadlock.
+
+ROOT CAUSE
+  In the MCPServerDiscovery controller's delete path, the finalizer
+  logic POLLS for children to disappear ("waiting for children to
+  drain") but never issues `client.Delete()` against each child. The
+  implicit assumption is that K8s GC will propagate the parent delete
+  to the children — which is correct semantically, but only AFTER the
+  parent's own finalizer is cleared. With the order flipped (poll
+  before delete), the loop never converges.
+  ModelDiscovery has the SAME bug — confirmed 2026-05-22 prod repro:
+  issuing `kubectl delete` on 5 ModelDiscovery CRs (test-openai-discovery,
+  test-anthropic-discovery, test-bedrock-discovery, test-gemini-discovery,
+  test-kubeai-discovery) produced identical
+  "cascade-delete: waiting for children to drain" lines from the
+  `modeldiscovery` controller with remaining counts of 49 / 3 / 18 /
+  41 / 4 respectively. None of the 115 children were marked for
+  deletion. Same code path, same deadlock.
+
+FIX
+  In `internal/controller/mcpserverdiscovery_controller.go` delete
+  path:
+  1. List all children owned by this discovery
+     (label `litellm.ackstorm.ai/generated-by=<discovery-name>`).
+  2. For each child whose `deletionTimestamp` is NOT yet set, issue
+     `r.Delete(ctx, &child)`. Skip children already being deleted.
+  3. If any child still exists (whether or not it has a
+     deletionTimestamp), requeue and return; do NOT clear the
+     finalizer yet.
+  4. Once `len(children) == 0`, remove the parent's finalizer.
+  Mirror the same change in ModelDiscovery's delete path
+  (`internal/controller/modeldiscovery_controller.go`) — same
+  ownership pattern, same deadlock risk.
+
+  Alternative cheap fix: drop `blockOwnerDeletion: true` from the
+  child ownerReference so K8s GC can delete children even while the
+  parent's finalizer is pending. Lower-effort but loses the
+  "delete-blocker" semantic that protects against partial deletes.
+
+TEST PLAN
+  1. envtest: create a Discovery that generates 3 children. Confirm
+     all 3 reach Ready=True (or Ready=False, doesn't matter).
+     `kubectl delete` the Discovery. Assert within 60s:
+       - All 3 children GET → NotFound
+       - The Discovery itself GET → NotFound
+       - The operator log shows EXACTLY one delete call per child
+         (no log spam).
+  2. envtest: same as (1) but children all have finalizers that
+     succeed on first reconcile. The cascade should complete in <30s.
+  3. envtest: same as (1) but with a single child whose LiteLLM
+     DELETE returns 500 once then 200. The cascade should still
+     complete (backoff applies, eventual success).
+  4. envtest regression: assert ModelDiscovery cascade delete behaves
+     the same way (parent + N children all gone after one delete).
+
+WORKAROUND
+  Manual unblock for the test-toolhive-discovery case:
+  ```bash
+  # Force-delete all 22 children:
+  kubectl delete litellmmcpserver -n ackstorm \
+    -l litellm.ackstorm.ai/generated-by=test-toolhive-discovery \
+    --wait=false
+  # If their own finalizers also hang (e.g. SERVERID empty + LiteLLM
+  # 404 on DELETE treated as transient), strip the finalizers:
+  for n in $(kubectl get litellmmcpserver -n ackstorm \
+             -l litellm.ackstorm.ai/generated-by=test-toolhive-discovery \
+             -o jsonpath='{.items[*].metadata.name}'); do
+    kubectl patch litellmmcpserver $n -n ackstorm --type=merge \
+      -p '{"metadata":{"finalizers":[]}}'
+  done
+  # Then strip the parent finalizer:
+  kubectl patch litellmmcpserverdiscovery test-toolhive-discovery \
+    -n ackstorm --type=merge -p '{"metadata":{"finalizers":[]}}'
+  ```
+
+────────────────────────────────────────────────────────────────
+[MEDIUM-2] MCPServer finalizer likely hangs on never-registered children
+            (SERVERID empty + LiteLLM 404 on DELETE)
+
+STATUS: NO-OP — verified already correct on 2026-05-22.
+        mcpserver_controller.go:157-203 already short-circuits when
+        Status.LastRendered.ServerID is empty (after a name-resolve
+        fallback): the DELETE is skipped and the finalizer is cleared
+        with the "LiteLLM entry already absent" log line. For non-empty
+        IDs, the LiteLLM client (internal/litellm/client.go:187-189)
+        already maps HTTP 404 on DELETE to a nil return — idempotent
+        delete is the wire-level contract, no controller-side
+        classify-as-success needed. Same shape verified on Model
+        (model_controller.go:139+), A2AAgent
+        (a2aagent_controller.go:166+), and Team. No code change
+        required.
+────────────────────────────────────────────────────────────────
+SYMPTOM
+  In the same test-toolhive-discovery cleanup scenario, the 22
+  children all have:
+      status.lastRendered.ServerID: <empty>
+  (because they failed to register at LiteLLM with HTTP 400). If the
+  user issues `kubectl delete` directly on a child (or HIGH-1 triggers
+  a parent-driven cascade), the MCPServer finalizer logic will likely
+  hit one of:
+  - Skip the LiteLLM DELETE because ServerID is empty → release
+    finalizer immediately (best case).
+  - Try DELETE /v1/mcp/server/ (empty path) → 404 / 405 → classify as
+    transient → backoff loop forever.
+  - Try DELETE with empty body → 400 → same backoff loop.
+
+EVIDENCE
+  - Children spec.params.ServerID empty in YAML.
+  - HIGH-1 evidence shows the children remained even though the
+    discovery cascade is supposed to delete them — once HIGH-1 is
+    fixed, this finalizer path will get exercised at scale.
+
+ROOT CAUSE
+  Speculative pending code inspection. The fix path needs the
+  MCPServer delete handler to:
+  - Short-circuit when ServerID is empty: just remove the finalizer.
+  - On a real ServerID, classify 404 from LiteLLM as
+    "already deleted, success" not "transient, retry".
+
+FIX
+  In `internal/controller/mcpserver_controller.go` delete handler:
+  ```go
+  if mcp.Status.LastRendered.ServerID == "" {
+      // Never reached LiteLLM-side state. Nothing to clean up.
+      controllerutil.RemoveFinalizer(&mcp, mcpServerFinalizer)
+      return ctrl.Result{}, r.Update(ctx, &mcp)
+  }
+  err := r.snap.Client.DeleteMCPServer(ctx, mcp.Status.LastRendered.ServerID)
+  if err != nil && !errors.Is(err, litellm.ErrNotFound) {
+      return r.classifyMutationError(...)  // transient retries OK
+  }
+  // 200 OR 404 → success
+  controllerutil.RemoveFinalizer(&mcp, mcpServerFinalizer)
+  return ctrl.Result{}, r.Update(ctx, &mcp)
+  ```
+  Apply the same shape to Model, A2AAgent, Team delete handlers if
+  they have similar "ID missing / upstream already gone" gaps.
+
+TEST PLAN
+  1. envtest: create MCPServer that immediately fails LiteLLM
+     register (mock returns 400). Trigger delete. Assert finalizer
+     removed within 1 reconcile (no 404 retry loop).
+  2. envtest: create MCPServer with valid ServerID. Mock LiteLLM
+     DELETE returns 404. Assert finalizer still removed (the
+     "already gone" case).
+  3. envtest: with 500 from LiteLLM DELETE, retry until 200 → finalizer
+     removed.
+
+────────────────────────────────────────────────────────────────
+[LOW-3] Cascade-delete log line per reconcile is verbose
+
+STATUS: SHIPPED on branch fix/fix3-txt-remediation (commits 1545748,
+        a015c45 — bundled with HIGH-1). Both Discovery reconcilers
+        keep per-CR drain state on the reconciler struct; the
+        "cascade-delete: waiting for children to drain" line is emitted
+        at INFO only when the remaining-child count changes. A WARN
+        re-emit fires once the wait exceeds cascadeDrainDeadline
+        (5m) with a hint to check finalizer state on the children.
+        Every other reconcile logs at V(2). State is forgotten on
+        finalizer removal so the per-CR map cannot grow without bound.
+────────────────────────────────────────────────────────────────
+SYMPTOM
+  Operator emits one INFO line every ~5s while waiting:
+    "cascade-delete: waiting for children to drain ... remaining: 22"
+  Over a hung 30-min delete attempt that's 360 lines for the same
+  state. Same noise pattern as FIX2.txt MEDIUM-4 (toolhive dedup
+  throttle).
+
+ROOT CAUSE
+  No throttle. Each reconcile logs at INFO unconditionally.
+
+FIX
+  Log the same message at V(2) by default; emit at INFO only when:
+  - count of remaining children CHANGED since last reconcile, OR
+  - the wait has exceeded a deadline (e.g. 5 minutes), at which point
+    log at WARN with a hint to check finalizer state on the children.
+
+TEST PLAN
+  Unit test the log emitter directly: 100 consecutive calls with
+  `remaining=22` produce ≤ 2 INFO logs (first + deadline).
+
+────────────────────────────────────────────────────────────────
+What is NOT in this list (and why)
+────────────────────────────────────────────────────────────────
+- ModelDiscovery cascade behavior: CONFIRMED same bug in prod
+  2026-05-22; folded into HIGH-1 as a "mirror the fix" item with
+  evidence.
+- Test-discovery hanging in prod after the v0.1.2 sanitizer broke
+  the children — covered by FIX2.txt HIGH-9 (regression). The
+  delete-deadlock is a SECONDARY bug exposed by the inability to
+  recover from HIGH-9 without manual finalizer surgery.
+- Standalone LiteLLMModel + LiteLLMMCPServer + LiteLLMTeam +
+  LiteLLMA2AAgent delete paths: not exercised in this round.
+  MEDIUM-2 covers the empty-ServerID short-circuit for MCPServer;
+  Model has the same "empty ModelID" risk if a user deletes a
+  manual Model CR that never reached Ready.
