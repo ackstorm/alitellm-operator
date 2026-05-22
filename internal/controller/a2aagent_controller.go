@@ -705,6 +705,11 @@ func (r *A2AAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&corev1.Secret{},
 			handler.EnqueueRequestsFromMapFunc(r.secretToA2AAgents),
 		).
+		Watches(
+			&litellmv1alpha1.LiteLLMConnection{},
+			handler.EnqueueRequestsFromMapFunc(r.connectionToA2AAgents),
+			builder.WithPredicates(connectionReadyTransition()),
+		).
 		WithOptions(transientBackoffOptions()).
 		Named("a2aagent").
 		Complete(r)

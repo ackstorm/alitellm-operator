@@ -723,6 +723,11 @@ func (r *ModelReconciler) SetupWithManager(mgr ctrl.Manager, safetyRelistCh ...c
 			&corev1.Secret{},
 			handler.EnqueueRequestsFromMapFunc(r.secretToModels),
 		).
+		Watches(
+			&litellmv1alpha1.LiteLLMConnection{},
+			handler.EnqueueRequestsFromMapFunc(r.connectionToModels),
+			builder.WithPredicates(connectionReadyTransition()),
+		).
 		WithOptions(transientBackoffOptions()).
 		Named("model")
 

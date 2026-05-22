@@ -1205,6 +1205,11 @@ func (r *TeamReconciler) SetupWithManager(mgr ctrl.Manager, requeueCh ...chan re
 			&corev1.Secret{},
 			handler.EnqueueRequestsFromMapFunc(r.secretToTeams),
 		).
+		Watches(
+			&litellmv1alpha1.LiteLLMConnection{},
+			handler.EnqueueRequestsFromMapFunc(r.connectionToTeams),
+			builder.WithPredicates(connectionReadyTransition()),
+		).
 		WithOptions(transientBackoffOptions()).
 		Named("team")
 
