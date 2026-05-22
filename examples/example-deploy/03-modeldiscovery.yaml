@@ -63,3 +63,160 @@ spec:
   # Refresh interval — must be >= 1m (MDISC-05 CEL floor).
   refresh:
     interval: 10m
+---
+# Anthropic provider — GET /v1/models against api.anthropic.com.
+#
+# The Anthropic catalogue mixes rolling aliases (claude-opus-4-6,
+# claude-sonnet-4-6) and dated snapshots (claude-opus-4-5-20251101).
+# `exclude: [".*-[0-9]{8}$"]` keeps the rolling aliases only — verified
+# 2026-05-22 EKS smoke-test: 9 → 3 children (opus-4-6, opus-4-7,
+# sonnet-4-6). Note this regex is provider-specific: Anthropic encodes
+# the date as a `-YYYYMMDD` suffix, NOT the OpenAI "last char is a
+# digit" pattern. Do NOT cargo-cult `.*[0-9]$` here — every Anthropic
+# alias ends in a digit, so that pattern excludes 9/9.
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMModelDiscovery
+metadata:
+  name: anthropic
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  type: anthropic
+  prefix: anthropic
+  credentialsSecretRef:
+    name: anthropic-api-key
+  secrets:
+    - as: ANTHROPIC_API_KEY
+      secretRef:
+        name: anthropic-api-key
+        key: ANTHROPIC_API_KEY
+  params:
+    api_key: "{{ANTHROPIC_API_KEY}}"
+    rpm: 25
+    timeout: 300
+    stream_timeout: 60
+  filters:
+    include: []
+    # Canonical-only: drop dated snapshots, keep rolling aliases.
+    exclude:
+      - ".*-[0-9]{8}$"
+  refresh:
+    interval: 10m
+---
+# Bedrock provider — discovery against AWS Bedrock model catalogue in
+# the specified region.
+#
+# Verified 2026-05-22 EKS smoke-test: 17/18 children Ready in
+# eu-north-1 with credentials sourced from externalsecret-litellm-bedrock.
+# The single rejected child (nova-lite-v1-0) is an upstream LiteLLM /
+# AWS allow-list issue, not an operator bug.
+#
+# Note: Anthropic Claude models are NOT served in eu-north-1; use a
+# US/EU-west region (e.g. us-east-1, eu-west-1) for Claude on Bedrock.
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMModelDiscovery
+metadata:
+  name: bedrock
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  type: bedrock
+  prefix: bedrock
+  region: eu-north-1
+  credentialsSecretRef:
+    name: bedrock-credentials
+  secrets:
+    - as: AWS_ACCESS_KEY_ID
+      secretRef:
+        name: bedrock-credentials
+        key: AWS_ACCESS_KEY_ID
+    - as: AWS_SECRET_ACCESS_KEY
+      secretRef:
+        name: bedrock-credentials
+        key: AWS_SECRET_ACCESS_KEY
+  params:
+    aws_access_key_id: "{{AWS_ACCESS_KEY_ID}}"
+    aws_secret_access_key: "{{AWS_SECRET_ACCESS_KEY}}"
+    rpm: 25
+    timeout: 300
+    stream_timeout: 60
+  filters:
+    include: []
+    exclude:
+      - ".*embed.*"
+      - ".*embedding.*"
+      - ".*titan.*"
+  refresh:
+    interval: 10m
+---
+# Gemini provider — GET https://generativelanguage.googleapis.com/v1beta/models
+#
+# Verified 2026-05-22: 41 children before filters; the canonical-only
+# OpenAI pattern (".*[0-9]$") doesn't apply here either — Gemini uses
+# preview/dated suffixes (gemini-3-pro-preview, gemini-2.5-flash-preview-tts).
+# Apply provider-specific filters as needed.
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMModelDiscovery
+metadata:
+  name: gemini
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  type: gemini
+  prefix: gemini
+  credentialsSecretRef:
+    name: gemini-api-key
+  secrets:
+    - as: GEMINI_API_KEY
+      secretRef:
+        name: gemini-api-key
+        key: GEMINI_API_KEY
+  params:
+    api_key: "{{GEMINI_API_KEY}}"
+    rpm: 25
+    timeout: 300
+    stream_timeout: 60
+  filters:
+    include: []
+    exclude: []
+  refresh:
+    interval: 10m
+---
+# KubeAI provider — OpenAI-compatible /v1/models endpoint hosted in
+# the cluster (vLLM, ollama, llama.cpp, etc.).
+#
+# The operator auto-overlays spec.baseUrl into each child's
+# spec.params.api_base so inference routing works end-to-end (FIX.txt
+# HIGH-2). With the overlay landed in v0.1.2, no api_base is needed in
+# params here.
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMModelDiscovery
+metadata:
+  name: kubeai
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  type: kubeai
+  prefix: kubeai
+  baseUrl: http://kubeai.kubeai.svc/openai/v1
+  # KubeAI typically has no authentication when running in-cluster.
+  # Provide an empty credentials Secret if your install requires one.
+  credentialsSecretRef:
+    name: kubeai-credentials
+  params:
+    rpm: 25
+    timeout: 300
+    stream_timeout: 60
+  filters:
+    include: []
+    exclude: []
+  refresh:
+    interval: 10m
