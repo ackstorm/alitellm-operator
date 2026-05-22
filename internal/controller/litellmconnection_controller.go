@@ -362,10 +362,11 @@ func (r *LiteLLMConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		logStatusUpdateErr(logger, werr, "reason", reasonSynced)
 	}
 	r.Cache.Rebuild(connection.ConnectionSnapshot{
-		Ready:      true,
-		Reason:     reasonSynced,
-		Client:     liteLLMClient,
-		Generation: conn.Generation,
+		Ready:                  true,
+		Reason:                 reasonSynced,
+		Client:                 liteLLMClient,
+		Generation:             conn.Generation,
+		MCPToolPrefixSeparator: conn.Spec.MCPToolPrefixSeparator,
 	})
 	metrics.ReconcileTotal.WithLabelValues("LiteLLMConnection", "success").Inc()
 	// OBS-03: RecordSuccess tracks time of last successful status write;

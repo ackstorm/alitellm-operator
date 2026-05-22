@@ -41,6 +41,34 @@ type LiteLLMConnectionSpec struct {
 	//
 	// +kubebuilder:validation:Required
 	MasterKeySecretRef SecretKeyRef `json:"masterKeySecretRef"`
+
+	// MCPToolPrefixSeparator mirrors LiteLLM's `MCP_TOOL_PREFIX_SEPARATOR`
+	// environment variable on the target LiteLLM instance. LiteLLM uses
+	// this character as the delimiter between server prefix and tool name
+	// in fully-qualified MCP tool identifiers, and it REJECTS the same
+	// character inside `server_name` at `POST /v1/mcp/server` time (HTTP
+	// 400 "Server name cannot contain '<sep>'."). The opposite member of
+	// the {".", "-"} pair is allowed inside `server_name`.
+	//
+	// The operator reads this field to sanitize the LiteLLM-side
+	// `server_name` and `alias` for every MCPServer routed through this
+	// Connection. The K8s `metadata.name` is left untouched — sanitization
+	// is wire-boundary only.
+	//
+	// Valid values:
+	//   - "-" (default; matches LiteLLM's own default). Forbids '-' in
+	//     server_name; the operator rewrites '-' → '.' in the wire payload.
+	//   - "." Forbids '.' in server_name (the ackstorm prod config since
+	//     the MCPServerDiscovery dotted-child template requires '-' inside
+	//     server_name). The operator rewrites '.' → '-' in the wire payload.
+	//
+	// FIX.txt HIGH-1 (2026-05-22): without this field, dotted Discovery
+	// children failed at the LiteLLM-side validator on default deploys.
+	//
+	// +optional
+	// +kubebuilder:default:="-"
+	// +kubebuilder:validation:Enum=-;.
+	MCPToolPrefixSeparator string `json:"mcpToolPrefixSeparator,omitempty"`
 }
 
 // SecretKeyRef identifies a key inside a Kubernetes Secret living in

@@ -89,4 +89,13 @@ type ConnectionSnapshot struct {
 	// reconciler can set it correctly and Phase 3+ can
 	// rely on the field existing).
 	Generation int64
+
+	// MCPToolPrefixSeparator mirrors LiteLLM's `MCP_TOOL_PREFIX_SEPARATOR`
+	// env var on the target instance (LiteLLMConnection.spec.
+	// mcpToolPrefixSeparator). Carried on the snapshot so MCPServer and
+	// MCPServerDiscovery reconcilers can sanitize wire-side server_name +
+	// alias without re-reading the Connection CR. Valid values: "." or
+	// "-"; empty string is treated as the LiteLLM default "-" (FIX.txt
+	// HIGH-1, 2026-05-22).
+	MCPToolPrefixSeparator string
 }
