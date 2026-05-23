@@ -92,6 +92,13 @@ type MCPServerSpec struct {
 	// (SHA-256) and compared against `status.lastRendered.hash` to
 	// detect drift (Phase 3 D-01).
 	//
+	// Reserved structural keys (`server_id`, `server_name`, `alias`,
+	// `url`, `transport`, `spec_path`) are silently ignored at extraction
+	// time — the operator stamps them from the CR's own fields. The key
+	// `access_groups` is accepted as an alias for `mcp_access_groups`
+	// (when both are present, `mcp_access_groups` wins). The alias eases
+	// migration from the LiteLLM `config.yaml` format.
+	//
 	// +optional
 	// +kubebuilder:pruning:PreserveUnknownFields
 	Params runtime.RawExtension `json:"params,omitempty"`
