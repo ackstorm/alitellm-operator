@@ -39,7 +39,7 @@ func guardrailReconcilerSampleCR(name string) *litellmv1alpha1.LiteLLMGuardRail 
 		},
 		Spec: litellmv1alpha1.GuardRailSpec{
 			GuardrailName: name,
-			Provider:      "litellm_content_filter",
+			Provider:      guardrailContentFilterProvider,
 			Mode:          []litellmv1alpha1.GuardRailMode{"pre_call"},
 		},
 	}
@@ -66,11 +66,17 @@ func ensureNoGuardrailCR(t *testing.T, ctx context.Context, name string) {
 	t.Logf("warning: LiteLLMGuardRail %q still present after 10s cleanup wait", name)
 }
 
-// pollGuardrailCondition polls the Ready condition until reason matches
-// or timeout. Returns the final re-Get'd CR.
-func pollGuardrailCondition(t *testing.T, ctx context.Context, name, wantReason string, timeout time.Duration) *litellmv1alpha1.LiteLLMGuardRail {
+// pollReadyConditionDeadline bounds every call to
+// pollGuardrailCondition. Pulled out as a file-local const because all
+// 13 callers used the same value (unparam linter caught it).
+const pollReadyConditionDeadline = 5 * time.Second
+
+// pollGuardrailCondition polls the Ready condition for up to
+// pollReadyConditionDeadline. Returns the final re-Get'd CR; callers
+// assert the condition reason on the returned object.
+func pollGuardrailCondition(t *testing.T, ctx context.Context, name, wantReason string) *litellmv1alpha1.LiteLLMGuardRail {
 	t.Helper()
-	deadline := time.Now().Add(timeout)
+	deadline := time.Now().Add(pollReadyConditionDeadline)
 	key := client.ObjectKey{Name: name, Namespace: WatchNamespace}
 	var out litellmv1alpha1.LiteLLMGuardRail
 	for time.Now().Before(deadline) {
@@ -168,7 +174,7 @@ func TestGuardRail_HappyCreate(t *testing.T) {
 		t.Fatalf("Create CR: %v", err)
 	}
 
-	got := pollGuardrailCondition(t, ctx, name, "Synced", 5*time.Second)
+	got := pollGuardrailCondition(t, ctx, name, "Synced")
 	if c := apimeta.FindStatusCondition(got.Status.Conditions, "Ready"); c == nil || c.Status != metav1.ConditionTrue {
 		t.Fatalf("Ready condition: got %#v want True/Synced", c)
 	}
@@ -205,7 +211,7 @@ func TestGuardRail_HappyCreate(t *testing.T) {
 	if params == nil {
 		t.Fatalf("body missing litellm_params: %#v", body)
 	}
-	if params["guardrail"] != "litellm_content_filter" {
+	if params["guardrail"] != guardrailContentFilterProvider {
 		t.Errorf("litellm_params.guardrail: got %v", params["guardrail"])
 	}
 	if params["mode"] != "pre_call" {
@@ -252,7 +258,7 @@ func TestGuardRail_SecretSubstitution_HappyPath(t *testing.T) {
 		t.Fatalf("Create CR: %v", err)
 	}
 
-	_ = pollGuardrailCondition(t, ctx, name, "Synced", 5*time.Second)
+	_ = pollGuardrailCondition(t, ctx, name, "Synced")
 	body := mockServer.LastGuardrailBody(name)
 	if body == nil {
 		t.Fatal("mock has no body for the guardrail")
@@ -306,7 +312,7 @@ func TestGuardRail_SecretNotFound(t *testing.T) {
 		t.Fatalf("Create CR: %v", err)
 	}
 
-	got := pollGuardrailCondition(t, ctx, name, "SecretNotFound", 5*time.Second)
+	got := pollGuardrailCondition(t, ctx, name, "SecretNotFound")
 	c := apimeta.FindStatusCondition(got.Status.Conditions, "Ready")
 	if c == nil || c.Status != metav1.ConditionFalse {
 		t.Fatalf("Ready: got %#v want False/SecretNotFound", c)
@@ -338,7 +344,7 @@ func TestGuardRail_DriftCorrection_OnSpecEdit(t *testing.T) {
 	if err := k8sClient.Create(ctx, cr); err != nil {
 		t.Fatalf("Create CR: %v", err)
 	}
-	_ = pollGuardrailCondition(t, ctx, name, "Synced", 5*time.Second)
+	_ = pollGuardrailCondition(t, ctx, name, "Synced")
 	if got, want := mockServer.MutationsByGuardrailName(name), int64(1); got != want {
 		t.Fatalf("post-CREATE mutations: got %d want %d", got, want)
 	}
@@ -404,7 +410,7 @@ func TestGuardRail_InvalidMode_RealtimeNotAlone(t *testing.T) {
 	if err := k8sClient.Create(ctx, cr); err != nil {
 		t.Fatalf("Create CR: %v", err)
 	}
-	got := pollGuardrailCondition(t, ctx, name, "InvalidMode", 5*time.Second)
+	got := pollGuardrailCondition(t, ctx, name, "InvalidMode")
 	c := apimeta.FindStatusCondition(got.Status.Conditions, "Ready")
 	if c == nil || c.Status != metav1.ConditionFalse {
 		t.Fatalf("Ready: got %#v want False/InvalidMode", c)
@@ -435,7 +441,7 @@ func TestGuardRail_ConflictsWithConfigGuardrail(t *testing.T) {
 	if err := k8sClient.Create(ctx, cr); err != nil {
 		t.Fatalf("Create CR: %v", err)
 	}
-	got := pollGuardrailCondition(t, ctx, name, "ConflictsWithConfigGuardrail", 5*time.Second)
+	got := pollGuardrailCondition(t, ctx, name, "ConflictsWithConfigGuardrail")
 	c := apimeta.FindStatusCondition(got.Status.Conditions, "Ready")
 	if c == nil || c.Status != metav1.ConditionFalse {
 		t.Fatalf("Ready: got %#v want False/ConflictsWithConfigGuardrail", c)
@@ -470,7 +476,7 @@ func TestGuardRail_FinalizerDelete(t *testing.T) {
 	if err := k8sClient.Create(ctx, cr); err != nil {
 		t.Fatalf("Create CR: %v", err)
 	}
-	_ = pollGuardrailCondition(t, ctx, name, "Synced", 5*time.Second)
+	_ = pollGuardrailCondition(t, ctx, name, "Synced")
 	if got, want := mockServer.MutationsByGuardrailName(name), int64(1); got != want {
 		t.Fatalf("post-CREATE mutations: got %d want %d", got, want)
 	}
@@ -526,7 +532,7 @@ func TestGuardRail_LBPool_PoolSize(t *testing.T) {
 	ensureLiteLLMConnectionDefault(t, ctx)
 	readyConnectionForTest(t)
 
-	pool := "content-filter-lb"
+	pool := guardrailLBPoolName
 	a := guardrailReconcilerSampleCR(primary)
 	a.Spec.GuardrailName = pool
 	b := guardrailReconcilerSampleCR(secondary)
@@ -540,8 +546,8 @@ func TestGuardRail_LBPool_PoolSize(t *testing.T) {
 	}
 
 	// Both must reach Synced.
-	_ = pollGuardrailCondition(t, ctx, primary, "Synced", 5*time.Second)
-	_ = pollGuardrailCondition(t, ctx, secondary, "Synced", 5*time.Second)
+	_ = pollGuardrailCondition(t, ctx, primary, "Synced")
+	_ = pollGuardrailCondition(t, ctx, secondary, "Synced")
 
 	// Mock has TWO rows for the pool name.
 	if got := mockServer.GuardrailPoolSize(pool); got != 2 {
@@ -597,7 +603,7 @@ func TestGuardRail_PoolProviderMismatch(t *testing.T) {
 	pool := "mismatched-pool"
 	a := guardrailReconcilerSampleCR(primary)
 	a.Spec.GuardrailName = pool
-	a.Spec.Provider = "litellm_content_filter"
+	a.Spec.Provider = guardrailContentFilterProvider
 	b := guardrailReconcilerSampleCR(secondary)
 	b.Spec.GuardrailName = pool
 	b.Spec.Provider = "aporia"
@@ -605,7 +611,7 @@ func TestGuardRail_PoolProviderMismatch(t *testing.T) {
 	if err := k8sClient.Create(ctx, a); err != nil {
 		t.Fatalf("Create primary: %v", err)
 	}
-	_ = pollGuardrailCondition(t, ctx, primary, "Synced", 5*time.Second)
+	_ = pollGuardrailCondition(t, ctx, primary, "Synced")
 	if err := k8sClient.Create(ctx, b); err != nil {
 		t.Fatalf("Create secondary: %v", err)
 	}
@@ -662,7 +668,7 @@ func TestGuardRail_SafetyRelist_CreateMissing(t *testing.T) {
 	if err := k8sClient.Create(ctx, cr); err != nil {
 		t.Fatalf("Create CR: %v", err)
 	}
-	_ = pollGuardrailCondition(t, ctx, name, "Synced", 5*time.Second)
+	_ = pollGuardrailCondition(t, ctx, name, "Synced")
 	originalID := pollGuardrailID(t, ctx, name, 5*time.Second)
 	if originalID == "" {
 		t.Fatal("CR never reached non-empty GuardrailID")
@@ -748,12 +754,12 @@ func TestGuardRail_ReservedKeysStripped(t *testing.T) {
 			"api_base":"https://example"
 		}`),
 	}
-	cr.Spec.Provider = "litellm_content_filter"
+	cr.Spec.Provider = guardrailContentFilterProvider
 	cr.Spec.Mode = []litellmv1alpha1.GuardRailMode{"pre_call"}
 	if err := k8sClient.Create(ctx, cr); err != nil {
 		t.Fatalf("Create CR: %v", err)
 	}
-	_ = pollGuardrailCondition(t, ctx, name, "Synced", 5*time.Second)
+	_ = pollGuardrailCondition(t, ctx, name, "Synced")
 
 	body := mockServer.LastGuardrailBody(name)
 	if body == nil {
@@ -764,7 +770,7 @@ func TestGuardRail_ReservedKeysStripped(t *testing.T) {
 		t.Errorf("guardrail_name overridden: got %v want %q", body["guardrail_name"], name)
 	}
 	params := body["litellm_params"].(map[string]any)
-	if params["guardrail"] != "litellm_content_filter" {
+	if params["guardrail"] != guardrailContentFilterProvider {
 		t.Errorf("litellm_params.guardrail: got %v want litellm_content_filter (typed-field overlay)", params["guardrail"])
 	}
 	if params["mode"] != "pre_call" {
