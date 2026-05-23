@@ -33,6 +33,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 ### Fixed
+- model: LiteLLM 1.85.1 schema drift — the model id is now sent inside
+  `model_info.id` on `POST /model/update` (both FIX4 H-1 adoption stamp
+  and the UPDATE drift-correction path). Top-level `id` was retired
+  from the request body; LiteLLM 1.85.1's body parser rejected it with
+  the misleading 400 `Authentication Error, model not found` and every
+  `LiteLLMModel` reconcile landed in `Ready=False reason=LiteLLMRejected`
+  in production. 1.83.x sites: pin operator to v0.3.0 or earlier
+  (FIX7 H-1).
 
 ### Security
 

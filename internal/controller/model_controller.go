@@ -471,11 +471,17 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			// intentionally NOT stamped — LiteLLM 1.83.x keeps the original
 			// creator across updates and the operator is by definition not
 			// the original creator on the adoption path.
+			// FIX7 H-1 (2026-05-23): LiteLLM 1.85.1 requires the model id
+			// inside model_info — not at the top level. Sending root-level
+			// id triggers a 400 "Authentication Error, model not found"
+			// from LiteLLM's body parser.
 			if _, uerr := snap.Client.UpdateModel(ctx, &litellm.UpdateDeployment{
-				ID:            newModelID,
 				ModelName:     model.Name,
 				LiteLLMParams: litellm.LiteLLMParams(paramsMap),
-				ModelInfo:     litellm.ModelInfo{UpdatedBy: identity.Operator()},
+				ModelInfo: litellm.ModelInfo{
+					ID:        newModelID,
+					UpdatedBy: identity.Operator(),
+				},
 			}); uerr != nil {
 				return r.classifyMutationError(ctx, &model, logger, uerr, "POST /model/update (FIX4 H-1 adoption stamp)")
 			}
@@ -555,17 +561,18 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			logger.V(1).Info("D-02 model re-created in LiteLLM", "newModelID", newModelID)
 		} else {
 			// No shrinkage — normal POST /model/update (no nulls per D-02 Probe 9b positive path).
-			// D-7.1-13: set top-level ID per LiteLLM 1.83.10 Probe 9 retry.
-			// The 1.82.6 form used ModelInfo.ID — that placement is deprecated in 1.83.10.
-			// Per CONTEXT.md <deferred>: 1.82.6 backward-compat shim is OUT of scope.
+			// FIX7 H-1 (2026-05-23): LiteLLM 1.85.1 schema requires the model
+			// id inside model_info, NOT at the top level. The prior D-7.1-13
+			// claim (1.83.10 top-level id) was retired — sending a root-level
+			// id triggers a 400 "Authentication Error, model not found".
 			updateReq := &litellm.UpdateDeployment{
-				ID:            model.Status.LastRendered.ModelID, // NEW: top-level id per 1.83.10
 				ModelName:     model.Name,
 				LiteLLMParams: litellm.LiteLLMParams(paramsMap),
 				// FIX2.txt M-8: stamp updated_by on every UPDATE. We do
 				// NOT touch CreatedBy here — LiteLLM keeps the original
 				// creator across updates.
 				ModelInfo: litellm.ModelInfo{
+					ID:        model.Status.LastRendered.ModelID,
 					UpdatedBy: identity.Operator(),
 				},
 			}

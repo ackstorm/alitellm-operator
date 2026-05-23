@@ -44,18 +44,21 @@ func captureMock(t *testing.T, captured *[]capturedRequest, respond func(i int, 
 	}
 }
 
-// TestUpdateModelUsesPostNotPatch — Pitfall 2 enforcement at the
-// model.go layer. Asserts:
-// - the captured method is POST (NOT PATCH)
-// - the captured path is exactly /model/update (NOT /model/<id>/update)
-// - the request body carries the model id at the TOP LEVEL as "id"
-// (LiteLLM 1.83.10 form per D-7.1-13 / Probe 9 retry)
-// - the request body does NOT carry a top-level "model_id" key
-// (the 1.82.6-era field name is rejected by 1.83.10)
+// TestUpdateModelUsesPostNotPatch — Pitfall 2 + FIX7 H-1 enforcement
+// at the model.go layer. Asserts:
+//   - the captured method is POST (NOT PATCH)
+//   - the captured path is exactly /model/update (NOT /model/<id>/update)
+//   - the request body does NOT carry a top-level "id" (LiteLLM 1.85.1
+//     rejects this with a misleading 400 "Authentication Error,
+//     model not found")
+//   - the request body does NOT carry a top-level "model_id" (the
+//     1.82.6-era field name)
+//   - the request body places the model id at model_info.id per the
+//     1.85.1 OpenAPI updateDeployment schema
 //
 // This is the single most important test in the package — it locks in
 // the bbdsoftware/litellm-operator bug fix that motivated this rewrite
-// AND the 1.83.10 body-shape fix per CR-13.
+// AND the 1.85.1 body-shape fix per FIX7 H-1.
 func TestUpdateModelUsesPostNotPatch(t *testing.T) {
 	var captured []capturedRequest
 	srv := httptest.NewServer(captureMock(t, &captured, func(i int, w http.ResponseWriter) {
@@ -67,7 +70,7 @@ func TestUpdateModelUsesPostNotPatch(t *testing.T) {
 
 	c := newTestClient(t, srv.URL)
 	req := &updateDeployment{
-		ID:            "abc-123",
+		ModelInfo:     ModelInfo{ID: "abc-123"},
 		LiteLLMParams: LiteLLMParams{"timeout": 30},
 	}
 	if _, err := c.UpdateModel(context.Background(), req); err != nil {
@@ -85,18 +88,27 @@ func TestUpdateModelUsesPostNotPatch(t *testing.T) {
 		t.Errorf("path: want exactly /model/update (NOT /model/<id>/update — Pitfall 2), got %q", got.Path)
 	}
 
-	// Body: id MUST be at the TOP LEVEL per LiteLLM 1.83.10 (D-7.1-13 / Probe 9 retry).
-	// The previous 1.82.6 form placed id at model_info.id — that is the deprecated shape.
-	// model_id must be ABSENT (the 1.82.6-era key name is not accepted by 1.83.10).
+	// Body: per LiteLLM 1.85.1 (FIX7 H-1) the model id lives INSIDE
+	// model_info, NOT at the top level. A top-level `id` is rejected
+	// by LiteLLM's body parser with the misleading 400
+	// "Authentication Error, model not found". `model_id` must also
+	// be absent (the 1.82.6-era key name is not accepted).
 	var body map[string]any
 	if err := json.Unmarshal(got.Body, &body); err != nil {
 		t.Fatalf("body unmarshal: %v", err)
 	}
-	if id, _ := body["id"].(string); id != "abc-123" {
-		t.Errorf("body.id (top-level): want abc-123, got %v", body["id"])
+	if _, present := body["id"]; present {
+		t.Errorf("body.id (top-level): must be absent on 1.85.1, got %v", body["id"])
 	}
 	if _, present := body["model_id"]; present {
-		t.Errorf("body.model_id: must be absent on 1.83.10, got %v", body["model_id"])
+		t.Errorf("body.model_id: must be absent on 1.85.1, got %v", body["model_id"])
+	}
+	mi, ok := body["model_info"].(map[string]any)
+	if !ok {
+		t.Fatalf("body.model_info missing: %s", got.Body)
+	}
+	if id, _ := mi["id"].(string); id != "abc-123" {
+		t.Errorf("body.model_info.id: want abc-123, got %v", mi["id"])
 	}
 }
 
@@ -171,7 +183,7 @@ func TestModelHelpers401Propagation(t *testing.T) {
 	_, err := c.CreateModel(context.Background(), &Deployment{ModelName: "x", LiteLLMParams: LiteLLMParams{}, ModelInfo: ModelInfo{ID: "x"}})
 	check("CreateModel", err)
 
-	_, err = c.UpdateModel(context.Background(), &updateDeployment{ID: "x"})
+	_, err = c.UpdateModel(context.Background(), &updateDeployment{ModelInfo: ModelInfo{ID: "x"}})
 	check("UpdateModel", err)
 
 	err = c.DeleteModel(context.Background(), "x")
@@ -386,10 +398,10 @@ func TestUpdateModelBodyStampsUpdatedBy(t *testing.T) {
 
 	c := newTestClient(t, srv.URL)
 	req := &updateDeployment{
-		ID:            "abc",
 		ModelName:     "test-model",
 		LiteLLMParams: LiteLLMParams{},
-		ModelInfo:     ModelInfo{UpdatedBy: "alitellm-operator/v0.2.1-test"},
+		// FIX7 H-1: id lives inside model_info on 1.85.1.
+		ModelInfo: ModelInfo{ID: "abc", UpdatedBy: "alitellm-operator/v0.2.1-test"},
 	}
 	if _, err := c.UpdateModel(context.Background(), req); err != nil {
 		t.Fatalf("UpdateModel: %v", err)
@@ -407,5 +419,61 @@ func TestUpdateModelBodyStampsUpdatedBy(t *testing.T) {
 	}
 	if ub, _ := mi["updated_by"].(string); ub == "" {
 		t.Errorf("model_info.updated_by empty in /model/update body: %s", captured[0].Body)
+	}
+	if id, _ := mi["id"].(string); id != "abc" {
+		t.Errorf("model_info.id: want abc, got %v", mi["id"])
+	}
+}
+
+// TestUpdateDeploymentJSONShape_1_85_1 — FIX7 H-1 contract lock.
+// Marshal a fully populated updateDeployment and assert the wire body
+// (a) has NO top-level id key, (b) places id inside model_info, and
+// (c) keeps the canonical 3-key top-level shape verbatim. If LiteLLM
+// regresses the schema (or a refactor accidentally re-introduces a
+// root-level ID field on the struct), this test fails first — well
+// before a prod /model/update returns 400 "Authentication Error,
+// model not found".
+func TestUpdateDeploymentJSONShape_1_85_1(t *testing.T) {
+	req := &updateDeployment{
+		ModelName:     "anthropic.claude-opus-4-7",
+		LiteLLMParams: LiteLLMParams{"model": "anthropic/claude-opus-4-7"},
+		ModelInfo: ModelInfo{
+			ID:        "02c8b202-aaaa-bbbb-cccc-deadbeef0000",
+			UpdatedBy: "alitellm-operator/0.3.1",
+		},
+	}
+	b, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	var top map[string]any
+	if err := json.Unmarshal(b, &top); err != nil {
+		t.Fatalf("re-unmarshal: %v", err)
+	}
+
+	if _, present := top["id"]; present {
+		t.Errorf("top-level id MUST be absent on 1.85.1, got %v\nfull body: %s", top["id"], b)
+	}
+	if _, present := top["model_id"]; present {
+		t.Errorf("top-level model_id MUST be absent on 1.85.1, got %v", top["model_id"])
+	}
+
+	wantTopKeys := map[string]struct{}{"model_name": {}, "litellm_params": {}, "model_info": {}}
+	for k := range top {
+		if _, ok := wantTopKeys[k]; !ok {
+			t.Errorf("unexpected top-level key %q in /model/update body: %s", k, b)
+		}
+	}
+
+	mi, ok := top["model_info"].(map[string]any)
+	if !ok {
+		t.Fatalf("model_info missing or wrong type: %s", b)
+	}
+	if id, _ := mi["id"].(string); id != "02c8b202-aaaa-bbbb-cccc-deadbeef0000" {
+		t.Errorf("model_info.id: want UUID, got %v", mi["id"])
+	}
+	if ub, _ := mi["updated_by"].(string); ub != "alitellm-operator/0.3.1" {
+		t.Errorf("model_info.updated_by: want alitellm-operator/0.3.1, got %v", mi["updated_by"])
 	}
 }
