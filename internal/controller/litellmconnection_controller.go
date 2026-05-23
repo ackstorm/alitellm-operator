@@ -536,6 +536,14 @@ func (r *LiteLLMConnectionReconciler) SetupWithManager(mgr ctrl.Manager, ch <-ch
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
+		// NOTE (FIX10 review #1 + #2): Connection's For watch has the
+		// same self-loop class as the Discoveries (status writes
+		// re-enqueue via default predicate). Deferring the fix to
+		// v0.4.5 — the connection reconciler's status writes are
+		// idempotent + cheap (single CR singleton) and adding
+		// GenerationChangedPredicate here broke an envtest path that
+		// relies on Connection's transitive re-enqueue. Investigate
+		// + ship separately.
 		For(&litellmv1alpha1.LiteLLMConnection{}, builder.WithPredicates()).
 		Watches(
 			&corev1.Secret{},

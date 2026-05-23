@@ -349,7 +349,13 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 		if err := r.Update(ctx, &md); err != nil {
 			return ctrl.Result{}, err
 		}
-		return ctrl.Result{}, nil
+		// FIX10 (v0.4.4): explicit requeue. The previous bare-nil return
+		// relied on the For watch firing on the finalizer-add Update event
+		// to re-enter Reconcile. With the discoverySpecChanged predicate
+		// filtering Updates that don't bump generation, metadata-only
+		// finalizer adds are filtered → reconciler never returns to
+		// generate children. Explicit Requeue:true bypasses the predicate.
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	// ─── Step 3: Source-reachable gate (MSDISC-06 / D-08) ──────────────────
@@ -1085,7 +1091,8 @@ func (r *MCPServerDiscoveryReconciler) writeBothConditionsObj(
 // Named("mcpserverdiscovery") — controller registry name.
 func (r *MCPServerDiscoveryReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	b := ctrl.NewControllerManagedBy(mgr).
-		For(&litellmv1alpha1.LiteLLMMCPServerDiscovery{}, builder.WithPredicates()).
+		For(&litellmv1alpha1.LiteLLMMCPServerDiscovery{},
+			builder.WithPredicates(discoverySpecChanged())).
 		Owns(&litellmv1alpha1.LiteLLMMCPServer{}, builder.WithPredicates(ownedChildSpecChanged())).
 		WithOptions(transientBackoffOptions()).
 		Named("mcpserverdiscovery")

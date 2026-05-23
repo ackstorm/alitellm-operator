@@ -362,7 +362,10 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		if err := r.Update(ctx, &md); err != nil {
 			return ctrl.Result{}, err
 		}
-		return ctrl.Result{}, nil
+		// FIX10 (v0.4.4): explicit requeue — discoverySpecChanged
+		// predicate filters metadata-only Update events. See
+		// mcpserverdiscovery_controller.go finalizer-add note.
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	// ─── Step 4: Resolve credentials per spec.type ─────────────────────────
@@ -1371,7 +1374,8 @@ func (r *ModelDiscoveryReconciler) secretToModelDiscoveries(ctx context.Context,
 // Named("modeldiscovery") — controller registry name.
 func (r *ModelDiscoveryReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	b := ctrl.NewControllerManagedBy(mgr).
-		For(&litellmv1alpha1.LiteLLMModelDiscovery{}, builder.WithPredicates()).
+		For(&litellmv1alpha1.LiteLLMModelDiscovery{},
+			builder.WithPredicates(discoverySpecChanged())).
 		Watches(
 			&corev1.Secret{},
 			handler.EnqueueRequestsFromMapFunc(r.secretToModelDiscoveries),

@@ -3,12 +3,84 @@
 package controller
 
 import (
+	"math/rand"
+	"time"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 )
+
+// discoverySpecChanged is the predicate attached to Discovery primary
+// For() watches. Filters status-subresource writes (no generation
+// bump) so the reconciler doesn't re-enqueue itself.
+//
+// Fires on:
+//   - Create / Delete / Generic — always (lifecycle signals).
+//   - Update — only if generation, labels, or annotations changed.
+//
+// Why labels + annotations: tests use annotation nudges via
+// touchMCPServerDiscovery to force a re-reconcile, ops uses
+// annotations / labels for adoption + grouping signals, and the
+// reconciler itself does NOT mutate either, so this widening cannot
+// re-introduce the self-loop. The only writes the reconciler does on
+// itself are status-subresource (filtered) and metadata.finalizers
+// — finalizer adds are also metadata-only but the reconciler
+// already paths them via explicit ctrl.Result{Requeue: true} after
+// the AddFinalizer + Update (see mcpserverdiscovery_controller.go
+// Step 2b note).
+func discoverySpecChanged() predicate.Predicate {
+	return predicate.Funcs{
+		CreateFunc:  func(_ event.CreateEvent) bool { return true },
+		DeleteFunc:  func(_ event.DeleteEvent) bool { return true },
+		GenericFunc: func(_ event.GenericEvent) bool { return true },
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			if e.ObjectOld == nil || e.ObjectNew == nil {
+				return false
+			}
+			if e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration() {
+				return true
+			}
+			if !mapsEqual(e.ObjectOld.GetLabels(), e.ObjectNew.GetLabels()) {
+				return true
+			}
+			if !mapsEqual(e.ObjectOld.GetAnnotations(), e.ObjectNew.GetAnnotations()) {
+				return true
+			}
+			return false
+		},
+	}
+}
+
+func mapsEqual(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, va := range a {
+		if vb, ok := b[k]; !ok || vb != va {
+			return false
+		}
+	}
+	return true
+}
+
+// withJitter adds up to 10% random jitter on top of base. Used to
+// stagger periodic safety-relist requeues so the operator doesn't
+// wake every CR exactly at the same wall-clock tick (115 Models +
+// 26 MCPServers wakingsimultaneously hammers LiteLLM uniformly,
+// even though the system can tolerate it).
+//
+// Non-cryptographic randomness is sufficient — this is load
+// spreading, not security.
+func withJitter(base time.Duration) time.Duration {
+	if base <= 0 {
+		return base
+	}
+	jitter := time.Duration(rand.Int63n(int64(base / 10))) //nolint:gosec // load-spreading, not security
+	return base + jitter
+}
 
 // connectionReadyTransition fires on a LiteLLMConnection event for any
 // of three cases that together fully cover Connection-Ready recovery

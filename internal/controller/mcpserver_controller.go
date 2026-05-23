@@ -41,6 +41,18 @@ import (
 // from etcd.
 const mcpServerFinalizer = "mcpservers.litellm.ackstorm.ai/finalizer"
 
+// mcpSafetyRelistInterval bounds how often the MCPServer controller
+// re-runs the Step 7 safety-relist (probe LiteLLM by name + clear
+// stale ServerID on out-of-band deletion). Returned as RequeueAfter
+// on every successful reconcile. Pre-v0.4.3 the Owns watch on
+// Discovery children fired on every status / managedFields event
+// (effectively continuous polling) so safety-relist swept ~5x/sec;
+// the v0.4.3 predicate filter (generation-only) stopped that, so we
+// re-introduce explicit periodic polling here at a sane cadence.
+// 5min matches the dominant Discovery refresh-interval; bumps to
+// LiteLLM API drift get corrected within ~5min worst-case.
+const mcpSafetyRelistInterval = 5 * time.Minute
+
 // mcpServerKind is the metric label for LiteLLMMCPServer CRs.
 const mcpServerKind = "LiteLLMMCPServer"
 
@@ -224,7 +236,11 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			logStatusUpdateErr(logger, err, "reason", reasonLiteLLMUnavailable)
 		}
 		metrics.ReconcileTotal.WithLabelValues(mcpServerKind, "success").Inc()
-		return ctrl.Result{}, nil
+		// Periodic safety relist on soft-fail path: connectionReadyTransition
+		// re-enqueues on Connection recovery, but the safety-relist cadence
+		// is the floor so a missed transition still recovers (review #1
+		// "Issue 2" + review #2 §3).
+		return ctrl.Result{RequeueAfter: withJitter(mcpSafetyRelistInterval)}, nil
 	}
 
 	// ─── Step 3.5: SEC-03 uniqueness of spec.secrets[].as values ──────────
@@ -380,7 +396,16 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			}
 		}
 		metrics.CRStatusAgeTracker.RecordSuccess(mcpServerKind, mcp.Name)
-		return ctrl.Result{}, nil
+		// Periodic safety-relist requeue: with Owns predicate filtering
+		// to generation-changes only (v0.4.3), the child no longer
+		// reconciles on Discovery refresh ticks. Out-of-band LiteLLM
+		// API deletions would never reach the safety-relist sweep in
+		// Step 7. RequeueAfter ensures the controller self-ticks at a
+		// known interval so drift detection still fires. Overrides the
+		// pre-v0.4.3 REL-02 "event-driven only" intent — the OWN watch
+		// was the de-facto polling channel; we re-introduce explicit
+		// periodic requeue now that the watch is properly filtered.
+		return ctrl.Result{RequeueAfter: withJitter(mcpSafetyRelistInterval)}, nil
 	}
 
 	// ─── Step 9: Branch CREATE vs UPDATE (simple PUT — verdict ✓) ─────────
@@ -527,7 +552,8 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	metrics.ReconcileTotal.WithLabelValues(mcpServerKind, "success").Inc()
 	logger.V(1).Info("mcp server reconciled", "serverID", newServerID, "hash", currentRenderedHash)
 
-	return ctrl.Result{}, nil
+	// Periodic safety-relist requeue — see Step 8 rationale.
+	return ctrl.Result{RequeueAfter: withJitter(mcpSafetyRelistInterval)}, nil
 }
 
 // resolveServerIDByName re-resolves a LiteLLMMCPServer's LiteLLM server_id

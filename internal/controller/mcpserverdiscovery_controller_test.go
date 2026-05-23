@@ -1483,6 +1483,88 @@ func TestMCPServerDiscoveryReconciler_NoEventLoop_OnChildSpecChange(t *testing.T
 	}
 }
 
+// TestMCPServerDiscoveryReconciler_NoEventLoop_OnOwnStatusWrite locks the
+// FIX10 (v0.4.4) fix: the Discovery's primary For watch carries
+// predicate.GenerationChangedPredicate{}, so the reconciler's own
+// status writes (Step 10 — discoveredCount, generatedCount, conditions)
+// do NOT re-enqueue the Discovery via its own watch.
+//
+// Without the predicate, a v0.4.2-era loop materialized in prod:
+//   - reconcile completes
+//   - status write
+//   - For watch fires (default predicate = forward all events)
+//   - reconcile re-enters
+//   - status write
+//   - ... ~5 reconciles/sec/Discovery
+//
+// Regression guard: with the predicate in place, a manual status patch
+// must NOT bump the reconcile counter beyond the small settling delta.
+func TestMCPServerDiscoveryReconciler_NoEventLoop_OnOwnStatusWrite(t *testing.T) {
+	ctx := context.Background()
+	const mdName = "no-loop-own-status"
+	const thNamespace = "dev"
+	const thName = "tool-noloop-self"
+	dotted := mdName + "-" + thName
+
+	ensureNoMCPServerDiscovery(t, ctx, mdName)
+	ensureNoToolhiveObject(t, ctx, toolhive.MCPServerGVK, thNamespace, thName)
+	ensureNoMCPServer(t, ctx, dotted)
+	fakeCache.Invalidated.Store(true)
+	t.Cleanup(func() {
+		fakeCache.Invalidated.Store(false)
+		ensureNoMCPServerDiscovery(t, context.Background(), mdName)
+		ensureNoToolhiveObject(t, context.Background(), toolhive.MCPServerGVK, thNamespace, thName)
+		ensureNoMCPServer(t, context.Background(), dotted)
+	})
+
+	counterBaseline := mcpServerDiscoveryReconciler.ReconcileCount.Load()
+	counter := func() int64 {
+		return mcpServerDiscoveryReconciler.ReconcileCount.Load() - counterBaseline
+	}
+
+	createToolhiveMCPServer(t, ctx, thNamespace, thName, "https://noloop-self.example.com", "http")
+
+	md := msDiscSampleCR(mdName, []string{thNamespace})
+	md.Spec.Refresh.Interval = metav1.Duration{Duration: 30 * time.Minute}
+	if err := k8sClient.Create(ctx, md); err != nil {
+		t.Fatalf("create MCPServerDiscovery: %v", err)
+	}
+
+	// Wait for initial reconcile + child landing.
+	if children := pollMCPServerDiscoveryChildren(t, ctx, mdName, 1, 30*time.Second); len(children) != 1 {
+		t.Fatalf("initial child count: got %d, want 1", len(children))
+	}
+
+	// Let the reconcile sequence quiesce.
+	time.Sleep(1250 * time.Millisecond)
+	baseline := counter()
+
+	// Patch the Discovery status directly — simulates the reconciler's
+	// own writeback path. Without GenerationChangedPredicate on For,
+	// this would re-enqueue the Discovery and produce a loop.
+	var current litellmv1alpha1.LiteLLMMCPServerDiscovery
+	if err := k8sClient.Get(ctx, client.ObjectKey{Name: mdName, Namespace: WatchNamespace}, &current); err != nil {
+		t.Fatalf("re-fetch discovery: %v", err)
+	}
+	patched := current.DeepCopy()
+	patched.Status.DiscoveredCount = current.Status.DiscoveredCount + 1
+	if err := k8sClient.Status().Patch(ctx, patched, client.MergeFrom(&current)); err != nil {
+		t.Fatalf("status patch: %v", err)
+	}
+
+	// Stability window: without the predicate, this would record many
+	// reconciles. With the predicate, the status-only update is
+	// filtered and the counter holds steady.
+	time.Sleep(2 * time.Second)
+	final := counter()
+	if delta := final - baseline; delta > 2 {
+		t.Errorf("NoEventLoop_OnOwnStatusWrite violation: %d reconciles in 2s window after status patch (counter %d→%d). GenerationChangedPredicate on For watch likely missing.",
+			delta, baseline, final)
+	} else {
+		t.Logf("reconcile count delta over 2s window after status patch: %d (predicate filters status updates)", delta)
+	}
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Phase 5 — cross-cutting hardening tests for MSDisc
 // ─────────────────────────────────────────────────────────────────────────
