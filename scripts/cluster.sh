@@ -154,10 +154,17 @@ apply_fixtures() {
   # Secret MUST be applied before the CR. Otherwise reconciler fires once
   # against missing Secret, emits transient SecretNotFound event, flickers
   # connection_ready=0→1. Order is the cheapest determinism fix (spec §5).
+  #
+  # Timeout 180s (was 60s): the first reconcile after operator-up requires
+  # informer caches to fully sync, probe LiteLLM, write status — under
+  # 30s warm locally but GitHub-hosted runners routinely take 60-120s
+  # cold-cache. The previous 60s ceiling flaked in CI without flaking
+  # locally; 3x headroom keeps signal/noise positive on both surfaces.
+  # Overridable via FIXTURE_WAIT_TIMEOUT for future tuning.
   kubectl apply -f test/e2e/fixtures/master-key-secret.yaml
   kubectl apply -f test/e2e/fixtures/litellmconnection.yaml
   kubectl -n default wait --for=condition=Ready \
-    litellmconnection/default --timeout=60s
+    litellmconnection/default --timeout="${FIXTURE_WAIT_TIMEOUT:-180s}"
 }
 print_status() {
   echo "== kind clusters =="
