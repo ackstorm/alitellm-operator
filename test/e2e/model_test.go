@@ -42,8 +42,8 @@ func newOpenAIMockModel(name, ns string) *unstructured.Unstructured {
 	}
 }
 
-func litellmModelID(obj *unstructured.Unstructured) string {
-	id, _, _ := unstructured.NestedString(obj.Object, "status", "lastRendered", "litellmModelID")
+func modelID(obj *unstructured.Unstructured) string {
+	id, _, _ := unstructured.NestedString(obj.Object, "status", "lastRendered", "modelID")
 	return id
 }
 
@@ -67,7 +67,7 @@ var _ = Describe("LiteLLMModel", Ordered, ContinueOnFailure, func() {
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 	})
 
-	It("registers via POST /model/new (status.lastRendered.litellmModelID populated)", func() {
+	It("registers via POST /model/new (status.lastRendered.modelID populated)", func() {
 		_, err := dyn.Resource(modelGVR).Namespace(ns).
 			Create(ctx, newOpenAIMockModel(modelName, ns), metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred())
@@ -76,7 +76,7 @@ var _ = Describe("LiteLLMModel", Ordered, ContinueOnFailure, func() {
 			obj, err := dyn.Resource(modelGVR).Namespace(ns).
 				Get(ctx, modelName, metav1.GetOptions{})
 			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(litellmModelID(obj)).NotTo(BeEmpty(), "litellmModelID not yet populated")
+			g.Expect(modelID(obj)).NotTo(BeEmpty(), "modelID not yet populated")
 		}, 60*time.Second, 2*time.Second).Should(Succeed())
 	})
 
@@ -85,8 +85,8 @@ var _ = Describe("LiteLLMModel", Ordered, ContinueOnFailure, func() {
 		obj, err := dyn.Resource(modelGVR).Namespace(ns).
 			Get(ctx, modelName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
-		oldID := litellmModelID(obj)
-		Expect(oldID).NotTo(BeEmpty(), "AC-M1 spec must have populated litellmModelID")
+		oldID := modelID(obj)
+		Expect(oldID).NotTo(BeEmpty(), "AC-M1 spec must have populated modelID")
 
 		// Delete the model from LiteLLM out-of-band via POST /model/delete.
 		// Run curl inside the cluster (host has no kubectl-routable curl).
@@ -104,14 +104,14 @@ var _ = Describe("LiteLLMModel", Ordered, ContinueOnFailure, func() {
 		Expect(err).NotTo(HaveOccurred(), "out=%s", string(out))
 
 		// Within one safety re-list tick (10s) + a reconcile (a few s),
-		// expect the litellmModelID to be re-issued (wholesale-replace).
+		// expect the modelID to be re-issued (wholesale-replace).
 		Eventually(func(g Gomega) {
 			obj, err := dyn.Resource(modelGVR).Namespace(ns).
 				Get(ctx, modelName, metav1.GetOptions{})
 			g.Expect(err).NotTo(HaveOccurred())
-			newID := litellmModelID(obj)
+			newID := modelID(obj)
 			g.Expect(newID).NotTo(BeEmpty())
-			g.Expect(newID).NotTo(Equal(oldID), "litellmModelID still equals oldID — no replace yet")
+			g.Expect(newID).NotTo(Equal(oldID), "modelID still equals oldID — no replace yet")
 		}, 30*time.Second, 1*time.Second).Should(Succeed())
 	})
 })

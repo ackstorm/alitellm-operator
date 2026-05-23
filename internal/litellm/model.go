@@ -87,7 +87,7 @@ func (c *Client) GetModelInfo(ctx context.Context, modelID string) (*ModelInfoRe
 // caller can invoke r.Cache.InvalidateOn401 via errors.As.
 //
 // This is the D-04 deletion-path name-resolve fallback: used by the Model
-// reconciler when status.lastRendered.litellmModelID is empty (stale or
+// reconciler when status.lastRendered.modelID is empty (stale or
 // first-run status) and the reconciler needs to resolve the LiteLLM entry
 // by model_name before issuing POST /model/delete. Per OWN-01, this lookup
 // is strictly by name (NOT a global LIST-and-prune).

@@ -192,10 +192,10 @@ against Hash to decide whether a LiteLLM mutation is needed.
 D-02 (delete-and-recreate pivot): ParamsKeys and InfoKeys are required for
 per-bag shrinkage detection. If any key is removed from either bag
 (persistedKeys \ desiredKeys is non-empty), the reconciler deletes the
-existing LiteLLM entry and re-creates it, then re-pins LiteLLMModelID to
+existing LiteLLM entry and re-creates it, then re-pins ModelID to
 the freshly-assigned UUID. See spec/DEFECTS-1.82.6.md row 2.
 
-D-04: LiteLLMModelID diverges from spec §6.2 ("operator does not persist
+D-04: ModelID diverges from spec §6.2 ("operator does not persist
 the assigned model_info.id"). Persistence is a pragmatic win for a low-rate
 operator — saves a GET /model/info per reconcile. Documented deviation.
 
@@ -209,7 +209,7 @@ _Appears in:_
 | `hash` _string_ | Hash is the SHA-256 hex of the RFC 8785–canonicalized merged<br />post-substitution body (spec.params merged with spec.info, after<br />\{\{NAME\}\} substitution, before the model_info.id overlay). The hash<br />deliberately excludes model_info.id so that CREATE vs UPDATE reconciles<br />do not oscillate (D-01). An empty hash indicates the Model has not yet<br />been successfully reconciled. |  |  |
 | `paramsKeys` _string array_ | ParamsKeys is the sorted list of dotted-path keys present in spec.params<br />at the time of the last successful render (D-02). The reconciler diffs<br />this against the current spec.params keyset: if any key is absent in the<br />desired state (a shrinkage), the full delete-and-recreate path is taken<br />instead of POST /model/update (D-02, see spec/DEFECTS-1.82.6.md row 2). |  |  |
 | `infoKeys` _string array_ | InfoKeys is the sorted list of dotted-path keys present in spec.info at<br />the time of the last successful render (D-02). Same shrinkage-detection<br />semantics as ParamsKeys — any key removal in EITHER bag triggers<br />delete-and-recreate. |  |  |
-| `litellmModelID` _string_ | LiteLLMModelID is the LiteLLM-assigned UUID (model_info.id) for this<br />Model entry. Persisted here so the reconciler can reference it directly<br />on subsequent reconciles without an extra GET /model/info call (D-04).<br />IMPORTANT (D-02 consequence): on every delete-and-recreate cycle, LiteLLM<br />assigns a fresh UUID. The reconciler MUST re-pin this field to the new<br />UUID inside the same reconcile that performed the delete+recreate, before<br />returning success, to avoid a stale-ID 404 on the next reconcile.<br />Diverges from spec §6.2: documented in spec/DEFECTS-1.82.6.md row 7 (D-04). |  |  |
+| `modelID` _string_ | ModelID is the LiteLLM-assigned UUID (model_info.id) for this<br />Model entry. Persisted here so the reconciler can reference it directly<br />on subsequent reconciles without an extra GET /model/info call (D-04).<br />IMPORTANT (D-02 consequence): on every delete-and-recreate cycle, LiteLLM<br />assigns a fresh UUID. The reconciler MUST re-pin this field to the new<br />UUID inside the same reconcile that performed the delete+recreate, before<br />returning success, to avoid a stale-ID 404 on the next reconcile.<br />Diverges from spec §6.2: documented in spec/DEFECTS-1.82.6.md row 7 (D-04). |  |  |
 | `at` _[Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#time-v1-meta)_ | At is the timestamp of the last SUCCESSFUL render (NOT every reconcile<br />attempt — transient failures do not update this field). Reconcile<br />attempt frequency is observable via controller-runtime workqueue metrics<br />and cr_status_age_seconds (§10 / OBS-03). |  |  |
 
 

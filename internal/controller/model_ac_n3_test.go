@@ -71,7 +71,7 @@ func TestModel_AC_N3_NoUserOrKeyCalls(t *testing.T) {
 
 	// Wait for Ready/Synced — confirms full reconcile path ran.
 	m := pollModelCondition(t, ctx, "ac-n3-model", reasonSynced, 30*time.Second)
-	if m.Status.LastRendered.LiteLLMModelID == "" {
+	if m.Status.LastRendered.ModelID == "" {
 		t.Fatalf("Model/ac-n3-model not Synced within 30s; conditions=%+v", m.Status.Conditions)
 	}
 
