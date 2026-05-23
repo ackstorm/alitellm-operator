@@ -401,6 +401,35 @@ WHY IT FAILS: The kind kubeconfig lives at
 `/workspace/.gocache/kube/config` — inside the container. Host kubectl
 has no context for the kind cluster.
 
+### ❌ `helm upgrade` after CRD schema change
+```bash
+helm upgrade alitellm-operator oci://ghcr.io/ackstorm/charts/alitellm-operator --version 0.3.0
+# Operator pod ships v0.3.0 but CR apply fails:
+#   failed to create typed patch object (...): .spec.prefix:
+#   field not declared in schema
+```
+✅ Apply CRDs explicitly out-of-band:
+```bash
+# From local checkout (preferred — single source of truth):
+kubectl apply -f deploy/helm/alitellm-operator/crds/
+
+# From OCI chart (no checkout):
+helm pull oci://ghcr.io/ackstorm/charts/alitellm-operator --version X.Y.Z --untar
+kubectl apply -f alitellm-operator/crds/
+
+# Verify the new field landed:
+kubectl get crd <plural>.litellm.ackstorm.ai \
+  -o jsonpath='{.spec.versions[0].schema.openAPIV3Schema.properties.spec.required}'
+```
+WHY IT FAILS: Helm's CRD lifecycle ships CRDs only on the FIRST install
+(see `helm/helm#5871`). `crds/` in the chart is install-only; subsequent
+`helm upgrade` skips them entirely. A bumped chart version with new CRD
+fields installs a new operator pod against the OLD CRD schema in the
+cluster. CR applies referencing new fields error with `field not
+declared in schema`. Always pair a CRD-touching release with an
+explicit `kubectl apply -f .../crds/` step (or external CRD manager
+like `kustomize`/`flux` CRDs kustomization).
+
 ### ❌ Editing files via relative paths when cwd is the wrong repo
 ```bash
 cat > internal/controller/scope_ac_n4_test.go <<EOF ...

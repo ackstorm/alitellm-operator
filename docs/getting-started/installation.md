@@ -88,6 +88,44 @@ controllerManager:
     litellmUrlOverride: "http://custom-litellm-service:4000"
 ```
 
+## Upgrading
+
+!!! warning "Helm does not upgrade CRDs"
+    Helm intentionally ships CRDs from the chart's `crds/` directory **only
+    on the first install** (see [helm/helm#5871](https://github.com/helm/helm/issues/5871)).
+    Subsequent `helm upgrade` runs leave the existing CRDs in place. If a
+    new chart version adds or changes CRD fields, applying CRs that use
+    those fields will fail with `field not declared in schema`.
+
+When upgrading to a new chart version, apply the CRDs explicitly **before**
+the Helm upgrade:
+
+```bash
+# Option A — pull the chart and apply its CRDs
+helm pull oci://ghcr.io/ackstorm/charts/alitellm-operator --version <X.Y.Z> --untar
+kubectl apply -f alitellm-operator/crds/
+
+# Option B — apply from a local checkout of this repo at the matching tag
+git checkout v<X.Y.Z>
+kubectl apply -f deploy/helm/alitellm-operator/crds/
+
+# Then upgrade the operator itself
+helm upgrade alitellm-operator oci://ghcr.io/ackstorm/charts/alitellm-operator \
+    --version <X.Y.Z> -n <namespace>
+```
+
+Verify the new schema landed:
+
+```bash
+kubectl get crd litellmmcpserverdiscoveries.litellm.ackstorm.ai \
+    -o jsonpath='{.spec.versions[0].schema.openAPIV3Schema.properties.spec.required}'
+# Expected: ["prefix","refresh","toolhive","type"]  (v0.3.0+)
+```
+
+For GitOps users (Flux, ArgoCD) we recommend a separate `Kustomization` /
+`Application` for `deploy/helm/alitellm-operator/crds/` that reconciles
+ahead of the chart release, so CRD upgrades are part of the declared state.
+
 ## Troubleshooting
 
 ### Common Issues
