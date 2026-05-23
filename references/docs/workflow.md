@@ -4,13 +4,70 @@ Single-page reference for "what fires when I push or merge."
 Companion to `CLAUDE.md` (sections: Release pipeline, Publication, CI
 workflows) and to `.github/workflows/*.yml` (authoritative source).
 
+## Tiered gating policy
+
+Each test job activates only when its cost is justified by the event
+class. Per-job `if:` filters in `.github/workflows/ci.yml` are
+authoritative; the table below is the human-readable contract.
+
+| Event                                 | lint | unit | envtest | security | e2e |
+| ------------------------------------- | ---- | ---- | ------- | -------- | --- |
+| push: feature branch (any non-main)   |  ✓   |  ✓   |    -    |    -     |  -  |
+| pull_request → main                   |  ✓   |  ✓   |    ✓    |    ✓     |  ✓  |
+| push: main (post-merge, non-release)  |  ✓   |  ✓   |    ✓    |    ✓     |  -  |
+| push: main, `chore(release): v*`      |  -   |  -   |    -    |    -     |  -  |
+
+Rationale:
+
+- **Feature branch push**: lint + unit catch ~90% of issues in ~1m;
+  envtest / security / e2e are wasteful on WIP commits.
+- **PR → main**: full pre-merge gate INCLUDING e2e. The PR is the
+  merge boundary — a broken e2e here blocks merge instead of breaking
+  main after the fact. Draft PRs skip e2e (the rest still run).
+- **Post-merge main push**: lint + unit + envtest + security as the
+  "PR was green at last push but stale vs main" regression catch.
+  E2E is intentionally NOT re-run — it already ran on the PR against
+  the same merge ref, so re-running just doubles cost per merge.
+- **Release commit (`chore(release): v*`)**: `ci.yml` skips entirely.
+  `release.yml` runs its own unit + envtest-fast sanity gate before
+  shipping, so duplicating it in `ci.yml` would waste CI minutes.
+
+### `paths-ignore` — docs-only commits skip CI entirely
+
+`ci.yml` declares `paths-ignore` on both `push` and `pull_request`:
+
+```yaml
+paths-ignore:
+  - '**/*.md'
+  - 'docs/**'
+  - '.planning/**'
+  - 'references/**'
+  - 'FIX*.txt'
+  - 'LICENSE'
+  - 'NOTICE'
+  - 'CODEOWNERS'
+  - '.gitignore'
+```
+
+A commit that touches ONLY these paths produces no CI run at all
+(`docs.yml` still fires for `docs/**` deploys). If a PR mixes a docs
+file with code, the workflow fires normally.
+
+**Branch protection caveat**: GitHub treats "workflow did not run"
+distinctly from "workflow passed". If `required: true` is set on a
+job name in branch protection, a paths-ignored PR will appear as
+missing-checks and block merge. Either (a) keep `lint` non-required
+(it's the cheapest signal anyway) or (b) drop the paths-ignore on
+`pull_request` and rely solely on the push filter — current trade-off
+prioritises cost savings over the require-on-PR convenience.
+
 ## Lifecycle table
 
 | Stage                         | Local command                                                                                         | Workflow(s) fired                                                                  | Job-level gate (`if:`)                                              | Outcome                                                                                                            |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | Dev branch push               | `git push origin <branch>`                                                                            | `ci.yml` (lint + unit only), `govulncheck.yml`                                     | branch trigger                                                      | Fast feedback (~1m). Heavier gates deferred to PR/main.                                                            |
-| PR open / sync                | `gh pr create --base main`                                                                            | `ci.yml` (lint + unit + envtest + security), `docs.yml` build-test, `pr-labeler.yml` | `pull_request: main`                                                | PR blocked until all four are green. E2E NOT run by default — opt-in with the `run-e2e` label.                      |
-| Merge PR to main              | `gh pr merge N --merge --delete-branch`                                                               | `ci.yml` (lint + unit + envtest + security + **E2E**), `docs.yml` deploys `latest`+`dev` | Push to main NOT starting with `chore(release):`                    | Post-merge regression catch. If E2E breaks here, the next release commit is blocked until fixed.                    |
+| PR open / sync                | `gh pr create --base main`                                                                            | `ci.yml` (lint + unit + envtest + security + **e2e**), `docs.yml` build-test, `pr-labeler.yml` | `pull_request: main` (non-draft for e2e)                | PR blocked until all five are green. Draft PRs skip e2e only.                                                       |
+| Merge PR to main              | `gh pr merge N --merge --delete-branch`                                                               | `ci.yml` (lint + unit + envtest + security), `docs.yml` deploys `latest`+`dev`     | Push to main NOT starting with `chore(release):`                    | Post-merge regression catch (no e2e — already ran on PR).                                                          |
 | Release commit                | `git commit --allow-empty -m 'chore(release): vX.Y.Z'` → `make pre-push` → `git push origin main`     | `release.yml` (active), `docs.yml`. `ci.yml` skipped (release.yml owns the gate).  | `startsWith(head_commit.message, 'chore(release): v')`              | release.yml runs unit + envtest-fast sanity, bumps manifests, goreleaser, cosign keyless OIDC, CycloneDX SBOM, helm OCI push, **tag created LAST**. |
 | Tag push (rare manual)        | `git tag vX.Y.Z && git push origin vX.Y.Z`                                                            | `docs.yml` (mike deploy stable / preview alias)                                    | `startsWith(github.ref, 'refs/tags/v')`                             | Versioned doc set deployed; container/chart NOT rebuilt (those rely on the chore-commit path)                       |
 
@@ -19,15 +76,11 @@ workflows) and to `.github/workflows/*.yml` (authoritative source).
 | Trigger                          | `ci.yml` (jobs that run)                  | `release.yml` | `docs.yml`           | `govulncheck.yml` | `pr-labeler.yml` |
 | -------------------------------- | ----------------------------------------- | ------------- | -------------------- | ----------------- | ---------------- |
 | `push: <feature-branch>`         | ✅ lint + unit                            | n/a           | (no deploy)          | ✅                | n/a              |
-| `pull_request: main`             | ✅ lint + unit + envtest + security       | n/a           | ✅ build-test (strict) | ✅              | ✅               |
-| `push: main` (regular merge)     | ✅ lint + unit + envtest + security + **e2e** | skipped   | ✅ deploy `latest`+`dev` | ✅            | n/a              |
+| `pull_request: main`             | ✅ lint + unit + envtest + security + **e2e** | n/a       | ✅ build-test (strict) | ✅              | ✅               |
+| `push: main` (regular merge)     | ✅ lint + unit + envtest + security       | skipped       | ✅ deploy `latest`+`dev` | ✅            | n/a              |
 | `push: main` (`chore(release):`) | skipped (release.yml owns the gate)       | ✅ active     | ✅ deploy `latest`+`dev` (during the run); tag-push step later triggers `docs.yml` again for `stable` | ✅ | n/a |
 | `push: tags v*`                  | n/a                                       | n/a           | ✅ deploy stable alias (or `preview` for `-alpha`/`-beta`/`-rc`) | n/a | n/a |
-
-**E2E escape hatch**: PR authors who want pre-merge E2E coverage can
-apply the `run-e2e` label to a non-draft PR. Draft PRs never run E2E
-regardless of the label. Without the label, E2E first runs against the
-PR's changes on the post-merge `push: main` event.
+| any docs-only commit (paths-ignore match) | (none — workflow skipped)         | n/a           | ✅ (the docs path itself) | ✅ (if non-docs go.* drift) | n/a |
 
 ## `release.yml` job sequence (commit-message-driven, tag-last)
 

@@ -108,7 +108,7 @@ alitellm-operator/
 | Working on...                          | MUST read first                          |
 |----------------------------------------|------------------------------------------|
 | E2E tests (kind cluster + Helm)        | `test/e2e/README.md`                     |
-| CI workflows (ci, docs, release, ...)  | `.github/workflows/*.yml` (top comments) |
+| CI workflows (ci, docs, release, ...)  | `references/docs/workflow.md` (matrix + rationale); `.github/workflows/*.yml` is authoritative |
 | Release tooling (goreleaser, signing)  | `.goreleaser.yml` + `release.yml` workflow |
 | Pre-push gate logic                    | `scripts/pre-push-check.sh` (gate list)  |
 | Publication / first-push procedure     | `PUBLISH.md`                             |
@@ -117,6 +117,21 @@ alitellm-operator/
 | Docs site, mkdocs, mike, gh-pages flow | `references/docs/documentation.md`       |
 | CI / PR / release lifecycle (push/PR matrix) | `references/docs/workflow.md`        |
 | OLM packaging                          | NOT supported — explicit scope decision (no OperatorHub) |
+
+## CI gating — one-line summary
+
+| Event                                 | lint | unit | envtest | security | e2e |
+|---------------------------------------|------|------|---------|----------|-----|
+| push: feature branch                  |  ✓   |  ✓   |   -     |    -     |  -  |
+| pull_request → main                   |  ✓   |  ✓   |   ✓     |    ✓     |  ✓  |
+| push: main (non-release)              |  ✓   |  ✓   |   ✓     |    ✓     |  -  |
+| push: main `chore(release): v*`       |  -   |  -   |   -     |    -     |  -  (release.yml owns it) |
+
+E2E runs once per change: on the PR. Post-merge skips it (already
+green on the PR ref). Docs-only commits (paths-ignore: `**/*.md`,
+`docs/**`, `.planning/**`, `references/**`, `FIX*.txt`, `LICENSE`,
+`NOTICE`, `CODEOWNERS`, `.gitignore`) skip `ci.yml` entirely. Detail
+and tradeoffs: `references/docs/workflow.md`.
 
 ## Toolchain — host has NO Go (always Docker)
 
