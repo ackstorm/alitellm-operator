@@ -184,7 +184,7 @@ type MCPServerRequest struct {
 	AllowedTools              []string       `json:"allowed_tools,omitempty"`
 	ToolNameToDisplayName     map[string]any `json:"tool_name_to_display_name,omitempty"`
 	ToolNameToDescription     map[string]any `json:"tool_name_to_description,omitempty"`
-	ExtraHeaders              map[string]any `json:"extra_headers,omitempty"`
+	ExtraHeaders              any            `json:"extra_headers,omitempty"`
 	StaticHeaders             map[string]any `json:"static_headers,omitempty"`
 	Command                   string         `json:"command,omitempty"`
 	Args                      []string       `json:"args,omitempty"`
@@ -215,7 +215,7 @@ type MCPServerUpdateRequest struct {
 	AllowedTools              []string       `json:"allowed_tools,omitempty"`
 	ToolNameToDisplayName     map[string]any `json:"tool_name_to_display_name,omitempty"`
 	ToolNameToDescription     map[string]any `json:"tool_name_to_description,omitempty"`
-	ExtraHeaders              map[string]any `json:"extra_headers,omitempty"`
+	ExtraHeaders              any            `json:"extra_headers,omitempty"`
 	StaticHeaders             map[string]any `json:"static_headers,omitempty"`
 	Command                   string         `json:"command,omitempty"`
 	Args                      []string       `json:"args,omitempty"`
