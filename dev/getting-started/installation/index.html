@@ -740,6 +740,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#upgrading" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#troubleshooting" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1729,6 +1740,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#upgrading" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upgrading
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#troubleshooting" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1880,6 +1902,37 @@
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span><span class="nt">manager</span><span class="p">:</span>
 <a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span><span class="nt">litellmUrlOverride</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;http://custom-litellm-service:4000&quot;</span>
 </code></pre></div>
+<h2 id="upgrading">Upgrading<a class="headerlink" href="#upgrading" title="Permanent link">&para;</a></h2>
+<div class="admonition warning">
+<p class="admonition-title">Helm does not upgrade CRDs</p>
+<p>Helm intentionally ships CRDs from the chart's <code>crds/</code> directory <strong>only
+on the first install</strong> (see <a href="https://github.com/helm/helm/issues/5871">helm/helm#5871</a>).
+Subsequent <code>helm upgrade</code> runs leave the existing CRDs in place. If a
+new chart version adds or changes CRD fields, applying CRs that use
+those fields will fail with <code>field not declared in schema</code>.</p>
+</div>
+<p>When upgrading to a new chart version, apply the CRDs explicitly <strong>before</strong>
+the Helm upgrade:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Option A — pull the chart and apply its CRDs</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>helm<span class="w"> </span>pull<span class="w"> </span>oci://ghcr.io/ackstorm/charts/alitellm-operator<span class="w"> </span>--version<span class="w"> </span>&lt;X.Y.Z&gt;<span class="w"> </span>--untar
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>kubectl<span class="w"> </span>apply<span class="w"> </span>-f<span class="w"> </span>alitellm-operator/crds/
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="c1"># Option B — apply from a local checkout of this repo at the matching tag</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>git<span class="w"> </span>checkout<span class="w"> </span>v&lt;X.Y.Z&gt;
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>kubectl<span class="w"> </span>apply<span class="w"> </span>-f<span class="w"> </span>deploy/helm/alitellm-operator/crds/
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="c1"># Then upgrade the operator itself</span>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>helm<span class="w"> </span>upgrade<span class="w"> </span>alitellm-operator<span class="w"> </span>oci://ghcr.io/ackstorm/charts/alitellm-operator<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="w">    </span>--version<span class="w"> </span>&lt;X.Y.Z&gt;<span class="w"> </span>-n<span class="w"> </span>&lt;namespace&gt;
+</code></pre></div>
+<p>Verify the new schema landed:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>crd<span class="w"> </span>litellmmcpserverdiscoveries.litellm.ackstorm.ai<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">    </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.spec.versions[0].schema.openAPIV3Schema.properties.spec.required}&#39;</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="c1"># Expected: [&quot;prefix&quot;,&quot;refresh&quot;,&quot;toolhive&quot;,&quot;type&quot;]  (v0.3.0+)</span>
+</code></pre></div>
+<p>For GitOps users (Flux, ArgoCD) we recommend a separate <code>Kustomization</code> /
+<code>Application</code> for <code>deploy/helm/alitellm-operator/crds/</code> that reconciles
+ahead of the chart release, so CRD upgrades are part of the declared state.</p>
 <h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
 <h3 id="common-issues">Common Issues<a class="headerlink" href="#common-issues" title="Permanent link">&para;</a></h3>
 <p><strong>Permission Denied Errors</strong>
