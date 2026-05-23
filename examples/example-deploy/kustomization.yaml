@@ -37,3 +37,4 @@ resources:
   - 05-mcpserverdiscovery.yaml
   - 06-a2aagent.yaml
   - 07-team.yaml
+  - 08-guardrail.yaml
