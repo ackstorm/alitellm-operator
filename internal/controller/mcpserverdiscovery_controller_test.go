@@ -1895,3 +1895,95 @@ func TestMCPServerDiscoveryReconciler_CR01_AlreadyExistsRetryPreservesChild(t *t
 		t.Fatalf("CR-01 regression: child %s exists but ownerRef no longer points to this Discovery — unexpected mutation", dotted)
 	}
 }
+
+// TestMCPServerDiscoveryReconciler_NameCollision — FIX4.txt H-2 v0.3.0.
+// Inject two ToolHive MCPServer objects with the SAME source name
+// (`shared`) in DIFFERENT source namespaces (`alpha`, `beta`) within
+// the SAME discovery (`spec.toolhive.namespaces=[alpha, beta]`,
+// `spec.prefix=col`). The new naming scheme `<prefix>-<source-name>`
+// would render both as `col-shared`. Expect:
+//
+//   - Exactly ONE child rendered (the first-seen one wins).
+//   - status.skippedCandidates contains an entry with
+//     Reason="NameCollision" naming the second occurrence.
+//   - The parent's NameCollision status condition is True with
+//     Reason="NameCollision".
+//
+// This locks the loud-fail policy: the second occurrence is NOT
+// silently merged. The user must resolve by renaming one upstream or
+// splitting the discovery into prefix-distinct ones.
+func TestMCPServerDiscoveryReconciler_NameCollision(t *testing.T) {
+	ctx := context.Background()
+	const mdName = "name-collision-disc"
+	const thName = "shared"
+	const nsA = "alpha"
+	const nsB = "beta"
+
+	ensureNoMCPServerDiscovery(t, ctx, mdName)
+	// envtest apiserver does not pre-create namespaces. AlreadyExists
+	// is fine (the test may be re-run in the same envtest process).
+	for _, ns := range []string{nsA, nsB} {
+		if err := k8sClient.Create(ctx, &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{Name: ns},
+		}); err != nil && !apierrors.IsAlreadyExists(err) {
+			t.Fatalf("create namespace %s: %v", ns, err)
+		}
+	}
+	ensureNoToolhiveObject(t, ctx, toolhive.MCPServerGVK, nsA, thName)
+	ensureNoToolhiveObject(t, ctx, toolhive.MCPServerGVK, nsB, thName)
+	t.Cleanup(func() {
+		ensureNoMCPServerDiscovery(t, context.Background(), mdName)
+		ensureNoToolhiveObject(t, context.Background(), toolhive.MCPServerGVK, nsA, thName)
+		ensureNoToolhiveObject(t, context.Background(), toolhive.MCPServerGVK, nsB, thName)
+	})
+
+	createToolhiveMCPServer(t, ctx, nsA, thName, "https://alpha.example.com", "http")
+	createToolhiveMCPServer(t, ctx, nsB, thName, "https://beta.example.com", "http")
+
+	md := msDiscSampleCR(mdName, []string{nsA, nsB})
+	if err := k8sClient.Create(ctx, md); err != nil {
+		t.Fatalf("create MCPServerDiscovery: %v", err)
+	}
+
+	// Expect exactly one child to land (loud-fail collision = second
+	// occurrence dropped, first wins). Use the long-window poll so the
+	// reconciler has time to process both ToolHive informer events.
+	children := pollMCPServerDiscoveryChildren(t, ctx, mdName, 1, 30*time.Second)
+	if len(children) != 1 {
+		t.Fatalf("expected exactly 1 child after NameCollision (loud-fail), got %d", len(children))
+	}
+	wantChildName := mdName + "-" + thName
+	if children[0].Name != wantChildName {
+		t.Errorf("child name: got %q, want %q", children[0].Name, wantChildName)
+	}
+
+	// Expect skippedCandidates[Reason=NameCollision] to contain an entry.
+	skip := pollMCPServerDiscoverySkipReason(t, ctx, mdName, "NameCollision", 10*time.Second)
+	if skip == nil {
+		t.Fatalf("no skippedCandidate with Reason=NameCollision recorded")
+	}
+	if skip.Name != wantChildName {
+		t.Errorf("skipped candidate name: got %q, want %q", skip.Name, wantChildName)
+	}
+
+	// Expect the parent-level NameCollision condition to be True.
+	deadline := time.Now().Add(10 * time.Second)
+	var observed *litellmv1alpha1.LiteLLMMCPServerDiscovery
+	for time.Now().Before(deadline) {
+		var md2 litellmv1alpha1.LiteLLMMCPServerDiscovery
+		if err := k8sClient.Get(ctx, client.ObjectKey{Name: mdName, Namespace: WatchNamespace}, &md2); err == nil {
+			c := apimeta.FindStatusCondition(md2.Status.Conditions, ConditionTypeNameCollision)
+			if c != nil && c.Status == metav1.ConditionTrue && c.Reason == "NameCollision" {
+				observed = &md2
+				break
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if observed == nil {
+		var md2 litellmv1alpha1.LiteLLMMCPServerDiscovery
+		_ = k8sClient.Get(ctx, client.ObjectKey{Name: mdName, Namespace: WatchNamespace}, &md2)
+		t.Fatalf("NameCollision condition not True within 10s; conditions=%+v skipped=%+v",
+			md2.Status.Conditions, md2.Status.SkippedCandidates)
+	}
+}
