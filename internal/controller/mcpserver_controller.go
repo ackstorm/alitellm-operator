@@ -349,6 +349,17 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if mcp.Status.LastRendered.Hash == currentRenderedHash &&
 		mcp.Status.LastRendered.ServerID != "" &&
 		mcp.Status.ObservedGeneration == mcp.Generation {
+		// Stale-status heal — see model_controller.go Step 8 for the
+		// connection-flap rationale. Same shape.
+		if ready := apimeta.FindStatusCondition(mcp.Status.Conditions, "Ready"); ready == nil ||
+			ready.Status != metav1.ConditionTrue || ready.Reason != reasonSynced {
+			if err := r.writeStatus(ctx, &mcp, metav1.ConditionTrue, reasonSynced, "mcp server registered"); err != nil {
+				if apierrors.IsConflict(err) {
+					return ctrl.Result{}, nil
+				}
+				return ctrl.Result{}, err
+			}
+		}
 		metrics.CRStatusAgeTracker.RecordSuccess(mcpServerKind, mcp.Name)
 		return ctrl.Result{}, nil
 	}
