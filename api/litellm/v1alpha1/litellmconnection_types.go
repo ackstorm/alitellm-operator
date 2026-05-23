@@ -183,7 +183,7 @@ type LiteLLMConnectionStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced,shortName=llmconn
+// +kubebuilder:resource:scope=Namespaced,shortName=llmconn,categories=litellm
 // +kubebuilder:validation:XValidation:rule="self.metadata.name == 'default'",message="LiteLLMConnection name must be 'default' (singleton per spec §6.1)"
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=".status.conditions[?(@.type=='Ready')].status"
 // +kubebuilder:printcolumn:name="Reason",type=string,JSONPath=".status.conditions[?(@.type=='Ready')].reason"

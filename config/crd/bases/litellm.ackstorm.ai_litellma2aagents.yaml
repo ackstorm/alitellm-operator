@@ -8,6 +8,8 @@ metadata:
 spec:
   group: litellm.ackstorm.ai
   names:
+    categories:
+    - litellm
     kind: LiteLLMA2AAgent
     listKind: LiteLLMA2AAgentList
     plural: litellma2aagents
