@@ -115,6 +115,7 @@ alitellm-operator/
 | Helm chart values + defaults           | `deploy/helm/alitellm-operator/values.yaml` |
 | API reference rendering                | `docs/Makefile` (`gen-crd-ref-docs`) + `docs/.crd-ref-docs.yaml` |
 | Docs site, mkdocs, mike, gh-pages flow | `references/docs/documentation.md`       |
+| CI / PR / release lifecycle (push/PR matrix) | `references/docs/workflow.md`        |
 | OLM packaging                          | NOT supported — explicit scope decision (no OperatorHub) |
 
 ## Toolchain — host has NO Go (always Docker)

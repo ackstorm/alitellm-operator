@@ -1,12 +1,31 @@
 name: ci
 
-# Consolidates lint + unit + envtest + e2e + security into a single
-# PR-blocking workflow. Each job runs in parallel; e2e is skipped on
-# draft PRs unless the `run-e2e` label is applied.
+# Tiered CI gating policy. Each job activates only when its cost is
+# justified by the event class — fast feedback on dev pushes, full
+# gate on PRs and post-merge, near-zero on release commits (release.yml
+# owns that path).
+#
+#   Event                                 | lint | unit | envtest | security | e2e
+#   --------------------------------------|------|------|---------|----------|----
+#   push: feature branch (any non-main)   |  ✓   |  ✓   |    -    |    -     |  -
+#   pull_request -> main                  |  ✓   |  ✓   |    ✓    |    ✓     |  -
+#   push: main (post-merge, non-release)  |  ✓   |  ✓   |    ✓    |    ✓     |  ✓
+#   push: main, `chore(release): v*`      |  -   |  -   |    -    |    -     |  -
+#
+# Rationale:
+#   - Dev branch pushes: lint + unit catch 90% of issues in ~1m; no
+#     reason to spin up envtest or kind for every WIP commit.
+#   - PR: full envtest + security gate before review. E2E intentionally
+#     deferred to the post-merge run — the PR keeps fast turnaround,
+#     and the post-merge regression catch fails loudly if E2E breaks.
+#   - Post-merge main push: identical gate to PR PLUS e2e. Catches the
+#     "PR was green at last push but stale vs main" case.
+#   - Release commits: release.yml runs its own unit + envtest-fast
+#     sanity gate; ci.yml skips entirely to avoid duplicate work.
 #
 # DESIGN PRINCIPLE — CI mirrors local make exactly.
 # Every test job invokes the same make target a developer runs locally
-# (lint, unit, envtest-run, security, e2e-full) via ./scripts/dev.sh.
+# (lint, unit, envtest-fast, security, e2e) via ./scripts/dev.sh.
 # The only non-`make` step is the SARIF upload to the GitHub Security tab
 # (visibility-only — `make security` already exits non-zero on HIGH).
 # Workflows that do NOT need to be gemelos with local make: release.yml,
@@ -14,7 +33,7 @@ name: ci
 
 on:
   push:
-    branches-ignore: []   # all branches — fast feedback on every dev push
+    branches-ignore: []   # all branches — per-job filters decide what runs
   pull_request:
     branches: [main]
 
@@ -23,11 +42,6 @@ concurrency:
   # main (post-merge regression catch must complete).
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.ref != 'refs/heads/main' }}
-
-# release.yml owns the test gate for `chore(release): v*` pushes. ci.yml
-# skips on those commits to avoid duplicating the ~10-15min envtest +
-# e2e runs. PR events always run ci.yml regardless of the eventual
-# squash-merge message — PR review is the gate there.
 jobs:
   lint:
     name: Lint
@@ -94,7 +108,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: unit
     timeout-minutes: 25
-    if: "github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release): v')"
+    # Tiered gate: PR-to-main + main-push (non-release). Skips feature
+    # branch pushes — envtest cost (~3m) is not worth WIP feedback.
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main' && !startsWith(github.event.head_commit.message, 'chore(release): v'))
     steps:
       - uses: actions/checkout@v6  # v4.3.1
 
@@ -135,7 +153,11 @@ jobs:
     name: Security
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    if: "github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release): v')"
+    # Tiered gate: PR-to-main + main-push (non-release). Skips feature
+    # branch pushes — security gate (~5m) belongs at the merge boundary.
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main' && !startsWith(github.event.head_commit.message, 'chore(release): v'))
     # Required permissions for SARIF upload to GitHub Security tab.
     permissions:
       contents: read
@@ -202,13 +224,19 @@ jobs:
     runs-on: ubuntu-latest
     needs: [unit, envtest]
     timeout-minutes: 25
-    # Skip release commits (release.yml owns the test gate for those).
-    # Otherwise: draft PRs skip e2e unless they carry the `run-e2e`
-    # label; pushes always run e2e (incl. post-merge regression catch).
+    # Tiered gate: main-push (non-release) ONLY. PRs and feature branch
+    # pushes skip E2E to keep review turnaround fast. The post-merge
+    # regression catch is the contract — if E2E breaks after merge, the
+    # main-branch run fails loudly and the next release commit is blocked
+    # until it's green.
+    #
+    # Escape hatch: PR authors who want pre-merge E2E coverage can apply
+    # the `run-e2e` label (covered by the second branch below). Draft PRs
+    # never run e2e — the label has no effect on drafts.
     if: |
-      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release): v')) &&
-      (github.event_name == 'push' ||
-       !github.event.pull_request.draft ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main' && !startsWith(github.event.head_commit.message, 'chore(release): v')) ||
+      (github.event_name == 'pull_request' &&
+       !github.event.pull_request.draft &&
        contains(github.event.pull_request.labels.*.name, 'run-e2e'))
     steps:
       - uses: actions/checkout@v6  # v4.3.1

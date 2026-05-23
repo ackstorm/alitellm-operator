@@ -8,21 +8,26 @@ workflows) and to `.github/workflows/*.yml` (authoritative source).
 
 | Stage                         | Local command                                                                                         | Workflow(s) fired                                                                  | Job-level gate (`if:`)                                              | Outcome                                                                                                            |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Dev branch push               | `git push origin <branch>`                                                                            | `ci.yml`, `docs.yml` (PR build only), `govulncheck.yml`, `pr-labeler.yml`          | branch trigger                                                      | Gates green → safe to open PR                                                                                      |
-| PR open / sync                | `gh pr create --base main`                                                                            | Above + `documentation-build-test` job (strict `mkdocs build`) + `Deploy docs` skip | `pull_request: main`                                                | PR blocked from merge until every required check is green                                                          |
-| Merge PR to main              | `gh pr merge N --merge --delete-branch`                                                               | `ci.yml`, `docs.yml` (deploys `latest`+`dev` mike aliases), `release.yml` skipped  | Push to main NOT starting with `chore(release):`                    | Site updates, NO container/chart release                                                                           |
-| Release commit                | `git commit --allow-empty -m 'chore(release): vX.Y.Z'` → `make pre-push` → `git push origin main`     | `release.yml` (active), `ci.yml`, `docs.yml`                                       | `startsWith(head_commit.message, 'chore(release): v')`              | Bump manifests, goreleaser, cosign keyless OIDC, CycloneDX SBOM, helm OCI push, **tag created LAST**               |
+| Dev branch push               | `git push origin <branch>`                                                                            | `ci.yml` (lint + unit only), `govulncheck.yml`                                     | branch trigger                                                      | Fast feedback (~1m). Heavier gates deferred to PR/main.                                                            |
+| PR open / sync                | `gh pr create --base main`                                                                            | `ci.yml` (lint + unit + envtest + security), `docs.yml` build-test, `pr-labeler.yml` | `pull_request: main`                                                | PR blocked until all four are green. E2E NOT run by default — opt-in with the `run-e2e` label.                      |
+| Merge PR to main              | `gh pr merge N --merge --delete-branch`                                                               | `ci.yml` (lint + unit + envtest + security + **E2E**), `docs.yml` deploys `latest`+`dev` | Push to main NOT starting with `chore(release):`                    | Post-merge regression catch. If E2E breaks here, the next release commit is blocked until fixed.                    |
+| Release commit                | `git commit --allow-empty -m 'chore(release): vX.Y.Z'` → `make pre-push` → `git push origin main`     | `release.yml` (active), `docs.yml`. `ci.yml` skipped (release.yml owns the gate).  | `startsWith(head_commit.message, 'chore(release): v')`              | release.yml runs unit + envtest-fast sanity, bumps manifests, goreleaser, cosign keyless OIDC, CycloneDX SBOM, helm OCI push, **tag created LAST**. |
 | Tag push (rare manual)        | `git tag vX.Y.Z && git push origin vX.Y.Z`                                                            | `docs.yml` (mike deploy stable / preview alias)                                    | `startsWith(github.ref, 'refs/tags/v')`                             | Versioned doc set deployed; container/chart NOT rebuilt (those rely on the chore-commit path)                       |
 
 ## Trigger matrix
 
-| Trigger                          | `ci.yml` | `release.yml` | `docs.yml`           | `govulncheck.yml` | `pr-labeler.yml` |
-| -------------------------------- | -------- | ------------- | -------------------- | ----------------- | ---------------- |
-| `push: <feature-branch>`         | ✅       | n/a           | (no deploy)          | ✅                | n/a              |
-| `pull_request: main`             | ✅       | n/a           | ✅ build-test (strict) | ✅              | ✅               |
-| `push: main` (regular merge)     | ✅       | skipped       | ✅ deploy `latest`+`dev` | ✅            | n/a              |
-| `push: main` (`chore(release):`) | ✅       | ✅ active      | ✅ deploy `latest`+`dev` (during the run); tag-push step later triggers `docs.yml` again for `stable` | ✅ | n/a |
-| `push: tags v*`                  | n/a      | n/a           | ✅ deploy stable alias (or `preview` for `-alpha`/`-beta`/`-rc`) | n/a | n/a |
+| Trigger                          | `ci.yml` (jobs that run)                  | `release.yml` | `docs.yml`           | `govulncheck.yml` | `pr-labeler.yml` |
+| -------------------------------- | ----------------------------------------- | ------------- | -------------------- | ----------------- | ---------------- |
+| `push: <feature-branch>`         | ✅ lint + unit                            | n/a           | (no deploy)          | ✅                | n/a              |
+| `pull_request: main`             | ✅ lint + unit + envtest + security       | n/a           | ✅ build-test (strict) | ✅              | ✅               |
+| `push: main` (regular merge)     | ✅ lint + unit + envtest + security + **e2e** | skipped   | ✅ deploy `latest`+`dev` | ✅            | n/a              |
+| `push: main` (`chore(release):`) | skipped (release.yml owns the gate)       | ✅ active     | ✅ deploy `latest`+`dev` (during the run); tag-push step later triggers `docs.yml` again for `stable` | ✅ | n/a |
+| `push: tags v*`                  | n/a                                       | n/a           | ✅ deploy stable alias (or `preview` for `-alpha`/`-beta`/`-rc`) | n/a | n/a |
+
+**E2E escape hatch**: PR authors who want pre-merge E2E coverage can
+apply the `run-e2e` label to a non-draft PR. Draft PRs never run E2E
+regardless of the label. Without the label, E2E first runs against the
+PR's changes on the post-merge `push: main` event.
 
 ## `release.yml` job sequence (commit-message-driven, tag-last)
 
