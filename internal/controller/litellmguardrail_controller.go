@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -424,8 +425,8 @@ func (r *GuardRailReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		metrics.CRStatusAgeTracker.RecordSuccess(guardrailKind, gr.Name)
 		// Refresh PoolSize on steady-state too — sibling membership may
 		// have changed without a spec edit (a sibling CR was added).
-		if int32(poolSize) != gr.Status.LastRendered.PoolSize {
-			gr.Status.LastRendered.PoolSize = int32(poolSize)
+		if poolSize != gr.Status.LastRendered.PoolSize {
+			gr.Status.LastRendered.PoolSize = poolSize
 			_ = r.Status().Update(ctx, &gr)
 		}
 		return ctrl.Result{}, nil
@@ -462,7 +463,7 @@ func (r *GuardRailReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		InfoKeys:           sortedKeys(infoMap),
 		GuardrailID:        persistedID,
 		DefinitionLocation: litellm.GuardrailDefinitionLocationDB,
-		PoolSize:           int32(poolSize),
+		PoolSize:           poolSize,
 		At:                 &now,
 	}
 	if err := r.writeStatus(ctx, &gr, metav1.ConditionTrue, reasonSynced, "guardrail registered"); err != nil {
@@ -586,7 +587,7 @@ func (r *GuardRailReconciler) checkGuardrailPool(
 	ctx context.Context,
 	cr *litellmv1alpha1.LiteLLMGuardRail,
 	_ *litellm.Client,
-) (poolSize int, providerMismatch bool, anySiblingOwns bool, err error) {
+) (poolSize int32, providerMismatch bool, anySiblingOwns bool, err error) {
 	var list litellmv1alpha1.LiteLLMGuardRailList
 	if err := r.List(ctx, &list, client.InNamespace(cr.Namespace)); err != nil {
 		return 0, false, false, err
@@ -600,7 +601,14 @@ func (r *GuardRailReconciler) checkGuardrailPool(
 		if !sib.DeletionTimestamp.IsZero() {
 			continue
 		}
-		poolSize++
+		// Saturate at math.MaxInt32 so gosec G115 (int→int32 narrowing) is
+		// statically defused — len(list.Items) is bounded by the apiserver
+		// page size and could never realistically approach this cap, but
+		// counting in int32 here also lets the CRD status field hold the
+		// value without a runtime conversion.
+		if poolSize < math.MaxInt32 {
+			poolSize++
+		}
 		// Provider homogeneity check excludes the CR itself.
 		if sib.UID != cr.UID && sib.Spec.Provider != cr.Spec.Provider {
 			providerMismatch = true
