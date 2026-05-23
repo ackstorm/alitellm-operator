@@ -8,6 +8,8 @@ metadata:
 spec:
   group: litellm.ackstorm.ai
   names:
+    categories:
+    - litellm
     kind: LiteLLMModelDiscovery
     listKind: LiteLLMModelDiscoveryList
     plural: litellmmodeldiscoveries
@@ -26,6 +28,12 @@ spec:
     - jsonPath: .status.conditions[?(@.type=='Ready')].reason
       name: Reason
       type: string
+    - jsonPath: .status.discoveredCount
+      name: Discovered
+      type: integer
+    - jsonPath: .status.generatedCount
+      name: Generated
+      type: integer
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
