@@ -87,37 +87,19 @@ envtest-run: envtest-race ## Phase 2 — controller envtest (race-enabled). Alia
 
 .PHONY: envtest-race
 envtest-race: manifests generate fmt vet setup-envtest ## Phase 2 — controller envtest with -race. Slower (~7m) but catches data races. CI gate.
-	# Per-package loop so `go test` driver sees len(pkgs)==1 and streams
-	# -v output test-by-test. Multi-package go test buffers stdout per
-	# package regardless of TTY (cmd/go/internal/test: streamOutput :=
-	# len(pkgs)==1), so the old `script -q /dev/null -c ...` PTY trick
-	# could not unbuffer the driver. Per-pkg coverprofiles merged into
-	# cover-envtest.out at the end (mode: atomic, single header).
+	@# Runs envtest packages concurrently. Green runs show package status
+	@# plus slow tests; failed packages dump their captured logs.
 	@KUBEBUILDER_ASSETS="$$($(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)"; \
 	export KUBEBUILDER_ASSETS; \
-	rc=0; covdir=$$(mktemp -d); \
-	for pkg in $$(go list ./internal/controller/... ./internal/toolhive/...); do \
-		printf '==> %s\n' "$$pkg"; \
-		cov="$$covdir/$$(echo $$pkg | tr / _).cov"; \
-		go test -v -race -count=1 -timeout 15m -coverprofile="$$cov" "$$pkg" || rc=$$?; \
-	done; \
-	{ echo 'mode: atomic'; \
-	  for f in "$$covdir"/*.cov; do [ -s "$$f" ] && tail -n +2 "$$f"; done; \
-	} > cover-envtest.out; \
-	rm -rf "$$covdir"; \
-	exit $$rc
+	scripts/run-envtest-packages.sh --race --timeout 15m --coverprofile cover-envtest.out -- ./internal/controller/... ./internal/toolhive/...
 
 .PHONY: envtest-fast
 envtest-fast: setup-envtest ## Phase 2 — controller envtest WITHOUT -race. Dev inner loop (~3m, ~3x faster than envtest-race). Not a CI gate.
-	# Per-package loop streams -v output (see envtest-race for rationale).
+	@# Runs envtest packages concurrently. Green runs show package status
+	@# plus slow tests; failed packages dump their captured logs.
 	@KUBEBUILDER_ASSETS="$$($(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)"; \
 	export KUBEBUILDER_ASSETS; \
-	rc=0; \
-	for pkg in $$(go list ./internal/controller/... ./internal/toolhive/...); do \
-		printf '==> %s\n' "$$pkg"; \
-		go test -v -count=1 -timeout 10m "$$pkg" || rc=$$?; \
-	done; \
-	exit $$rc
+	scripts/run-envtest-packages.sh --timeout 10m -- ./internal/controller/... ./internal/toolhive/...
 
 .PHONY: test-all
 test-all: unit envtest-run ## All non-cluster tests (unit + envtest-run).
@@ -404,7 +386,13 @@ endef
 .PHONY: helm-sync
 helm-sync: build-installer ## Plan 07-02: regenerate deploy/helm/alitellm-operator/templates/install.yaml from dist/install.yaml per D-01 (kustomize canonical, Helm veneer).
 	bash scripts/kustomize-to-helm.sh dist/install.yaml deploy/helm/alitellm-operator/templates/install.yaml
-	cp -f config/crd/bases/litellm.ackstorm.ai_*.yaml deploy/helm/alitellm-operator/crds/
+	# CRDs land in crd-sources/ (NOT the reserved crds/ dir name) so the
+	# templates/crds.yaml loop can range over them and emit each one as a
+	# Helm-managed template. helm-inject-crd-annotation.py adds
+	# `helm.sh/resource-policy: keep` so `helm uninstall` preserves
+	# CRDs and the user's CR data.
+	cp -f config/crd/bases/litellm.ackstorm.ai_*.yaml deploy/helm/alitellm-operator/crd-sources/
+	python3 scripts/helm-inject-crd-annotation.py deploy/helm/alitellm-operator/crd-sources/*.yaml
 
 .PHONY: helm-sync-check
 helm-sync-check: helm-sync ## CI gate: fail if `make helm-sync` produced uncommitted diff (drift between kustomize and chart).

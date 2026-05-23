@@ -156,7 +156,7 @@ Bypass is banned. If a gate fails, fix the root cause, never
 | `docs.yml` mike deploy failed                                          | Re-run the `Deploy docs` job from the Actions UI. Verify `extra.version.provider: mike` is still in `mkdocs.yml`.                                            |
 | Manifest bump commit landed but pipeline died mid-run                  | The bot bump is on `main`. Re-push `chore(release): vX.Y.Z` again (or a clean revert + new commit). `make bump` detects a clean tree and skips.              |
 | Stale draft release in GH UI                                           | Manual cleanup: `gh release delete vX.Y.Z --cleanup-tag --yes`. Then re-push the release commit.                                                              |
-| Post-upgrade `CR apply` errors with `field not declared in schema`     | Helm `crds/` is install-only — `helm upgrade` does NOT re-apply CRDs. Run `kubectl apply -f deploy/helm/alitellm-operator/crds/` (or pull the OCI chart + apply its `crds/` dir). See CLAUDE.md "Common failure modes". |
+| Post-upgrade `CR apply` errors with `field not declared in schema`     | Pre-v0.3.2 install only. Helm `crds/` was install-only — `helm upgrade` did NOT re-apply CRDs. Fixed in v0.3.2: CRDs moved to `templates/`, so `helm upgrade` upgrades them with everything else. Stuck on v0.3.0/v0.3.1: `kubectl apply -f deploy/helm/alitellm-operator/crd-sources/` once, then bump to v0.3.2+. |
 
 ## Quick reference
 

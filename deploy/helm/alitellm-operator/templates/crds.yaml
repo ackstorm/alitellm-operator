@@ -1,0 +1,29 @@
+{{/*
+CRD bundle — managed-by-Helm strategy (Option B from FIX5/install docs).
+
+Why this lives under templates/ (not crds/):
+  Helm's `crds/` directory is install-only — files under it ship on the
+  FIRST `helm install` and are NEVER touched by `helm upgrade`. That left
+  CRD schema changes to a manual `kubectl apply -f crds/` dance and was
+  the source of multiple prod incidents (modelID rename, prefix field,
+  etc.). Putting CRDs under templates/ moves them into Helm's normal
+  managed-resource lifecycle: helm install applies them, helm upgrade
+  upgrades them.
+
+The trade-off: helm uninstall would also delete CRDs (and cascade-delete
+every CR a user has created) — so each CRD source file carries the
+`helm.sh/resource-policy: keep` annotation injected by
+scripts/helm-inject-crd-annotation.py. The annotation tells Helm to
+leave CRDs (and their CR data) untouched on uninstall.
+
+`installCRDs: true` (values.yaml) is the opt-out knob. Users who manage
+CRDs out-of-band (Flux/ArgoCD with a separate Kustomization, kubectl
+apply in CD, etc.) set it to false to skip this block. Default true
+matches the "batteries included" install posture.
+*/}}
+{{- if .Values.installCRDs }}
+{{- range $path, $_ := .Files.Glob "crd-sources/*.yaml" }}
+---
+{{ $.Files.Get $path }}
+{{- end }}
+{{- end }}

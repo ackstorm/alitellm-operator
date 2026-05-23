@@ -90,29 +90,25 @@ controllerManager:
 
 ## Upgrading
 
-!!! warning "Helm does not upgrade CRDs"
-    Helm intentionally ships CRDs from the chart's `crds/` directory **only
-    on the first install** (see [helm/helm#5871](https://github.com/helm/helm/issues/5871)).
-    Subsequent `helm upgrade` runs leave the existing CRDs in place. If a
-    new chart version adds or changes CRD fields, applying CRs that use
-    those fields will fail with `field not declared in schema`.
-
-When upgrading to a new chart version, apply the CRDs explicitly **before**
-the Helm upgrade:
+`helm upgrade` upgrades the CRDs along with everything else — no manual
+`kubectl apply -f crds/` step is required:
 
 ```bash
-# Option A — pull the chart and apply its CRDs
-helm pull oci://ghcr.io/ackstorm/charts/alitellm-operator --version <X.Y.Z> --untar
-kubectl apply -f alitellm-operator/crds/
-
-# Option B — apply from a local checkout of this repo at the matching tag
-git checkout v<X.Y.Z>
-kubectl apply -f deploy/helm/alitellm-operator/crds/
-
-# Then upgrade the operator itself
 helm upgrade alitellm-operator oci://ghcr.io/ackstorm/charts/alitellm-operator \
     --version <X.Y.Z> -n <namespace>
 ```
+
+How it works (since v0.3.2):
+
+- CRDs ship under `templates/` (rendered through Helm's normal template
+  pipeline), NOT under the legacy `crds/` directory (which Helm treats
+  as install-only).
+- Each CRD carries `helm.sh/resource-policy: keep`, so `helm uninstall`
+  leaves CRDs (and any CRs the user created) intact.
+- The `installCRDs` value (default `true`) gates the bundle. Set
+  `installCRDs: false` when CRDs are managed out-of-band (Flux/ArgoCD
+  Kustomization, kubectl apply in a CD pipeline, etc.) to avoid two
+  owners for the same object.
 
 Verify the new schema landed:
 
@@ -121,6 +117,30 @@ kubectl get crd litellmmcpserverdiscoveries.litellm.ackstorm.ai \
     -o jsonpath='{.spec.versions[0].schema.openAPIV3Schema.properties.spec.required}'
 # Expected: ["prefix","refresh","toolhive","type"]  (v0.3.0+)
 ```
+
+### Migrating an existing install (pre-v0.3.2)
+
+Existing v0.3.0 / v0.3.1 installs have CRDs in the cluster that Helm
+does NOT own (they were applied by the install-only `crds/` path). The
+first `helm upgrade` to v0.3.2+ has to take ownership of those objects
+or it will error with `apiextensions.k8s.io/v1, Kind=CustomResourceDefinition "..." in namespace "" exists and cannot be imported into the current release: invalid ownership metadata`.
+
+One-time adoption:
+
+```bash
+# Adopt every CRD into the release's ownership before the upgrade.
+for crd in $(kubectl get crd -o name | grep '.litellm.ackstorm.ai$'); do
+  kubectl annotate $crd \
+      meta.helm.sh/release-name=alitellm-operator \
+      meta.helm.sh/release-namespace=<release-ns> --overwrite
+  kubectl label $crd app.kubernetes.io/managed-by=Helm --overwrite
+done
+
+helm upgrade alitellm-operator oci://ghcr.io/ackstorm/charts/alitellm-operator \
+    --version <X.Y.Z> -n <release-ns>
+```
+
+After this one-time dance, future upgrades are plain `helm upgrade`.
 
 For GitOps users (Flux, ArgoCD) we recommend a separate `Kustomization` /
 `Application` for `deploy/helm/alitellm-operator/crds/` that reconciles

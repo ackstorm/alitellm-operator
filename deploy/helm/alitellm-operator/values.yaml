@@ -15,6 +15,17 @@
 # Re-enable trigger: a dogfood install surfaces a need → add the surface
 # here + `helm-sync` regen.
 
+# installCRDs: when true (default), the chart ships every CRD in
+# crd-sources/ as a managed Helm resource (rendered via templates/crds.yaml).
+# `helm upgrade` then upgrades CRDs the same way it upgrades every other
+# resource — no more manual `kubectl apply -f crds/` dance.
+#
+# Each CRD carries `helm.sh/resource-policy: keep` so `helm uninstall`
+# preserves them (and the user's CRs) intact. Set this to false when
+# CRDs are managed out-of-band (Flux/ArgoCD Kustomization, kubectl apply
+# in a CD pipeline, etc.) to avoid Helm tracking two owners for the
+# same object.
+installCRDs: true
 image:
   # Container registry + image name. Matches the ghcr.io/ackstorm/ OCI
   # artifact pushed by the release.yml workflow.
