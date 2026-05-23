@@ -331,12 +331,31 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// carries the value). The hash is computed on the SANITIZED form so
 	// drift detection matches what LiteLLM actually stores; K8s
 	// metadata.name remains untouched.
+	//
+	// FIX9 H-1 (2026-05-23): the hash includes a render-version tag so
+	// that a bump in extractMCPParams() (i.e. the operator now extracts a
+	// field it previously dropped) invalidates every persisted hash. The
+	// previously-saved status.lastRendered.hash will no longer match the
+	// recomputed hash, the steady-state shortcut in Step 8 falls through,
+	// and Step 9's UPDATE path pushes the freshly-extracted body to
+	// LiteLLM. Without this tag, post-upgrade drift between what the
+	// operator USED to render and what it RENDERS NOW stays masked — the
+	// only recovery is a manual `kubectl patch --subresource=status` to
+	// clear lastRendered.hash (observed in prod on the v0.3.0 → v0.4.0
+	// FIX5 H-1 propagation gap; 12/26 children carried stale empty fields
+	// until hash-cleared).
+	//
+	// BUMP mcpRenderVersion when extractMCPParams adds/removes/changes a
+	// field, or when any other step between paramsMap and the LiteLLM
+	// request struct changes shape. Cost: every existing CR's next
+	// reconcile re-renders + UPDATEs in LiteLLM (one PUT each). Cheap.
 	sanitizedName := litellm.SanitizeMCPServerName(mcp.Name, snap.MCPToolPrefixSeparator)
 	merged := map[string]any{
-		"server_name": sanitizedName,
-		"url":         mcp.Spec.Endpoint,
-		"transport":   mcp.Spec.Transport,
-		"params":      paramsMap,
+		"render_version": mcpRenderVersion,
+		"server_name":    sanitizedName,
+		"url":            mcp.Spec.Endpoint,
+		"transport":      mcp.Spec.Transport,
+		"params":         paramsMap,
 	}
 	canonicalBytes, err := canonicalJSON(merged)
 	if err != nil {

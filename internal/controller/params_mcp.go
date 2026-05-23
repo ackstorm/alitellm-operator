@@ -2,6 +2,26 @@
 
 package controller
 
+// mcpRenderVersion is the version tag included in the MCPServer hash so
+// that post-upgrade param-extraction changes (i.e. a release in which
+// extractMCPParams() starts forwarding a key it previously dropped, or
+// any other change to the operator-side rendering pipeline) invalidate
+// every persisted lastRendered.hash. The mismatch forces a fresh render
+// + UPDATE pass against LiteLLM on the next reconcile, eliminating the
+// post-upgrade drift-mask where the steady-state shortcut keeps stale
+// LiteLLM DB rows because the hash itself was computed pre-extraction.
+//
+// Bump this string when (any of):
+//   - extractMCPParams() adds, removes, or changes a forwarded field.
+//   - Anything between paramsMap and the LiteLLM request struct changes
+//     shape (e.g. structural overlay keys, sanitization rules).
+//   - A LiteLLM API contract change requires re-emitting bodies.
+//
+// History:
+//   v1 — Initial release of the FIX9 H-1 render-version stamp (post
+//        v0.4.1). Implicitly invalidates every pre-v0.4.2 persisted hash.
+const mcpRenderVersion = "v1"
+
 // extractedMCPParams holds the typed view of a LiteLLMMCPServer spec.params
 // map that the controller forwards to LiteLLM on CREATE/UPDATE. Every field
 // here MUST correspond 1:1 to a field already modeled in
