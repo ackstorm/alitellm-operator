@@ -456,6 +456,32 @@ func main() {
 		os.Exit(1)
 	}
 
+	// GuardRailReconciler — POST/PUT/DELETE against the LiteLLM
+	// /guardrails HTTP surface. SecretRefIndexField mirrors the Model /
+	// Team / MCPServer / A2A pattern so the Secret-rotation fan-in
+	// reconciles every guardrail that referenced the rotated Secret.
+	if err := mgr.GetFieldIndexer().IndexField(
+		context.Background(),
+		&litellmv1alpha1.LiteLLMGuardRail{},
+		controller.GuardrailSecretRefIndexField,
+		controller.IndexGuardrailSecretRefs,
+	); err != nil {
+		setupLog.Error(err, "unable to register guardrail secret-ref field indexer")
+		os.Exit(1)
+	}
+	if err := (&controller.GuardRailReconciler{
+		Client:     mgr.GetClient(),
+		Scheme:     mgr.GetScheme(),
+		Cache:      connCache,
+		Recorder:   mgr.GetEventRecorderFor("guardrail-controller"),
+		Namespace:  watchNS,
+		Log:        ctrl.Log.WithName("controller").WithName("GuardRail"),
+		BootEvents: bootSweep.GuardRailEvents,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to set up GuardRail reconciler")
+		os.Exit(1)
+	}
+
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

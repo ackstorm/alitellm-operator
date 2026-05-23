@@ -287,3 +287,93 @@ type AgentEntry struct {
 type AgentListResponse struct {
 	Data []AgentEntry `json:"data"`
 }
+
+// ── Guardrail wire types ─────────────────────────────────
+//
+// LiteLLM 2026-05 surface (litellm/types/guardrails.py and
+// litellm/proxy/guardrails/guardrail_endpoints.py):
+//
+//	POST  /guardrails                 body {"guardrail": Guardrail}
+//	PUT   /guardrails/{guardrail_id}  body {"guardrail": Guardrail}
+//	DELETE /guardrails/{guardrail_id}
+//	GET   /v2/guardrails/list         response ListGuardrailsResponse
+//
+// `Guardrail` (TypedDict in upstream) carries guardrail_name (required),
+// litellm_params (required — provider, mode, default_on, + provider-specific
+// keys as a free-form map; Pydantic model is extra="allow"), guardrail_info
+// (optional), policy_template (optional), and server-set created_at /
+// updated_at timestamps. The response shape adds a guardrail_id UUID and a
+// guardrail_definition_location enum ("db" | "config").
+//
+// LiteLLMGuardrailParams is the litellm_params bag as a map[string]any so the
+// operator can preserve forward-compat with new provider sub-models without a
+// types.go change.
+
+// LiteLLMGuardrailParams is the `litellm_params` pass-through map carried in
+// POST /guardrails and PUT /guardrails/{guardrail_id} bodies. Required keys
+// per BaseLitellmParams: "guardrail" (provider name), "mode" (string or
+// []string of GuardrailEventHooks values). Optional keys: "default_on",
+// "api_base", "api_key", and 30+ provider-specific knobs (see
+// docs.litellm.ai/docs/guardrail_providers + BaseLitellmParams in
+// litellm/types/guardrails.py). The map is forwarded verbatim.
+type LiteLLMGuardrailParams map[string]any
+
+// GuardrailBody is the inner `guardrail` object carried by POST /guardrails
+// and PUT /guardrails/{guardrail_id} request bodies (the outer wrapper is
+// CreateGuardrailRequest).
+//
+// Field shape mirrors upstream `Guardrail` TypedDict:
+//
+//   - GuardrailID  — empty on CREATE (server assigns); echoed on UPDATE.
+//   - GuardrailName — required; the LB pool key + user-facing identifier.
+//   - LitellmParams — the pass-through bag; see LiteLLMGuardrailParams.
+//   - GuardrailInfo — optional pass-through (description + dynamic-request
+//     param schema surfaced via GET /v2/guardrails/list).
+//   - PolicyTemplate — optional reusable rule bundle name; merged with
+//     LitellmParams at evaluation time.
+//
+// Server-assigned timestamps (created_at, updated_at) are not part of the
+// outbound body shape.
+type GuardrailBody struct {
+	GuardrailID    string                 `json:"guardrail_id,omitempty"`
+	GuardrailName  string                 `json:"guardrail_name"`
+	LitellmParams  LiteLLMGuardrailParams `json:"litellm_params"`
+	GuardrailInfo  map[string]any         `json:"guardrail_info,omitempty"`
+	PolicyTemplate string                 `json:"policy_template,omitempty"`
+}
+
+// CreateGuardrailRequest wraps GuardrailBody under the upstream
+// CreateGuardrailRequest pydantic shape (one key: "guardrail").
+type CreateGuardrailRequest struct {
+	Guardrail *GuardrailBody `json:"guardrail"`
+}
+
+// Guardrail definition location values returned by GET /v2/guardrails/list.
+// Operator addresses only DB-persisted rows via POST/PUT/DELETE; CONFIG rows
+// are read-only and surface as Ready=False, reason=ConflictsWithConfigGuardrail.
+const (
+	GuardrailDefinitionLocationDB     = "db"
+	GuardrailDefinitionLocationConfig = "config"
+)
+
+// GuardrailEntry is one record of a GET /v2/guardrails/list response.
+// Mirrors GuardrailInfoResponse (litellm/types/guardrails.py): the server
+// MASKS sensitive litellm_params values (api_key, etc.) before returning, so
+// the operator MUST NOT compare litellm_params for drift via this endpoint;
+// drift detection uses the operator-side hash in status.lastRendered.hash.
+type GuardrailEntry struct {
+	GuardrailID                 string                 `json:"guardrail_id,omitempty"`
+	GuardrailName               string                 `json:"guardrail_name"`
+	LitellmParams               LiteLLMGuardrailParams `json:"litellm_params,omitempty"`
+	GuardrailInfo               map[string]any         `json:"guardrail_info,omitempty"`
+	PolicyTemplate              string                 `json:"policy_template,omitempty"`
+	CreatedAt                   string                 `json:"created_at,omitempty"`
+	UpdatedAt                   string                 `json:"updated_at,omitempty"`
+	GuardrailDefinitionLocation string                 `json:"guardrail_definition_location,omitempty"`
+	Raw                         json.RawMessage        `json:"-"`
+}
+
+// GuardrailListResponse is the GET /v2/guardrails/list envelope.
+type GuardrailListResponse struct {
+	Guardrails []GuardrailEntry `json:"guardrails"`
+}
