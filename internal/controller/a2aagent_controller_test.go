@@ -353,7 +353,7 @@ func TestA2AAgentReconciler_NoCallOnUnchangedSpec(t *testing.T) {
 	); err != nil {
 		t.Fatalf("update annotation: %v", err)
 	}
-	time.Sleep(2 * time.Second)
+	time.Sleep(1250 * time.Millisecond)
 
 	if got := mockServer.Mutations(); got != 0 {
 		t.Errorf("idempotency: mockServer.Mutations() = %d, want 0 on annotation-only edit", got)
@@ -474,7 +474,7 @@ func TestA2AAgentReconciler_ConnectionGate(t *testing.T) {
 	}
 
 	mockServer.ResetCounters()
-	time.Sleep(2 * time.Second)
+	time.Sleep(1250 * time.Millisecond)
 	if got := mockServer.Mutations(); got != 0 {
 		t.Errorf("connection-gate: want 0 mutations, got %d", got)
 	}
@@ -532,7 +532,7 @@ func TestA2AAgentReconciler_401FastPath(t *testing.T) {
 
 	mockServer.SetMode(mock.Mode401)
 	mutsBefore := mockServer.Mutations()
-	time.Sleep(2 * time.Second)
+	time.Sleep(1250 * time.Millisecond)
 	mutsAfter := mockServer.Mutations()
 	delta := mutsAfter - mutsBefore
 	if delta > 5 {

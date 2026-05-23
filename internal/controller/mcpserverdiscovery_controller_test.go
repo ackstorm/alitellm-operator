@@ -73,27 +73,31 @@ func (s *stubToolHiveInformer) List(_ context.Context, _ schema.GroupVersionKind
 func ensureNoMCPServerDiscovery(t *testing.T, ctx context.Context, name string) {
 	t.Helper()
 	key := client.ObjectKey{Name: name, Namespace: WatchNamespace}
-	// Strip the Discovery finalizer first (retry on conflict) so the
-	// parent deletes even if children somehow lag.
-	if err := updateWithRetry(ctx, key,
-		&litellmv1alpha1.LiteLLMMCPServerDiscovery{},
-		func(obj *litellmv1alpha1.LiteLLMMCPServerDiscovery) error {
-			controllerutil.RemoveFinalizer(obj, mcpServerDiscoveryFinalizer)
-			return nil
-		},
-	); err == nil || apierrors.IsNotFound(err) {
-		_ = k8sClient.Delete(ctx, &litellmv1alpha1.LiteLLMMCPServerDiscovery{
-			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: WatchNamespace},
-		})
+
+	deleteParent := func() {
+		// Strip the Discovery finalizer first (retry on conflict) so the
+		// parent deletes even if children somehow lag.
+		if err := updateWithRetry(ctx, key,
+			&litellmv1alpha1.LiteLLMMCPServerDiscovery{},
+			func(obj *litellmv1alpha1.LiteLLMMCPServerDiscovery) error {
+				controllerutil.RemoveFinalizer(obj, mcpServerDiscoveryFinalizer)
+				return nil
+			},
+		); err == nil || apierrors.IsNotFound(err) {
+			_ = k8sClient.Delete(ctx, &litellmv1alpha1.LiteLLMMCPServerDiscovery{
+				ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: WatchNamespace},
+			})
+		}
 	}
-	// Strip + delete owned children directly. The cascade path is
-	// exercised by the dedicated CascadeDelete test (Task 2b), not the
-	// per-test cleanup.
-	var owned litellmv1alpha1.LiteLLMMCPServerList
-	if err := k8sClient.List(ctx, &owned,
-		client.InNamespace(WatchNamespace),
-		client.MatchingLabels{generatedByLabel: name},
-	); err == nil {
+
+	deleteOwnedChildren := func() int {
+		var owned litellmv1alpha1.LiteLLMMCPServerList
+		if err := k8sClient.List(ctx, &owned,
+			client.InNamespace(WatchNamespace),
+			client.MatchingLabels{generatedByLabel: name},
+		); err != nil {
+			return -1
+		}
 		for i := range owned.Items {
 			childKey := client.ObjectKeyFromObject(&owned.Items[i])
 			_ = updateWithRetry(ctx, childKey,
@@ -107,22 +111,27 @@ func ensureNoMCPServerDiscovery(t *testing.T, ctx context.Context, name string) 
 				ObjectMeta: metav1.ObjectMeta{Name: childKey.Name, Namespace: childKey.Namespace},
 			})
 		}
+		return len(owned.Items)
 	}
-	deadline := time.Now().Add(30 * time.Second)
+
+	deleteParent()
+	// Strip + delete owned children directly. The cascade path is
+	// exercised by the dedicated CascadeDelete test (Task 2b), not the
+	// per-test cleanup.
+	_ = deleteOwnedChildren()
+
+	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
+		deleteParent()
+		remainingChildren := deleteOwnedChildren()
 		var got litellmv1alpha1.LiteLLMMCPServerDiscovery
-		if err := k8sClient.Get(ctx, key, &got); apierrors.IsNotFound(err) {
-			var rem litellmv1alpha1.LiteLLMMCPServerList
-			if err := k8sClient.List(ctx, &rem,
-				client.InNamespace(WatchNamespace),
-				client.MatchingLabels{generatedByLabel: name},
-			); err == nil && len(rem.Items) == 0 {
-				return
-			}
+		parentGone := apierrors.IsNotFound(k8sClient.Get(ctx, key, &got))
+		if parentGone && remainingChildren == 0 {
+			return
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Logf("warning: MCPServerDiscovery %q (or its children) still present after 30s cleanup", name)
+	t.Logf("warning: MCPServerDiscovery %q (or its children) still present after 10s cleanup", name)
 }
 
 // ensureNoToolhiveObject deletes any pre-existing unstructured ToolHive
@@ -745,10 +754,10 @@ func TestMCPServerDiscoveryReconciler_NoLitellmCalls(t *testing.T) {
 	if len(children) != 1 {
 		t.Fatalf("expected 1 child, got %d", len(children))
 	}
-	// Give a generous settle window — production MSDisc would never call
-	// LiteLLM, and the child MCPServer controller (which DOES call LiteLLM
-	// in normal operation) is gated off by fakeCache.Invalidated=true.
-	time.Sleep(2 * time.Second)
+	// Cross the accelerated 1s envtest safety-relist cadence. Production
+	// MSDisc would never call LiteLLM, and the child MCPServer controller
+	// is gated off by fakeCache.Invalidated=true.
+	time.Sleep(1250 * time.Millisecond)
 	if got := mockServer.MutationsByMCPServerName(wantChild); got != 0 {
 		t.Errorf("MSDISC-16 violation: mutations recorded for child %q via mock: got %d, want 0", wantChild, got)
 	}
@@ -1104,8 +1113,9 @@ func TestMCPServerDiscoveryReconciler_AtomicRefresh(t *testing.T) {
 		t.Fatalf("expected SourceReachable=False after stub error, did not observe within 30s")
 	}
 
-	// Existing child MUST still be there.
-	time.Sleep(2 * time.Second) // settle to be sure vanish does NOT fire
+	// Existing child MUST still be there after crossing the accelerated
+	// 1s envtest safety-relist cadence.
+	time.Sleep(1250 * time.Millisecond)
 	var still litellmv1alpha1.LiteLLMMCPServer
 	if err := k8sClient.Get(ctx, client.ObjectKey{Name: dotted, Namespace: WatchNamespace}, &still); err != nil {
 		t.Fatalf("D-09 violation: existing child must NOT be deleted on atomic refresh error: %v", err)
@@ -1449,13 +1459,14 @@ func TestMCPServerDiscoveryReconciler_NoEventLoop_OnChildSpecChange(t *testing.T
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	// Assert the counter stabilizes for 2 consecutive seconds.
+	// Assert the counter stabilizes across consecutive envtest relist
+	// cadence windows.
 	// The Owns(&MCPServer{}) handler enqueues MSDisc on every child
 	// resourceVersion bump; if the reconciler is well-behaved, the
 	// child stops bumping once SSA reaches steady-state.
-	time.Sleep(2 * time.Second) // settle window
+	time.Sleep(1250 * time.Millisecond) // settle window
 	baseline := counter()
-	time.Sleep(2 * time.Second) // stability window
+	time.Sleep(1250 * time.Millisecond) // stability window
 	final := counter()
 	if delta := final - baseline; delta > 0 {
 		// A non-zero delta is acceptable up to a small bound — the
@@ -1885,7 +1896,7 @@ func TestMCPServerDiscoveryReconciler_CR01_AlreadyExistsRetryPreservesChild(t *t
 
 	// Give the reconciler time to finish Step 9 vanish-detection after the
 	// AlreadyExists fallback resolves.
-	time.Sleep(2 * time.Second)
+	time.Sleep(1250 * time.Millisecond)
 
 	var still litellmv1alpha1.LiteLLMMCPServer
 	if err := k8sClient.Get(ctx, key, &still); err != nil {

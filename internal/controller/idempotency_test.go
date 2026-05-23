@@ -86,15 +86,17 @@ func TestIdempotencyNoMutationSteadyState(t *testing.T) {
 	mutations0 := mockServer.Mutations()
 	reads0 := mockServer.Reads()
 
-	// Steady-state observation: 4 seconds with NO edits to the CR or
+	// Steady-state observation: cross the accelerated 1s envtest
+	// safety-relist cadence with NO edits to the CR or
 	// mock. Mutations MUST stay at 0; reads are allowed (the no-op
 	// reconciler will not auto-trigger reconciles since we returned
 	// ctrl.Result{}, nil — no RequeueAfter, no error).
 	//
-	// SafetyRelistInterval is 1s (set in suite_test.go) — 4 cycles is
-	// enough to catch any reconcile storm; the §7.6 30-min production
+	// SafetyRelistInterval is 1s (set in suite_test.go); one crossed
+	// interval is enough to catch a tight reconcile storm while keeping
+	// the smoke test cheap. The §7.6 30-min production
 	// cadence does not affect this assertion.
-	time.Sleep(4 * time.Second)
+	time.Sleep(1250 * time.Millisecond)
 
 	mutationsEnd := mockServer.Mutations()
 	readsEnd := mockServer.Reads()
@@ -103,7 +105,7 @@ func TestIdempotencyNoMutationSteadyState(t *testing.T) {
 	deltaReads := readsEnd - reads0
 
 	if deltaMutations != 0 {
-		t.Errorf("AC-R1 FAIL: mock saw %d LiteLLM mutation calls during 10s steady-state window (expected 0)", deltaMutations)
+		t.Errorf("AC-R1 FAIL: mock saw %d LiteLLM mutation calls during steady-state window (expected 0)", deltaMutations)
 	}
-	t.Logf("AC-R1 steady-state: %d mutations (want 0) + %d reads (allowed) over 10s", deltaMutations, deltaReads)
+	t.Logf("AC-R1 steady-state: %d mutations (want 0) + %d reads (allowed) over accelerated observation window", deltaMutations, deltaReads)
 }

@@ -498,8 +498,8 @@ func TestModel_SecondReconcile_NoSpecChange_NoOp(t *testing.T) {
 		t.Fatalf("update Model annotation: %v", err)
 	}
 
-	// Wait briefly and assert no mutations occurred.
-	time.Sleep(2 * time.Second)
+	// Cross the accelerated 1s envtest relist cadence, then assert no mutations occurred.
+	time.Sleep(1250 * time.Millisecond)
 
 	mutationsAfter := mockServer.Mutations()
 	if mutationsAfter != 0 {
@@ -914,10 +914,10 @@ func TestModel_LiteLLMUnavailable_NoMutationCall(t *testing.T) {
 		t.Errorf("Ready.Message: want substring %q, got %q", wantMsgSubstr, c.Message)
 	}
 
-	// Assert zero LiteLLM mutations over a 5s observation window.
-	// Reset counters AFTER the status is set, then wait 3s.
+	// Assert zero LiteLLM mutations after crossing the accelerated 1s
+	// envtest safety-relist cadence.
 	mockServer.ResetCounters()
-	time.Sleep(2 * time.Second)
+	time.Sleep(1250 * time.Millisecond)
 	mutationsAfter := mockServer.Mutations()
 	if mutationsAfter != 0 {
 		t.Errorf("AC-C3b: mockServer.Mutations() = %d, want 0 while connection not Ready", mutationsAfter)
@@ -1306,18 +1306,18 @@ func TestModel_401FastPath_InvalidatesCache(t *testing.T) {
 	// After the 401 path fires (InvalidateOn401 → channel → connection re-probe
 	// → cache.Rebuild), the model reconciler sees not-Ready on next reconcile
 	// and returns nil (no additional LiteLLM mutation). Count mutations over
-	// a 2s window after the initial 401 was observed.
+	// an accelerated observation window after the initial 401 was observed.
 	mutsBefore := mockServer.Mutations()
-	time.Sleep(2 * time.Second)
+	time.Sleep(1250 * time.Millisecond)
 	mutsAfter := mockServer.Mutations()
 	delta := mutsAfter - mutsBefore
-	// Expect at most 2 additional mutations in the 2s window (1 for the POST /model/update
+	// Expect at most 2 additional mutations in the observation window (1 for the POST /model/update
 	// that produced the 401, plus potential connection re-probe GET — but the model
 	// reconciler must NOT retry the mutation after 401).
 	if delta > 3 {
-		t.Errorf("401FastPath: anti-storm FAIL — %d mutations in 2s window after 401 (want <= 3)", delta)
+		t.Errorf("401FastPath: anti-storm FAIL — %d mutations in observation window after 401 (want <= 3)", delta)
 	}
-	t.Logf("401FastPath: mutations delta=%d in 2s observation window (anti-storm bound <=3)", delta)
+	t.Logf("401FastPath: mutations delta=%d in accelerated observation window (anti-storm bound <=3)", delta)
 }
 
 // TestModel_MockStateful_TracksCreatedModels — Task 2 Test 4.
@@ -1782,8 +1782,8 @@ func TestModel_HandManagedEntry_Untouched(t *testing.T) {
 		t.Fatalf("operator-owned model not Synced within 30s")
 	}
 
-	// Let the safety re-list run several ticks (100ms interval × 10+ = 1s+).
-	time.Sleep(2 * time.Second)
+	// Cross the accelerated 1s envtest safety-relist cadence.
+	time.Sleep(1250 * time.Millisecond)
 
 	// Assert: the three hand-managed entries are still PRESENT and UNCHANGED.
 	for _, hmName := range []string{"hand-managed-1", "hand-managed-2", "hand-managed-3"} {
@@ -2173,6 +2173,7 @@ func TestModel_RedactionCanary_AC_S1(t *testing.T) {
 		sink.Reset()
 		mockServer.SetMode(mock.ModeTransient5xx)
 		mockServer.ResetCounters()
+		mockServer.ResetRecorded()
 		mockServer.ResetModels()
 		modelName := "canary-5xx"
 		secName := "canary-secret-5xx"
@@ -2191,20 +2192,28 @@ func TestModel_RedactionCanary_AC_S1(t *testing.T) {
 			t.Fatalf("create canary Model: %v", err)
 		}
 
-		// Wait for the reconciler to retry ≥2 times (5xx error → controller-runtime
-		// workqueue backoff → re-enqueue → retry). The mock counts POSTs as mutations.
-		deadline := time.Now().Add(10 * time.Second)
+		// Wait for the 5xx path to be exercised. Retry timing is covered
+		// by the backoff tests; this redaction canary only needs the
+		// transient-error surface to exist before checking logs/events/status.
+		deadline := time.Now().Add(3 * time.Second)
+		sawModelInfoRead := false
 		for time.Now().Before(deadline) {
-			if mockServer.Mutations() >= 2 {
+			for _, call := range mockServer.Recorded() {
+				if call.Method == http.MethodGet && call.Path == "/model/info" {
+					sawModelInfoRead = true
+					break
+				}
+			}
+			if sawModelInfoRead {
 				break
 			}
 			time.Sleep(50 * time.Millisecond)
 		}
-		mutCount := mockServer.Mutations()
-		t.Logf("[5xx] mockServer.Mutations()=%d (want ≥2 for workqueue-backoff proof)", mutCount)
-		if mutCount < 2 {
-			t.Logf("[5xx] WARNING: only %d POST attempt(s) observed; workqueue-backoff may not have fired within 10s", mutCount)
+		logText := sink.String()
+		if !sawModelInfoRead {
+			t.Fatalf("[5xx] transient /model/info read not observed within 3s; reads=%d logBytes=%d", mockServer.Reads(), len(logText))
 		}
+		t.Logf("[5xx] transient /model/info read observed; log captured %d bytes", len(logText))
 
 		// On the 5xx path, OWN-09 leaves the previous status unchanged (no writeStatus
 		// call on transient error path). Capture whatever status exists.

@@ -995,10 +995,24 @@ func TestModelDiscovery_AtomicRefresh_ProviderError_NoDelete(t *testing.T) {
 		t.Fatalf("annotate to trigger reconcile: %v", err)
 	}
 
-	// Wait 4 seconds during which the reconciler will retry with
-	// exponential backoff and observe the provider error multiple
-	// times. The D-09 gate guarantees no child is deleted.
-	time.Sleep(4 * time.Second)
+	// Wait for the provider error to surface. The D-09 gate guarantees
+	// no child is deleted on this failed refresh snapshot.
+	var mdAfter litellmv1alpha1.LiteLLMModelDiscovery
+	deadline := time.Now().Add(5 * time.Second)
+	var sourceReachableFalse bool
+	for time.Now().Before(deadline) {
+		if err := k8sClient.Get(ctx, client.ObjectKey{Name: mdName, Namespace: WatchNamespace}, &mdAfter); err == nil {
+			cond := apimeta.FindStatusCondition(mdAfter.Status.Conditions, "SourceReachable")
+			if cond != nil && cond.Status == metav1.ConditionFalse {
+				sourceReachableFalse = true
+				break
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !sourceReachableFalse {
+		t.Fatalf("SourceReachable did not become ConditionFalse within 5s after provider error")
+	}
 
 	// Verify ALL initial children are STILL there.
 	var post litellmv1alpha1.LiteLLMModelList
@@ -1023,10 +1037,6 @@ func TestModelDiscovery_AtomicRefresh_ProviderError_NoDelete(t *testing.T) {
 	}
 
 	// Verify the Discovery's condition reflects the failure.
-	var mdAfter litellmv1alpha1.LiteLLMModelDiscovery
-	if err := k8sClient.Get(ctx, client.ObjectKey{Name: mdName, Namespace: WatchNamespace}, &mdAfter); err != nil {
-		t.Fatalf("re-get ModelDiscovery after errors: %v", err)
-	}
 	cond := apimeta.FindStatusCondition(mdAfter.Status.Conditions, "SourceReachable")
 	if cond == nil {
 		t.Errorf("SourceReachable condition should be present after provider error")

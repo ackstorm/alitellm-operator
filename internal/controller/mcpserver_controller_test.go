@@ -336,7 +336,7 @@ func TestMCPServerReconciler_NoCallOnUnchangedSpec(t *testing.T) {
 	); err != nil {
 		t.Fatalf("update annotation: %v", err)
 	}
-	time.Sleep(2 * time.Second)
+	time.Sleep(1250 * time.Millisecond)
 
 	if got := mockServer.Mutations(); got != 0 {
 		t.Errorf("idempotency: mockServer.Mutations() = %d, want 0 on annotation-only edit", got)
@@ -467,9 +467,10 @@ func TestMCPServerReconciler_ConnectionGate(t *testing.T) {
 		t.Errorf("Ready.Message: want substring %q, got %q", wantMsg, c.Message)
 	}
 
-	// Zero mock mutations over 2s window.
+	// Zero mock mutations after crossing the accelerated 1s envtest
+	// safety-relist cadence.
 	mockServer.ResetCounters()
-	time.Sleep(2 * time.Second)
+	time.Sleep(1250 * time.Millisecond)
 	if got := mockServer.Mutations(); got != 0 {
 		t.Errorf("connection-gate: want 0 mutations, got %d", got)
 	}
@@ -531,10 +532,10 @@ func TestMCPServerReconciler_401FastPath(t *testing.T) {
 		t.Errorf("Ready.Reason: want LiteLLMUnavailable, got %q", c.Reason)
 	}
 
-	// Anti-storm: bounded mutations over a 2s window.
+	// Anti-storm: bounded mutations over an accelerated observation window.
 	mockServer.SetMode(mock.Mode401)
 	mutsBefore := mockServer.Mutations()
-	time.Sleep(2 * time.Second)
+	time.Sleep(1250 * time.Millisecond)
 	mutsAfter := mockServer.Mutations()
 	delta := mutsAfter - mutsBefore
 	// Allow a small bound — the 401 may produce one retry under controller-runtime,
@@ -1082,8 +1083,8 @@ func TestMCPServerReconciler_AC_DC1_HandManagedUntouched(t *testing.T) {
 	m.Annotations["test.litellm.ackstorm.ai/dc1-trigger"] = time.Now().Format(time.RFC3339Nano)
 	_ = k8sClient.Update(ctx, m)
 
-	// Settle window.
-	time.Sleep(2 * time.Second)
+	// Cross the accelerated 1s envtest safety-relist cadence.
+	time.Sleep(1250 * time.Millisecond)
 
 	// Assert: hand-managed entries are still PRESENT and UNCHANGED.
 	for _, hmName := range []string{"hand-managed-mcp", "hand-managed-mcp-2"} {

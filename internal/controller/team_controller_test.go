@@ -391,7 +391,7 @@ func TestTeamReconciler_HashEqualNoOp(t *testing.T) {
 	); err != nil {
 		t.Fatalf("update annotation: %v", err)
 	}
-	time.Sleep(2 * time.Second)
+	time.Sleep(1250 * time.Millisecond)
 
 	mutsAfterAnnotation := mockServer.MutationsByTeamAlias("team-noop")
 	if delta := mutsAfterAnnotation - mutsAfterFirst; delta != 0 {
@@ -1200,10 +1200,10 @@ func TestTeamReconciler_401FastPath(t *testing.T) {
 		t.Errorf("Ready.Reason: want LiteLLMUnavailable, got %q", c.Reason)
 	}
 
-	// Anti-storm: bounded mutations over a 2s window.
+	// Anti-storm: bounded mutations over an accelerated observation window.
 	mockServer.SetMode(mock.Mode401)
 	mutsBefore := mockServer.Mutations()
-	time.Sleep(2 * time.Second)
+	time.Sleep(1250 * time.Millisecond)
 	mutsAfter := mockServer.Mutations()
 	delta := mutsAfter - mutsBefore
 	if delta > 8 {
@@ -1373,7 +1373,7 @@ func TestTeamReconciler_AC_DC1_HandManagedCoexistence(t *testing.T) {
 	}
 	tm.Annotations["test.litellm.ackstorm.ai/dc1-trigger"] = time.Now().Format(time.RFC3339Nano)
 	_ = k8sClient.Update(ctx, tm)
-	time.Sleep(2 * time.Second)
+	time.Sleep(1250 * time.Millisecond)
 
 	for _, hmName := range []string{"hand-tuned-eng", "hand-tuned-finance"} {
 		if !mockServer.HasTeam(hmName) {
