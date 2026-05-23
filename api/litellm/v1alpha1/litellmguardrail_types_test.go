@@ -16,6 +16,13 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
+// mutatedSentinel is the canary value written into deep-copied slice
+// elements in the DeepCopy_RoundTrip tests. Pulled out as a const so
+// goconst stays quiet across the ~16 mutation-isolation assertions
+// below — the sentinel is opaque on purpose; any string different from
+// the seed values works.
+const mutatedSentinel = "mutated"
+
 // TestGuardRail_DeepCopy_RoundTrip exercises DeepCopy across every
 // slice and pointer-typed field (DefaultOn, Mode, Secrets, Conditions,
 // ParamsKeys, InfoKeys, At) and asserts that mutating the copy never
@@ -94,8 +101,8 @@ func TestGuardRail_DeepCopy_RoundTrip(t *testing.T) {
 	if &dst.Spec.Mode[0] == &src.Spec.Mode[0] {
 		t.Error("Spec.Mode: dst and src share the same backing array")
 	}
-	dst.Spec.Mode[0] = "mutated"
-	if src.Spec.Mode[0] == "mutated" {
+	dst.Spec.Mode[0] = mutatedSentinel
+	if src.Spec.Mode[0] == mutatedSentinel {
 		t.Error("Spec.Mode: mutating dst altered src")
 	}
 
@@ -106,8 +113,8 @@ func TestGuardRail_DeepCopy_RoundTrip(t *testing.T) {
 	}
 
 	// --- LastRendered.ParamsKeys slice independence
-	dst.Status.LastRendered.ParamsKeys[0] = "mutated"
-	if src.Status.LastRendered.ParamsKeys[0] == "mutated" {
+	dst.Status.LastRendered.ParamsKeys[0] = mutatedSentinel
+	if src.Status.LastRendered.ParamsKeys[0] == mutatedSentinel {
 		t.Error("LastRendered.ParamsKeys: mutating dst altered src")
 	}
 
@@ -118,8 +125,8 @@ func TestGuardRail_DeepCopy_RoundTrip(t *testing.T) {
 	}
 
 	// --- Conditions slice independence
-	dst.Status.Conditions[0].Reason = "mutated"
-	if src.Status.Conditions[0].Reason == "mutated" {
+	dst.Status.Conditions[0].Reason = mutatedSentinel
+	if src.Status.Conditions[0].Reason == mutatedSentinel {
 		t.Error("Status.Conditions: mutating dst altered src")
 	}
 
@@ -272,8 +279,8 @@ func TestGuardRailList_DeepCopy_RoundTrip(t *testing.T) {
 	}
 
 	// Mutate dst — src must remain untouched (slice independence).
-	dst.Items[0].Spec.GuardrailName = "mutated"
-	if src.Items[0].Spec.GuardrailName == "mutated" {
+	dst.Items[0].Spec.GuardrailName = mutatedSentinel
+	if src.Items[0].Spec.GuardrailName == mutatedSentinel {
 		t.Error("Items[0]: mutating dst altered src (shared backing array)")
 	}
 
