@@ -223,7 +223,7 @@ type A2ALastRenderedStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced,shortName=a2a
+// +kubebuilder:resource:scope=Namespaced,shortName=a2a,categories=litellm
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=".status.conditions[?(@.type=='Ready')].status"
 // +kubebuilder:printcolumn:name="Reason",type=string,JSONPath=".status.conditions[?(@.type=='Ready')].reason"
 // +kubebuilder:printcolumn:name="AgentID",type=string,JSONPath=".status.lastRendered.agentID"

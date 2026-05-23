@@ -475,10 +475,12 @@ type FailedCandidate struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced,shortName=mdisc
+// +kubebuilder:resource:scope=Namespaced,shortName=mdisc,categories=litellm
 // +kubebuilder:printcolumn:name="Type",type=string,JSONPath=".spec.type"
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=".status.conditions[?(@.type=='Ready')].status"
 // +kubebuilder:printcolumn:name="Reason",type=string,JSONPath=".status.conditions[?(@.type=='Ready')].reason"
+// +kubebuilder:printcolumn:name="Discovered",type=integer,JSONPath=".status.discoveredCount"
+// +kubebuilder:printcolumn:name="Generated",type=integer,JSONPath=".status.generatedCount"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=".metadata.creationTimestamp"
 // +kubebuilder:validation:XValidation:rule="self.spec.type != 'anthropic' || (has(self.spec.credentialsSecretRef) && !has(self.spec.region) && !has(self.spec.baseUrl))",message="anthropic requires spec.credentialsSecretRef and forbids spec.region/spec.baseUrl"
 // +kubebuilder:validation:XValidation:rule="self.spec.type != 'bedrock' || (has(self.spec.region) && !has(self.spec.baseUrl))",message="bedrock requires spec.region and forbids spec.baseUrl"

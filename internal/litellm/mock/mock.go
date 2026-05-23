@@ -856,7 +856,7 @@ func (m *MockServer) handle(w http.ResponseWriter, r *http.Request) {
 // statefulBody returns a response body for the given request, tracking
 // model CRUD state so GET /model/info returns realistic model_info.id
 // values after POST /model/new. This enables the Model reconciler tests
-// to assert that status.lastRendered.litellmModelID is populated and
+// to assert that status.lastRendered.modelID is populated and
 // persisted correctly across reconciles (D-04).
 //
 //nolint:gocyclo // Single-router for the full mock CRUD surface (POST/PUT/DELETE/GET across model/team/agent/mcp paths); splitting per-route would multiply boilerplate and obscure the spec mapping.

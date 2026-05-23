@@ -8,6 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- mcpserver: every key modeled in `litellm.MCPServerRequest` (`auth_type`,
+  `credentials`, `mcp_access_groups`, `allowed_tools`, `tool_name_to_*`,
+  `extra_headers`, `static_headers`, `command`, `args`, `env`,
+  `authorization_url`, `token_url`, `registration_url`, `oauth2_flow`,
+  `allow_all_keys`, `available_on_public_internet`) is now forwarded
+  verbatim from `spec.params` on both CREATE and UPDATE (FIX5 H-1).
+- mcpserver: `spec.params.extra_headers` accepts both map (inject) and
+  list (forward-from-client) shapes per LiteLLM 1.83.10 `Union[Dict,List]`
+  (FIX5 H-2).
+- mcpserver: `spec.params.access_groups` accepted as alias for
+  `mcp_access_groups` (`mcp_access_groups` wins when both present)
+  (FIX5 LOW-4).
+- crd: `categories=litellm` added to all seven CRDs — `kubectl get
+  litellm -A` now lists every CR in one go (FIX6 L-3).
+- crd: `modeldiscovery` and `mcpserverdiscovery` print columns are
+  now symmetric: `Type | Ready | Reason | Discovered | Generated |
+  Age` (FIX6 H-1).
 
 ### Changed
 
@@ -16,8 +33,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 ### Fixed
+- model: LiteLLM 1.85.1 schema drift — the model id is now sent inside
+  `model_info.id` on `POST /model/update` (both FIX4 H-1 adoption stamp
+  and the UPDATE drift-correction path). Top-level `id` was retired
+  from the request body; LiteLLM 1.85.1's body parser rejected it with
+  the misleading 400 `Authentication Error, model not found` and every
+  `LiteLLMModel` reconcile landed in `Ready=False reason=LiteLLMRejected`
+  in production. 1.83.x sites: pin operator to v0.3.0 or earlier
+  (FIX7 H-1).
 
 ### Security
+
+### BREAKING CHANGES
+- **`LiteLLMModel.status.lastRendered.litellmModelID` renamed to
+  `modelID`** for symmetry with `TeamID` / `AgentID` / `ServerID`
+  siblings (FIX6 H-2). Alpha-API breakage policy: in-place rename,
+  no conversion webhook. Existing in-cluster CRs will see the
+  reconciler repopulate the new key on next reconcile; the orphan
+  `litellmModelID` may sit in etcd until the next status replacement.
 
 ## [0.3.0] - TBD
 

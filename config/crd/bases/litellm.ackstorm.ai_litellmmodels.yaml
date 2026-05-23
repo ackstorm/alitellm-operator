@@ -8,6 +8,8 @@ metadata:
 spec:
   group: litellm.ackstorm.ai
   names:
+    categories:
+    - litellm
     kind: LiteLLMModel
     listKind: LiteLLMModelList
     plural: litellmmodels
@@ -23,7 +25,7 @@ spec:
     - jsonPath: .status.conditions[?(@.type=='Ready')].reason
       name: Reason
       type: string
-    - jsonPath: .status.lastRendered.litellmModelID
+    - jsonPath: .status.lastRendered.modelID
       name: ModelID
       type: string
     - jsonPath: .metadata.creationTimestamp
@@ -311,9 +313,9 @@ spec:
                     items:
                       type: string
                     type: array
-                  litellmModelID:
+                  modelID:
                     description: |-
-                      LiteLLMModelID is the LiteLLM-assigned UUID (model_info.id) for this
+                      ModelID is the LiteLLM-assigned UUID (model_info.id) for this
                       Model entry. Persisted here so the reconciler can reference it directly
                       on subsequent reconciles without an extra GET /model/info call (D-04).
 

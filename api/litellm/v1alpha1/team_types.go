@@ -330,7 +330,7 @@ type TeamStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced,shortName=team
+// +kubebuilder:resource:scope=Namespaced,shortName=team,categories=litellm
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=".status.conditions[?(@.type=='Ready')].status"
 // +kubebuilder:printcolumn:name="Reason",type=string,JSONPath=".status.conditions[?(@.type=='Ready')].reason"
 // +kubebuilder:printcolumn:name="TeamID",type=string,JSONPath=".status.lastRendered.teamID"

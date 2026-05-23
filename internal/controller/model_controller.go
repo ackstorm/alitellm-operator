@@ -81,7 +81,7 @@ func IndexModelSecretRefs(o client.Object) []string {
 // State machine (per-reconcile):
 // - Step 1: fetch the CR (NotFound → return nil).
 // - Step 2a: DeletionTimestamp set → issue POST /model/delete (with
-// name-resolve fallback via GetModelInfoByName if litellmModelID is empty)
+// name-resolve fallback via GetModelInfoByName if modelID is empty)
 // → RemoveFinalizer → Update.
 // - Step 2b: finalizer absent → AddFinalizer → Update → return.
 // - Step 3: connection-gating: r.Cache.Snapshot. !snap.Ready →
@@ -140,7 +140,7 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		if controllerutil.ContainsFinalizer(&model, modelFinalizer) {
 			snap := r.Cache.Snapshot()
 			if snap.Ready {
-				modelID := model.Status.LastRendered.LiteLLMModelID
+				modelID := model.Status.LastRendered.ModelID
 				if modelID != "" {
 					// D-04: use persisted LiteLLM UUID.
 					if err := snap.Client.DeleteModel(ctx, modelID); err != nil {
@@ -383,8 +383,8 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 	// ─── Step 7b: Existence probe (D-03 / AC-M3 conformance) ────────────────
 	// When the safety re-list enqueues a CR whose status already pins a
-	// LiteLLMModelID, verify the entry still exists in LiteLLM. On
-	// not-found OR id-drift, clear LiteLLMModelID locally so the CREATE
+	// ModelID, verify the entry still exists in LiteLLM. On
+	// not-found OR id-drift, clear ModelID locally so the CREATE
 	// branch fires in Step 9 and the create_missing metric increments.
 	// Without this probe the operator only detects spec-side drift (user
 	// CR edits) and silently misses out-of-band deletes — defeating the
@@ -400,8 +400,8 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	//
 	// Skipped on first reconcile (status.lastRendered.hash still empty)
 	// so initial bootstrap does not pay the probe; the CREATE path runs
-	// by virtue of LiteLLMModelID being empty already.
-	if model.Status.LastRendered.LiteLLMModelID != "" && model.Status.LastRendered.Hash != "" {
+	// by virtue of ModelID being empty already.
+	if model.Status.LastRendered.ModelID != "" && model.Status.LastRendered.Hash != "" {
 		entry, probeErr := snap.Client.GetModelInfoByName(ctx, model.Name)
 		if probeErr != nil {
 			// 401 / 5xx / network — let controller-runtime back off.
@@ -409,21 +409,21 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		}
 		switch {
 		case entry == nil:
-			logger.Info("safety re-list detected out-of-band delete; clearing LiteLLMModelID",
-				"lastID", model.Status.LastRendered.LiteLLMModelID)
-			model.Status.LastRendered.LiteLLMModelID = ""
-		case entry.ModelInfo.ID != model.Status.LastRendered.LiteLLMModelID:
-			logger.Info("safety re-list detected id drift; clearing LiteLLMModelID",
-				"lastID", model.Status.LastRendered.LiteLLMModelID,
+			logger.Info("safety re-list detected out-of-band delete; clearing ModelID",
+				"lastID", model.Status.LastRendered.ModelID)
+			model.Status.LastRendered.ModelID = ""
+		case entry.ModelInfo.ID != model.Status.LastRendered.ModelID:
+			logger.Info("safety re-list detected id drift; clearing ModelID",
+				"lastID", model.Status.LastRendered.ModelID,
 				"currentID", entry.ModelInfo.ID)
-			model.Status.LastRendered.LiteLLMModelID = ""
+			model.Status.LastRendered.ModelID = ""
 		}
 		// Hash left populated so firstReconcile=false → create_missing metric increments.
 	}
 
 	// ─── Step 8: Hash-equal steady state (AC-R1) ───────────────────────────
 	if model.Status.LastRendered.Hash == currentRenderedHash &&
-		model.Status.LastRendered.LiteLLMModelID != "" &&
+		model.Status.LastRendered.ModelID != "" &&
 		model.Status.ObservedGeneration == model.Generation {
 		// Steady state — no mutation needed.
 		metrics.CRStatusAgeTracker.RecordSuccess(modelKind, model.Name)
@@ -440,15 +440,15 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	// increments on this path.
 	firstReconcile := model.Status.ObservedGeneration == 0 || model.Status.LastRendered.Hash == ""
 
-	var newLiteLLMModelID string
-	if model.Status.LastRendered.LiteLLMModelID == "" {
+	var newModelID string
+	if model.Status.LastRendered.ModelID == "" {
 		// CREATE path — first reconcile or stale status (out-of-band DELETE after
-		// lastRendered was populated triggers this branch when LiteLLMModelID is empty).
+		// lastRendered was populated triggers this branch when ModelID is empty).
 		//
 		// Idempotency probe (OWN-04 / D-03 robustness): if a prior reconcile
 		// POSTed successfully but the status write lost the optimistic-lock
 		// race ("object has been modified"), controller-runtime retries
-		// Reconcile with stale status — LiteLLMModelID empty, firstReconcile
+		// Reconcile with stale status — ModelID empty, firstReconcile
 		// true. Without this probe we would POST a duplicate entry on every
 		// retry. Resolve by name first; if LiteLLM already has a deployment
 		// for this LiteLLMModel name, adopt its id and skip the POST. OWN-04 silent-
@@ -458,8 +458,8 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		if existing, probeErr := snap.Client.GetModelInfoByName(ctx, model.Name); probeErr != nil {
 			return ctrl.Result{}, probeErr
 		} else if existing != nil && existing.ModelInfo.ID != "" {
-			newLiteLLMModelID = existing.ModelInfo.ID
-			logger.V(1).Info("model already exists in LiteLLM; adopting id (idempotency probe)", "modelID", newLiteLLMModelID)
+			newModelID = existing.ModelInfo.ID
+			logger.V(1).Info("model already exists in LiteLLM; adopting id (idempotency probe)", "modelID", newModelID)
 			// FIX4.txt H-1 (2026-05-22): the adoption branch skips POST
 			// /model/new, so pre-v0.2.0 entries (or any out-of-band entries
 			// created without a model_info.created_by) never received an
@@ -471,11 +471,17 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			// intentionally NOT stamped — LiteLLM 1.83.x keeps the original
 			// creator across updates and the operator is by definition not
 			// the original creator on the adoption path.
+			// FIX7 H-1 (2026-05-23): LiteLLM 1.85.1 requires the model id
+			// inside model_info — not at the top level. Sending root-level
+			// id triggers a 400 "Authentication Error, model not found"
+			// from LiteLLM's body parser.
 			if _, uerr := snap.Client.UpdateModel(ctx, &litellm.UpdateDeployment{
-				ID:            newLiteLLMModelID,
 				ModelName:     model.Name,
 				LiteLLMParams: litellm.LiteLLMParams(paramsMap),
-				ModelInfo:     litellm.ModelInfo{UpdatedBy: identity.Operator()},
+				ModelInfo: litellm.ModelInfo{
+					ID:        newModelID,
+					UpdatedBy: identity.Operator(),
+				},
 			}); uerr != nil {
 				return r.classifyMutationError(ctx, &model, logger, uerr, "POST /model/update (FIX4 H-1 adoption stamp)")
 			}
@@ -499,15 +505,15 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			if err != nil {
 				return r.classifyMutationError(ctx, &model, logger, err, "POST /model/new")
 			}
-			newLiteLLMModelID = result.ModelInfo.ID
+			newModelID = result.ModelInfo.ID
 			// OBS-02 / D-03: increment create_missing when the safety re-list detects
 			// an out-of-band DELETE (i.e. lastRendered was populated on a prior reconcile
-			// but LiteLLMModelID is now empty because status was cleared after an
+			// but ModelID is now empty because status was cleared after an
 			// out-of-band delete was discovered). Suppressed on first reconcile (OWN-04).
 			if !firstReconcile {
 				metrics.DriftCorrectedTotal.WithLabelValues("model", "create_missing").Inc()
 			}
-			logger.V(1).Info("model created in LiteLLM", "modelID", newLiteLLMModelID)
+			logger.V(1).Info("model created in LiteLLM", "modelID", newModelID)
 		}
 	} else {
 		// UPDATE path (or delete-and-recreate on key shrinkage per D-02).
@@ -521,7 +527,7 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 		if shrinkage {
 			// D-02: delete-and-recreate on key shrinkage (Probe 9 ✗ + Probe 9b ✗).
-			oldID := model.Status.LastRendered.LiteLLMModelID
+			oldID := model.Status.LastRendered.ModelID
 			logger.V(1).Info("D-02 shrinkage detected; delete-and-recreate",
 				"oldModelID", oldID,
 				"removedParamsKeys", removedParamsKeys,
@@ -545,27 +551,28 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			if err != nil {
 				return r.classifyMutationError(ctx, &model, logger, err, "POST /model/new (D-02 recreate)")
 			}
-			newLiteLLMModelID = result.ModelInfo.ID
+			newModelID = result.ModelInfo.ID
 			// D-02 shrinkage delete+recreate is treated as an update_drifted correction
 			// (operator-detected spec change, not safety-re-list-detected missing entry).
 			// Suppressed on first reconcile (OWN-04).
 			if !firstReconcile {
 				metrics.DriftCorrectedTotal.WithLabelValues("model", "update_drifted").Inc()
 			}
-			logger.V(1).Info("D-02 model re-created in LiteLLM", "newModelID", newLiteLLMModelID)
+			logger.V(1).Info("D-02 model re-created in LiteLLM", "newModelID", newModelID)
 		} else {
 			// No shrinkage — normal POST /model/update (no nulls per D-02 Probe 9b positive path).
-			// D-7.1-13: set top-level ID per LiteLLM 1.83.10 Probe 9 retry.
-			// The 1.82.6 form used ModelInfo.ID — that placement is deprecated in 1.83.10.
-			// Per CONTEXT.md <deferred>: 1.82.6 backward-compat shim is OUT of scope.
+			// FIX7 H-1 (2026-05-23): LiteLLM 1.85.1 schema requires the model
+			// id inside model_info, NOT at the top level. The prior D-7.1-13
+			// claim (1.83.10 top-level id) was retired — sending a root-level
+			// id triggers a 400 "Authentication Error, model not found".
 			updateReq := &litellm.UpdateDeployment{
-				ID:            model.Status.LastRendered.LiteLLMModelID, // NEW: top-level id per 1.83.10
 				ModelName:     model.Name,
 				LiteLLMParams: litellm.LiteLLMParams(paramsMap),
 				// FIX2.txt M-8: stamp updated_by on every UPDATE. We do
 				// NOT touch CreatedBy here — LiteLLM keeps the original
 				// creator across updates.
 				ModelInfo: litellm.ModelInfo{
+					ID:        model.Status.LastRendered.ModelID,
 					UpdatedBy: identity.Operator(),
 				},
 			}
@@ -574,25 +581,25 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			}
 			// OBS-02 / D-01: increment update_drifted when currentRenderedHash !=
 			// status.lastRendered.hash AND the entry exists in LiteLLM (UPDATE path
-			// is reached precisely when hash differs AND LiteLLMModelID is set).
+			// is reached precisely when hash differs AND ModelID is set).
 			// Suppressed on first reconcile (OWN-04).
 			if !firstReconcile {
 				metrics.DriftCorrectedTotal.WithLabelValues("model", "update_drifted").Inc()
 			}
 			// UPDATE keeps the same LiteLLM UUID.
-			newLiteLLMModelID = model.Status.LastRendered.LiteLLMModelID
-			logger.V(1).Info("model updated in LiteLLM", "modelID", newLiteLLMModelID)
+			newModelID = model.Status.LastRendered.ModelID
+			logger.V(1).Info("model updated in LiteLLM", "modelID", newModelID)
 		}
 	}
 
 	// ─── Step 11: Update status on success ─────────────────────────────────
 	now := metav1.NewTime(time.Now())
 	model.Status.LastRendered = litellmv1alpha1.LastRenderedStatus{
-		Hash:           currentRenderedHash,
-		ParamsKeys:     sortedKeys(paramsMap),
-		InfoKeys:       sortedKeys(infoMap),
-		LiteLLMModelID: newLiteLLMModelID,
-		At:             &now,
+		Hash:       currentRenderedHash,
+		ParamsKeys: sortedKeys(paramsMap),
+		InfoKeys:   sortedKeys(infoMap),
+		ModelID:    newModelID,
+		At:         &now,
 	}
 
 	if err := r.writeStatus(ctx, &model, metav1.ConditionTrue, reasonSynced, "model registered"); err != nil {
@@ -609,7 +616,7 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 	metrics.CRStatusAgeTracker.RecordSuccess(modelKind, model.Name)
 	metrics.ReconcileTotal.WithLabelValues(modelKind, "success").Inc()
-	logger.V(1).Info("model reconciled", "modelID", newLiteLLMModelID, "hash", currentRenderedHash)
+	logger.V(1).Info("model reconciled", "modelID", newModelID, "hash", currentRenderedHash)
 
 	return ctrl.Result{}, nil
 }

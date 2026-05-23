@@ -65,4 +65,12 @@ resources:
   kind: LiteLLMTeam
   path: github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1
   version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  domain: ackstorm.ai
+  group: litellm
+  kind: LiteLLMGuardRail
+  path: github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1
+  version: v1alpha1
 version: "3"

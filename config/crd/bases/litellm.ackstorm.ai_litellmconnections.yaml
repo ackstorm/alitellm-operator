@@ -8,6 +8,8 @@ metadata:
 spec:
   group: litellm.ackstorm.ai
   names:
+    categories:
+    - litellm
     kind: LiteLLMConnection
     listKind: LiteLLMConnectionList
     plural: litellmconnections

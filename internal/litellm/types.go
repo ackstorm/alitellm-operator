@@ -42,22 +42,23 @@ type Deployment struct {
 
 // updateDeployment is the POST /model/update request body (note the
 // lowercase 'u' — matches the OpenAPI operationId / schema name verbatim).
-// The model id lives in the TOP-LEVEL ID field — see Pitfall 2.
 //
-// LiteLLM 1.83.10 form (D-7.1-13 / Probe 9 retry 2026-05-18):
+// LiteLLM 1.85.1 schema (FIX7 H-1, 2026-05-23):
 //
-//	{ "id": "<model-uuid>", "model_name": ., "litellm_params": {.}, "model_info": {.} }
+//	{ "model_name": ., "litellm_params": {.}, "model_info": { "id": "<uuid>", . } }
 //
-// The previous 1.82.6 form placed the id at model_info.id — that
-// placement is deprecated in 1.83.10 and rejected (model update silently
-// no-ops without the top-level id). Per spec/litellm_api.json
-// updateDeployment schema + Probe 9 retry result. The model_id key
-// (1.82.6 era) is dropped per CONTEXT.md <deferred> — 1.82.6
-// backward-compat shim is OUT of scope.
+// The model id lives INSIDE model_info, NOT at the root. A prior comment
+// (D-7.1-13 / Probe 9 retry 2026-05-18) claimed the 1.83.10 schema
+// required a TOP-LEVEL id; that observation was likely transient (or the
+// probe happened to succeed for unrelated reasons). The 1.85.1 OpenAPI
+// /openapi.json authoritatively defines `updateDeployment` with no
+// root-level id, and LiteLLM's body parser returns the misleading
+// "Authentication Error, model not found" when the operator sends one
+// — see FIX7.txt for the prod-failure repro. 1.83.x sites: pin
+// operator to v0.3.0 or earlier.
 //
 //nolint:revive // OpenAPI schema name is lowercase
 type updateDeployment struct {
-	ID            string        `json:"id,omitempty"`
 	ModelName     string        `json:"model_name,omitempty"`
 	LiteLLMParams LiteLLMParams `json:"litellm_params,omitempty"`
 	ModelInfo     ModelInfo     `json:"model_info,omitempty"`
@@ -184,7 +185,7 @@ type MCPServerRequest struct {
 	AllowedTools              []string       `json:"allowed_tools,omitempty"`
 	ToolNameToDisplayName     map[string]any `json:"tool_name_to_display_name,omitempty"`
 	ToolNameToDescription     map[string]any `json:"tool_name_to_description,omitempty"`
-	ExtraHeaders              map[string]any `json:"extra_headers,omitempty"`
+	ExtraHeaders              any            `json:"extra_headers,omitempty"`
 	StaticHeaders             map[string]any `json:"static_headers,omitempty"`
 	Command                   string         `json:"command,omitempty"`
 	Args                      []string       `json:"args,omitempty"`
@@ -215,7 +216,7 @@ type MCPServerUpdateRequest struct {
 	AllowedTools              []string       `json:"allowed_tools,omitempty"`
 	ToolNameToDisplayName     map[string]any `json:"tool_name_to_display_name,omitempty"`
 	ToolNameToDescription     map[string]any `json:"tool_name_to_description,omitempty"`
-	ExtraHeaders              map[string]any `json:"extra_headers,omitempty"`
+	ExtraHeaders              any            `json:"extra_headers,omitempty"`
 	StaticHeaders             map[string]any `json:"static_headers,omitempty"`
 	Command                   string         `json:"command,omitempty"`
 	Args                      []string       `json:"args,omitempty"`

@@ -9,6 +9,7 @@ resources:
 - bases/litellm.ackstorm.ai_litellmmcpserverdiscoveries.yaml
 - bases/litellm.ackstorm.ai_litellma2aagents.yaml
 - bases/litellm.ackstorm.ai_litellmteams.yaml
+- bases/litellm.ackstorm.ai_litellmguardrails.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

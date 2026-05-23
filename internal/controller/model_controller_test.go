@@ -159,7 +159,7 @@ func TestModel_FinalizerAddedOnFirstReconcile(t *testing.T) {
 
 // TestModel_DeletionPath_IssuesDeleteAndRemovesFinalizer — Task 1 Test 2.
 //
-// Pre-populate a Model with a known LiteLLMModelID in status; set
+// Pre-populate a Model with a known ModelID in status; set
 // DeletionTimestamp by deleting it; assert exactly one POST /model/delete
 // is issued and the finalizer is removed.
 func TestModel_DeletionPath_IssuesDeleteAndRemovesFinalizer(t *testing.T) {
@@ -193,12 +193,12 @@ func TestModel_DeletionPath_IssuesDeleteAndRemovesFinalizer(t *testing.T) {
 		t.Fatalf("create Model: %v", err)
 	}
 
-	// Wait for it to become Synced (i.e., created in LiteLLM and has a LiteLLMModelID).
+	// Wait for it to become Synced (i.e., created in LiteLLM and has a ModelID).
 	m := pollModelCondition(t, ctx, "deletion-test", reasonSynced, 30*time.Second)
-	if m.Status.LastRendered.LiteLLMModelID == "" {
-		t.Fatalf("Model Synced but LiteLLMModelID is empty; status=%+v", m.Status)
+	if m.Status.LastRendered.ModelID == "" {
+		t.Fatalf("Model Synced but ModelID is empty; status=%+v", m.Status)
 	}
-	storedModelID := m.Status.LastRendered.LiteLLMModelID
+	storedModelID := m.Status.LastRendered.ModelID
 
 	// Snapshot mutations BEFORE delete.
 	mutationsBeforeDelete := mockServer.Mutations()
@@ -249,7 +249,7 @@ func TestModel_DeletionPath_IssuesDeleteAndRemovesFinalizer(t *testing.T) {
 
 // TestModel_DeletionPath_StaleStatus_NameResolveFallback — Task 1 Test 3.
 //
-// Create a Model with LiteLLMModelID="" in status (stale status); the
+// Create a Model with ModelID="" in status (stale status); the
 // reconciler should call GetModelInfoByName to resolve the ID, then issue
 // POST /model/delete. Assert Reads increments (the GET /model/info?model_name=)
 // and Mutations increments (the POST /model/delete).
@@ -285,12 +285,12 @@ func TestModel_DeletionPath_StaleStatus_NameResolveFallback(t *testing.T) {
 		t.Fatalf("create Model: %v", err)
 	}
 	m := pollModelCondition(t, ctx, "stale-deletion-test", reasonSynced, 30*time.Second)
-	if m.Status.LastRendered.LiteLLMModelID == "" {
-		t.Fatalf("Model Synced but LiteLLMModelID is empty")
+	if m.Status.LastRendered.ModelID == "" {
+		t.Fatalf("Model Synced but ModelID is empty")
 	}
 
-	// Simulate stale status: clear the LiteLLMModelID to force name-resolve fallback.
-	m.Status.LastRendered.LiteLLMModelID = ""
+	// Simulate stale status: clear the ModelID to force name-resolve fallback.
+	m.Status.LastRendered.ModelID = ""
 	if err := k8sClient.Status().Update(ctx, m); err != nil {
 		t.Fatalf("simulate stale status: %v", err)
 	}
@@ -350,7 +350,7 @@ func TestModel_DeletionPath_StaleStatus_NameResolveFallback(t *testing.T) {
 // - exactly 1 POST /model/new issued
 // - Model.Status.Conditions[Ready].Status == True, Reason=Synced
 // - status.lastRendered.hash != ""
-// - status.lastRendered.litellmModelID != ""
+// - status.lastRendered.modelID != ""
 // - status.lastRendered.at within the last 10s
 func TestModel_FirstReconcile_CreateNew_NoDrift(t *testing.T) {
 	ctx := context.Background()
@@ -402,8 +402,8 @@ func TestModel_FirstReconcile_CreateNew_NoDrift(t *testing.T) {
 	if m.Status.LastRendered.Hash == "" {
 		t.Error("lastRendered.hash is empty; want non-empty SHA-256 hex")
 	}
-	if m.Status.LastRendered.LiteLLMModelID == "" {
-		t.Error("lastRendered.litellmModelID is empty; want non-empty UUID")
+	if m.Status.LastRendered.ModelID == "" {
+		t.Error("lastRendered.modelID is empty; want non-empty UUID")
 	}
 	if m.Status.LastRendered.At == nil {
 		t.Error("lastRendered.at is nil; want a timestamp")
@@ -474,7 +474,7 @@ func TestModel_SecondReconcile_NoSpecChange_NoOp(t *testing.T) {
 
 	// Wait for first reconcile to complete (Ready=Synced).
 	m := pollModelCondition(t, ctx, "noop-reconcile-test", reasonSynced, 30*time.Second)
-	if m.Status.LastRendered.LiteLLMModelID == "" {
+	if m.Status.LastRendered.ModelID == "" {
 		t.Fatalf("Model not Synced within 30s; conditions=%+v", m.Status.Conditions)
 	}
 
@@ -510,7 +510,7 @@ func TestModel_SecondReconcile_NoSpecChange_NoOp(t *testing.T) {
 // TestModel_SpecParamsEdit_Update — Task 2 Test 6.
 //
 // Modify spec.params (add a new field); the next reconcile should issue
-// exactly 1 POST /model/update (no delete, no new). The LiteLLMModelID
+// exactly 1 POST /model/update (no delete, no new). The ModelID
 // must remain the same.
 func TestModel_SpecParamsEdit_Update(t *testing.T) {
 	ctx := context.Background()
@@ -545,10 +545,10 @@ func TestModel_SpecParamsEdit_Update(t *testing.T) {
 
 	// Wait for first reconcile to complete.
 	m := pollModelCondition(t, ctx, "update-test", reasonSynced, 30*time.Second)
-	if m.Status.LastRendered.LiteLLMModelID == "" {
+	if m.Status.LastRendered.ModelID == "" {
 		t.Fatalf("Model not Synced within 30s")
 	}
-	originalModelID := m.Status.LastRendered.LiteLLMModelID
+	originalModelID := m.Status.LastRendered.ModelID
 	originalHash := m.Status.LastRendered.Hash
 
 	// Snapshot recorded calls to find the index of the first reconcile.
@@ -583,9 +583,9 @@ func TestModel_SpecParamsEdit_Update(t *testing.T) {
 	if updated.Status.LastRendered.Hash == originalHash {
 		t.Fatalf("lastRendered.hash unchanged after spec edit; want new hash")
 	}
-	if updated.Status.LastRendered.LiteLLMModelID != originalModelID {
-		t.Errorf("LiteLLMModelID changed on UPDATE (want stable): was %q, got %q",
-			originalModelID, updated.Status.LastRendered.LiteLLMModelID)
+	if updated.Status.LastRendered.ModelID != originalModelID {
+		t.Errorf("ModelID changed on UPDATE (want stable): was %q, got %q",
+			originalModelID, updated.Status.LastRendered.ModelID)
 	}
 
 	// Assert paramsKeys includes "temperature".
@@ -635,7 +635,7 @@ func TestModel_SpecParamsEdit_Update(t *testing.T) {
 // - issue exactly 1 POST /model/delete
 // - issue exactly 1 POST /model/new
 // - NOT issue POST /model/update
-// - re-pin lastRendered.litellmModelID to a NEW UUID
+// - re-pin lastRendered.modelID to a NEW UUID
 // - NOT include "temperature" in lastRendered.paramsKeys
 func TestModel_SpecParamsKeyRemoval_DeleteAndRecreate(t *testing.T) {
 	ctx := context.Background()
@@ -681,7 +681,7 @@ func TestModel_SpecParamsKeyRemoval_DeleteAndRecreate(t *testing.T) {
 
 	// Wait for first reconcile (Ready=Synced with temperature in paramsKeys).
 	m := pollModelCondition(t, ctx, "shrink-test", reasonSynced, 30*time.Second)
-	if m.Status.LastRendered.LiteLLMModelID == "" {
+	if m.Status.LastRendered.ModelID == "" {
 		t.Fatalf("Model not Synced within 30s; conditions=%+v", m.Status.Conditions)
 	}
 	// Verify temperature is in paramsKeys.
@@ -695,7 +695,7 @@ func TestModel_SpecParamsKeyRemoval_DeleteAndRecreate(t *testing.T) {
 	if !foundTemp {
 		t.Fatalf("temperature not in paramsKeys after first reconcile; paramsKeys=%v", m.Status.LastRendered.ParamsKeys)
 	}
-	originalModelID := m.Status.LastRendered.LiteLLMModelID
+	originalModelID := m.Status.LastRendered.ModelID
 
 	// Reset counters and recorded calls before the shrinkage reconcile.
 	mockServer.ResetCounters()
@@ -721,8 +721,8 @@ func TestModel_SpecParamsKeyRemoval_DeleteAndRecreate(t *testing.T) {
 	for time.Now().Before(deadline) {
 		updated = pollModelCondition(t, ctx, "shrink-test", reasonSynced, 5*time.Second)
 		// The model ID should have changed (new UUID from delete+create).
-		if updated.Status.LastRendered.LiteLLMModelID != originalModelID &&
-			updated.Status.LastRendered.LiteLLMModelID != "" {
+		if updated.Status.LastRendered.ModelID != originalModelID &&
+			updated.Status.LastRendered.ModelID != "" {
 			break
 		}
 		time.Sleep(300 * time.Millisecond)
@@ -753,12 +753,12 @@ func TestModel_SpecParamsKeyRemoval_DeleteAndRecreate(t *testing.T) {
 		t.Errorf("D-02 delete-and-recreate: expected 0 POST /model/update, got %d (calls: %+v)", updateCount, calls)
 	}
 
-	// Assert new LiteLLMModelID is different from original.
-	if updated.Status.LastRendered.LiteLLMModelID == originalModelID {
-		t.Errorf("LiteLLMModelID unchanged after delete-and-recreate; want new UUID; got %q", updated.Status.LastRendered.LiteLLMModelID)
+	// Assert new ModelID is different from original.
+	if updated.Status.LastRendered.ModelID == originalModelID {
+		t.Errorf("ModelID unchanged after delete-and-recreate; want new UUID; got %q", updated.Status.LastRendered.ModelID)
 	}
-	if updated.Status.LastRendered.LiteLLMModelID == "" {
-		t.Errorf("LiteLLMModelID is empty after delete-and-recreate")
+	if updated.Status.LastRendered.ModelID == "" {
+		t.Errorf("ModelID is empty after delete-and-recreate")
 	}
 
 	// Assert temperature is no longer in paramsKeys.
@@ -833,8 +833,8 @@ func TestModel_OwnerReferenceFromDiscovery_ReconciledIdentically(t *testing.T) {
 	if c == nil || c.Status != metav1.ConditionTrue || c.Reason != reasonSynced {
 		t.Errorf("owned Model not Synced; condition=%+v", c)
 	}
-	if m.Status.LastRendered.LiteLLMModelID == "" {
-		t.Errorf("owned Model has empty LiteLLMModelID; want UUID from POST /model/new")
+	if m.Status.LastRendered.ModelID == "" {
+		t.Errorf("owned Model has empty ModelID; want UUID from POST /model/new")
 	}
 
 	// Verify POST /model/new was issued (same as user-authored Model).
@@ -1020,10 +1020,10 @@ func TestModel_ConnectionRoundTrip_AC_C4(t *testing.T) {
 		t.Fatalf("create Model: %v", err)
 	}
 	m := pollModelCondition(t, ctx, "roundtrip-test", reasonSynced, 30*time.Second)
-	if m.Status.LastRendered.LiteLLMModelID == "" {
+	if m.Status.LastRendered.ModelID == "" {
 		t.Fatalf("Model not Synced within 30s")
 	}
-	t.Logf("AC-C4 step 1: Model Ready=Synced, modelID=%s", m.Status.LastRendered.LiteLLMModelID)
+	t.Logf("AC-C4 step 1: Model Ready=Synced, modelID=%s", m.Status.LastRendered.ModelID)
 
 	// Step 2: Delete the LiteLLMConnection CR to prevent the connection
 	// reconciler from racing our manual cache state changes. Once the CR is
@@ -1245,10 +1245,10 @@ func TestModel_401FastPath_InvalidatesCache(t *testing.T) {
 		t.Fatalf("create Model: %v", err)
 	}
 	m := pollModelCondition(t, ctx, "fastpath-test", reasonSynced, 30*time.Second)
-	if m.Status.LastRendered.LiteLLMModelID == "" {
+	if m.Status.LastRendered.ModelID == "" {
 		t.Fatalf("Model not Synced within 30s; conditions=%+v", m.Status.Conditions)
 	}
-	t.Logf("401FastPath step 1: Model Ready=Synced; modelID=%s", m.Status.LastRendered.LiteLLMModelID)
+	t.Logf("401FastPath step 1: Model Ready=Synced; modelID=%s", m.Status.LastRendered.ModelID)
 
 	// Step 2: Flip mock to Mode401 — subsequent POST /model/update returns 401.
 	mockServer.SetMode(mock.Mode401)
@@ -1529,7 +1529,7 @@ func TestModel_DriftCounter_UpdateDrifted(t *testing.T) {
 
 	// Wait for first reconcile (Ready=Synced with hash + modelID).
 	m := pollModelCondition(t, ctx, "drift-update-test", reasonSynced, 30*time.Second)
-	if m.Status.LastRendered.LiteLLMModelID == "" {
+	if m.Status.LastRendered.ModelID == "" {
 		t.Fatalf("Model not Synced within 30s")
 	}
 	originalHash := m.Status.LastRendered.Hash
@@ -1614,7 +1614,7 @@ func TestModel_DriftCounter_CreateMissing_SafetyRelist(t *testing.T) {
 
 	// Wait for first reconcile (Ready=Synced).
 	m := pollModelCondition(t, ctx, "drift-create-missing", reasonSynced, 30*time.Second)
-	if m.Status.LastRendered.LiteLLMModelID == "" {
+	if m.Status.LastRendered.ModelID == "" {
 		t.Fatalf("Model not Synced within 30s; conditions=%+v", m.Status.Conditions)
 	}
 
@@ -1622,11 +1622,11 @@ func TestModel_DriftCounter_CreateMissing_SafetyRelist(t *testing.T) {
 	beforeCreateMissing := testutil.ToFloat64(metrics.DriftCorrectedTotal.WithLabelValues("model", "create_missing"))
 
 	// Simulate out-of-band DELETE: remove the model from mock state without
-	// touching the K8s CR. Also clear lastRendered.LiteLLMModelID in status
+	// touching the K8s CR. Also clear lastRendered.ModelID in status
 	// to force the CREATE branch on the next reconcile.
 	mockServer.DeleteModelOutOfBand("drift-create-missing")
 
-	// Also clear the status.lastRendered.LiteLLMModelID to simulate the
+	// Also clear the status.lastRendered.ModelID to simulate the
 	// operator seeing the model as "missing" on the CREATE branch.
 	// Re-get the latest CR.
 	key := client.ObjectKey{Name: "drift-create-missing", Namespace: WatchNamespace}
@@ -1634,14 +1634,14 @@ func TestModel_DriftCounter_CreateMissing_SafetyRelist(t *testing.T) {
 		t.Fatalf("re-get model: %v", err)
 	}
 	savedHash := m.Status.LastRendered.Hash // non-empty = NOT first reconcile
-	m.Status.LastRendered.LiteLLMModelID = ""
+	m.Status.LastRendered.ModelID = ""
 	if err := k8sClient.Status().Update(ctx, m); err != nil {
-		t.Fatalf("clear LiteLLMModelID: %v", err)
+		t.Fatalf("clear ModelID: %v", err)
 	}
 	t.Logf("savedHash=%q (non-empty = past first reconcile)", savedHash)
 
 	// The safety re-list runnable (100ms interval in envtest) will enqueue
-	// the Model. The reconciler will see: hash matches (same spec), LiteLLMModelID
+	// the Model. The reconciler will see: hash matches (same spec), ModelID
 	// is empty → CREATE path → increment create_missing (firstReconcile=false because
 	// ObservedGeneration > 0 and hash is non-empty from the previous successful reconcile).
 	// Wait up to 5s for create_missing to increment.
@@ -1695,9 +1695,9 @@ func TestModel_DriftCounter_DeleteVanished_OnFinalizer(t *testing.T) {
 		t.Fatalf("create Model: %v", err)
 	}
 
-	// Wait for first reconcile (Ready=Synced with LiteLLMModelID).
+	// Wait for first reconcile (Ready=Synced with ModelID).
 	m := pollModelCondition(t, ctx, "drift-delete-vanished", reasonSynced, 30*time.Second)
-	if m.Status.LastRendered.LiteLLMModelID == "" {
+	if m.Status.LastRendered.ModelID == "" {
 		t.Fatalf("Model not Synced within 30s; conditions=%+v", m.Status.Conditions)
 	}
 
@@ -1778,7 +1778,7 @@ func TestModel_HandManagedEntry_Untouched(t *testing.T) {
 
 	// Wait for the operator-owned model to reach Ready=Synced.
 	m := pollModelCondition(t, ctx, "operator-owned-ownsix", reasonSynced, 30*time.Second)
-	if m.Status.LastRendered.LiteLLMModelID == "" {
+	if m.Status.LastRendered.ModelID == "" {
 		t.Fatalf("operator-owned model not Synced within 30s")
 	}
 

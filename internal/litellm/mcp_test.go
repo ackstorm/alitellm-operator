@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -221,4 +222,69 @@ func TestMCPHelpers401Propagation(t *testing.T) {
 	check("DeleteMCPServer", err)
 	_, err = c.ListMCPServers(context.Background())
 	check("ListMCPServers", err)
+}
+
+// TestMCPServerRequest_FullJSONShape — FIX5 H-1 contract lock.
+// Snapshot the JSON body shape with every modeled field populated. Locks
+// the LiteLLM 1.83.10 wire contract so a struct-field rename or json tag
+// drift surfaces here, not as a silent prod regression.
+func TestMCPServerRequest_FullJSONShape(t *testing.T) {
+	tr := true
+	fa := false
+	req := &MCPServerRequest{
+		ServerName:                "srv",
+		Alias:                     "srv",
+		URL:                       "https://x",
+		Transport:                 "http",
+		Description:               "d",
+		AuthType:                  "api_key",
+		Credentials:               map[string]any{"api_key": "x"},
+		MCPInfo:                   map[string]any{"env": "prod"},
+		MCPAccessGroups:           []string{"g1"},
+		AllowedTools:              []string{"t1"},
+		ToolNameToDisplayName:     map[string]any{"t1": "T1"},
+		ToolNameToDescription:     map[string]any{"t1": "doc"},
+		ExtraHeaders:              []any{"x-litellm-api-key"},
+		StaticHeaders:             map[string]any{"x-foo": "bar"},
+		Command:                   "npx",
+		Args:                      []string{"-y", "pkg"},
+		Env:                       map[string]any{"TOKEN": "x"},
+		AuthorizationURL:          "https://auth/authorize",
+		TokenURL:                  "https://auth/token",
+		RegistrationURL:           "https://auth/register",
+		OAuth2Flow:                "authorization_code",
+		AllowAllKeys:              &tr,
+		AvailableOnPublicInternet: &fa,
+	}
+	b, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	got := string(b)
+	for _, want := range []string{
+		`"server_name":"srv"`,
+		`"transport":"http"`,
+		`"auth_type":"api_key"`,
+		`"credentials":{"api_key":"x"}`,
+		`"mcp_info":{"env":"prod"}`,
+		`"mcp_access_groups":["g1"]`,
+		`"allowed_tools":["t1"]`,
+		`"tool_name_to_display_name":{"t1":"T1"}`,
+		`"tool_name_to_description":{"t1":"doc"}`,
+		`"extra_headers":["x-litellm-api-key"]`,
+		`"static_headers":{"x-foo":"bar"}`,
+		`"command":"npx"`,
+		`"args":["-y","pkg"]`,
+		`"env":{"TOKEN":"x"}`,
+		`"authorization_url":"https://auth/authorize"`,
+		`"token_url":"https://auth/token"`,
+		`"registration_url":"https://auth/register"`,
+		`"oauth2_flow":"authorization_code"`,
+		`"allow_all_keys":true`,
+		`"available_on_public_internet":false`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("body missing %s\nfull body: %s", want, got)
+		}
+	}
 }

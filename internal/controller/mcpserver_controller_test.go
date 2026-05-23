@@ -34,6 +34,14 @@ import (
 // as a file-local const so goconst stays quiet.
 const pathV1MCPServer = "/v1/mcp/server"
 
+// fix5* — file-local consts used in FIX5 params-extraction assertion
+// blocks. Pulled out so goconst stays quiet across repeated literal
+// usages.
+const (
+	fix5AuthTypeAPIKey    = "api_key"
+	fix5StaticHeaderValue = "bar"
+)
+
 // mcpServerSampleCR returns a basic MCPServer CR exercising the
 // transport=http happy path.
 func mcpServerSampleCR(name string) *litellmv1alpha1.LiteLLMMCPServer {
@@ -1234,5 +1242,215 @@ func TestMCPServerReconciler_DriftIncrementOnVanishDelete(t *testing.T) {
 		metrics.DriftCorrectedTotal.WithLabelValues("mcp", "delete_vanished"))
 	if delta := after - before; delta < 1 {
 		t.Errorf("drift_corrected_total{domain=mcp,action=delete_vanished}: want >=1, got delta=%v", delta)
+	}
+}
+
+// TestMCPServerReconciler_CreateForwardsAllParams — FIX5 H-1.
+// Apply a CR whose spec.params contains every modeled top-level field;
+// assert the mock's recorded POST body contains them verbatim.
+func TestMCPServerReconciler_CreateForwardsAllParams(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetMCPServers()
+	const crName = "mcp-params-test"
+	ensureNoMCPServer(t, ctx, crName)
+	resetConnCacheSnapshot()
+
+	cleanupConn := setupReadyConnectionMCP(t, ctx)
+	t.Cleanup(func() {
+		cleanupConn()
+		ensureNoMCPServer(t, context.Background(), crName)
+	})
+
+	cr := mcpServerSampleCR(crName)
+	cr.Spec.Params = runtime.RawExtension{Raw: []byte(`{
+        "auth_type": "api_key",
+        "mcp_access_groups": ["g1","g2"],
+        "allow_all_keys": true,
+        "available_on_public_internet": false,
+        "extra_headers": ["x-litellm-api-key"],
+        "static_headers": {"x-foo":"bar"},
+        "authorization_url": "https://auth.example/authorize",
+        "token_url": "https://auth.example/token",
+        "allowed_tools": ["t1","t2"],
+        "mcp_info": {"env":"prod"}
+    }`)}
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create MCPServer: %v", err)
+	}
+
+	m := pollMCPServerCondition(t, ctx, crName, reasonSynced, 30*time.Second)
+	if m.Status.LastRendered.ServerID == "" {
+		t.Fatalf("not Synced: %+v", m.Status)
+	}
+
+	wireName := litellm.SanitizeMCPServerName(crName, "")
+	body := mockServer.LastMCPBody(wireName)
+	if body == nil {
+		t.Fatalf("LastMCPBody(%q) returned nil", wireName)
+	}
+
+	if body["auth_type"] != fix5AuthTypeAPIKey {
+		t.Errorf("auth_type missing/wrong: %v", body["auth_type"])
+	}
+	groups, _ := body["mcp_access_groups"].([]any)
+	if len(groups) != 2 || groups[0] != "g1" || groups[1] != "g2" {
+		t.Errorf("mcp_access_groups: %v", body["mcp_access_groups"])
+	}
+	if body["allow_all_keys"] != true {
+		t.Errorf("allow_all_keys: %v", body["allow_all_keys"])
+	}
+	if body["available_on_public_internet"] != false {
+		t.Errorf("available_on_public_internet (explicit false): %v", body["available_on_public_internet"])
+	}
+	eh, ok := body["extra_headers"].([]any)
+	if !ok || len(eh) != 1 || eh[0] != "x-litellm-api-key" {
+		t.Errorf("extra_headers list shape lost: %#v", body["extra_headers"])
+	}
+	if sh, _ := body["static_headers"].(map[string]any); sh["x-foo"] != fix5StaticHeaderValue {
+		t.Errorf("static_headers: %v", body["static_headers"])
+	}
+	if body["authorization_url"] != "https://auth.example/authorize" || body["token_url"] != "https://auth.example/token" {
+		t.Errorf("oauth urls: %+v", body)
+	}
+	tools, _ := body["allowed_tools"].([]any)
+	if len(tools) != 2 {
+		t.Errorf("allowed_tools: %v", body["allowed_tools"])
+	}
+}
+
+// TestMCPServerReconciler_UpdateForwardsAllParams — FIX5 H-1.
+// After first CREATE, mutate spec.params and assert the recorded PUT body
+// contains the new values.
+func TestMCPServerReconciler_UpdateForwardsAllParams(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetMCPServers()
+	const crName = "mcp-params-update-test"
+	ensureNoMCPServer(t, ctx, crName)
+	resetConnCacheSnapshot()
+
+	cleanupConn := setupReadyConnectionMCP(t, ctx)
+	t.Cleanup(func() {
+		cleanupConn()
+		ensureNoMCPServer(t, context.Background(), crName)
+	})
+
+	cr := mcpServerSampleCR(crName)
+	cr.Spec.Params = runtime.RawExtension{Raw: []byte(`{"auth_type":"api_key"}`)}
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	_ = pollMCPServerCondition(t, ctx, crName, reasonSynced, 30*time.Second)
+
+	key := client.ObjectKey{Name: crName, Namespace: WatchNamespace}
+	var live litellmv1alpha1.LiteLLMMCPServer
+	if err := k8sClient.Get(ctx, key, &live); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	live.Spec.Params = runtime.RawExtension{Raw: []byte(`{
+        "auth_type": "oauth2",
+        "mcp_access_groups": ["new-group"],
+        "extra_headers": ["x-new-header"]
+    }`)}
+	if err := k8sClient.Update(ctx, &live); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	_ = pollMCPServerCondition(t, ctx, crName, reasonSynced, 30*time.Second)
+
+	wireName := litellm.SanitizeMCPServerName(crName, "")
+	body := mockServer.LastMCPBody(wireName)
+	if body == nil {
+		t.Fatalf("no recorded body")
+	}
+	if body["auth_type"] != "oauth2" {
+		t.Errorf("auth_type after UPDATE: %v", body["auth_type"])
+	}
+	groups, _ := body["mcp_access_groups"].([]any)
+	if len(groups) != 1 || groups[0] != "new-group" {
+		t.Errorf("mcp_access_groups after UPDATE: %v", body["mcp_access_groups"])
+	}
+	eh, _ := body["extra_headers"].([]any)
+	if len(eh) != 1 || eh[0] != "x-new-header" {
+		t.Errorf("extra_headers after UPDATE: %v", body["extra_headers"])
+	}
+
+	var posts, puts int
+	for _, c := range mockServer.Recorded() {
+		if c.Path != pathV1MCPServer {
+			continue
+		}
+		switch c.Method {
+		case http.MethodPost:
+			posts++
+		case http.MethodPut:
+			puts++
+		}
+	}
+	if posts != 1 || puts < 1 {
+		t.Errorf("call shape: want 1 POST + >=1 PUT, got posts=%d puts=%d", posts, puts)
+	}
+}
+
+// TestMCPServerReconciler_ReservedKeysIgnored — FIX5 H-1 deny-list.
+func TestMCPServerReconciler_ReservedKeysIgnored(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetMCPServers()
+	const crName = "mcp-reserved-test"
+	ensureNoMCPServer(t, ctx, crName)
+	resetConnCacheSnapshot()
+
+	cleanupConn := setupReadyConnectionMCP(t, ctx)
+	t.Cleanup(func() {
+		cleanupConn()
+		ensureNoMCPServer(t, context.Background(), crName)
+	})
+
+	cr := mcpServerSampleCR(crName)
+	cr.Spec.Endpoint = "https://stamped-by-cr.example"
+	cr.Spec.Transport = "http"
+	cr.Spec.Params = runtime.RawExtension{Raw: []byte(`{
+        "server_id":   "evil-id",
+        "server_name": "evil-name",
+        "alias":       "evil-alias",
+        "url":         "https://evil.example",
+        "transport":   "stdio",
+        "spec_path":   "/evil",
+        "auth_type":   "api_key"
+    }`)}
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	m := pollMCPServerCondition(t, ctx, crName, reasonSynced, 30*time.Second)
+	if m.Status.LastRendered.ServerID == "" || m.Status.LastRendered.ServerID == "evil-id" {
+		t.Fatalf("ServerID compromised or absent: %q", m.Status.LastRendered.ServerID)
+	}
+
+	wireName := litellm.SanitizeMCPServerName(crName, "")
+	body := mockServer.LastMCPBody(wireName)
+	if body == nil {
+		t.Fatalf("no recorded body for wire name %q", wireName)
+	}
+	if body["server_name"] != wireName {
+		t.Errorf("server_name: want %q (from CR), got %v", wireName, body["server_name"])
+	}
+	if body["url"] != "https://stamped-by-cr.example" {
+		t.Errorf("url: want CR value, got %v", body["url"])
+	}
+	if body["transport"] != "http" {
+		t.Errorf("transport: want http (from CR), got %v", body["transport"])
+	}
+	if body["auth_type"] != fix5AuthTypeAPIKey {
+		t.Errorf("auth_type (legit) lost: %v", body["auth_type"])
+	}
+	if body["spec_path"] != nil {
+		t.Errorf("spec_path leaked: %v", body["spec_path"])
 	}
 }

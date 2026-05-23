@@ -172,10 +172,10 @@ type ModelStatus struct {
 // D-02 (delete-and-recreate pivot): ParamsKeys and InfoKeys are required for
 // per-bag shrinkage detection. If any key is removed from either bag
 // (persistedKeys \ desiredKeys is non-empty), the reconciler deletes the
-// existing LiteLLM entry and re-creates it, then re-pins LiteLLMModelID to
+// existing LiteLLM entry and re-creates it, then re-pins ModelID to
 // the freshly-assigned UUID. See spec/DEFECTS-1.82.6.md row 2.
 //
-// D-04: LiteLLMModelID diverges from spec §6.2 ("operator does not persist
+// D-04: ModelID diverges from spec §6.2 ("operator does not persist
 // the assigned model_info.id"). Persistence is a pragmatic win for a low-rate
 // operator — saves a GET /model/info per reconcile. Documented deviation.
 type LastRenderedStatus struct {
@@ -206,7 +206,7 @@ type LastRenderedStatus struct {
 	// +optional
 	InfoKeys []string `json:"infoKeys,omitempty"`
 
-	// LiteLLMModelID is the LiteLLM-assigned UUID (model_info.id) for this
+	// ModelID is the LiteLLM-assigned UUID (model_info.id) for this
 	// Model entry. Persisted here so the reconciler can reference it directly
 	// on subsequent reconciles without an extra GET /model/info call (D-04).
 	//
@@ -218,7 +218,7 @@ type LastRenderedStatus struct {
 	// Diverges from spec §6.2: documented in spec/DEFECTS-1.82.6.md row 7 (D-04).
 	//
 	// +optional
-	LiteLLMModelID string `json:"litellmModelID,omitempty"`
+	ModelID string `json:"modelID,omitempty"`
 
 	// At is the timestamp of the last SUCCESSFUL render (NOT every reconcile
 	// attempt — transient failures do not update this field). Reconcile
@@ -231,10 +231,10 @@ type LastRenderedStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Namespaced,shortName=mdl
+// +kubebuilder:resource:scope=Namespaced,shortName=mdl,categories=litellm
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=".status.conditions[?(@.type=='Ready')].status"
 // +kubebuilder:printcolumn:name="Reason",type=string,JSONPath=".status.conditions[?(@.type=='Ready')].reason"
-// +kubebuilder:printcolumn:name="ModelID",type=string,JSONPath=".status.lastRendered.litellmModelID"
+// +kubebuilder:printcolumn:name="ModelID",type=string,JSONPath=".status.lastRendered.modelID"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=".metadata.creationTimestamp"
 
 // LiteLLMModel is the Schema for the litellmmodels API.

@@ -441,6 +441,23 @@ WHY IT FAILS: Sibling repos with similar layouts live next to this one.
 Relative-path edits to the wrong tree leave this repo unchanged while
 appearing to "succeed."
 
+### ❌ `spec.params` top-level keys silently dropped on MCPServer
+```yaml
+spec:
+  params:
+    auth_type: api_key       # forwarded since v0.3.1
+    access_groups: [team-a]  # accepted alias of mcp_access_groups
+    server_name: hijack      # IGNORED (reserved structural key)
+```
+✅ As of v0.3.1, every key modeled in `litellm.MCPServerRequest` is
+forwarded. Reserved structural keys (`server_id, server_name, alias, url,
+transport, spec_path`) are dropped at extraction. Pre-v0.3.1 the
+controller forwarded only `mcp_info`, `extra_headers` (map form),
+`static_headers`, `description`.
+WHY IT FAILED PRE-v0.3.1: `mcpserver_controller.go` extracted only four
+typed fields and dropped everything else, even though the request struct
+already modeled the full set.
+
 ## Repository-specific patterns
 
 - **Reconciler shape**: each controller in `internal/controller/<kind>_controller.go`

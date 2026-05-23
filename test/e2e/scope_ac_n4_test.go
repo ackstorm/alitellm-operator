@@ -59,8 +59,8 @@ var _ = Describe("Scope AC-N4 non-watched namespace", Ordered, ContinueOnFailure
 			Fail("CR vanished before assertion — apiserver hiccup")
 		}
 		Expect(err).NotTo(HaveOccurred())
-		Expect(litellmModelID(obj)).To(BeEmpty(),
-			"AC-N4 violation: operator wrote litellmModelID into Model in non-watched ns")
+		Expect(modelID(obj)).To(BeEmpty(),
+			"AC-N4 violation: operator wrote modelID into Model in non-watched ns")
 
 		// Cross-check: LiteLLM has no model registered under this name.
 		podName := fmt.Sprintf("ac-n4-probe-%d", time.Now().UnixNano())
