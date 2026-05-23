@@ -218,23 +218,24 @@ anywhere upstream leaves origin with no orphan tag.
 Cutting a release (stable example, `v0.1.0`):
 
 ```bash
-# Option A — release commit with no other changes (most common):
-git commit --allow-empty -m 'chore(release): v0.1.0'
-make pre-push
-git push origin main
+# Most common — empty release commit (no manifest pre-bump).
+# `make release` runs preconditions (on main, clean tree, in-sync
+# with origin/main), creates `chore(release): v0.1.0` as an empty
+# commit, runs the 15-gate pre-push, and pushes to main.
+make release VERSION=0.1.0
 
-# Option B — bundle the release intent with a real change:
-# (any edit)
+# Bundle the release intent with a real change:
+# (edit, then commit the change yourself, then:)
 git commit -am 'chore(release): v0.1.0'
 make pre-push
 git push origin main
 ```
 
 There is no need to `make bump` locally or to create the tag yourself.
-`make bump VERSION=X.Y.Z` is still available for the rare case where
-you want to pre-bump in the same commit (the workflow detects the
-clean tree and skips its own bump step), but it is not the expected
-workflow.
+`make bump VERSION=X.Y.Z` is still available as the internal target
+release.yml invokes; it can also be run by hand if you want to pre-bump
+manifests in the same commit (the workflow detects the clean tree and
+skips its own bump step), but it is not the expected workflow.
 
 Per-release flow (after the `chore(release): v0.1.0` push):
 

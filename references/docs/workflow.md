@@ -172,13 +172,12 @@ gh pr merge --merge --delete-branch   # squash if preferred
 
 # RELEASE (stable, e.g. v0.2.0)
 git checkout main && git pull --ff-only
-git commit --allow-empty -m 'chore(release): v0.2.0'
-make pre-push
-git push origin main                  # triggers release.yml
-gh run watch <release-run-id>         # follow the pipeline
+make release VERSION=0.2.0            # empty chore commit + pre-push + push
+                                       # → triggers release.yml
+                                       # (preconditions: on main, clean tree, in-sync with origin)
 
 # RELEASE (prerelease, e.g. v0.3.0-rc.1)
-# same as above with -rc.1 / -beta.1 / -alpha.1 in the version.
+make release VERSION=0.3.0-rc.1       # same wrapper; semver suffix supported
 ```
 
 ## Authoritative sources
