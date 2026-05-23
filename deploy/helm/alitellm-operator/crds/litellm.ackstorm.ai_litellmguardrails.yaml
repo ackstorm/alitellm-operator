@@ -1,0 +1,456 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.0
+  name: litellmguardrails.litellm.ackstorm.ai
+spec:
+  group: litellm.ackstorm.ai
+  names:
+    categories:
+    - litellm
+    kind: LiteLLMGuardRail
+    listKind: LiteLLMGuardRailList
+    plural: litellmguardrails
+    shortNames:
+    - lgr
+    singular: litellmguardrail
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: Ready
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Ready')].reason
+      name: Reason
+      type: string
+    - jsonPath: .spec.guardrailName
+      name: Guardrail
+      type: string
+    - jsonPath: .spec.provider
+      name: Provider
+      type: string
+    - jsonPath: .spec.mode
+      name: Mode
+      type: string
+    - jsonPath: .spec.defaultOn
+      name: DefaultOn
+      type: boolean
+    - jsonPath: .status.lastRendered.guardrailID
+      name: ID
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          LiteLLMGuardRail is the Schema for the litellmguardrails API.
+
+          One LiteLLMGuardRail CR maps to one LiteLLM guardrail entry created
+          via POST /guardrails against LiteLLMConnection/default. Two CRs
+          sharing spec.guardrailName form a load-balancing pool.
+
+          Finalizer name: "guardrails.litellm.ackstorm.ai/finalizer".
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              GuardRailSpec defines the desired state of LiteLLMGuardRail.
+
+              A LiteLLMGuardRail CR registers one LiteLLM guardrail entry against
+              the LiteLLMConnection/default instance (POST /guardrails). Two CRs
+              sharing spec.guardrailName form a load-balancing pool: LiteLLM
+              dispatches across all entries with identical guardrail_name.
+
+              Per-key / per-team opt-in is set on LiteLLMVirtualKey /
+              LiteLLMTeam.spec.guardrails []string by guardrailName (LiteLLM
+              Enterprise runtime feature, out of scope here).
+
+              Shape mirrors LiteLLMModel: pass-through spec.params (litellm_params)
+              and spec.info (guardrail_info), with {{NAME}} placeholders resolved
+              from spec.secrets[] at reconcile time. String values matching
+              "os.environ/<VAR>" are forwarded verbatim — the LiteLLM Deployment
+              admin owns the corresponding env var (this operator is an HTTP-API
+              client and never touches the LiteLLM Deployment).
+            properties:
+              defaultOn:
+                description: |-
+                  DefaultOn renders as litellm_params.default_on. When true the
+                  guardrail evaluates on every request even when keys/teams have
+                  not explicitly opted in. Server-side default is false; omit to
+                  inherit. A *bool is used so a nil value omits the field from the
+                  rendered body (rather than sending the Go zero value).
+                type: boolean
+              guardrailName:
+                description: |-
+                  GuardrailName is the litellm_params.guardrail_name path key used
+                  by LiteLLMVirtualKey.spec.guardrails / LiteLLMTeam.spec.guardrails
+                  to reference this guardrail. Two LiteLLMGuardRail CRs sharing
+                  this name form a load-balancing pool (operator POSTs both;
+                  LiteLLM dispatches across the pool).
+                maxLength: 253
+                minLength: 1
+                type: string
+              info:
+                description: |-
+                  Info is the guardrail_info pass-through bag (top-level on the
+                  Guardrail body, alongside litellm_params). Surfaced through
+                  GET /v2/guardrails/list; typically carries a free-form
+                  description and an optional dynamic-request parameter schema
+                  consumed by clients. Same {{NAME}} substitution rules as
+                  spec.params apply.
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+              mode:
+                description: |-
+                  Mode is one or more execution slots from GuardrailEventHooks.
+                  The operator emits a scalar string on the wire when len == 1
+                  and an array otherwise. realtime_input_transcription must be
+                  the only element (enforced in the reconciler — invalid combos
+                  surface as Ready=False, reason=InvalidMode).
+                items:
+                  description: |-
+                    GuardRailMode is one execution lifecycle slot recognized by LiteLLM's
+                    GuardrailEventHooks enum (litellm/types/guardrails.py). The operator
+                    emits the mode as a scalar string when the user supplies exactly one
+                    element, and as a JSON array when more than one is given —
+                    LiteLLM accepts both shapes on POST /guardrails.
+
+                    pre_call / post_call / during_call / logging_only are the standard
+                    slots. pre_mcp_call / during_mcp_call are MCP-specific. The realtime
+                    slot is mutually exclusive with the others (validation in the
+                    reconciler).
+                  enum:
+                  - pre_call
+                  - post_call
+                  - during_call
+                  - logging_only
+                  - pre_mcp_call
+                  - during_mcp_call
+                  - realtime_input_transcription
+                  type: string
+                maxItems: 4
+                minItems: 1
+                type: array
+              params:
+                description: |-
+                  Params is the litellm_params pass-through bag (any JSON object
+                  accepted via x-kubernetes-preserve-unknown-fields). Forwarded
+                  verbatim to LiteLLM on POST /guardrails and PUT
+                  /guardrails/{guardrail_id}, after {{NAME}} substitution from
+                  spec.secrets[] is applied to string-typed leaves.
+
+                  String leaves matching "os.environ/<VAR>" pass through unchanged
+                  — LiteLLM resolves them at runtime against its own process env.
+                  The LiteLLM Deployment admin owns provisioning of these env
+                  vars; the operator does not touch the LiteLLM Deployment.
+
+                  Reserved keys are stripped from this bag before send and
+                  surfaced via a Warning Event (reason=ReservedKeyStripped) — the
+                  canonical home for each is the typed spec field shown:
+
+                    - guardrail        → spec.provider
+                    - mode             → spec.mode
+                    - default_on       → spec.defaultOn
+                    - policy_template  → spec.policyTemplate
+                    - guardrail_name   → spec.guardrailName
+
+                  All other keys flow through untouched, including but not limited
+                  to: api_base, api_key, weight (load-balancing), category_thresholds
+                  (Lakera), patterns, blocked_words, categories, image_model
+                  (litellm_content_filter), unreachable_fallback
+                  (Literal["fail_closed","fail_open"]), extra_headers,
+                  skip_system_message_in_guardrail, skip_tool_message_in_guardrail,
+                  mask_request_content, mask_response_content,
+                  violation_message_template, end_session_after_n_fails,
+                  on_violation, realtime_violation_message,
+                  experimental_use_latest_role_message_only,
+                  additional_provider_specific_params, custom_code,
+                  pangea_input_recipe, pangea_output_recipe, template_id / location
+                  / credentials / api_endpoint / fail_on_error (Model Armor),
+                  guardrailIdentifier / guardrailVersion / aws_region_name /
+                  aws_access_key_id / aws_secret_access_key (Bedrock),
+                  presidio_analyzer_api_base / presidio_anonymizer_api_base /
+                  pii_entities / output_parse_response (Presidio), ...
+
+                  LiteLLM's litellm_params Pydantic model is extra="allow" so any
+                  future field flows through without a CRD schema change.
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+              policyTemplate:
+                description: |-
+                  PolicyTemplate names a reusable rule bundle stored server-side
+                  (Guardrail.policy_template — top-level field, NOT inside
+                  litellm_params). When set, the named template is merged with
+                  litellm_params at evaluation time.
+                type: string
+              provider:
+                description: |-
+                  Provider is forwarded verbatim as litellm_params.guardrail.
+                  Open-string — any value LiteLLM accepts is allowed so the
+                  operator does not require a release when upstream adds a new
+                  provider. Common values (2026): litellm_content_filter, aporia,
+                  lakera_v2, bedrock/guardrail, presidio, azure/text_moderations,
+                  openai_moderation, model_armor, generic_guardrail_api,
+                  prompt_guard, hide_secrets, custom_guardrail, custom_code.
+                  See https://docs.litellm.ai/docs/guardrail_providers.
+                minLength: 1
+                type: string
+              secrets:
+                description: |-
+                  Secrets is the substitution map for {{NAME}} placeholders
+                  embedded in spec.params and spec.info string-typed leaves.
+                  Each entry maps an uppercase NAME (the as field) to a
+                  Kubernetes Secret key (secretRef). Placeholders are replaced
+                  with the resolved plaintext value before the body is forwarded
+                  to LiteLLM. Secret material never appears in logs, Events, or
+                  status conditions.
+
+                  Secrets MUST reside in the same namespace as the
+                  LiteLLMGuardRail CR (no cross-namespace resolution in v1alpha1).
+                  A missing Secret or key surfaces as Ready=False,
+                  reason=SecretNotFound; a {{NAME}} with no matching
+                  spec.secrets[] entry surfaces as Ready=False,
+                  reason=UnresolvedPlaceholder.
+
+                  String leaves of the form "os.environ/<VAR>" are NOT
+                  substituted — they pass through unchanged.
+                items:
+                  description: |-
+                    SecretSubstitution maps a Kubernetes Secret key to an uppercase NAME that
+                    can be referenced as {{NAME}} in spec.params and spec.info string-typed
+                    leaves (§5.2). The as value is the NAME; the secretRef points to the
+                    Kubernetes Secret and key that carry the plaintext value (SEC-01.SEC-03).
+
+                    SEC-03: the as value is validated at admission by the CEL pattern
+                    ^[A-Z_][A-Z0-9_]*$; lowercase letters, digits-first names, and whitespace
+                    are rejected. Uniqueness of as values within a Model is enforced by a CEL
+                    XValidation on ModelSpec.Secrets (see above).
+                  properties:
+                    as:
+                      description: |-
+                        As is the placeholder NAME used in {{NAME}} substitution expressions
+                        within spec.params and spec.info string-typed leaves. Must match the
+                        pattern ^[A-Z_][A-Z0-9_]*$ (§5.2, SEC-03). Unique within the enclosing
+                        Model CR (SEC-03 uniqueness — enforced via CEL on spec.secrets).
+
+                        Example: as=ANTHROPIC_API_KEY matches the placeholder
+                        "{{ANTHROPIC_API_KEY}}" anywhere in spec.params or spec.info strings.
+                      minLength: 1
+                      pattern: ^[A-Z_][A-Z0-9_]*$
+                      type: string
+                    secretRef:
+                      description: |-
+                        SecretRef identifies the Kubernetes Secret and key whose plaintext
+                        value replaces the {{As}} placeholder at reconcile time. The Secret
+                        MUST reside in the same namespace as the Model CR (no cross-namespace
+                        resolution in v1alpha1). A missing Secret or key surfaces as
+                        Ready=False, reason=SecretNotFound (§6.0).
+
+                        Reuses SecretKeyRef from litellmconnection_types.go (same package —
+                        no additional type definition needed). SEC-01, SEC-06.
+                      properties:
+                        key:
+                          description: |-
+                            Key inside the referenced Secret's `data` map whose value is the
+                            LiteLLM master key.
+                          minLength: 1
+                          type: string
+                        name:
+                          description: |-
+                            Name of the Kubernetes Secret resource in the LiteLLMConnection's
+                            namespace.
+                          minLength: 1
+                          type: string
+                      required:
+                      - key
+                      - name
+                      type: object
+                  required:
+                  - as
+                  - secretRef
+                  type: object
+                type: array
+            required:
+            - guardrailName
+            - mode
+            - provider
+            type: object
+          status:
+            description: GuardRailStatus defines the observed state of LiteLLMGuardRail.
+            properties:
+              conditions:
+                description: |-
+                  Conditions carries the standard metav1.Condition list. The
+                  single type defined for LiteLLMGuardRail is Ready, with reason
+                  values:
+
+                    - Synced — rendered body matches LiteLLM; no drift.
+                    - LiteLLMUnavailable — LiteLLMConnection/default not Ready.
+                    - LiteLLMRejected — LiteLLM returned a 4xx/5xx on mutation.
+                    - SecretNotFound — a spec.secrets[].secretRef is missing.
+                    - UnresolvedPlaceholder — a {{NAME}} in spec.params/info has
+                      no matching spec.secrets[] entry.
+                    - InvalidMode — spec.mode combination is rejected
+                      (e.g. realtime_input_transcription not alone).
+                    - ConflictsWithConfigGuardrail — a guardrail of the same name
+                      is already loaded from the LiteLLM config file
+                      (guardrail_definition_location=config); such rows are not
+                      addressable via POST/PUT/DELETE /guardrails.
+                    - PoolProviderMismatch — two CRs share guardrailName but
+                      declare different providers.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              lastRendered:
+                description: |-
+                  LastRendered is the operator-side drift source of truth (D-01,
+                  D-07 — same pattern as LiteLLMModel). On each reconcile the
+                  rendered post-substitution body is hashed and compared against
+                  LastRendered.Hash; a mismatch triggers a PUT /guardrails/{id}
+                  (drift correction) and increments
+                  drift_corrected_total{domain=guardrail,action=update_drifted}.
+                properties:
+                  at:
+                    description: |-
+                      At is the timestamp of the last SUCCESSFUL render (not every
+                      reconcile attempt — transient failures do not update this
+                      field).
+                    format: date-time
+                    type: string
+                  definitionLocation:
+                    description: |-
+                      DefinitionLocation mirrors LiteLLM's
+                      guardrail_definition_location enum: "db" for rows created via
+                      POST /guardrails (operator-addressable), or "config" for rows
+                      loaded from the LiteLLM config file (NOT addressable via the
+                      CRUD API). When "config" the reconciler MUST NOT attempt
+                      mutation; instead it sets Ready=False,
+                      reason=ConflictsWithConfigGuardrail.
+                    type: string
+                  guardrailID:
+                    description: |-
+                      GuardrailID is the server-assigned UUID returned by POST
+                      /guardrails. The reconciler persists it here so subsequent PUT
+                      and DELETE calls can address the row directly without an extra
+                      GET /v2/guardrails/list lookup. Empty until the first
+                      successful create.
+                    type: string
+                  hash:
+                    description: |-
+                      Hash is the SHA-256 hex of the RFC 8785-canonicalized
+                      post-substitution Guardrail body (top-level guardrail_name,
+                      guardrail_info, policy_template, plus litellm_params) — minus
+                      server-assigned fields (guardrail_id, created_at, updated_at).
+                      An empty hash means the CR has not yet been successfully
+                      reconciled.
+                    type: string
+                  infoKeys:
+                    description: |-
+                      InfoKeys is the sorted list of dotted-path keys present in
+                      spec.info at the last successful render. Same shrinkage
+                      semantics as ParamsKeys.
+                    items:
+                      type: string
+                    type: array
+                  paramsKeys:
+                    description: |-
+                      ParamsKeys is the sorted list of dotted-path keys present in
+                      spec.params at the last successful render. Used for shrinkage
+                      detection (D-02).
+                    items:
+                      type: string
+                    type: array
+                  poolSize:
+                    description: |-
+                      PoolSize is the number of LiteLLMGuardRail CRs sharing
+                      spec.guardrailName on the owning connection at the time of the
+                      last successful render (load-balancing pool member count, for
+                      observability).
+                    format: int32
+                    type: integer
+                type: object
+              observedGeneration:
+                description: |-
+                  ObservedGeneration is the metadata.generation of the
+                  LiteLLMGuardRail CR the reconciler most recently processed
+                  successfully (OWN-08).
+                format: int64
+                type: integer
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
