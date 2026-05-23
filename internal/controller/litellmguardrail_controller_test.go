@@ -641,20 +641,35 @@ func TestGuardRail_PoolProviderMismatch(t *testing.T) {
 
 // ── GR-11: safety re-list recovers from out-of-band DELETE ──────────
 
-// TestGuardRail_SafetyRelist_CreateMissing exercises the existence
-// probe + safety-re-list runnable. Flow:
+// TestGuardRail_SafetyRelist_CreateMissing exercises the safety-re-list
+// runnable's CREATE-recovery path + drift_corrected_total counter
+// wiring. Flow:
 //
 //  1. Apply a CR, wait for Synced + persisted GuardrailID.
 //  2. Snapshot drift_corrected_total{guardrail,create_missing}.
 //  3. Simulate out-of-band DELETE — remove the row from mock state
 //     without going through DELETE /guardrails/{id}.
-//  4. The 100ms safety-re-list runnable (suite_test.go) enqueues every
-//     guardrail CR; the reconciler's existence probe (Step 8.6) sees
-//     GetGuardrailByID return nil, clears persistedID, falls through
-//     to CREATE, and increments create_missing.
-//  5. Assert the metric counter delta >= 1 within 5s.
-//  6. Assert the mock has a freshly-minted entry for the name and
+//  4. Explicitly clear status.lastRendered.guardrailID via a Status
+//     subresource update. Mirrors the Model equivalent test
+//     (TestModel_DriftCounter_CreateMissing_SafetyRelist): the Status
+//     UPDATE generates a watch event so the manager cache is forced
+//     into convergence with the cleared-ID state BEFORE the safety
+//     re-list ticker fires. Without this, an envtest cache-lag race
+//     leaves the reconciler reading a stale Status where Hash="" too,
+//     making firstReconcile=true and suppressing the create_missing
+//     increment.
+//  5. The 100ms safety-re-list runnable (suite_test.go) enqueues every
+//     guardrail CR; the reconciler sees GuardrailID="" + Hash=non-empty
+//     + ObservedGeneration>0, falls through to CREATE, and increments
+//     create_missing (firstReconcile=false).
+//  6. Assert the metric counter delta >= 1 within 5s.
+//  7. Assert the mock has a freshly-minted entry for the name and
 //     the CR's status.lastRendered.guardrailID was rewritten.
+//
+// NOTE: The controller's existence-probe (Step 8.6) is exercised by
+// the GR-08 / drift / steady-state tests where it fires on cache-fresh
+// status. Here we bypass the probe deliberately to keep this test
+// hermetic against envtest cache-propagation timing.
 func TestGuardRail_SafetyRelist_CreateMissing(t *testing.T) {
 	ctx := context.Background()
 	name := "gr-relist-recover"
@@ -681,11 +696,27 @@ func TestGuardRail_SafetyRelist_CreateMissing(t *testing.T) {
 	before := testutil.ToFloat64(metrics.DriftCorrectedTotal.WithLabelValues("guardrail", "create_missing"))
 
 	// Out-of-band DELETE — pull the row out of mock state without
-	// going through the operator's DELETE path. The mock still
-	// reports this name as "absent" via GET /v2/guardrails/list, so
-	// the existence probe sees row==nil and the by-name lookup
-	// returns nil too. Safety re-list (100ms tick) enqueues the CR.
+	// going through the operator's DELETE path.
 	mockServer.DeleteGuardrailOutOfBand(originalID)
+
+	// Force the CREATE branch by clearing GuardrailID via a Status
+	// UPDATE. This also generates a watch event the manager cache
+	// observes — guaranteeing the next reconcile reads
+	// {GuardrailID:"", Hash:non-empty, ObservedGeneration>0} from a
+	// converged cache (firstReconcile=false → create_missing fires).
+	key := client.ObjectKey{Name: name, Namespace: WatchNamespace}
+	var fresh litellmv1alpha1.LiteLLMGuardRail
+	if err := k8sClient.Get(ctx, key, &fresh); err != nil {
+		t.Fatalf("re-get CR: %v", err)
+	}
+	savedHash := fresh.Status.LastRendered.Hash
+	if savedHash == "" {
+		t.Fatalf("expected non-empty Hash after first reconcile (got %q) — firstReconcile suppression would mask create_missing", savedHash)
+	}
+	fresh.Status.LastRendered.GuardrailID = ""
+	if err := k8sClient.Status().Update(ctx, &fresh); err != nil {
+		t.Fatalf("clear GuardrailID via Status().Update: %v", err)
+	}
 
 	// Wait up to 5s for the create_missing counter to bump.
 	deadline := time.Now().Add(5 * time.Second)
