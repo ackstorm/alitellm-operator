@@ -52,8 +52,35 @@ func extractMCPParams(p map[string]any) extractedMCPParams {
 	if p == nil {
 		return out
 	}
+	out.Description, _ = p["description"].(string)
 	out.AuthType, _ = p["auth_type"].(string)
+	out.Credentials, _ = p["credentials"].(map[string]any)
+	out.AllowedTools = stringSliceFromParams(p, "allowed_tools")
+	out.ToolNameToDisplayName, _ = p["tool_name_to_display_name"].(map[string]any)
+	out.ToolNameToDescription, _ = p["tool_name_to_description"].(map[string]any)
+
+	// extra_headers: forward verbatim. LiteLLM accepts both
+	// map[string]any (inject) and []string (forward-from-client). The
+	// operator does NOT translate between them.
+	if v, ok := p["extra_headers"]; ok {
+		out.ExtraHeaders = v
+	}
+
+	out.StaticHeaders, _ = p["static_headers"].(map[string]any)
+	out.MCPInfo, _ = p["mcp_info"].(map[string]any)
+
+	out.Command, _ = p["command"].(string)
+	out.Args = stringSliceFromParams(p, "args")
+	out.Env, _ = p["env"].(map[string]any)
+
+	out.AuthorizationURL, _ = p["authorization_url"].(string)
+	out.TokenURL, _ = p["token_url"].(string)
+	out.RegistrationURL, _ = p["registration_url"].(string)
+	out.OAuth2Flow, _ = p["oauth2_flow"].(string)
+
 	out.AllowAllKeys = boolPtrFromParams(p, "allow_all_keys")
+	out.AvailableOnPublicInternet = boolPtrFromParams(p, "available_on_public_internet")
+
 	out.MCPAccessGroups = stringSliceFromParams(p, "mcp_access_groups")
 	if len(out.MCPAccessGroups) == 0 {
 		out.MCPAccessGroups = stringSliceFromParams(p, "access_groups")
