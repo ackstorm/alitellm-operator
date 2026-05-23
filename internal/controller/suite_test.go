@@ -148,6 +148,12 @@ var (
 	// on it to inject a one-shot AlreadyExists from Patch, without
 	// swapping the reconciler's Client field at runtime.
 	mcpServerDiscoveryClient *patchInterceptor
+
+	// GuardRailReconciler. Shares connCache with the
+	// Phase 2/3/5/6 reconcilers. Tests exercise the GR-01..n surface
+	// (POST/PUT/DELETE wire semantics, {{NAME}} substitution, drift
+	// correction, CONFIG conflict, PoolProviderMismatch).
+	guardrailReconciler *GuardRailReconciler
 )
 
 // TestMain is the envtest bootstrap. It starts a real etcd+kube-apiserver
@@ -506,6 +512,30 @@ func setupAndRun(m *testing.M) int {
 	}
 	if err := mcpServerDiscoveryReconciler.SetupWithManager(mgr); err != nil {
 		fmt.Fprintf(os.Stderr, "SetupWithManager(MCPServerDiscovery): %v\n", err)
+		return 1
+	}
+
+	// GuardRail field indexer + reconciler. Mirrors the Phase 3
+	// Model + Phase 5 MCPServer + A2AAgent wiring blocks.
+	if err := mgr.GetFieldIndexer().IndexField(
+		ctx,
+		&litellmv1alpha1.LiteLLMGuardRail{},
+		GuardrailSecretRefIndexField,
+		IndexGuardrailSecretRefs,
+	); err != nil {
+		fmt.Fprintf(os.Stderr, "IndexField(GuardRail secrets): %v\n", err)
+		return 1
+	}
+	guardrailReconciler = &GuardRailReconciler{
+		Client:    mgr.GetClient(),
+		Scheme:    mgr.GetScheme(),
+		Cache:     connCache,
+		Recorder:  mgr.GetEventRecorderFor("guardrail-controller"),
+		Namespace: WatchNamespace,
+		Log:       logr.Discard(),
+	}
+	if err := guardrailReconciler.SetupWithManager(mgr); err != nil {
+		fmt.Fprintf(os.Stderr, "SetupWithManager(GuardRail): %v\n", err)
 		return 1
 	}
 

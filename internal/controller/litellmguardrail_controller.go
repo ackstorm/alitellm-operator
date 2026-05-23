@@ -355,8 +355,8 @@ func (r *GuardRailReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	firstReconcile := gr.Status.ObservedGeneration == 0 || gr.Status.LastRendered.Hash == ""
 
-	// Pool-size + provider-homogeneity tracking.
-	poolSize, providerMismatch, err := r.checkGuardrailPool(ctx, &gr, snap.Client)
+	// Pool-size + provider-homogeneity + sibling-ownership tracking.
+	poolSize, providerMismatch, anySiblingOwns, err := r.checkGuardrailPool(ctx, &gr, snap.Client)
 	if err != nil {
 		return r.classifyMutationError(ctx, &gr, logger, err, "pool check (GET /v2/guardrails/list)")
 	}
@@ -374,8 +374,11 @@ func (r *GuardRailReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	persistedID := gr.Status.LastRendered.GuardrailID
 
 	// Adopt existing row if first-reconcile / persistedID stale and the
-	// guardrail_name is already known to LiteLLM (DB row).
-	if persistedID == "" && existing != nil && existing.GuardrailID != "" {
+	// guardrail_name is already known to LiteLLM (DB row). Skip adoption
+	// when a sibling CR has already taken ownership — otherwise both CRs
+	// would compete to PUT the same row, defeating the LB-pool semantics
+	// where each CR owns its own LiteLLM entry under a shared name.
+	if persistedID == "" && existing != nil && existing.GuardrailID != "" && !anySiblingOwns {
 		persistedID = existing.GuardrailID
 		logger.V(1).Info("adopted existing LiteLLM guardrail (idempotency probe)",
 			"guardrailID", persistedID)
@@ -550,10 +553,10 @@ func (r *GuardRailReconciler) checkGuardrailPool(
 	ctx context.Context,
 	cr *litellmv1alpha1.LiteLLMGuardRail,
 	_ *litellm.Client,
-) (poolSize int, providerMismatch bool, err error) {
+) (poolSize int, providerMismatch bool, anySiblingOwns bool, err error) {
 	var list litellmv1alpha1.LiteLLMGuardRailList
 	if err := r.List(ctx, &list, client.InNamespace(cr.Namespace)); err != nil {
-		return 0, false, err
+		return 0, false, false, err
 	}
 	for i := range list.Items {
 		sib := &list.Items[i]
@@ -569,8 +572,15 @@ func (r *GuardRailReconciler) checkGuardrailPool(
 		if sib.UID != cr.UID && sib.Spec.Provider != cr.Spec.Provider {
 			providerMismatch = true
 		}
+		// "Sibling ownership" — a different CR sharing this name already
+		// holds a persisted GuardrailID. Used to disable adoption so the
+		// current CR creates its own LiteLLM row instead of stealing the
+		// sibling's row (would silently degrade an LB pool to one entry).
+		if sib.UID != cr.UID && sib.Status.LastRendered.GuardrailID != "" {
+			anySiblingOwns = true
+		}
 	}
-	return poolSize, providerMismatch, nil
+	return poolSize, providerMismatch, anySiblingOwns, nil
 }
 
 // classifyMutationError maps an HTTP error from a guardrail mutation
