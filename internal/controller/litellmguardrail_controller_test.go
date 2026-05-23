@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
@@ -25,6 +26,7 @@ import (
 
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 	"github.com/ackstorm/alitellm-operator/internal/litellm"
+	"github.com/ackstorm/alitellm-operator/internal/metrics"
 )
 
 // guardrailSampleCR returns a minimal valid CR. Tests mutate spec on
@@ -629,6 +631,93 @@ func TestGuardRail_PoolProviderMismatch(t *testing.T) {
 	if !matched {
 		t.Fatalf("expected one of {%q, %q} to surface Ready=False reason=PoolProviderMismatch", primary, secondary)
 	}
+}
+
+// ── GR-11: safety re-list recovers from out-of-band DELETE ──────────
+
+// TestGuardRail_SafetyRelist_CreateMissing exercises the existence
+// probe + safety-re-list runnable. Flow:
+//
+//  1. Apply a CR, wait for Synced + persisted GuardrailID.
+//  2. Snapshot drift_corrected_total{guardrail,create_missing}.
+//  3. Simulate out-of-band DELETE — remove the row from mock state
+//     without going through DELETE /guardrails/{id}.
+//  4. The 100ms safety-re-list runnable (suite_test.go) enqueues every
+//     guardrail CR; the reconciler's existence probe (Step 8.6) sees
+//     GetGuardrailByID return nil, clears persistedID, falls through
+//     to CREATE, and increments create_missing.
+//  5. Assert the metric counter delta >= 1 within 5s.
+//  6. Assert the mock has a freshly-minted entry for the name and
+//     the CR's status.lastRendered.guardrailID was rewritten.
+func TestGuardRail_SafetyRelist_CreateMissing(t *testing.T) {
+	ctx := context.Background()
+	name := "gr-relist-recover"
+	ensureNoGuardrailCR(t, ctx, name)
+	t.Cleanup(func() { ensureNoGuardrailCR(t, context.Background(), name) })
+	mockServer.ResetGuardrails()
+	ensureLiteLLMConnectionDefault(t, ctx)
+	readyConnectionForTest(t)
+
+	cr := guardrailReconcilerSampleCR(name)
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("Create CR: %v", err)
+	}
+	_ = pollGuardrailCondition(t, ctx, name, "Synced", 5*time.Second)
+	originalID := pollGuardrailID(t, ctx, name, 5*time.Second)
+	if originalID == "" {
+		t.Fatal("CR never reached non-empty GuardrailID")
+	}
+	if got, want := mockServer.MutationsByGuardrailName(name), int64(1); got != want {
+		t.Fatalf("post-CREATE mutations: got %d want %d", got, want)
+	}
+
+	// Snapshot create_missing counter BEFORE the out-of-band DELETE.
+	before := testutil.ToFloat64(metrics.DriftCorrectedTotal.WithLabelValues("guardrail", "create_missing"))
+
+	// Out-of-band DELETE — pull the row out of mock state without
+	// going through the operator's DELETE path. The mock still
+	// reports this name as "absent" via GET /v2/guardrails/list, so
+	// the existence probe sees row==nil and the by-name lookup
+	// returns nil too. Safety re-list (100ms tick) enqueues the CR.
+	mockServer.DeleteGuardrailOutOfBand(originalID)
+
+	// Wait up to 5s for the create_missing counter to bump.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		after := testutil.ToFloat64(metrics.DriftCorrectedTotal.WithLabelValues("guardrail", "create_missing"))
+		if after-before >= 1 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	after := testutil.ToFloat64(metrics.DriftCorrectedTotal.WithLabelValues("guardrail", "create_missing"))
+	if delta := after - before; delta < 1 {
+		t.Fatalf("create_missing NOT incremented after out-of-band DELETE + safety re-list; delta=%.0f", delta)
+	}
+
+	// Mock has a fresh entry under the same name; ID differs from the
+	// original (a new POST minted a new mock-guardrail-id-N).
+	if !mockServer.HasGuardrail(name) {
+		t.Errorf("mock missing guardrail %q after recovery POST", name)
+	}
+	newID := mockServer.GetGuardrailID(name)
+	if newID == "" || newID == originalID {
+		t.Errorf("mock GuardrailID after recovery: got %q want fresh != %q", newID, originalID)
+	}
+
+	// CR status reflects the new GuardrailID — the reconciler's
+	// post-create status write replaces lastRendered.GuardrailID.
+	deadline = time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		var fresh litellmv1alpha1.LiteLLMGuardRail
+		if err := k8sClient.Get(ctx, client.ObjectKey{Name: name, Namespace: WatchNamespace}, &fresh); err == nil {
+			if fresh.Status.LastRendered.GuardrailID == newID {
+				return
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Errorf("CR status.lastRendered.guardrailID never advanced to %q after recovery", newID)
 }
 
 // ── GR-10: reserved-key stripping ───────────────────────────────────

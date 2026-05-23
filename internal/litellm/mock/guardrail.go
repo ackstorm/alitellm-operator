@@ -136,6 +136,25 @@ func (m *MockServer) LastGuardrailBody(name string) map[string]any {
 	return cp
 }
 
+// DeleteGuardrailOutOfBand removes a guardrail from the mock store
+// WITHOUT going through the HTTP handler. Simulates an out-of-band
+// DELETE in LiteLLM (e.g. a human admin removes the entry directly via
+// the LiteLLM Admin UI or curl). Used by the safety-re-list envtest to
+// verify the operator's existence probe detects the missing row and
+// fires a CREATE on the next reconcile + bumps the
+// drift_corrected_total{action=create_missing} counter.
+func (m *MockServer) DeleteGuardrailOutOfBand(guardrailID string) {
+	gs := m.ensureGuardrailState()
+	gs.mu.Lock()
+	defer gs.mu.Unlock()
+	entry, ok := gs.entries[guardrailID]
+	if !ok {
+		return
+	}
+	removeIDFromSlice(gs.byName, entry.GuardrailName, guardrailID)
+	delete(gs.entries, guardrailID)
+}
+
 // AddHandManagedConfigGuardrail inserts a guardrail into the mock as if
 // it had been loaded from the LiteLLM config file (definition_location =
 // "config"). Such entries are NOT addressable via POST/PUT/DELETE — the

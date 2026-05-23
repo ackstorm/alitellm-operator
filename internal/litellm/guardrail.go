@@ -104,6 +104,28 @@ func (c *Client) GetGuardrailByName(ctx context.Context, guardrailName string) (
 	return nil, nil
 }
 
+// GetGuardrailByID issues GET /v2/guardrails/list and returns the entry
+// whose guardrail_id matches exactly. Returns (nil, nil) when no entry
+// exists — used by the operator's existence probe (safety re-list path)
+// to detect out-of-band DELETEs of a specific LiteLLM row.
+//
+// Distinct from GetGuardrailByName because LB pools share guardrail_name
+// across multiple rows; ID is the only stable per-row handle once the
+// pool has more than one member.
+func (c *Client) GetGuardrailByID(ctx context.Context, guardrailID string) (*GuardrailEntry, error) {
+	list, err := c.ListGuardrails(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range list.Guardrails {
+		if list.Guardrails[i].GuardrailID == guardrailID {
+			out := list.Guardrails[i]
+			return &out, nil
+		}
+	}
+	return nil, nil
+}
+
 // decodeGuardrailResponse is a shared decoder for POST + PUT responses.
 // LiteLLM returns the upstream `Guardrail` record either as a top-level
 // object OR wrapped in {"guardrail": {.}} depending on the route version

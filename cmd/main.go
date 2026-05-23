@@ -469,6 +469,21 @@ func main() {
 		setupLog.Error(err, "unable to register guardrail secret-ref field indexer")
 		os.Exit(1)
 	}
+	// GuardRail safety-re-list runnable. 30m tick in production matches
+	// the Model safety-re-list interval. Channel is read inside the
+	// reconciler's SetupWithManager via source.TypedFunc.
+	guardrailSafetyRelistCh := make(chan reconcile.Request, 256)
+	if err := mgr.Add(&controller.GuardRailSafetyRelistRunnable{
+		Client:    mgr.GetClient(),
+		Namespace: watchNS,
+		Interval:  30 * time.Minute,
+		Log:       ctrl.Log.WithName("guardrail-safety-relist"),
+		RequeueCh: guardrailSafetyRelistCh,
+	}); err != nil {
+		setupLog.Error(err, "unable to add GuardRailSafetyRelistRunnable")
+		os.Exit(1)
+	}
+
 	if err := (&controller.GuardRailReconciler{
 		Client:     mgr.GetClient(),
 		Scheme:     mgr.GetScheme(),
@@ -477,7 +492,7 @@ func main() {
 		Namespace:  watchNS,
 		Log:        ctrl.Log.WithName("controller").WithName("GuardRail"),
 		BootEvents: bootSweep.GuardRailEvents,
-	}).SetupWithManager(mgr); err != nil {
+	}).SetupWithManager(mgr, guardrailSafetyRelistCh); err != nil {
 		setupLog.Error(err, "unable to set up GuardRail reconciler")
 		os.Exit(1)
 	}

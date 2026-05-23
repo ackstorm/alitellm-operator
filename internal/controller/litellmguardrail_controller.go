@@ -20,6 +20,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
+	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -28,6 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 	"github.com/ackstorm/alitellm-operator/internal/connection"
@@ -337,6 +339,37 @@ func (r *GuardRailReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	existing, err := snap.Client.GetGuardrailByName(ctx, gr.Spec.GuardrailName)
 	if err != nil {
 		return r.classifyMutationError(ctx, &gr, logger, err, "GET /v2/guardrails/list")
+	}
+
+	// ─── Step 8.6: Existence probe (out-of-band DELETE detection) ──────────
+	// When safety-re-list (or any event) enqueues a CR whose status pins a
+	// GuardrailID, verify the row still exists in LiteLLM. Without this, an
+	// out-of-band DELETE (UI / curl) goes undetected — by-name discovery
+	// would surface a SIBLING in an LB pool, masking the missing row.
+	// On not-found, clear persistedID locally so the CREATE branch fires
+	// below and drift_corrected_total{action=create_missing} increments.
+	//
+	// Skipped on first reconcile (Hash == "") so initial bootstrap pays no
+	// probe cost — CREATE fires anyway because GuardrailID is empty.
+	if gr.Status.LastRendered.GuardrailID != "" && gr.Status.LastRendered.Hash != "" {
+		row, probeErr := snap.Client.GetGuardrailByID(ctx, gr.Status.LastRendered.GuardrailID)
+		if probeErr != nil {
+			return r.classifyMutationError(ctx, &gr, logger, probeErr, "GET /v2/guardrails/list (existence probe)")
+		}
+		if row == nil {
+			logger.Info("safety re-list detected out-of-band delete; clearing GuardrailID",
+				"lastID", gr.Status.LastRendered.GuardrailID)
+			gr.Status.LastRendered.GuardrailID = ""
+			// Force re-discovery: don't trust the by-name lookup either,
+			// since the sibling adoption guard depends on persistedID
+			// (already cleared) plus existing != nil. By-name `existing`
+			// was loaded before the probe; if it pointed at the just-deleted
+			// row, refresh by re-running the by-name lookup.
+			existing, err = snap.Client.GetGuardrailByName(ctx, gr.Spec.GuardrailName)
+			if err != nil {
+				return r.classifyMutationError(ctx, &gr, logger, err, "GET /v2/guardrails/list (post-probe refresh)")
+			}
+		}
 	}
 
 	// CONFIG row blocks all mutation.
@@ -718,7 +751,11 @@ func (r *GuardRailReconciler) connectionToGuardrails(ctx context.Context, _ clie
 }
 
 // SetupWithManager registers the GuardRailReconciler with the manager.
-func (r *GuardRailReconciler) SetupWithManager(mgr ctrl.Manager) error {
+//
+// Optional safetyRelistCh — when non-nil, wired as a source.TypedFunc so
+// the GuardRailSafetyRelistRunnable can enqueue reconcile.Requests
+// without adding a RequeueAfter path (REL-02 compliance).
+func (r *GuardRailReconciler) SetupWithManager(mgr ctrl.Manager, safetyRelistCh ...chan reconcile.Request) error {
 	b := ctrl.NewControllerManagedBy(mgr).
 		For(&litellmv1alpha1.LiteLLMGuardRail{}, builder.WithPredicates()).
 		Watches(
@@ -737,5 +774,79 @@ func (r *GuardRailReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		b = b.WatchesRawSource(src)
 	}
 
+	if len(safetyRelistCh) > 0 && safetyRelistCh[0] != nil {
+		ch := safetyRelistCh[0]
+		b = b.WatchesRawSource(source.TypedFunc[reconcile.Request](
+			func(ctx context.Context, q workqueue.TypedRateLimitingInterface[reconcile.Request]) error {
+				go func() {
+					for {
+						select {
+						case <-ctx.Done():
+							return
+						case req, ok := <-ch:
+							if !ok {
+								return
+							}
+							q.Add(req)
+						}
+					}
+				}()
+				return nil
+			},
+		))
+	}
+
 	return b.Complete(r)
+}
+
+// GuardRailSafetyRelistRunnable implements manager.Runnable for the
+// guardrail safety re-list (out-of-band DELETE recovery). On each tick
+// it lists every LiteLLMGuardRail CR in the operator's namespace and
+// enqueues it; the reconciler's existence probe (Step 8.6) detects rows
+// that vanished in LiteLLM and falls through to CREATE, incrementing
+// drift_corrected_total{domain=guardrail,action=create_missing}.
+//
+// Interval is configurable: 30m in production (cmd/main.go), 100ms in
+// envtests. REL-02 compliance: the runnable uses a ticker + channel
+// rather than the reconciler's RequeueAfter so the grep gate stays at
+// exactly 1.
+type GuardRailSafetyRelistRunnable struct {
+	Client    client.Client
+	Namespace string
+	Interval  time.Duration
+	Log       logr.Logger
+	// RequeueCh is the channel the runnable writes reconcile.Requests to.
+	// SetupWithManager wires this as a source.TypedFunc raw source.
+	RequeueCh chan reconcile.Request
+}
+
+// Start implements manager.Runnable. Ticks at Interval, lists all
+// guardrails in Namespace, enqueues each. Channel-full drops are
+// tolerated — the next tick will re-enqueue.
+func (r *GuardRailSafetyRelistRunnable) Start(ctx context.Context) error {
+	ticker := time.NewTicker(r.Interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			var list litellmv1alpha1.LiteLLMGuardRailList
+			if err := r.Client.List(ctx, &list, client.InNamespace(r.Namespace)); err != nil {
+				r.Log.V(1).Info("guardrail safety re-list: list failed; skipping tick", "error", err)
+				continue
+			}
+			for i := range list.Items {
+				req := reconcile.Request{
+					NamespacedName: client.ObjectKeyFromObject(&list.Items[i]),
+				}
+				select {
+				case r.RequeueCh <- req:
+				default:
+					// Channel full — skip; next tick retries.
+				}
+			}
+			r.Log.V(1).Info("guardrail safety re-list: enqueued", "count", len(list.Items))
+		}
+	}
 }

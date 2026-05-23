@@ -152,8 +152,15 @@ var (
 	// GuardRailReconciler. Shares connCache with the
 	// Phase 2/3/5/6 reconcilers. Tests exercise the GR-01..n surface
 	// (POST/PUT/DELETE wire semantics, {{NAME}} substitution, drift
-	// correction, CONFIG conflict, PoolProviderMismatch).
+	// correction, CONFIG conflict, PoolProviderMismatch, safety re-list
+	// create_missing recovery).
 	guardrailReconciler *GuardRailReconciler
+
+	// GuardRail safety-re-list runnable + its request channel. 100ms
+	// tick in envtest so out-of-band DELETE recovery is observable
+	// inside a 5s poll window.
+	guardrailSafetyRelist   *GuardRailSafetyRelistRunnable
+	guardrailSafetyRelistCh chan reconcile.Request
 )
 
 // TestMain is the envtest bootstrap. It starts a real etcd+kube-apiserver
@@ -526,6 +533,21 @@ func setupAndRun(m *testing.M) int {
 		fmt.Fprintf(os.Stderr, "IndexField(GuardRail secrets): %v\n", err)
 		return 1
 	}
+	// GuardRail safety-re-list runnable — 100ms in envtest (vs 30m prod)
+	// so create_missing drift correction is observable inside a 5s poll
+	// window. Mirrors ModelSafetyRelistRunnable.
+	guardrailSafetyRelistCh = make(chan reconcile.Request, 256)
+	guardrailSafetyRelist = &GuardRailSafetyRelistRunnable{
+		Client:    mgr.GetClient(),
+		Namespace: WatchNamespace,
+		Interval:  100 * time.Millisecond,
+		Log:       logr.Discard(),
+		RequeueCh: guardrailSafetyRelistCh,
+	}
+	if err := mgr.Add(guardrailSafetyRelist); err != nil {
+		fmt.Fprintf(os.Stderr, "mgr.Add(GuardRailSafetyRelistRunnable): %v\n", err)
+		return 1
+	}
 	guardrailReconciler = &GuardRailReconciler{
 		Client:    mgr.GetClient(),
 		Scheme:    mgr.GetScheme(),
@@ -534,7 +556,7 @@ func setupAndRun(m *testing.M) int {
 		Namespace: WatchNamespace,
 		Log:       logr.Discard(),
 	}
-	if err := guardrailReconciler.SetupWithManager(mgr); err != nil {
+	if err := guardrailReconciler.SetupWithManager(mgr, guardrailSafetyRelistCh); err != nil {
 		fmt.Fprintf(os.Stderr, "SetupWithManager(GuardRail): %v\n", err)
 		return 1
 	}
