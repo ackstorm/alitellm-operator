@@ -352,15 +352,12 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// initial registration).
 	firstReconcile := mcp.Status.ObservedGeneration == 0 || mcp.Status.LastRendered.Hash == ""
 
-	// Construct the body. spec.params is forwarded verbatim into MCPInfo
-	// per spec §6.4 ("user contract — anything outside the modeled
-	// NewMCPServerRequest fields belongs in mcp_info"). The operator does
-	// NOT auto-route top-level keys into typed fields; that's the user's
-	// responsibility (Phase 5 CONTEXT.md L302 anti-pattern).
-	mcpInfo, _ := paramsMap["mcp_info"].(map[string]any)
-	extraHeaders, _ := paramsMap["extra_headers"].(map[string]any)
-	staticHeaders, _ := paramsMap["static_headers"].(map[string]any)
-	description, _ := paramsMap["description"].(string)
+	// Construct the body. FIX5 H-1: every top-level key in spec.params that
+	// corresponds to a modeled field on litellm.MCPServerRequest /
+	// MCPServerUpdateRequest is forwarded to LiteLLM. Reserved structural
+	// keys (server_id, server_name, alias, url, transport, spec_path) are
+	// stamped from the CR — see reservedMCPParamKeys.
+	ext := extractMCPParams(paramsMap)
 
 	var newServerID string
 	// FIX2.txt H-9 orphan adoption (2026-05-22): when ServerID is empty,
@@ -387,16 +384,31 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		// LiteLLM 1.83.10 /v1/mcp/server has no native audit field at the
 		// top level, but mcp_info is freeform and persisted verbatim.
 		// CREATE stamps both created_by + updated_by.
-		mcpInfo = stampMCPIdentity(mcpInfo, true)
+		ext.MCPInfo = stampMCPIdentity(ext.MCPInfo, true)
 		createReq := &litellm.MCPServerRequest{
-			ServerName:    sanitizedName,
-			Alias:         sanitizedName, // alias = server_name per 1.83.10 (D-7.1-10)
-			URL:           mcp.Spec.Endpoint,
-			Transport:     mcp.Spec.Transport,
-			Description:   description,
-			MCPInfo:       mcpInfo,
-			ExtraHeaders:  extraHeaders,
-			StaticHeaders: staticHeaders,
+			ServerName:                sanitizedName,
+			Alias:                     sanitizedName, // alias = server_name per 1.83.10 (D-7.1-10)
+			URL:                       mcp.Spec.Endpoint,
+			Transport:                 mcp.Spec.Transport,
+			Description:               ext.Description,
+			AuthType:                  ext.AuthType,
+			Credentials:               ext.Credentials,
+			MCPInfo:                   ext.MCPInfo,
+			MCPAccessGroups:           ext.MCPAccessGroups,
+			AllowedTools:              ext.AllowedTools,
+			ToolNameToDisplayName:     ext.ToolNameToDisplayName,
+			ToolNameToDescription:     ext.ToolNameToDescription,
+			ExtraHeaders:              ext.ExtraHeaders,
+			StaticHeaders:             ext.StaticHeaders,
+			Command:                   ext.Command,
+			Args:                      ext.Args,
+			Env:                       ext.Env,
+			AuthorizationURL:          ext.AuthorizationURL,
+			TokenURL:                  ext.TokenURL,
+			RegistrationURL:           ext.RegistrationURL,
+			OAuth2Flow:                ext.OAuth2Flow,
+			AllowAllKeys:              ext.AllowAllKeys,
+			AvailableOnPublicInternet: ext.AvailableOnPublicInternet,
 		}
 		result, err := snap.Client.CreateMCPServer(ctx, createReq)
 		if err != nil {
@@ -417,16 +429,30 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		// 05-00-SUMMARY.md; PUT IS wholesale-replace on 1.83.10-stable).
 		// FIX4.txt H-1: stamp updated_by only on UPDATE (LiteLLM keeps the
 		// original creator).
-		mcpInfo = stampMCPIdentity(mcpInfo, false)
+		ext.MCPInfo = stampMCPIdentity(ext.MCPInfo, false)
 		updateReq := &litellm.MCPServerUpdateRequest{
-			ServerID:      mcp.Status.LastRendered.ServerID,
-			ServerName:    sanitizedName,
-			URL:           mcp.Spec.Endpoint,
-			Transport:     mcp.Spec.Transport,
-			Description:   description,
-			MCPInfo:       mcpInfo,
-			ExtraHeaders:  extraHeaders,
-			StaticHeaders: staticHeaders,
+			ServerID:                  mcp.Status.LastRendered.ServerID,
+			ServerName:                sanitizedName,
+			URL:                       mcp.Spec.Endpoint,
+			Transport:                 mcp.Spec.Transport,
+			Description:               ext.Description,
+			AuthType:                  ext.AuthType,
+			Credentials:               ext.Credentials,
+			MCPInfo:                   ext.MCPInfo,
+			MCPAccessGroups:           ext.MCPAccessGroups,
+			AllowedTools:              ext.AllowedTools,
+			ToolNameToDisplayName:     ext.ToolNameToDisplayName,
+			ToolNameToDescription:     ext.ToolNameToDescription,
+			ExtraHeaders:              ext.ExtraHeaders,
+			StaticHeaders:             ext.StaticHeaders,
+			Command:                   ext.Command,
+			Args:                      ext.Args,
+			Env:                       ext.Env,
+			AuthorizationURL:          ext.AuthorizationURL,
+			TokenURL:                  ext.TokenURL,
+			RegistrationURL:           ext.RegistrationURL,
+			AllowAllKeys:              ext.AllowAllKeys,
+			AvailableOnPublicInternet: ext.AvailableOnPublicInternet,
 		}
 		if _, err := snap.Client.UpdateMCPServer(ctx, updateReq); err != nil {
 			return r.classifyMutationError(ctx, &mcp, logger, err, "PUT /v1/mcp/server")
