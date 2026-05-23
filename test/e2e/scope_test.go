@@ -12,20 +12,22 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-// Expected 7 operator-owned kinds (spec §10 kind enum).
+// Expected 8 operator-owned kinds (spec §10 kind enum +
+// LiteLLMGuardRail added in v0.3.1).
 var expectedKinds = map[string]bool{
-	"LiteLLMConnection":          true,
-	"LiteLLMModel":               true,
-	"LiteLLMModelDiscovery":      true,
-	"LiteLLMMCPServer":           true,
-	"LiteLLMMCPServerDiscovery":  true,
-	"LiteLLMA2AAgent":            true,
-	"LiteLLMTeam":                true,
+	"LiteLLMConnection":         true,
+	"LiteLLMModel":              true,
+	"LiteLLMModelDiscovery":     true,
+	"LiteLLMMCPServer":          true,
+	"LiteLLMMCPServerDiscovery": true,
+	"LiteLLMA2AAgent":           true,
+	"LiteLLMTeam":               true,
+	"LiteLLMGuardRail":          true,
 }
 
 var _ = Describe("Scope and metrics", Ordered, ContinueOnFailure, func() {
 
-	It("exposes exactly 7 in-scope CRDs and no dropped-kind controllers in logs (AC-N1+N2)", func() {
+	It("exposes exactly 8 in-scope CRDs and no dropped-kind controllers in logs (AC-N1+N2)", func() {
 		out, err := exec.Command("kubectl", "get", "crds",
 			"-o", `jsonpath={range .items[?(@.spec.group=="litellm.ackstorm.ai")]}{.spec.names.kind}{"\n"}{end}`,
 		).CombinedOutput()
