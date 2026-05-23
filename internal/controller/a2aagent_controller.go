@@ -44,6 +44,15 @@ const a2aAgentFinalizer = "a2aagents.litellm.ackstorm.ai/finalizer"
 // a2aAgentKind is the metric label for LiteLLMA2AAgent CRs.
 const a2aAgentKind = "LiteLLMA2AAgent"
 
+// a2aAgentSafetyRelistInterval bounds how often the A2AAgent controller
+// re-runs the Step 7b vanish-probe (LIST + name filter to detect
+// out-of-band /v1/agents/<id> drift). Returned as RequeueAfter on every
+// successful reconcile. v0.4.5: introduced together with vanish
+// detection to recover from external LiteLLM resets / admin deletes
+// without operator intervention. 5min matches the
+// MCPServer / Model / Team cadence.
+const a2aAgentSafetyRelistInterval = 5 * time.Minute
+
 // A2AAgentSecretRefIndexField is the field indexer path registered in
 // cmd/main.go for reverse-mapping Secret names back to A2AAgents that
 // reference them (Phase 3 D-06 pattern carry-forward for SEC-09 rotation
@@ -412,6 +421,37 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	sum := sha256.Sum256(canonicalBytes)
 	currentRenderedHash := fmt.Sprintf("%x", sum)
 
+	// ─── Step 8b: Existence probe (vanish-detection, v0.4.5) ──────────────
+	// Mirror model_controller.go Step 7b / mcpserver_controller.go Step 7b.
+	// Verify AgentID still exists in LiteLLM. On not-found OR id-drift,
+	// clear AgentID so Step 10 CREATE arm fires. Without this probe the
+	// operator silently misses out-of-band /v1/agents/<id> deletes.
+	//
+	// Skipped on first reconcile (lastRendered.hash empty).
+	if a2a.Status.LastRendered.AgentID != "" && a2a.Status.LastRendered.Hash != "" {
+		clear, probeErr := probeVanishedResourceID(ctx,
+			a2a.Status.LastRendered.AgentID,
+			func(c context.Context) (string, error) {
+				entries, err := snap.Client.ListAgents(c)
+				if err != nil {
+					return "", err
+				}
+				for _, e := range entries {
+					if e.AgentName == a2a.Name {
+						return e.AgentID, nil
+					}
+				}
+				return "", nil
+			},
+			r.Cache.InvalidateOn401, logger, "a2aagent")
+		if probeErr != nil {
+			return ctrl.Result{}, probeErr
+		}
+		if clear {
+			a2a.Status.LastRendered.AgentID = ""
+		}
+	}
+
 	// ─── Step 9: Hash-equal steady state ──────────────────────────────────
 	if a2a.Status.LastRendered.Hash == currentRenderedHash &&
 		a2a.Status.LastRendered.AgentID != "" &&
@@ -428,7 +468,9 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			}
 		}
 		metrics.CRStatusAgeTracker.RecordSuccess(a2aAgentKind, a2a.Name)
-		return ctrl.Result{}, nil
+		// v0.4.5: periodic safety-relist requeue so Step 8b vanish probe
+		// runs even when the CR spec is stable.
+		return ctrl.Result{RequeueAfter: withJitter(a2aAgentSafetyRelistInterval)}, nil
 	}
 
 	// ─── Step 10: Branch CREATE vs UPDATE (simple PUT — Probe 7 ✓) ────────
@@ -507,7 +549,8 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	metrics.ReconcileTotal.WithLabelValues(a2aAgentKind, "success").Inc()
 	logger.V(1).Info("a2a agent reconciled", "agentID", newAgentID, "hash", currentRenderedHash)
 
-	return ctrl.Result{}, nil
+	// v0.4.5: periodic safety-relist requeue — see Step 8b rationale.
+	return ctrl.Result{RequeueAfter: withJitter(a2aAgentSafetyRelistInterval)}, nil
 }
 
 // buildAgentConfigFromMerged extracts the typed AgentConfig fields from the

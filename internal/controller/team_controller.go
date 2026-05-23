@@ -53,6 +53,15 @@ const teamKind = "LiteLLMTeam"
 // (spec §6.7 / TEAM-07). Shared with the synthetic enqueue helper.
 const teamAliasDefault = "default"
 
+// teamSafetyRelistInterval bounds how often the Team controller
+// re-runs the Step 8b vanish-probe (LIST + name filter to detect
+// out-of-band /team/delete drift). Returned as RequeueAfter on every
+// successful reconcile. v0.4.5: introduced together with vanish
+// detection to recover from external LiteLLM resets / accidental
+// admin deletes without operator intervention. 5min matches the
+// MCPServer / Model cadence.
+const teamSafetyRelistInterval = 5 * time.Minute
+
 // rateLimitTypeBestEffort is the only rpm_limit_type / tpm_limit_type
 // value supported by LiteLLM 1.83.10 (Feature 01 §2.1). Operator
 // hardcodes it whenever the corresponding *_limit is non-null.
@@ -494,6 +503,45 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	sum := sha256.Sum256(canonicalBytes)
 	currentRenderedHash := fmt.Sprintf("%x", sum)
 
+	// ─── Step 8b: Existence probe (vanish-detection, v0.4.5) ──────────────
+	// Mirror model_controller.go Step 7b / mcpserver_controller.go Step 7b.
+	// On safety-relist re-entry, verify the LiteLLM team_alias still
+	// resolves to a row. On not-found → clear TeamID so Step 10 CREATE
+	// path fires. On id-drift → clear TeamID so Step 10 UPDATE arm
+	// re-targets the current row. Without this probe the operator only
+	// detects spec-side drift and silently misses out-of-band /team/delete.
+	//
+	// Skipped on first reconcile (lastRendered.hash empty) — bootstrap
+	// CREATE runs via TeamID empty already.
+	if team.Status.LastRendered.TeamID != "" && team.Status.LastRendered.Hash != "" {
+		clear, probeErr := probeVanishedResourceID(ctx,
+			team.Status.LastRendered.TeamID,
+			func(c context.Context) (string, error) {
+				entries, err := snap.Client.ListTeamsByAlias(c, team.Name)
+				if err != nil {
+					return "", err
+				}
+				// Multiple entries can share an alias (AC-DC4 smallest-team_id
+				// duplicate rule). Treat "still present" as "any entry under
+				// this alias matches our lastID" — drift to a different ID
+				// under the same alias means an admin recreated the team and
+				// we should re-target by clearing.
+				for _, e := range entries {
+					if e.TeamID == team.Status.LastRendered.TeamID {
+						return e.TeamID, nil
+					}
+				}
+				return "", nil
+			},
+			r.Cache.InvalidateOn401, logger, "team")
+		if probeErr != nil {
+			return ctrl.Result{}, probeErr
+		}
+		if clear {
+			team.Status.LastRendered.TeamID = ""
+		}
+	}
+
 	// ─── Step 9: Hash-equal steady state ──────────────────────────────────
 	if team.Status.LastRendered.Hash == currentRenderedHash &&
 		team.Status.LastRendered.TeamID != "" &&
@@ -510,7 +558,9 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			}
 		}
 		metrics.CRStatusAgeTracker.RecordSuccess(teamKind, team.Name)
-		return ctrl.Result{}, nil
+		// v0.4.5: periodic safety-relist requeue so the Step 8b vanish
+		// probe runs even when the CR spec is stable.
+		return ctrl.Result{RequeueAfter: withJitter(teamSafetyRelistInterval)}, nil
 	}
 
 	// ─── Step 10: Branch CREATE vs UPDATE ─────────────────────────────────
@@ -624,7 +674,8 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	metrics.ReconcileTotal.WithLabelValues(teamKind, "success").Inc()
 	logger.V(1).Info("team reconciled", "teamID", newTeamID, "hash", currentRenderedHash)
 
-	return ctrl.Result{}, nil
+	// v0.4.5: periodic safety-relist requeue — see Step 8b rationale.
+	return ctrl.Result{RequeueAfter: withJitter(teamSafetyRelistInterval)}, nil
 }
 
 // reconcileImplicitDefault is invoked from Step 1 when the synthetic

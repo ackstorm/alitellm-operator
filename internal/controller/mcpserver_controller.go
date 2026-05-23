@@ -380,6 +380,57 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	sum := sha256.Sum256(canonicalBytes)
 	currentRenderedHash := fmt.Sprintf("%x", sum)
 
+	// ─── Step 7b: Existence probe (vanish-detection, v0.4.5) ──────────────
+	// When the safety-relist enqueues a CR whose status already pins a
+	// ServerID, verify the entry still exists in LiteLLM. On not-found OR
+	// id-drift, clear ServerID locally so the CREATE branch fires in
+	// Step 9 and the create_missing metric increments. Without this probe
+	// the operator only detects spec-side drift (user CR edits) and
+	// silently misses out-of-band deletes from POST/DELETE /v1/mcp/server
+	// — defeating the safety-relist (observed prod chaos 2026-05-23:
+	// 9 MCPServers Ready=True/Synced in K8s but absent from LiteLLM
+	// because mass-delete via API direct + hash-equal short-circuit
+	// skipped re-POST forever).
+	//
+	// Mirrors model_controller.go Step 7b shape. Implementation uses
+	// ListMCPServers + name filter because LiteLLM 1.83.10 has no
+	// GET /v1/mcp/server/<id> endpoint. resolveServerIDByName probes
+	// sanitized first, original name as fallback (FIX2.txt H-9).
+	//
+	// Errors are surfaced for controller-runtime backoff EXCEPT 401
+	// (cache-invalidate fast-path; treat as "unknown" → leave ServerID).
+	//
+	// Cost: 1 LIST /v1/mcp/server per LiteLLMMCPServer per safety re-list
+	// tick (5min + jitter). 26 CRs ≈ 5 LISTs/min. Acceptable.
+	//
+	// Skipped on first reconcile (lastRendered.hash still empty) — bootstrap
+	// CREATE runs via ServerID empty already, and the orphan-adoption probe
+	// in Step 9 covers the upgrade-orphan scenario.
+	if mcp.Status.LastRendered.ServerID != "" && mcp.Status.LastRendered.Hash != "" {
+		clear, probeErr := probeVanishedResourceID(ctx,
+			mcp.Status.LastRendered.ServerID,
+			func(c context.Context) (string, error) {
+				entries, err := snap.Client.ListMCPServers(c)
+				if err != nil {
+					return "", err
+				}
+				for _, e := range entries {
+					if e.ServerName == sanitizedName || (mcp.Name != sanitizedName && e.ServerName == mcp.Name) {
+						return e.ServerID, nil
+					}
+				}
+				return "", nil
+			},
+			r.Cache.InvalidateOn401, logger, "mcpserver")
+		if probeErr != nil {
+			return ctrl.Result{}, probeErr
+		}
+		if clear {
+			mcp.Status.LastRendered.ServerID = ""
+		}
+		// Hash left populated so firstReconcile=false → create_missing increments.
+	}
+
 	// ─── Step 8: Hash-equal steady state ──────────────────────────────────
 	if mcp.Status.LastRendered.Hash == currentRenderedHash &&
 		mcp.Status.LastRendered.ServerID != "" &&

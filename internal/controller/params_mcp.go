@@ -18,8 +18,9 @@ package controller
 //   - A LiteLLM API contract change requires re-emitting bodies.
 //
 // History:
-//   v1 — Initial release of the FIX9 H-1 render-version stamp (post
-//        v0.4.1). Implicitly invalidates every pre-v0.4.2 persisted hash.
+//
+//	v1 — Initial release of the FIX9 H-1 render-version stamp (post
+//	     v0.4.1). Implicitly invalidates every pre-v0.4.2 persisted hash.
 const mcpRenderVersion = "v1"
 
 // extractedMCPParams holds the typed view of a LiteLLMMCPServer spec.params

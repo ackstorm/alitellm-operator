@@ -1455,3 +1455,109 @@ func TestMCPServerReconciler_ReservedKeysIgnored(t *testing.T) {
 		t.Errorf("spec_path leaked: %v", body["spec_path"])
 	}
 }
+
+// ──────────────────────────────────────────────────────────────────────────
+// Vanish-detection regression test (v0.4.5)
+// ──────────────────────────────────────────────────────────────────────────
+
+// TestMCPServerReconciler_VanishDetection_OnOutOfBandDelete — v0.4.5 fix.
+// Prod chaos 2026-05-23 surfaced a vanish-detection gap: mass-deleting MCP
+// servers via the LiteLLM API directly left the K8s CRs Ready=True/Synced
+// forever because the operator's hash short-circuit skipped re-POST. Even
+// with v0.4.4's safety-relist (RequeueAfter every 5m), the hash-equal
+// path never branched into CREATE.
+//
+// Test: create CR → wait Ready/Synced → out-of-band delete from mock →
+// nudge via annotation → assert mock.HasMCPServer(name) == true (re-POST
+// happened) AND POST count ≥ 1 after nudge.
+func TestMCPServerReconciler_VanishDetection_OnOutOfBandDelete(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetMCPServers()
+	crName := "mcp-vanish-test"
+	ensureNoMCPServer(t, ctx, crName)
+	resetConnCacheSnapshot()
+
+	cleanupConn := setupReadyConnectionMCP(t, ctx)
+	t.Cleanup(func() {
+		cleanupConn()
+		ensureNoMCPServer(t, context.Background(), crName)
+	})
+
+	cr := mcpServerSampleCR(crName)
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create MCPServer: %v", err)
+	}
+	m := pollMCPServerCondition(t, ctx, crName, reasonSynced, 30*time.Second)
+	if m.Status.LastRendered.ServerID == "" {
+		t.Fatalf("MCPServer not Synced within 30s")
+	}
+	originalServerID := m.Status.LastRendered.ServerID
+	wireName := litellm.SanitizeMCPServerName(crName, "")
+	if !mockServer.HasMCPServer(wireName) {
+		t.Fatalf("mock missing server %q before vanish", wireName)
+	}
+
+	// Out-of-band delete — simulate someone DELETEing through LiteLLM
+	// API directly (or LiteLLM losing the row to disk reset).
+	mockServer.DeleteMCPServerOutOfBand(originalServerID)
+	if mockServer.HasMCPServer(wireName) {
+		t.Fatalf("mock still has server %q after DeleteMCPServerOutOfBand", wireName)
+	}
+
+	// Reset counters so we measure only the post-vanish re-POST.
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+
+	// Annotation nudge — forces reconcile without bumping generation
+	// (mirrors how safety-relist re-entry would behave: hash unchanged).
+	if err := updateWithRetry(ctx,
+		client.ObjectKeyFromObject(m),
+		m,
+		func(obj *litellmv1alpha1.LiteLLMMCPServer) error {
+			if obj.Annotations == nil {
+				obj.Annotations = make(map[string]string)
+			}
+			obj.Annotations["test.litellm.ackstorm.ai/vanish-nudge"] = time.Now().Format(time.RFC3339Nano)
+			return nil
+		},
+	); err != nil {
+		t.Fatalf("annotation nudge update: %v", err)
+	}
+
+	// Wait for re-POST. Vanish-probe runs ListMCPServers → notices missing →
+	// clears ServerID → CREATE arm posts. Allow generous slack for envtest.
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		if mockServer.HasMCPServer(wireName) {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !mockServer.HasMCPServer(wireName) {
+		t.Fatalf("mock missing server %q 15s after vanish + nudge; vanish-detection did NOT re-POST", wireName)
+	}
+
+	// At least 1 POST happened post-vanish (CREATE re-target).
+	postCount := 0
+	for _, c := range mockServer.Recorded() {
+		if c.Method == http.MethodPost && c.Path == pathV1MCPServer {
+			postCount++
+		}
+	}
+	if postCount < 1 {
+		t.Errorf("expected ≥1 POST %s after vanish+nudge, got %d", pathV1MCPServer, postCount)
+	}
+
+	// CR should pick up the NEW ServerID (mock assigns fresh UUID on
+	// re-POST since the row was wiped).
+	final := pollMCPServerCondition(t, ctx, crName, reasonSynced, 10*time.Second)
+	if final.Status.LastRendered.ServerID == "" {
+		t.Errorf("post-vanish ServerID empty; want non-empty")
+	}
+	if final.Status.LastRendered.ServerID == originalServerID {
+		t.Logf("note: post-vanish ServerID == originalServerID (mock reused UUID); acceptable")
+	}
+}
