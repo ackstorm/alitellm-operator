@@ -189,19 +189,22 @@ jobs:
       # API call implicitly pushes the tag to origin once goreleaser
       # succeeds. To avoid the race with that implicit push (which
       # rejected our post-goreleaser push as 'already exists'), create
-      # AND push the tag here before goreleaser runs. `|| true` swallows
-      # an "already exists" rejection from a prior in-flight attempt at
-      # the same SHA — goreleaser will then read the existing tag
-      # idempotently. A workflow failure between this push and goreleaser
-      # leaves the tag on origin without a GH release — recover by
-      # `git push origin :v<X.Y.Z>` and re-pushing the chore(release)
-      # commit.
+      # AND push the tag here before goreleaser runs.
+      #
+      # Idempotency contract — `gh run rerun --failed` MUST work:
+      # both `git tag -a` and `git push origin <tag>` are tolerant of
+      # the pre-existing case. A prior failed run that already pushed
+      # the tag to origin would otherwise checkout the tag along with
+      # the branch (fetch-depth: 0 → all refs), making `git tag -a`
+      # exit 128 with "already exists" on the rerun. Each form swallows
+      # the harmless "already exists" rejection on its own line.
+      # goreleaser then reads the existing tag idempotently.
       - name: Create + push release tag
         env:
           VERSION: ${{ needs.parse.outputs.version }}
         run: |
-          git tag -a "v$VERSION" -m "v$VERSION"
-          git push origin "v$VERSION" || true
+          git tag -a "v$VERSION" -m "v$VERSION" 2>/dev/null || true
+          git push origin "v$VERSION" 2>/dev/null || true
 
       - name: Run GoReleaser
         env:
