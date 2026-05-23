@@ -1376,7 +1376,7 @@ func (r *ModelDiscoveryReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&corev1.Secret{},
 			handler.EnqueueRequestsFromMapFunc(r.secretToModelDiscoveries),
 		).
-		Owns(&litellmv1alpha1.LiteLLMModel{}).
+		Owns(&litellmv1alpha1.LiteLLMModel{}, builder.WithPredicates(ownedChildSpecChanged())).
 		WithOptions(transientBackoffOptions()).
 		Named("modeldiscovery")
 	if src := BootEventsSource(r.BootEvents); src != nil {

@@ -1086,7 +1086,7 @@ func (r *MCPServerDiscoveryReconciler) writeBothConditionsObj(
 func (r *MCPServerDiscoveryReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	b := ctrl.NewControllerManagedBy(mgr).
 		For(&litellmv1alpha1.LiteLLMMCPServerDiscovery{}, builder.WithPredicates()).
-		Owns(&litellmv1alpha1.LiteLLMMCPServer{}).
+		Owns(&litellmv1alpha1.LiteLLMMCPServer{}, builder.WithPredicates(ownedChildSpecChanged())).
 		WithOptions(transientBackoffOptions()).
 		Named("mcpserverdiscovery")
 	if src := BootEventsSource(r.BootEvents); src != nil {

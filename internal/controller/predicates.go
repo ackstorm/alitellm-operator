@@ -58,6 +58,47 @@ func connectionReadyTransition() predicate.Predicate {
 	}
 }
 
+// ownedChildSpecChanged is a predicate for Discovery controllers' Owns()
+// watch on their child CRs. The Owns watch by default fires on EVERY
+// child event — including the status-subresource writes the child
+// reconciler emits on every successful pass + the managedFields-only
+// bumps SSA Patch produces when re-applying an identical spec. Both
+// are spurious from the Discovery's perspective: the Discovery only
+// cares about child spec edits (generation bump) and child lifecycle
+// (create/delete). Without this filter, post-FIX9 (v0.4.2) hash
+// invalidation caused a feedback loop — child Step 11 status write
+// fires parent watch, parent Step 8 SSA Patch fires child watch, ad
+// infinitum (observed 232 reconciles/min on mcpserverdiscovery + 52
+// on modeldiscovery in prod after v0.4.2 rolled out).
+//
+// Events kept:
+//   - Create: always (new child landing — cascade/discovery integration).
+//   - Delete: always (cascade-delete + vanish-detection upstream signal).
+//   - Update: only when metadata.generation changes (i.e. user OR
+//     SSA Patch wrote a spec field that diffs). Status-subresource
+//     writes do NOT bump generation. ManagedFields-only changes do
+//     NOT bump generation.
+//
+// Adoption hook trade-off: when a user kubectl-strips the controller
+// ownerRef on a child, that's a metadata-only change without
+// generation bump. The parent now learns about it on the next
+// refresh-interval reconcile (5–10m depending on Discovery type)
+// instead of in real time. Acceptable cost — adoption is a rare
+// admin operation and the 5m latency does not affect correctness.
+func ownedChildSpecChanged() predicate.Predicate {
+	return predicate.Funcs{
+		CreateFunc:  func(_ event.CreateEvent) bool { return true },
+		DeleteFunc:  func(_ event.DeleteEvent) bool { return true },
+		GenericFunc: func(_ event.GenericEvent) bool { return true },
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			if e.ObjectOld == nil || e.ObjectNew == nil {
+				return false
+			}
+			return e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration()
+		},
+	}
+}
+
 // isConnReady returns true iff the Connection's Ready condition is
 // status=True. Empty conditions list, missing Ready type, or
 // status="False"/"Unknown" all return false.
