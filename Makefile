@@ -211,7 +211,7 @@ hooks: ## Install git hooks (pre-push -> scripts/pre-push-check.sh).
 ##@ Release
 
 .PHONY: bump
-bump: ## Bump release version across all manifests. Usage: make bump VERSION=X.Y.Z
+bump: ## Internal: bump version across all manifests. Used by release.yml. Prefer `make release VERSION=X.Y.Z` for local cuts.
 	@test -n "$(VERSION)" || (echo "ERROR: VERSION=X.Y.Z required (no leading 'v')" >&2; exit 1)
 	@echo "$(VERSION)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$$' || \
 		(echo "ERROR: VERSION must be semver without leading 'v' (e.g. 0.0.3 or 0.1.0-rc1)" >&2; exit 1)
@@ -222,14 +222,25 @@ bump: ## Bump release version across all manifests. Usage: make bump VERSION=X.Y
 	@sed -i -E 's|^([[:space:]]+)newTag: v.*|\1newTag: v$(VERSION)|' config/manager/kustomization.yaml
 	@sed -i -E 's|^([[:space:]]+)newTag: v.*|\1newTag: v$(VERSION)|' deploy/kustomize/kustomization.yaml
 	@echo "Manifests bumped to v$(VERSION)."
+
+.PHONY: release
+release: ## Cut a release: empty `chore(release): vX.Y.Z` commit, run pre-push, push to main. Usage: make release VERSION=X.Y.Z
+	@test -n "$(VERSION)" || (echo "ERROR: VERSION=X.Y.Z required (no leading 'v')" >&2; exit 1)
+	@echo "$(VERSION)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$$' || \
+		(echo "ERROR: VERSION must be semver without leading 'v' (e.g. 0.0.3 or 0.1.0-rc1)" >&2; exit 1)
+	@branch=$$(git rev-parse --abbrev-ref HEAD); \
+	test "$$branch" = "main" || (echo "ERROR: must be on main (current: $$branch)" >&2; exit 1)
+	@git diff --quiet || (echo "ERROR: working tree dirty; commit or stash first" >&2; exit 1)
+	@git diff --cached --quiet || (echo "ERROR: index has staged changes; commit or reset first" >&2; exit 1)
+	@git fetch origin main --quiet
+	@local=$$(git rev-parse HEAD); remote=$$(git rev-parse origin/main); \
+	test "$$local" = "$$remote" || (echo "ERROR: local main differs from origin/main; rebase or pull first" >&2; exit 1)
+	git commit --allow-empty -m "chore(release): v$(VERSION)"
+	$(MAKE) pre-push
+	git push origin main
 	@echo ""
-	@echo "The release workflow will run 'make bump' itself when given a"
-	@echo "release commit, so running this locally is optional. The simplest"
-	@echo "way to cut a release is just:"
-	@echo ""
-	@echo "  git commit --allow-empty -m 'chore(release): v$(VERSION)'"
-	@echo "  make pre-push"
-	@echo "  git push origin main"
+	@echo "release.yml is now running. Watch with:"
+	@echo "  gh run watch \$$(gh run list --branch main --limit 1 --json databaseId --jq '.[0].databaseId')"
 
 ##@ Build
 
