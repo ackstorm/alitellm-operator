@@ -34,6 +34,14 @@ import (
 // as a file-local const so goconst stays quiet.
 const pathV1MCPServer = "/v1/mcp/server"
 
+// fix5* — file-local consts used in FIX5 params-extraction assertion
+// blocks. Pulled out so goconst stays quiet across repeated literal
+// usages.
+const (
+	fix5AuthTypeAPIKey    = "api_key"
+	fix5StaticHeaderValue = "bar"
+)
+
 // mcpServerSampleCR returns a basic MCPServer CR exercising the
 // transport=http happy path.
 func mcpServerSampleCR(name string) *litellmv1alpha1.LiteLLMMCPServer {
@@ -1284,7 +1292,7 @@ func TestMCPServerReconciler_CreateForwardsAllParams(t *testing.T) {
 		t.Fatalf("LastMCPBody(%q) returned nil", wireName)
 	}
 
-	if body["auth_type"] != "api_key" {
+	if body["auth_type"] != fix5AuthTypeAPIKey {
 		t.Errorf("auth_type missing/wrong: %v", body["auth_type"])
 	}
 	groups, _ := body["mcp_access_groups"].([]any)
@@ -1301,7 +1309,7 @@ func TestMCPServerReconciler_CreateForwardsAllParams(t *testing.T) {
 	if !ok || len(eh) != 1 || eh[0] != "x-litellm-api-key" {
 		t.Errorf("extra_headers list shape lost: %#v", body["extra_headers"])
 	}
-	if sh, _ := body["static_headers"].(map[string]any); sh["x-foo"] != "bar" {
+	if sh, _ := body["static_headers"].(map[string]any); sh["x-foo"] != fix5StaticHeaderValue {
 		t.Errorf("static_headers: %v", body["static_headers"])
 	}
 	if body["authorization_url"] != "https://auth.example/authorize" || body["token_url"] != "https://auth.example/token" {
@@ -1439,7 +1447,7 @@ func TestMCPServerReconciler_ReservedKeysIgnored(t *testing.T) {
 	if body["transport"] != "http" {
 		t.Errorf("transport: want http (from CR), got %v", body["transport"])
 	}
-	if body["auth_type"] != "api_key" {
+	if body["auth_type"] != fix5AuthTypeAPIKey {
 		t.Errorf("auth_type (legit) lost: %v", body["auth_type"])
 	}
 	if body["spec_path"] != nil {

@@ -285,6 +285,15 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return ctrl.Result{}, nil
 		}
 	}
+	// FIX5 H-1: drop reserved structural keys from paramsMap BEFORE
+	// substitution / hash / extraction so downstream state (hash,
+	// status.lastRendered.ParamsKeys, the extracted struct) is consistent.
+	// Reserved keys (server_id, server_name, alias, url, transport,
+	// spec_path) are stamped from the CR — a user-supplied value here
+	// would be a hijack vector, so we ignore the bag entries silently.
+	for k := range reservedMCPParamKeys {
+		delete(paramsMap, k)
+	}
 
 	// Phase 5 D-04: MCP is single-pass on spec.params (vs A2A's two-pass
 	// across spec.params + spec.agentCard).

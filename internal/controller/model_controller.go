@@ -588,11 +588,11 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	// ─── Step 11: Update status on success ─────────────────────────────────
 	now := metav1.NewTime(time.Now())
 	model.Status.LastRendered = litellmv1alpha1.LastRenderedStatus{
-		Hash:           currentRenderedHash,
-		ParamsKeys:     sortedKeys(paramsMap),
-		InfoKeys:       sortedKeys(infoMap),
-		ModelID: newModelID,
-		At:             &now,
+		Hash:       currentRenderedHash,
+		ParamsKeys: sortedKeys(paramsMap),
+		InfoKeys:   sortedKeys(infoMap),
+		ModelID:    newModelID,
+		At:         &now,
 	}
 
 	if err := r.writeStatus(ctx, &model, metav1.ConditionTrue, reasonSynced, "model registered"); err != nil {
