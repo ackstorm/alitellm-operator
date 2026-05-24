@@ -1463,6 +1463,8 @@ are expressed as Custom Resources and reconciled against the proxy's API.</p>
 <li><strong>LiteLLMMCPServer</strong> — MCP (Model Context Protocol) server registration</li>
 <li><strong>LiteLLMMCPServerDiscovery</strong> — auto-discover MCP servers via selectors</li>
 <li><strong>LiteLLMModelDiscovery</strong> — auto-discover available models from a Connection</li>
+<li><strong>LiteLLMGuardRail</strong> — content filter / DLP guardrail (BLOCK / MASK rules,
+  pre_call or post_call mode; <code>litellm_content_filter</code>, Aporia, Bedrock, etc.)</li>
 </ul>
 <h2 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h2>
 <p><img alt="Architecture" src="assets/lite-llm-architecture2.png" /></p>
