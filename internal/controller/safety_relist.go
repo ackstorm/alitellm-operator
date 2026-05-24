@@ -10,17 +10,20 @@ import (
 // EnvSafetyRelistInterval is the operator-pod env var that overrides the
 // default safety-relist cadence (5 minutes) shared by the MCPServer,
 // Model, Team, and A2AAgent reconcilers. Accepts any time.ParseDuration
-// string ("30s", "10m", "1h"). Empty / unset → leave defaults.
+// string ("10s", "1m", "30m", "1h"). Empty / unset → leave defaults.
 //
-// Floor: 30s. Values below the floor are rejected at parse time (returns
+// Floor: 5s. Values below the floor are rejected at parse time (returns
 // error from ParseSafetyRelistInterval). Rationale: the safety-relist is
-// the safety net, NOT the primary recovery channel; sub-30s cadence
-// risks reconcile-storm regressions like the pre-v0.4.4 loop.
+// the safety net, NOT the primary recovery channel; sub-5s cadence
+// risks reconcile-storm regressions like the pre-v0.4.4 loop. The 5s
+// minimum still permits the e2e Tier 2 AC-M3 conformance gate (10s
+// configured) to compress safety-relist into the CI wall-clock budget;
+// production installs should stay at the 5m default or raise to 30m.
 const EnvSafetyRelistInterval = "LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL"
 
 // SafetyRelistFloor is the minimum permitted safety-relist cadence.
 // Smaller intervals are storm-risk per the v0.4.4 root-cause analysis.
-const SafetyRelistFloor = 30 * time.Second
+const SafetyRelistFloor = 5 * time.Second
 
 // ParseSafetyRelistInterval parses a duration string from the env var
 // shape used by EnvSafetyRelistInterval. Returns (default, nil) on

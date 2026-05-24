@@ -22,7 +22,7 @@ func TestParseSafetyRelistInterval_EmptyReturnsZero(t *testing.T) {
 // TestParseSafetyRelistInterval_Valid — duration strings within bounds
 // parse and round-trip.
 func TestParseSafetyRelistInterval_Valid(t *testing.T) {
-	for _, raw := range []string{"30s", "1m", "10m", "1h", "24h"} {
+	for _, raw := range []string{"5s", "10s", "30s", "1m", "10m", "1h", "24h"} {
 		got, err := ParseSafetyRelistInterval(raw)
 		if err != nil {
 			t.Errorf("%q: unexpected err: %v", raw, err)
@@ -35,9 +35,9 @@ func TestParseSafetyRelistInterval_Valid(t *testing.T) {
 	}
 }
 
-// TestParseSafetyRelistInterval_BelowFloor — sub-30s rejected.
+// TestParseSafetyRelistInterval_BelowFloor — sub-5s rejected.
 func TestParseSafetyRelistInterval_BelowFloor(t *testing.T) {
-	for _, raw := range []string{"10s", "29s", "1ms"} {
+	for _, raw := range []string{"1s", "4s", "1ms"} {
 		if _, err := ParseSafetyRelistInterval(raw); err == nil {
 			t.Errorf("%q: expected floor rejection, got nil err", raw)
 		}

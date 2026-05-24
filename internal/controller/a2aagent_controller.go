@@ -52,8 +52,9 @@ const a2aAgentKind = "LiteLLMA2AAgent"
 // without operator intervention. 5min matches the
 // MCPServer / Model / Team cadence.
 // a2aAgentSafetyRelistInterval is package-level so cmd/main.go can override
-// via SetSafetyRelistIntervals (env-driven, Helm-exposed). Default 5m.
-var a2aAgentSafetyRelistInterval = 5 * time.Minute
+// via SetSafetyRelistIntervals (env-driven, Helm-exposed). Default 10m
+// (v0.4.7: matches MCPServer/Model/Team cadence).
+var a2aAgentSafetyRelistInterval = 10 * time.Minute
 
 // A2AAgentSecretRefIndexField is the field indexer path registered in
 // cmd/main.go for reverse-mapping Secret names back to A2AAgents that
