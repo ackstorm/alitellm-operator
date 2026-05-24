@@ -18,6 +18,7 @@ nav:
     - LiteLLMMCPServer: user-guide/mcp-server.md
     - LiteLLMMCPServerDiscovery: user-guide/mcp-server-discovery.md
     - LiteLLMModelDiscovery: user-guide/model-discovery.md
+    - LiteLLMGuardRail: user-guide/guardrail.md
   - Developer Guide:
     - Architecture: developer-guide/architecture.md
     - Development: developer-guide/development.md
