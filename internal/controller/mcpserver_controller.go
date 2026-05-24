@@ -53,8 +53,12 @@ const mcpServerFinalizer = "mcpservers.litellm.ackstorm.ai/finalizer"
 // LiteLLM API drift get corrected within ~5min worst-case.
 // mcpSafetyRelistInterval is package-level so cmd/main.go can override
 // it at startup via SetSafetyRelistIntervals (env-driven, Helm-exposed).
-// Default 5m. NOT for runtime mutation — set once before reconcilers start.
-var mcpSafetyRelistInterval = 5 * time.Minute
+// Default 10m (raised from 5m in v0.4.7: production fleet sizes don't
+// need sub-10m drift detection — every CR also fires immediately on
+// spec edits + Connection-ready transitions + Secret rotations, so
+// safety-relist is only the floor for purely external state divergence).
+// NOT for runtime mutation — set once before reconcilers start.
+var mcpSafetyRelistInterval = 10 * time.Minute
 
 // mcpServerKind is the metric label for LiteLLMMCPServer CRs.
 const mcpServerKind = "LiteLLMMCPServer"

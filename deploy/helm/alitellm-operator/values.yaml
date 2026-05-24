@@ -56,15 +56,17 @@ metrics:
     enabled: false
 # safetyRelistInterval (v0.4.6+) overrides the per-reconciler vanish-probe
 # cadence shared by MCPServer / Model / Team / A2AAgent. Accepts any
-# time.ParseDuration string ("30s", "10m", "1h"). Empty / unset → operator
-# default 5m. Floor: 30s (sub-floor values are rejected at operator
-# startup with a fatal error — sub-30s is reconcile-storm risk per
-# v0.4.4 root-cause analysis).
+# time.ParseDuration string ("10s", "1m", "30m", "1h"). Empty / unset →
+# operator default 10m (v0.4.7+). Floor: 5s (sub-floor values are rejected
+# at operator startup with a fatal error — sub-5s is reconcile-storm risk
+# per v0.4.4 root-cause analysis).
 #
 # Maps to LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL on the manager Deployment.
-# Tier 2 / dev clusters with small CR counts (≤10) can drop to 30s for
-# faster drift recovery. Tier 1 prod with 100+ CRs can raise to 30m to
-# trade recovery latency for less LiteLLM API load.
+# Tier 2 / dev clusters with small CR counts (≤10) can drop to 10s for
+# faster drift recovery. Tier 1 prod with 100+ CRs can raise to 30m–1h
+# to trade recovery latency for less LiteLLM API load (the operator
+# also re-reconciles on every spec edit + Secret rotation + Connection
+# recovery — safety-relist is only the floor for purely external drift).
 safetyRelistInterval: ""
 # extraEnv: list of additional environment variables to inject into the manager
 # container, AFTER the WATCH_NAMESPACE entry. Each item is {name, value}.
