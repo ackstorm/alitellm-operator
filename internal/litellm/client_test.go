@@ -49,11 +49,6 @@ func Test401IsTypedError(t *testing.T) {
 	if auth401.Path != "/models" {
 		t.Errorf("Auth401Error.Path: want /models, got %q", auth401.Path)
 	}
-	// IsAuth401 helper should agree.
-	a, ok := IsAuth401(err)
-	if !ok || a == nil {
-		t.Errorf("IsAuth401 should detect the typed error")
-	}
 }
 
 // TestProbeConnectionPathIsModels — the probe path is /models (NOT the

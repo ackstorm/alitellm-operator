@@ -474,26 +474,3 @@ func TestProcessLitellmError(t *testing.T) {
 		t.Errorf("message: want raw body for junk, got %q", msg2)
 	}
 }
-
-// TestClassifyKindMatrix exercises classify across the status-code
-// space to lock in the REL-06 fast-path mapping.
-func TestClassifyKindMatrix(t *testing.T) {
-	cases := []struct {
-		status int
-		want   ErrorKind
-	}{
-		{401, KindAuth401},
-		{500, KindTransient},
-		{502, KindTransient},
-		{503, KindTransient},
-		{400, KindPermanent},
-		{404, KindPermanent},
-		{422, KindPermanent},
-		{200, KindPermanent}, // classify is only called on non-2xx, but the default arm holds.
-	}
-	for _, c := range cases {
-		if got := classify(c.status); got != c.want {
-			t.Errorf("classify(%d) = %v, want %v", c.status, got, c.want)
-		}
-	}
-}

@@ -152,30 +152,6 @@ func (s *dedupStore) Upsert(obj *unstructured.Unstructured) {
 	s.items[key] = versionedObj{Obj: obj, Version: version}
 }
 
-// Delete removes obj from the store if the stored entry matches the
-// object's version. Deletions of the losing v1beta1 entry (which was
-// never stored) are no-ops.
-func (s *dedupStore) Delete(obj *unstructured.Unstructured) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	key := dedupKey{
-		Kind:      obj.GetKind(),
-		Namespace: obj.GetNamespace(),
-		Name:      obj.GetName(),
-	}
-	existing, found := s.items[key]
-	if !found {
-		// Already absent — deletion is for a previously-deduped v1beta1 loser.
-		return
-	}
-	if existing.Version != obj.GroupVersionKind().Version {
-		// Deletion is for the version that was deduped out; the winner stays.
-		return
-	}
-	delete(s.items, key)
-}
-
 // List returns all stored objects matching the given kind (and optionally
 // namespace — pass "" to return all namespaces). The returned slice is a
 // snapshot; callers must not mutate the elements.

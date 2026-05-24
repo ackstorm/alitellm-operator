@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 )
 
 // ErrNotFound is returned by list-style helpers when the LiteLLM response
@@ -34,35 +33,6 @@ type Auth401Error struct {
 // messages where they would be persisted in cluster-readable state.
 func (e *Auth401Error) Error() string {
 	return fmt.Sprintf("litellm: 401 unauthorized on %s", e.Path)
-}
-
-// ErrorKind classifies an HTTP response status for reconcile-level
-// retry / fast-path decisions.
-type ErrorKind int
-
-const (
-	// KindTransient — caller should requeue (network errors, 5xx).
-	KindTransient ErrorKind = iota
-	// KindPermanent — caller should NOT requeue without operator action
-	// (4xx other than 401, 422 validation, etc.).
-	KindPermanent
-	// KindAuth401 — caller should take the §7.7 fast-path.
-	KindAuth401
-)
-
-// classify maps an HTTP status code to an ErrorKind. Network errors
-// (the resp == nil case) are mapped by the caller to KindTransient.
-func classify(status int) ErrorKind {
-	switch {
-	case status == http.StatusUnauthorized:
-		return KindAuth401
-	case status >= 500:
-		return KindTransient
-	case status >= 400:
-		return KindPermanent
-	default:
-		return KindPermanent
-	}
 }
 
 // litellmErrorEnvelope mirrors the LiteLLM 1.83.10 error response shape
