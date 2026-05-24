@@ -394,40 +394,48 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	currentRenderedHash := fmt.Sprintf("%x", sum)
 
 	// ─── Step 7b: Existence probe (D-03 / AC-M3 conformance) ────────────────
-	// When the safety re-list enqueues a CR whose status already pins a
-	// ModelID, verify the entry still exists in LiteLLM. On
-	// not-found OR id-drift, clear ModelID locally so the CREATE
-	// branch fires in Step 9 and the create_missing metric increments.
-	// Without this probe the operator only detects spec-side drift (user
-	// CR edits) and silently misses out-of-band deletes — defeating the
-	// safety re-list.
+	// Verifies the entry still exists in LiteLLM. On not-found OR id-drift,
+	// clears ModelID so Step 9 CREATE branch fires and the create_missing
+	// metric increments. Without this probe the operator only detects
+	// spec-side drift (user CR edits) and silently misses out-of-band
+	// deletes — defeating the safety re-list.
 	//
-	// Implementation uses GetModelInfoByName (name-resolve) because
-	// LiteLLM 1.83.10 rejects GET /model/info?litellm_model_id=<id> with
-	// HTTP 400. The by-name endpoint returns (nil, nil) on not-found.
+	// v0.4.6: migrated to the shared probeVanishedResourceID helper used
+	// by MCPServer / Team / A2AAgent. Implementation still hits
+	// GetModelInfoByName (single GET, 1-row response) because LiteLLM
+	// 1.83.10 rejects GET /model/info?litellm_model_id=<id> with HTTP 400;
+	// the by-name endpoint is the cheapest existence check available.
 	//
-	// Cost: 1 GET /model/info per LiteLLMModel per safety re-list tick. At the
-	// 30m production interval = 2 calls/hour/LiteLLMModel. At Tier 2's 10s
-	// interval = 6 calls/min/LiteLLMModel — acceptable.
+	// 401 behavior changed by the migration: previously this path returned
+	// the 401 verbatim for controller-runtime backoff. Now the helper
+	// matches the anti-storm REL-06 fast-path used by the sibling
+	// controllers — InvalidateOn401 + leave ModelID intact. Equivalent
+	// recovery (Connection re-probe wakes the cache + transitionReady
+	// re-enqueues dependent models) without the per-CR backoff spike.
 	//
-	// Skipped on first reconcile (status.lastRendered.hash still empty)
-	// so initial bootstrap does not pay the probe; the CREATE path runs
-	// by virtue of ModelID being empty already.
+	// Cost unchanged: 1 GET /model/info per LiteLLMModel per safety
+	// re-list tick. At the 30m production interval = 2 calls/hour/CR.
+	//
+	// Skipped on first reconcile (lastRendered.hash empty) — bootstrap
+	// CREATE runs via ModelID empty already.
 	if model.Status.LastRendered.ModelID != "" && model.Status.LastRendered.Hash != "" {
-		entry, probeErr := snap.Client.GetModelInfoByName(ctx, model.Name)
+		clear, probeErr := probeVanishedResourceID(ctx,
+			model.Status.LastRendered.ModelID,
+			func(c context.Context) (string, error) {
+				entry, err := snap.Client.GetModelInfoByName(c, model.Name)
+				if err != nil {
+					return "", err
+				}
+				if entry == nil {
+					return "", nil
+				}
+				return entry.ModelInfo.ID, nil
+			},
+			r.Cache.InvalidateOn401, logger, "model")
 		if probeErr != nil {
-			// 401 / 5xx / network — let controller-runtime back off.
 			return ctrl.Result{}, probeErr
 		}
-		switch {
-		case entry == nil:
-			logger.Info("safety re-list detected out-of-band delete; clearing ModelID",
-				"lastID", model.Status.LastRendered.ModelID)
-			model.Status.LastRendered.ModelID = ""
-		case entry.ModelInfo.ID != model.Status.LastRendered.ModelID:
-			logger.Info("safety re-list detected id drift; clearing ModelID",
-				"lastID", model.Status.LastRendered.ModelID,
-				"currentID", entry.ModelInfo.ID)
+		if clear {
 			model.Status.LastRendered.ModelID = ""
 		}
 		// Hash left populated so firstReconcile=false → create_missing metric increments.
