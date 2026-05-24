@@ -9,32 +9,41 @@
 #
 # Dogfood LiteLLMGuardRail samples.
 #
-# Three CRs covering the dominant deployment patterns:
-#   (a) on-device litellm_content_filter — credential / secret block, no
-#       upstream provider; defaultOn=true so every request is screened
-#       even when keys / teams do not explicitly opt in.
-#   (b) Aporia (hosted, API key) — exercises {{APORIA_API_KEY}}
-#       substitution from a Secret; demonstrates the `info` (guardrail_info)
-#       pass-through field.
-#   (c) Bedrock guardrail — provider-specific identifier keys
-#       (guardrailIdentifier, guardrailVersion, aws_region_name) flow
-#       through spec.params verbatim; AWS access keys resolved via
-#       {{NAME}} substitution from the same `aws-credentials` Secret used
-#       by example #04 / #06.
+# Two tiers of examples:
+#
+# (A) VALIDATED-LOCALLY — `provider: litellm_content_filter`. End-to-end
+#     tested on the v0.4.7 prod cluster against gemini.gemini-2.5-flash
+#     (BLOCK returns HTTP 403; MASK rewrites the prompt/response with
+#     `[NAME_REDACTED]` tokens). Five samples below — credential leak,
+#     PII pre-call, blocked words, response-side PII filter.
+#
+# (B) EXTERNAL — `provider: {aporia, bedrock/guardrail}` — require
+#     external credentials / out-of-band AWS guardrail provisioning;
+#     kept for reference, NOT exercised in CI.
 #
 # After apply, expect for each CR:
-#   - status.conditions[type=Ready].status=True
-#     status.conditions[type=Ready].reason=Synced
-#   - status.lastRendered.guardrailID populated with the LiteLLM-assigned
-#     UUID (the operator persists it to skip a GET on subsequent reconciles).
+#   - status.conditions[type=Ready].status=True / reason=Synced
+#   - status.lastRendered.guardrailID populated (operator persists the
+#     LiteLLM-assigned UUID to skip a GET on subsequent reconciles).
 #   - status.lastRendered.definitionLocation="db" (operator-addressable;
-#     "config" would indicate the row was loaded from the LiteLLM proxy
+#     "config" would indicate the row was loaded from LiteLLM's proxy
 #     config file and is NOT mutable via the HTTP CRUD API).
 #   - status.lastRendered.poolSize=1 (no LB sibling in this sample set).
 #
 # Per-key / per-team opt-in via LiteLLMVirtualKey.spec.guardrails or
 # LiteLLMTeam.spec.guardrails is a LiteLLM Enterprise runtime feature
-# and lives on those CRs (not modeled here).
+# and lives on those CRs (not modeled here). All samples below set
+# `defaultOn: true` so they apply to every request without explicit
+# opt-in (useful for blanket DLP / leak prevention).
+
+# ─── (A) Sample 1 — credential leak blocker (prebuilt patterns) ────────────
+#
+# Blocks any prompt containing an AWS access key, GitHub PAT, or other
+# prebuilt-pattern secrets. The `prebuilt` pattern_name set ships with
+# LiteLLM (no regex maintenance burden).
+#
+# Validated 2026-05-24 prod: prompt with `ghp_<36-char-hex>` → HTTP 403
+# `{"guardrail_name":"credential-filter","pattern":"github_token", ...}`.
 apiVersion: litellm.ackstorm.ai/v1alpha1
 kind: LiteLLMGuardRail
 metadata:
@@ -48,16 +57,115 @@ spec:
   provider: litellm_content_filter
   mode: [pre_call]
   defaultOn: true
-  # Pass-through bag — patterns, blocked_words, categories, etc. flow
-  # verbatim to LiteLLM's litellm_params on POST /guardrails. No
-  # provider-side API key needed: matching is on-device.
   params:
     patterns:
       - { pattern_type: prebuilt, pattern_name: aws_access_key, action: BLOCK }
       - { pattern_type: prebuilt, pattern_name: github_token,   action: BLOCK }
-      - { pattern_type: regex,    name: employee_id, pattern: '\b[A-Z]{3}-\d{4}\b', action: MASK }
+      # Custom regex covering classic GitHub PAT shape (40-char
+      # alphanumeric prefixed by ghp_). Belt-and-braces alongside the
+      # prebuilt; the prebuilt covers the broader gh* family.
+      - { pattern_type: regex, name: gh_pat_strict, pattern: 'ghp_[A-Za-z0-9]{36}', action: BLOCK }
+
+# ─── (A) Sample 2 — PII pre-call masker (email + ES phone) ─────────────────
+#
+# Rewrites email + Spanish mobile numbers in the user's prompt to
+# `[EMAIL_REDACTED]` / `[PHONE_ES_REDACTED]` BEFORE the request reaches
+# the upstream provider. Useful when you don't trust an upstream
+# (training data ingest, audit-logged providers) with raw PII.
+#
+# Validated 2026-05-24 prod: prompt
+# `"my email is john.doe@example.com and phone +34 612 345 678"`
+# → model received `"my email is [EMAIL_REDACTED] and phone +34 [PHONE_ES_REDACTED]"`.
+---
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMGuardRail
+metadata:
+  name: pii-masker
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  guardrailName: pii-masker
+  provider: litellm_content_filter
+  mode: [pre_call]
+  defaultOn: true
+  params:
+    patterns:
+      - { pattern_type: regex, name: email, pattern: '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', action: MASK }
+      - { pattern_type: regex, name: phone_es, pattern: '\b(?:\+34\s?)?[6789]\d{2}\s?\d{3}\s?\d{3}\b', action: MASK }
+
+# ─── (A) Sample 3 — blocked keywords (mixed BLOCK / MASK) ──────────────────
+#
+# Demonstrates the `blocked_words` arm with mixed actions: BLOCK rejects
+# the whole request (HTTP 403); MASK rewrites the offending keyword in
+# place. Keywords match case-insensitively as whole-word substrings.
+#
+# Validated 2026-05-24 prod:
+#   - `"what is topsecret about the project"` → HTTP 403
+#     `{"keyword":"topsecret","guardrail_name":"blocked-words", ...}`
+#   - `"echo back: this is internal-only info"` → model received
+#     `"echo back: this is [KEYWORD_REDACTED] info"`.
+---
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMGuardRail
+metadata:
+  name: blocked-words
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  guardrailName: blocked-words
+  provider: litellm_content_filter
+  mode: [pre_call]
+  defaultOn: true
+  params:
     blocked_words:
-      - { keyword: confidential, action: BLOCK }
+      - { keyword: "topsecret",     action: BLOCK }
+      - { keyword: "classified",    action: BLOCK }
+      - { keyword: "internal-only", action: MASK }
+
+# ─── (A) Sample 4 — post_call response filter (SSN MASK + CC BLOCK) ────────
+#
+# `mode: [post_call]` runs the patterns against the MODEL'S RESPONSE
+# rather than the prompt. Useful when the model itself might leak PII
+# generated by an upstream tool call (RAG, function calling), regardless
+# of what the user typed.
+#
+# Validated 2026-05-24 prod:
+#   - Model emits `123-45-6789` → response rewritten to `[SSN_US_REDACTED]`.
+#   - Model emits `4532 1234 5678 9010` → HTTP 403
+#     `{"pattern":"credit_card","guardrail_mode":"post_call", ...}`.
+#
+# NOTE: pattern names with underscores must match the snake_case
+# convention LiteLLM uses in its output redaction tag — the example
+# below produces `[SSN_US_REDACTED]` / `[CREDIT_CARD_REDACTED]`.
+---
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMGuardRail
+metadata:
+  name: response-pii-filter
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  guardrailName: response-pii-filter
+  provider: litellm_content_filter
+  mode: [post_call]
+  defaultOn: true
+  params:
+    patterns:
+      - { pattern_type: regex, name: ssn_us, pattern: '\b\d{3}-\d{2}-\d{4}\b', action: MASK }
+      - { pattern_type: regex, name: credit_card, pattern: '\b\d{4}[\s-]\d{4}[\s-]\d{4}[\s-]\d{4}\b', action: BLOCK }
+
+# ─── (B) External — Aporia (hosted, API key) ───────────────────────────────
+#
+# UNTESTED on the dogfood cluster (requires a valid Aporia tenant +
+# project). Kept as a reference shape for users with an existing
+# Aporia subscription. Demonstrates `{{APORIA_API_KEY}}` substitution
+# from a Secret and the `info` (guardrail_info) pass-through field.
 ---
 apiVersion: litellm.ackstorm.ai/v1alpha1
 kind: LiteLLMGuardRail
@@ -92,6 +200,15 @@ spec:
         #     --from-literal=APORIA_API_KEY=$REAL_KEY -n default
         name: aporia-credentials
         key: APORIA_API_KEY
+
+# ─── (B) External — AWS Bedrock guardrail (provider-managed) ───────────────
+#
+# UNTESTED on the dogfood cluster (requires an AWS Bedrock guardrail
+# pre-provisioned out-of-band). The operator does NOT provision the
+# AWS-side guardrail; only the LiteLLM-side row that wires LiteLLM to
+# call AWS's guardrail evaluation API. Replace
+# `REPLACE_ME_BEDROCK_GUARDRAIL_ID` with the AWS guardrail identifier
+# you registered under your account.
 ---
 apiVersion: litellm.ackstorm.ai/v1alpha1
 kind: LiteLLMGuardRail
