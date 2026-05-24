@@ -51,7 +51,10 @@ const mcpServerFinalizer = "mcpservers.litellm.ackstorm.ai/finalizer"
 // re-introduce explicit periodic polling here at a sane cadence.
 // 5min matches the dominant Discovery refresh-interval; bumps to
 // LiteLLM API drift get corrected within ~5min worst-case.
-const mcpSafetyRelistInterval = 5 * time.Minute
+// mcpSafetyRelistInterval is package-level so cmd/main.go can override
+// it at startup via SetSafetyRelistIntervals (env-driven, Helm-exposed).
+// Default 5m. NOT for runtime mutation — set once before reconcilers start.
+var mcpSafetyRelistInterval = 5 * time.Minute
 
 // mcpServerKind is the metric label for LiteLLMMCPServer CRs.
 const mcpServerKind = "LiteLLMMCPServer"
@@ -410,7 +413,10 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		clear, probeErr := probeVanishedResourceID(ctx,
 			mcp.Status.LastRendered.ServerID,
 			func(c context.Context) (string, error) {
-				entries, err := snap.Client.ListMCPServers(c)
+				// v0.4.6: CachedListMCPServers dedupes concurrent
+				// vanish-probes across all MCPServer CRs at the
+				// litellm.DefaultListCacheTTL granularity (~30s).
+				entries, err := snap.Client.CachedListMCPServers(c)
 				if err != nil {
 					return "", err
 				}

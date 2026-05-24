@@ -1507,6 +1507,14 @@ func TestMCPServerReconciler_VanishDetection_OnOutOfBandDelete(t *testing.T) {
 		t.Fatalf("mock still has server %q after DeleteMCPServerOutOfBand", wireName)
 	}
 
+	// v0.4.6 — wait > litellm.DefaultListCacheTTL so the next reconcile's
+	// vanish-probe sees a CACHE MISS (not the stale "present" entry left
+	// by the initial-reconcile LIST that ran before DeleteMCPServerOutOfBand).
+	// In prod the analogous case is bounded by safety-relist (5m+jitter)
+	// + cache TTL (30s) = ~5.5m worst-case recovery for third-party
+	// deletes; the test compresses by nudging right after TTL expiry.
+	time.Sleep(litellm.DefaultListCacheTTL + 2*time.Second)
+
 	// Reset counters so we measure only the post-vanish re-POST.
 	mockServer.ResetCounters()
 	mockServer.ResetRecorded()
@@ -1527,8 +1535,9 @@ func TestMCPServerReconciler_VanishDetection_OnOutOfBandDelete(t *testing.T) {
 		t.Fatalf("annotation nudge update: %v", err)
 	}
 
-	// Wait for re-POST. Vanish-probe runs ListMCPServers → notices missing →
-	// clears ServerID → CREATE arm posts. Allow generous slack for envtest.
+	// Wait for re-POST. Vanish-probe runs CachedListMCPServers (cache now
+	// expired per the sleep above) → cache miss → fresh fetch → mock empty
+	// → ErrNotFound → clear ServerID → CREATE arm POSTs.
 	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
 		if mockServer.HasMCPServer(wireName) {
@@ -1537,7 +1546,7 @@ func TestMCPServerReconciler_VanishDetection_OnOutOfBandDelete(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	if !mockServer.HasMCPServer(wireName) {
-		t.Fatalf("mock missing server %q 15s after vanish + nudge; vanish-detection did NOT re-POST", wireName)
+		t.Fatalf("mock missing server %q 15s after post-TTL nudge; vanish-detection did NOT re-POST", wireName)
 	}
 
 	// At least 1 POST happened post-vanish (CREATE re-target).

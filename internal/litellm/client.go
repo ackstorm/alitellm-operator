@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/go-logr/logr"
 	"golang.org/x/time/rate"
@@ -55,6 +56,10 @@ type Client struct {
 	// limiter caps the sustained rate of outbound HTTP requests to
 	// LiteLLM (FIX2.txt MEDIUM-10, 2026-05-22). Nil → unlimited.
 	limiter *rate.Limiter
+	// listCache memoizes ListMCPServers / ListAgents results for the
+	// vanish-probe hot paths. Nil → caching disabled (every CachedListXxx
+	// call falls through to the bare LIST). See list_cache.go for details.
+	listCache *listCacheStore
 }
 
 // ClientOption configures optional Client behavior. Apply at construction
@@ -77,6 +82,26 @@ func WithRateLimit(rps float64, burst int) ClientOption {
 			c.limiter = rate.NewLimiter(rate.Limit(rps), burst)
 		} else {
 			c.limiter = nil
+		}
+	}
+}
+
+// WithListCacheTTL enables the in-memory LIST cache used by the
+// vanish-probe hot paths. ttl <= 0 disables caching (every
+// CachedListXxx call falls through to the bare LIST endpoint). See
+// list_cache.go and DefaultListCacheTTL.
+//
+// v0.4.6: introduced to dedupe the per-CR vanish-probe traffic
+// (26 MCPServers × 1 LIST per 5m = 5.2 LIST/min collapsed to 1 LIST
+// per TTL window). Connection reconciler wires this on every probe
+// outcome so the cache shares the lifetime of the *Client (~5m
+// between probe rebuilds).
+func WithListCacheTTL(ttl time.Duration) ClientOption {
+	return func(c *Client) {
+		if ttl > 0 {
+			c.listCache = &listCacheStore{ttl: ttl}
+		} else {
+			c.listCache = nil
 		}
 	}
 }

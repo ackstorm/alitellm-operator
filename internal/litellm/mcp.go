@@ -20,6 +20,7 @@ func (c *Client) CreateMCPServer(ctx context.Context, req *MCPServerRequest) (*M
 	if err != nil {
 		return nil, err
 	}
+	c.invalidateMCPCache() // v0.4.6: own write makes cached LIST stale.
 	var out MCPServerEntry
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return nil, fmt.Errorf("litellm: decode POST /v1/mcp/server: %w", err)
@@ -33,6 +34,7 @@ func (c *Client) UpdateMCPServer(ctx context.Context, req *MCPServerUpdateReques
 	if err != nil {
 		return nil, err
 	}
+	c.invalidateMCPCache() // v0.4.6: own write makes cached LIST stale.
 	var out MCPServerEntry
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return nil, fmt.Errorf("litellm: decode PUT /v1/mcp/server: %w", err)
@@ -43,6 +45,9 @@ func (c *Client) UpdateMCPServer(ctx context.Context, req *MCPServerUpdateReques
 // DeleteMCPServer issues DELETE /v1/mcp/server/{serverID}.
 func (c *Client) DeleteMCPServer(ctx context.Context, serverID string) error {
 	_, err := c.makeRequest(ctx, "DELETE", "/v1/mcp/server/"+serverID, nil)
+	if err == nil {
+		c.invalidateMCPCache() // v0.4.6: own write makes cached LIST stale.
+	}
 	return err
 }
 

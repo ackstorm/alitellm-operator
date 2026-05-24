@@ -14,6 +14,7 @@ func (c *Client) CreateAgent(ctx context.Context, req *AgentConfig) (*AgentEntry
 	if err != nil {
 		return nil, err
 	}
+	c.invalidateAgentsCache() // v0.4.6: own write makes cached LIST stale.
 	var out AgentEntry
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return nil, fmt.Errorf("litellm: decode POST /v1/agents: %w", err)
@@ -28,6 +29,7 @@ func (c *Client) UpdateAgent(ctx context.Context, agentID string, req *AgentConf
 	if err != nil {
 		return nil, err
 	}
+	c.invalidateAgentsCache() // v0.4.6: own write makes cached LIST stale.
 	var out AgentEntry
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return nil, fmt.Errorf("litellm: decode PUT /v1/agents/{id}: %w", err)
@@ -38,6 +40,9 @@ func (c *Client) UpdateAgent(ctx context.Context, agentID string, req *AgentConf
 // DeleteAgent issues DELETE /v1/agents/{agentID}.
 func (c *Client) DeleteAgent(ctx context.Context, agentID string) error {
 	_, err := c.makeRequest(ctx, "DELETE", "/v1/agents/"+agentID, nil)
+	if err == nil {
+		c.invalidateAgentsCache() // v0.4.6: own write makes cached LIST stale.
+	}
 	return err
 }
 

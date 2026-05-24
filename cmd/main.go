@@ -107,6 +107,20 @@ func main() {
 	watchNS := envOr("WATCH_NAMESPACE", "default")
 	setupLog.Info("watch namespace configured", "namespace", watchNS)
 
+	// v0.4.6: optional override of the per-reconciler safety-relist cadence
+	// (default 5m). LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL accepts any
+	// time.ParseDuration string; values below 30s are rejected at parse
+	// time. Reasoning + floor justification in
+	// internal/controller/safety_relist.go.
+	if intvl, err := controller.ParseSafetyRelistInterval(os.Getenv(controller.EnvSafetyRelistInterval)); err != nil {
+		setupLog.Error(err, "invalid safety-relist interval override; aborting")
+		os.Exit(1)
+	} else if intvl > 0 {
+		controller.SetSafetyRelistIntervals(intvl)
+		setupLog.Info("safety-relist interval overridden",
+			"env", controller.EnvSafetyRelistInterval, "interval", intvl)
+	}
+
 	// Plain HTTP :8080/metrics per spec §10 and Open Question #2.
 	// Kubebuilder v4 defaults to :8443 HTTPS+authn with
 	// `WithAuthenticationAndAuthorization` — explicitly overridden here.

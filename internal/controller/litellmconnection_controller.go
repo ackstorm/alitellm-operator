@@ -309,7 +309,13 @@ func (r *LiteLLMConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// FIX2.txt M-10: pass through spec.maxRequestsPerSecond /
 	// spec.maxBurst as the Client's shared rate limiter so boot-time
 	// thundering herds don't trigger 5xx-backoff loops upstream.
-	clientOpts := []litellm.ClientOption{}
+	clientOpts := []litellm.ClientOption{
+		// v0.4.6: enable per-Client LIST cache so vanish-probe consumers
+		// (MCPServer / A2AAgent Step 7b/8b) dedupe their concurrent
+		// LIST traffic. TTL well below the safety-relist cadence (5m)
+		// so vanish-detection latency is unchanged.
+		litellm.WithListCacheTTL(litellm.DefaultListCacheTTL),
+	}
 	if conn.Spec.MaxRequestsPerSecond > 0 {
 		burst := int(conn.Spec.MaxBurst)
 		if burst <= 0 {

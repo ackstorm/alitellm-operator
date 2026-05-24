@@ -51,7 +51,9 @@ const a2aAgentKind = "LiteLLMA2AAgent"
 // detection to recover from external LiteLLM resets / admin deletes
 // without operator intervention. 5min matches the
 // MCPServer / Model / Team cadence.
-const a2aAgentSafetyRelistInterval = 5 * time.Minute
+// a2aAgentSafetyRelistInterval is package-level so cmd/main.go can override
+// via SetSafetyRelistIntervals (env-driven, Helm-exposed). Default 5m.
+var a2aAgentSafetyRelistInterval = 5 * time.Minute
 
 // A2AAgentSecretRefIndexField is the field indexer path registered in
 // cmd/main.go for reverse-mapping Secret names back to A2AAgents that
@@ -432,7 +434,10 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		clear, probeErr := probeVanishedResourceID(ctx,
 			a2a.Status.LastRendered.AgentID,
 			func(c context.Context) (string, error) {
-				entries, err := snap.Client.ListAgents(c)
+				// v0.4.6: CachedListAgents dedupes concurrent
+				// vanish-probes (currently 1 A2A CR, but scales as
+				// fleet grows). Same TTL as MCP.
+				entries, err := snap.Client.CachedListAgents(c)
 				if err != nil {
 					return "", err
 				}

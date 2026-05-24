@@ -775,6 +775,10 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: {{ .Values.watchNamespace }}
+        {{- if .Values.safetyRelistInterval }}
+        - name: LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL
+          value: {{ .Values.safetyRelistInterval | quote }}
+        {{- end }}
         {{- range .Values.extraEnv }}
         - name: {{ .name }}
           value: {{ .value | quote }}

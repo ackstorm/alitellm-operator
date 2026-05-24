@@ -60,7 +60,9 @@ const teamAliasDefault = "default"
 // detection to recover from external LiteLLM resets / accidental
 // admin deletes without operator intervention. 5min matches the
 // MCPServer / Model cadence.
-const teamSafetyRelistInterval = 5 * time.Minute
+// teamSafetyRelistInterval is package-level so cmd/main.go can override
+// via SetSafetyRelistIntervals (env-driven, Helm-exposed). Default 5m.
+var teamSafetyRelistInterval = 5 * time.Minute
 
 // rateLimitTypeBestEffort is the only rpm_limit_type / tpm_limit_type
 // value supported by LiteLLM 1.83.10 (Feature 01 §2.1). Operator

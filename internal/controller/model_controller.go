@@ -51,7 +51,9 @@ const modelFinalizer = "models.litellm.ackstorm.ai/finalizer"
 // on every successful reconcile. See mcpserver_controller.go for the
 // v0.4.3 Owns-predicate rationale that necessitates this explicit
 // polling cadence.
-const modelSafetyRelistInterval = 5 * time.Minute
+// modelSafetyRelistInterval is package-level so cmd/main.go can override
+// via SetSafetyRelistIntervals (env-driven, Helm-exposed). Default 5m.
+var modelSafetyRelistInterval = 5 * time.Minute
 
 // modelKind is the metric label for LiteLLMModel CRs.
 const modelKind = "LiteLLMModel"
