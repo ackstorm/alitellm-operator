@@ -15,10 +15,11 @@ REST API.
 
 ## What This Is
 
-A declarative, name-scoped GitOps surface for LiteLLM. It manages seven
+A declarative, name-scoped GitOps surface for LiteLLM. It manages eight
 custom resource kinds — LiteLLMConnection, LiteLLMModel,
 LiteLLMModelDiscovery, LiteLLMMCPServer, LiteLLMMCPServerDiscovery,
-LiteLLMA2AAgent, and LiteLLMTeam — across two reconciliation pipelines:
+LiteLLMA2AAgent, LiteLLMTeam, and LiteLLMGuardRail — across two
+reconciliation pipelines:
 
 - **Pipeline A** reconciles explicit CRs directly into LiteLLM via its
   REST API using wholesale-replace semantics.

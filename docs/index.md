@@ -18,6 +18,8 @@ CRDs in API group `litellm.ackstorm.ai/v1alpha1`:
 - **LiteLLMMCPServer** — MCP (Model Context Protocol) server registration
 - **LiteLLMMCPServerDiscovery** — auto-discover MCP servers via selectors
 - **LiteLLMModelDiscovery** — auto-discover available models from a Connection
+- **LiteLLMGuardRail** — content filter / DLP guardrail (BLOCK / MASK rules,
+  pre_call or post_call mode; `litellm_content_filter`, Aporia, Bedrock, etc.)
 
 ## Architecture
 
