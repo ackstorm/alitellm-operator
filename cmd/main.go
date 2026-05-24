@@ -456,6 +456,47 @@ func main() {
 		os.Exit(1)
 	}
 
+	// GuardRailReconciler — POST/PUT/DELETE against the LiteLLM
+	// /guardrails HTTP surface. SecretRefIndexField mirrors the Model /
+	// Team / MCPServer / A2A pattern so the Secret-rotation fan-in
+	// reconciles every guardrail that referenced the rotated Secret.
+	if err := mgr.GetFieldIndexer().IndexField(
+		context.Background(),
+		&litellmv1alpha1.LiteLLMGuardRail{},
+		controller.GuardrailSecretRefIndexField,
+		controller.IndexGuardrailSecretRefs,
+	); err != nil {
+		setupLog.Error(err, "unable to register guardrail secret-ref field indexer")
+		os.Exit(1)
+	}
+	// GuardRail safety-re-list runnable. 30m tick in production matches
+	// the Model safety-re-list interval. Channel is read inside the
+	// reconciler's SetupWithManager via source.TypedFunc.
+	guardrailSafetyRelistCh := make(chan reconcile.Request, 256)
+	if err := mgr.Add(&controller.GuardRailSafetyRelistRunnable{
+		Client:    mgr.GetClient(),
+		Namespace: watchNS,
+		Interval:  30 * time.Minute,
+		Log:       ctrl.Log.WithName("guardrail-safety-relist"),
+		RequeueCh: guardrailSafetyRelistCh,
+	}); err != nil {
+		setupLog.Error(err, "unable to add GuardRailSafetyRelistRunnable")
+		os.Exit(1)
+	}
+
+	if err := (&controller.GuardRailReconciler{
+		Client:     mgr.GetClient(),
+		Scheme:     mgr.GetScheme(),
+		Cache:      connCache,
+		Recorder:   mgr.GetEventRecorderFor("guardrail-controller"),
+		Namespace:  watchNS,
+		Log:        ctrl.Log.WithName("controller").WithName("GuardRail"),
+		BootEvents: bootSweep.GuardRailEvents,
+	}).SetupWithManager(mgr, guardrailSafetyRelistCh); err != nil {
+		setupLog.Error(err, "unable to set up GuardRail reconciler")
+		os.Exit(1)
+	}
+
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

@@ -25,6 +25,15 @@ import (
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 )
 
+// Shared literals across the admission + reconciler test files (both
+// live in package `controller`). Extracted as file-local const block so
+// goconst stays quiet — the provider name appears in 5 places and the
+// LB-pool name in 3.
+const (
+	guardrailContentFilterProvider = "litellm_content_filter"
+	guardrailLBPoolName            = "content-filter-lb"
+)
+
 // guardrailSampleCR returns a minimal valid LiteLLMGuardRail — used as
 // a starting point for negative tests that mutate one field at a time.
 func guardrailSampleCR(name string) *litellmv1alpha1.LiteLLMGuardRail {
@@ -35,7 +44,7 @@ func guardrailSampleCR(name string) *litellmv1alpha1.LiteLLMGuardRail {
 		},
 		Spec: litellmv1alpha1.GuardRailSpec{
 			GuardrailName: name,
-			Provider:      "litellm_content_filter",
+			Provider:      guardrailContentFilterProvider,
 			Mode:          []litellmv1alpha1.GuardRailMode{"pre_call"},
 		},
 	}
@@ -327,9 +336,9 @@ func TestGuardRailAdmission_LoadBalancingPool_TwoCRsSameGuardrailName_Accepted(t
 	})
 
 	cr1 := guardrailSampleCR(primary)
-	cr1.Spec.GuardrailName = "content-filter-lb"
+	cr1.Spec.GuardrailName = guardrailLBPoolName
 	cr2 := guardrailSampleCR(secondary)
-	cr2.Spec.GuardrailName = "content-filter-lb"
+	cr2.Spec.GuardrailName = guardrailLBPoolName
 
 	if err := k8sClient.Create(ctx, cr1); err != nil {
 		t.Fatalf("primary LB CR rejected: %v", err)

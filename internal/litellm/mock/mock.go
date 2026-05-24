@@ -225,6 +225,12 @@ type MockServer struct {
 	// uses PathCallCount for the user and key path prefixes as the
 	// load-bearing TEAM-09 + SCOPE-03 negative assertion.
 	pathCalls map[string]int64
+
+	// guardrails carries the in-memory LiteLLM guardrail store.
+	// Lazy-initialised the first time a guardrail handler / helper
+	// fires so existing tests that never touch guardrails do not pay
+	// any setup cost. See mock/guardrail.go for the per-route logic.
+	guardrails *guardrailState
 }
 
 // RecordedCall is one entry in the mock's audit log.
@@ -1307,6 +1313,33 @@ func (m *MockServer) statefulBody(r *http.Request) []byte {
 		}
 		m.mu.Unlock()
 		return []byte(fmt.Sprintf(`[%s]`, strings.Join(entries, ",")))
+	}
+
+	// ── Guardrail routes ───────────────────────────
+	// LiteLLM 2026-05 surface (BerriAI/litellm proxy/guardrails/
+	// guardrail_endpoints.py):
+	//
+	//   POST  /guardrails                 body {"guardrail": Guardrail}
+	//   PUT   /guardrails/{guardrail_id}  body {"guardrail": Guardrail}
+	//   DELETE /guardrails/{guardrail_id}
+	//   GET   /v2/guardrails/list         envelope ListGuardrailsResponse
+	//
+	// The mock honors PUT-as-wholesale-replace (same pattern as MCP/agent).
+	// LB pool support: multiple entries may share guardrail_name; the mock
+	// keys by guardrail_id and tracks a name→IDs slice for sibling counts.
+	if method == http.MethodPost && path == "/guardrails" {
+		return m.handleGuardrailCreate(r)
+	}
+	if method == http.MethodPut && strings.HasPrefix(path, "/guardrails/") {
+		guardrailID := strings.TrimPrefix(path, "/guardrails/")
+		return m.handleGuardrailUpdate(r, guardrailID)
+	}
+	if method == http.MethodDelete && strings.HasPrefix(path, "/guardrails/") {
+		guardrailID := strings.TrimPrefix(path, "/guardrails/")
+		return m.handleGuardrailDelete(guardrailID)
+	}
+	if method == http.MethodGet && strings.HasPrefix(path, "/v2/guardrails/list") {
+		return m.handleGuardrailList()
 	}
 
 	// POST/PUT mutations — return an empty success body.

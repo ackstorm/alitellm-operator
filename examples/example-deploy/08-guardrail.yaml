@@ -1,0 +1,124 @@
+---
+# Copyright 2026 ACKstorm.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Dogfood LiteLLMGuardRail samples.
+#
+# Three CRs covering the dominant deployment patterns:
+#   (a) on-device litellm_content_filter — credential / secret block, no
+#       upstream provider; defaultOn=true so every request is screened
+#       even when keys / teams do not explicitly opt in.
+#   (b) Aporia (hosted, API key) — exercises {{APORIA_API_KEY}}
+#       substitution from a Secret; demonstrates the `info` (guardrail_info)
+#       pass-through field.
+#   (c) Bedrock guardrail — provider-specific identifier keys
+#       (guardrailIdentifier, guardrailVersion, aws_region_name) flow
+#       through spec.params verbatim; AWS access keys resolved via
+#       {{NAME}} substitution from the same `aws-credentials` Secret used
+#       by example #04 / #06.
+#
+# After apply, expect for each CR:
+#   - status.conditions[type=Ready].status=True
+#     status.conditions[type=Ready].reason=Synced
+#   - status.lastRendered.guardrailID populated with the LiteLLM-assigned
+#     UUID (the operator persists it to skip a GET on subsequent reconciles).
+#   - status.lastRendered.definitionLocation="db" (operator-addressable;
+#     "config" would indicate the row was loaded from the LiteLLM proxy
+#     config file and is NOT mutable via the HTTP CRUD API).
+#   - status.lastRendered.poolSize=1 (no LB sibling in this sample set).
+#
+# Per-key / per-team opt-in via LiteLLMVirtualKey.spec.guardrails or
+# LiteLLMTeam.spec.guardrails is a LiteLLM Enterprise runtime feature
+# and lives on those CRs (not modeled here).
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMGuardRail
+metadata:
+  name: credential-filter
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  guardrailName: credential-filter
+  provider: litellm_content_filter
+  mode: [pre_call]
+  defaultOn: true
+  # Pass-through bag — patterns, blocked_words, categories, etc. flow
+  # verbatim to LiteLLM's litellm_params on POST /guardrails. No
+  # provider-side API key needed: matching is on-device.
+  params:
+    patterns:
+      - { pattern_type: prebuilt, pattern_name: aws_access_key, action: BLOCK }
+      - { pattern_type: prebuilt, pattern_name: github_token,   action: BLOCK }
+      - { pattern_type: regex,    name: employee_id, pattern: '\b[A-Z]{3}-\d{4}\b', action: MASK }
+    blocked_words:
+      - { keyword: confidential, action: BLOCK }
+---
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMGuardRail
+metadata:
+  name: aporia-pre
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  guardrailName: aporia-pre
+  provider: aporia
+  mode: [pre_call]
+  # defaultOn left unset (server-side default false) — clients opt in
+  # explicitly via key / team metadata.
+  params:
+    api_base: https://gr-prd-dc.aporia.com
+    # The operator resolves {{APORIA_API_KEY}} from spec.secrets[]
+    # before the body reaches LiteLLM. Secret material is NEVER stored
+    # in this CR's spec, logs, or status conditions.
+    api_key: "{{APORIA_API_KEY}}"
+    project_id: prod-eu
+  info:
+    description: "Aporia hallucination + PII pre-call"
+    params:
+      - { name: policy_id, type: string, required: false }
+  secrets:
+    - as: APORIA_API_KEY
+      secretRef:
+        # Create with:
+        #   kubectl create secret generic aporia-credentials \
+        #     --from-literal=APORIA_API_KEY=$REAL_KEY -n default
+        name: aporia-credentials
+        key: APORIA_API_KEY
+---
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMGuardRail
+metadata:
+  name: bedrock-pii
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  guardrailName: bedrock-pii
+  # The bedrock/guardrail provider name carries a slash; LiteLLM
+  # treats it as a sub-route within the bedrock family.
+  provider: bedrock/guardrail
+  mode: [post_call]
+  params:
+    # AWS Bedrock guardrail identity (registered out-of-band against
+    # AWS — the operator does not provision Bedrock-side guardrails).
+    guardrailIdentifier: REPLACE_ME_BEDROCK_GUARDRAIL_ID
+    guardrailVersion: "DRAFT"
+    aws_region_name: us-east-1
+    aws_access_key_id:     "{{AWS_ACCESS_KEY_ID}}"
+    aws_secret_access_key: "{{AWS_SECRET_ACCESS_KEY}}"
+  secrets:
+    # Same `aws-credentials` Secret reused across 04-mcpserver.yaml and
+    # 06-a2aagent.yaml when those examples need AWS creds.
+    - as: AWS_ACCESS_KEY_ID
+      secretRef: { name: aws-credentials, key: AWS_ACCESS_KEY_ID }
+    - as: AWS_SECRET_ACCESS_KEY
+      secretRef: { name: aws-credentials, key: AWS_SECRET_ACCESS_KEY }

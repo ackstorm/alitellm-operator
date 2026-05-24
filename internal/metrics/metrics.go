@@ -220,8 +220,9 @@ var (
 		"probe",
 	}
 
-	// drift_corrected_total's domain × action — 4 × 3 = 12 combos.
-	allDomains = []string{"model", "mcp", "a2a", "team"}
+	// drift_corrected_total's domain × action — 5 × 3 = 15 combos
+	// (model, mcp, a2a, team, guardrail).
+	allDomains = []string{"model", "mcp", "a2a", "team", "guardrail"}
 	allActions = []string{"create_missing", "update_drifted", "delete_vanished"}
 
 	// reconcile_total{result}.
