@@ -74,6 +74,7 @@ rules:
   resources:
   - litellma2aagents
   - litellmconnections
+  - litellmguardrails
   - litellmmcpserverdiscoveries
   - litellmmcpservers
   - litellmmodeldiscoveries
@@ -92,6 +93,7 @@ rules:
   resources:
   - litellma2aagents/finalizers
   - litellmconnections/finalizers
+  - litellmguardrails/finalizers
   - litellmmcpserverdiscoveries/finalizers
   - litellmmcpservers/finalizers
   - litellmmodeldiscoveries/finalizers
@@ -104,6 +106,7 @@ rules:
   resources:
   - litellma2aagents/status
   - litellmconnections/status
+  - litellmguardrails/status
   - litellmmcpserverdiscoveries/status
   - litellmmcpservers/status
   - litellmmodeldiscoveries/status
