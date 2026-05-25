@@ -707,10 +707,43 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#minimal-example" class="md-nav__link">
     <span class="md-ellipsis">
       
         Minimal example
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#with-rate-limit-mcp-separator-override" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        With rate-limit + MCP separator override
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-operator-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the operator does
       
     </span>
   </a>
@@ -1373,10 +1406,43 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#minimal-example" class="md-nav__link">
     <span class="md-ellipsis">
       
         Minimal example
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#with-rate-limit-mcp-separator-override" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        With rate-limit + MCP separator override
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-operator-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the operator does
       
     </span>
   </a>
@@ -1417,29 +1483,108 @@
 <h1 id="litellmconnection">LiteLLMConnection<a class="headerlink" href="#litellmconnection" title="Permanent link">&para;</a></h1>
 <p>A <code>LiteLLMConnection</code> declares how the operator reaches a LiteLLM proxy:
 its base URL plus a reference to the Secret holding the master key.</p>
-<p>All other resources (Team, Model, Discovery kinds, …) must reference a
-Connection via <code>spec.connectionRef</code>.</p>
-<div class="admonition note">
-<p class="admonition-title">Note</p>
-<p>Detailed reconciliation semantics, finalizer behavior, and status
-fields are documented in the auto-generated <a href="../../api-reference/litellm.ackstorm.ai/">API
-Reference</a>.</p>
-</div>
+<p>In v1alpha1 the operator reconciles against the SINGLETON
+<code>LiteLLMConnection/default</code> (name <code>default</code>, in the watch namespace).
+Per-CR <code>connectionRef</code> is NOT modeled — every Team / Model / MCPServer
+/ A2AAgent / GuardRail / Discovery binds implicitly to that one
+Connection. Multi-Connection support is deferred to v1beta1.</p>
+<h2 id="quick-reference">Quick reference<a class="headerlink" href="#quick-reference" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Required</th>
+<th>Default</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>metadata.name</code></td>
+<td>yes</td>
+<td></td>
+<td>Must be <code>default</code> for any dependent CR to bind to it.</td>
+</tr>
+<tr>
+<td><code>spec.endpoint</code></td>
+<td>yes</td>
+<td></td>
+<td>Base URL (e.g. <code>http://litellm.default.svc.cluster.local:4000</code>).</td>
+</tr>
+<tr>
+<td><code>spec.masterKeySecretRef.{name,key}</code></td>
+<td>yes</td>
+<td></td>
+<td>Secret holding the LiteLLM master key. Must live in the SAME namespace as the CR.</td>
+</tr>
+<tr>
+<td><code>spec.mcpToolPrefixSeparator</code></td>
+<td>no</td>
+<td><code>.</code></td>
+<td>Enum <code>{".", "-"}</code>. Character LiteLLM REJECTS inside <code>server_name</code>; the operator rewrites the wire payload to swap it.</td>
+</tr>
+<tr>
+<td><code>spec.requeueOnRejectedAfter</code></td>
+<td>no</td>
+<td><code>5m</code></td>
+<td>Retry cadence for dependent reconcilers after <code>LiteLLMRejected</code> / <code>SecretNotFound</code>. Clamped to <code>[1m, 1h]</code>.</td>
+</tr>
+<tr>
+<td><code>spec.maxRequestsPerSecond</code></td>
+<td>no</td>
+<td><code>5</code></td>
+<td>Sustained outbound HTTP rate cap. <code>0</code> disables (not recommended).</td>
+</tr>
+<tr>
+<td><code>spec.maxBurst</code></td>
+<td>no</td>
+<td><code>10</code></td>
+<td>Token-bucket burst paired with <code>maxRequestsPerSecond</code>.</td>
+</tr>
+</tbody>
+</table>
 <h2 id="minimal-example">Minimal example<a class="headerlink" href="#minimal-example" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">litellm.ackstorm.ai/v1alpha1</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">LiteLLMConnection</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nt">metadata</span><span class="p">:</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">proxy-prod</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">litellm-system</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">default</span><span class="w">                          </span><span class="c1"># MUST be `default` in v1alpha1</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">default</span><span class="w">                     </span><span class="c1"># matches operator&#39;s WATCH_NAMESPACE</span>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://litellm.example.com</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="nt">endpoint</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://litellm.default.svc.cluster.local:4000</span>
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">  </span><span class="nt">masterKeySecretRef</span><span class="p">:</span>
 <a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">litellm-master-key</span>
 <a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">    </span><span class="nt">key</span><span class="p">:</span><span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">master-key</span>
 </code></pre></div>
+<h2 id="with-rate-limit-mcp-separator-override">With rate-limit + MCP separator override<a class="headerlink" href="#with-rate-limit-mcp-separator-override" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">endpoint</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://litellm.example.com</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">masterKeySecretRef</span><span class="p">:</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">litellm-master-key</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="nt">key</span><span class="p">:</span><span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">master-key</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="nt">mcpToolPrefixSeparator</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;-&quot;</span><span class="w">            </span><span class="c1"># non-stock LiteLLM that forbids &quot;-&quot; in server_name</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">  </span><span class="nt">maxRequestsPerSecond</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">20</span><span class="w">               </span><span class="c1"># raise for higher CR counts</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">  </span><span class="nt">maxBurst</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">50</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">  </span><span class="nt">requeueOnRejectedAfter</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1m</span><span class="w">             </span><span class="c1"># faster retry after upstream fix lands</span>
+</code></pre></div>
+<h2 id="what-the-operator-does">What the operator does<a class="headerlink" href="#what-the-operator-does" title="Permanent link">&para;</a></h2>
+<p>On reconcile, the operator probes <code>GET &lt;endpoint&gt;/key/info</code> with the
+master key:</p>
+<ul>
+<li>200 → <code>Ready=True, reason=Probed</code>. Connection cache snapshot
+  refreshes; dependent reconcilers wake up via fan-in watch.</li>
+<li>401 → <code>Ready=False, reason=AuthFailed</code>. Master-key Secret rotated
+  out-of-band → re-apply.</li>
+<li>network / 5xx → <code>Ready=False, reason=Unreachable</code>. Reconciler retries
+  on <code>requeueOnRejectedAfter</code>.</li>
+</ul>
+<p><code>status.conditions[type=Ready]</code> is the gate every dependent reconciler
+reads (echoed as <code>LiteLLMUnavailable</code> when <code>False</code>). The Connection
+cache snapshot also carries <code>mcpToolPrefixSeparator</code>,
+<code>requeueOnRejectedAfter</code>, and the rate-limit knobs — dependents read
+the same values via the cache, not by re-reading the CR.</p>
 <h2 id="see-also">See also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
-<li><a href="https://github.com/ackstorm/alitellm-operator/tree/main/examples">Examples on GitHub</a></li>
+<li><a href="https://github.com/ackstorm/alitellm-operator/tree/main/examples/example-deploy/01-litellmconnection.yaml">Example on GitHub</a></li>
 <li><a href="../../api-reference/litellm.ackstorm.ai/#litellmconnection">API Reference: LiteLLMConnection</a></li>
 </ul>
 
