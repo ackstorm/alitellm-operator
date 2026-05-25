@@ -1326,7 +1326,7 @@
 
 
 <h1 id="user-guide">User Guide<a class="headerlink" href="#user-guide" title="Permanent link">&para;</a></h1>
-<p><code>alitellm-operator</code> reconciles seven Kubernetes Custom Resources under the
+<p><code>alitellm-operator</code> reconciles eight Kubernetes Custom Resources under the
 <code>litellm.ackstorm.ai/v1alpha1</code> API group. Each CR maps to one declarative
 intent against an upstream LiteLLM proxy.</p>
 <table>
@@ -1343,7 +1343,7 @@ intent against an upstream LiteLLM proxy.</p>
 </tr>
 <tr>
 <td><a href="team/">LiteLLMTeam</a></td>
-<td>Team in LiteLLM with quota, rate-limit, and member metadata.</td>
+<td>Team in LiteLLM with budget + RPM/TPM rate limits.</td>
 </tr>
 <tr>
 <td><a href="model/">LiteLLMModel</a></td>
@@ -1359,11 +1359,15 @@ intent against an upstream LiteLLM proxy.</p>
 </tr>
 <tr>
 <td><a href="mcp-server-discovery/">LiteLLMMCPServerDiscovery</a></td>
-<td>Auto-discover MCP servers via labels/selectors.</td>
+<td>Auto-discover MCP servers from ToolHive objects.</td>
 </tr>
 <tr>
 <td><a href="model-discovery/">LiteLLMModelDiscovery</a></td>
-<td>Auto-discover available models from a Connection.</td>
+<td>Auto-discover available models from a provider.</td>
+</tr>
+<tr>
+<td><a href="guardrail/">LiteLLMGuardRail</a></td>
+<td>Content filter / DLP guardrail (BLOCK / MASK, pre_call or post_call).</td>
 </tr>
 </tbody>
 </table>

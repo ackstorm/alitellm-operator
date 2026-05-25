@@ -712,6 +712,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMModel
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -728,6 +746,113 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#minimal-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Minimal example
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#secret-substitution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Secret substitution
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-provider-shapes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common provider shapes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#drift-detection-correction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Drift detection + correction
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#specinfoid-is-operator-controlled" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        spec.info.id is operator-controlled
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#status-what-to-read" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status: what to read
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1307,6 +1432,102 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#minimal-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Minimal example
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#secret-substitution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Secret substitution
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-provider-shapes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common provider shapes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#drift-detection-correction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Drift detection + correction
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#specinfoid-is-operator-controlled" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        spec.info.id is operator-controlled
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#status-what-to-read" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status: what to read
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1326,16 +1547,183 @@
 
 
 <h1 id="litellmmodel">LiteLLMModel<a class="headerlink" href="#litellmmodel" title="Permanent link">&para;</a></h1>
-<p>Declarative model registration (provider, params) attached to a
-<code>LiteLLMConnection</code>.</p>
-<div class="admonition warning">
-<p class="admonition-title">Placeholder</p>
-<p>Full usage docs pending. For now see:</p>
+<p>Declarative model entry in LiteLLM. Owns one <code>(litellm_params,
+model_info)</code> pair, projected via <code>POST /model/{new,update}</code> against
+the <code>LiteLLMConnection/default</code> instance.</p>
+<p>Shape is flat: <code>spec.params</code> (→ <code>litellm_params</code>) and <code>spec.info</code>
+(→ <code>model_info</code>) are both free-form pass-through bags. No <code>spec.type</code>
+discriminator. User-authored and Discovery-generated CRs are
+reconciled identically.</p>
+<h2 id="quick-reference">Quick reference<a class="headerlink" href="#quick-reference" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Required</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>metadata.name</code></td>
+<td>yes</td>
+<td>LiteLLM <code>model_name</code> (the alias clients call). Unique per Connection.</td>
+</tr>
+<tr>
+<td><code>spec.params</code></td>
+<td>yes</td>
+<td><code>litellm_params</code> bag. Must at minimum carry a <code>model:</code> key.</td>
+</tr>
+<tr>
+<td><code>spec.params.model</code></td>
+<td>yes</td>
+<td><code>&lt;provider&gt;/&lt;id&gt;</code> (e.g. <code>anthropic/claude-sonnet-4.5</code>, <code>gemini/gemini-2.5-flash</code>).</td>
+</tr>
+<tr>
+<td><code>spec.params.api_key</code></td>
+<td>varies</td>
+<td>Usually <code>{{NAME}}</code> resolved from <code>spec.secrets[]</code>.</td>
+</tr>
+<tr>
+<td><code>spec.params.api_base</code></td>
+<td>no</td>
+<td>Override upstream base URL.</td>
+</tr>
+<tr>
+<td><code>spec.info</code></td>
+<td>no</td>
+<td><code>model_info</code> bag — <code>description</code>, <code>mode</code>, custom metadata.</td>
+</tr>
+<tr>
+<td><code>spec.secrets[]</code></td>
+<td>no</td>
+<td><code>{as, secretRef: {name, key}}</code> for <code>{{NAME}}</code> substitution in <code>params</code>/<code>info</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>After <code>kubectl apply</code>, expect:</p>
 <ul>
-<li><a href="https://github.com/ackstorm/alitellm-operator/tree/main/examples">Examples on GitHub</a></li>
+<li><code>status.conditions[type=Ready].status=True</code> / <code>reason=Synced</code>.</li>
+<li><code>status.lastRendered.modelID</code> pinned with the LiteLLM-assigned UUID
+  (<code>model_info.id</code>). Pinned to skip a <code>GET /model/info</code> on every
+  reconcile.</li>
+<li><code>status.lastRendered.hash</code> = SHA-256 of the rendered body.</li>
+</ul>
+<h2 id="minimal-example">Minimal example<a class="headerlink" href="#minimal-example" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">litellm.ackstorm.ai/v1alpha1</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">LiteLLMModel</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nt">metadata</span><span class="p">:</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">claude-sonnet-4-5</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">default</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="nt">model</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;anthropic/claude-sonnet-4.5&quot;</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="nt">api_key</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;{{ANTHROPIC_API_KEY}}&quot;</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">    </span><span class="nt">api_base</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://api.anthropic.com&quot;</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">  </span><span class="nt">info</span><span class="p">:</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Anthropic</span><span class="nv"> </span><span class="s">Sonnet</span><span class="nv"> </span><span class="s">4.5&quot;</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">  </span><span class="nt">secrets</span><span class="p">:</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">as</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ANTHROPIC_API_KEY</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">      </span><span class="nt">secretRef</span><span class="p">:</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">        </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">anthropic-api-key</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="w">        </span><span class="nt">key</span><span class="p">:</span><span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">ANTHROPIC_API_KEY</span>
+</code></pre></div>
+<p>After apply, callers reach the model with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>curl<span class="w"> </span><span class="nv">$LITELLM</span>/chat/completions<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Authorization: Bearer </span><span class="nv">$KEY</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;model&quot;:&quot;claude-sonnet-4-5&quot;,&quot;messages&quot;:[{&quot;role&quot;:&quot;user&quot;,&quot;content&quot;:&quot;hi&quot;}]}&#39;</span>
+</code></pre></div>
+<p>(<code>model</code> field in the request is <code>metadata.name</code>, not the upstream
+provider id.)</p>
+<h2 id="secret-substitution">Secret substitution<a class="headerlink" href="#secret-substitution" title="Permanent link">&para;</a></h2>
+<p><code>spec.secrets[].as</code> declares the placeholder name; <code>{{NAME}}</code> inside
+ANY string leaf in <code>spec.params</code> or <code>spec.info</code> is replaced with the
+plaintext value at reconcile time. Constraints:</p>
+<ul>
+<li><code>as</code> must match <code>^[A-Z_][A-Z0-9_]*$</code> (admission-time CEL).</li>
+<li><code>as</code> values unique within the CR (runtime check, <code>Ready=False</code>
+  <code>reason=DuplicateSecretAs</code> on violation).</li>
+<li>Secret must live in the SAME namespace as the Model CR. No cross-NS
+  resolution.</li>
+<li>Secret material NEVER appears in logs, Events, or
+  <code>status.conditions[].message</code>.</li>
+</ul>
+<p>Secret rotation propagates within ~30s (Secret-watch path on the
+controller).</p>
+<p>Missing Secret / key → <code>Ready=False</code>, <code>reason=SecretNotFound</code>.
+Placeholder without binding → <code>Ready=False</code>,
+<code>reason=UnresolvedPlaceholder</code>.</p>
+<h2 id="common-provider-shapes">Common provider shapes<a class="headerlink" href="#common-provider-shapes" title="Permanent link">&para;</a></h2>
+<p><strong>OpenAI / Anthropic / xAI</strong> (HTTP API, key-based):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="nt">model</span><span class="p">:</span><span class="w">   </span><span class="s">&quot;openai/gpt-4o&quot;</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="nt">api_key</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;{{OPENAI_API_KEY}}&quot;</span>
+</code></pre></div>
+<p><strong>Google Gemini</strong>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="nt">model</span><span class="p">:</span><span class="w">   </span><span class="s">&quot;gemini/gemini-2.5-flash&quot;</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span><span class="nt">api_key</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;{{GEMINI_API_KEY}}&quot;</span>
+</code></pre></div>
+<p><strong>AWS Bedrock</strong> (no <code>api_key</code>, uses AWS creds):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="nt">model</span><span class="p">:</span><span class="w">                 </span><span class="s">&quot;bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0&quot;</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span><span class="nt">aws_access_key_id</span><span class="p">:</span><span class="w">     </span><span class="s">&quot;{{AWS_ACCESS_KEY_ID}}&quot;</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">    </span><span class="nt">aws_secret_access_key</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;{{AWS_SECRET_ACCESS_KEY}}&quot;</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">    </span><span class="nt">aws_region_name</span><span class="p">:</span><span class="w">       </span><span class="s">&quot;us-east-1&quot;</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">  </span><span class="nt">secrets</span><span class="p">:</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> as</span><span class="p">:</span><span class="w"> </span><span class="nv">AWS_ACCESS_KEY_ID</span><span class="p p-Indicator">,</span><span class="nt">     secretRef</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">aws-creds</span><span class="p p-Indicator">,</span><span class="nt"> key</span><span class="p">:</span><span class="w"> </span><span class="nv">AWS_ACCESS_KEY_ID</span><span class="w"> </span><span class="p p-Indicator">}</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> as</span><span class="p">:</span><span class="w"> </span><span class="nv">AWS_SECRET_ACCESS_KEY</span><span class="p p-Indicator">,</span><span class="nt"> secretRef</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">aws-creds</span><span class="p p-Indicator">,</span><span class="nt"> key</span><span class="p">:</span><span class="w"> </span><span class="nv">AWS_SECRET_ACCESS_KEY</span><span class="w"> </span><span class="p p-Indicator">}</span><span class="w"> </span><span class="p p-Indicator">}</span>
+</code></pre></div>
+<p><strong>Ollama / local OpenAI-compatible</strong> (no key, custom base):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="nt">model</span><span class="p">:</span><span class="w">    </span><span class="s">&quot;openai/llama3.3&quot;</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="nt">api_base</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;http://ollama.default.svc:11434/v1&quot;</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">    </span><span class="nt">api_key</span><span class="p">:</span><span class="w">  </span><span class="s">&quot;ollama&quot;</span>
+</code></pre></div>
+<h2 id="drift-detection-correction">Drift detection + correction<a class="headerlink" href="#drift-detection-correction" title="Permanent link">&para;</a></h2>
+<p>On every reconcile the rendered post-substitution body is hashed
+(SHA-256, RFC 8785 canonical JSON, excluding <code>model_info.id</code>). The
+hash is compared against <code>status.lastRendered.hash</code>:</p>
+<ul>
+<li>Match → no LiteLLM call (steady state).</li>
+<li>Mismatch → <code>POST /model/update</code>, increments
+  <code>drift_corrected_total{domain=model,action=update_drifted}</code>.</li>
+<li>Vanish (row missing in LiteLLM) → <code>POST /model/new</code>, re-pin
+  <code>modelID</code>, increment
+  <code>drift_corrected_total{domain=model,action=create_missing}</code>.</li>
+</ul>
+<p><code>spec.params</code> or <code>spec.info</code> shrinkage (a key removed from either bag)
+triggers delete-and-recreate — <code>POST /model/update</code> is wholesale-replace
+on LiteLLM, but the shrinkage path was retained from earlier
+defect-mitigation work and <code>modelID</code> is re-pinned in the same
+reconcile.</p>
+<h2 id="specinfoid-is-operator-controlled"><code>spec.info.id</code> is operator-controlled<a class="headerlink" href="#specinfoid-is-operator-controlled" title="Permanent link">&para;</a></h2>
+<p>Setting <code>spec.info.id</code> is silently overridden by the operator's
+overlay (the pinned <code>modelID</code>) and emits a Warning Event
+<code>reason=ProjectionOverride</code>. Do not set it.</p>
+<h2 id="status-what-to-read">Status: what to read<a class="headerlink" href="#status-what-to-read" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>mdl<span class="w"> </span>claude-sonnet-4-5<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.status.lastRendered}{&quot;\n&quot;}&#39;</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="c1"># {&quot;at&quot;:&quot;...&quot;,&quot;hash&quot;:&quot;abc...&quot;,&quot;infoKeys&quot;:[&quot;description&quot;],&quot;modelID&quot;:&quot;&lt;uuid&gt;&quot;,&quot;paramsKeys&quot;:[&quot;api_base&quot;,&quot;api_key&quot;,&quot;model&quot;]}</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>kubectl<span class="w"> </span>get<span class="w"> </span>mdl<span class="w"> </span>claude-sonnet-4-5<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.status.conditions[?(@.type==&quot;Ready&quot;)]}{&quot;\n&quot;}&#39;</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="c1"># {&quot;type&quot;:&quot;Ready&quot;,&quot;status&quot;:&quot;True&quot;,&quot;reason&quot;:&quot;Synced&quot;}</span>
+</code></pre></div>
+<p><code>Ready=False</code> reasons beyond the secret-related ones above:</p>
+<ul>
+<li><code>LiteLLMUnavailable</code> — <code>LiteLLMConnection/default</code> not Ready.</li>
+<li><code>LiteLLMRejected</code> — LiteLLM returned 4xx/5xx on mutation. Inspect
+  <code>message</code> for the upstream payload.</li>
+</ul>
+<h2 id="see-also">See also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="https://github.com/ackstorm/alitellm-operator/tree/main/examples/example-deploy/02-model.yaml">Example on GitHub</a></li>
+<li><a href="../model-discovery/">LiteLLMModelDiscovery</a> — auto-generate Model CRs from a Connection's <code>/models</code>.</li>
 <li><a href="../../api-reference/litellm.ackstorm.ai/#litellmmodel">API Reference: LiteLLMModel</a></li>
 </ul>
-</div>
 
 
 

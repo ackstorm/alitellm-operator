@@ -740,6 +740,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMA2AAgent
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -756,6 +774,102 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#minimal-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Minimal example
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#with-secret-substituted-auth" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        With secret-substituted auth
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#projectionoverride-collisions-4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ProjectionOverride collisions (4)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#drift-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Drift detection
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#status-what-to-read" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status: what to read
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1307,6 +1421,91 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#minimal-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Minimal example
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#with-secret-substituted-auth" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        With secret-substituted auth
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#projectionoverride-collisions-4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ProjectionOverride collisions (4)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#drift-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Drift detection
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#status-what-to-read" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status: what to read
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1326,15 +1525,169 @@
 
 
 <h1 id="litellma2aagent">LiteLLMA2AAgent<a class="headerlink" href="#litellma2aagent" title="Permanent link">&para;</a></h1>
-<p>Agent-to-Agent endpoint surface exposed via the LiteLLM proxy.</p>
-<div class="admonition warning">
-<p class="admonition-title">Placeholder</p>
-<p>Full usage docs pending. For now see:</p>
+<p>Declarative A2A (Agent-to-Agent) endpoint exposed via the LiteLLM
+proxy. Projected via <code>POST /v1/agents</code> / <code>PUT /v1/agents/&lt;id&gt;</code> /
+<code>DELETE /v1/agents/&lt;id&gt;</code>.</p>
+<p>The A2A "agent card" (capabilities, skills, default I/O modes) is
+declared inside the CR; the operator stamps <code>agent_name</code> from
+<code>metadata.name</code> and overlays the <code>agent_card_params.url</code> from
+<code>spec.endpoint</code>.</p>
+<h2 id="quick-reference">Quick reference<a class="headerlink" href="#quick-reference" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Required</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>metadata.name</code></td>
+<td>yes</td>
+<td>Used as LiteLLM <code>agent_name</code>. Overrides any <code>spec.params.agent_name</code>.</td>
+</tr>
+<tr>
+<td><code>spec.endpoint</code></td>
+<td>yes</td>
+<td>Agent URL reachable from the LiteLLM pod. Overlays <code>agent_card_params.url</code>.</td>
+</tr>
+<tr>
+<td><code>spec.agentCard</code></td>
+<td>yes</td>
+<td>A2A protocol card (name, version, description, capabilities, skills, defaultInputModes, …).</td>
+</tr>
+<tr>
+<td><code>spec.params</code></td>
+<td>no</td>
+<td>Top-level <code>AgentConfig</code> bag (NOT inside <code>agent_card_params</code>).</td>
+</tr>
+<tr>
+<td><code>spec.secrets[]</code></td>
+<td>no</td>
+<td>Substitution map — placeholders work in <code>spec.params</code> AND <code>spec.agentCard</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>After <code>kubectl apply</code>, expect:</p>
 <ul>
-<li><a href="https://github.com/ackstorm/alitellm-operator/tree/main/examples">Examples on GitHub</a></li>
+<li><code>status.conditions[type=Ready].status=True</code> / <code>reason=Synced</code>.</li>
+<li><code>status.lastRendered.agentID</code> pinned with the LiteLLM-assigned
+  UUID. Used by the finalizer (<code>DELETE /v1/agents/&lt;agentID&gt;</code>).</li>
+<li><code>status.lastRendered.hash</code> = SHA-256 of the rendered body.</li>
+</ul>
+<h2 id="minimal-example">Minimal example<a class="headerlink" href="#minimal-example" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">litellm.ackstorm.ai/v1alpha1</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">LiteLLMA2AAgent</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nt">metadata</span><span class="p">:</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">vendor-research-agent</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">default</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="nt">endpoint</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;http://vendor-research-agent.default.svc:9001&quot;</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">  </span><span class="nt">agentCard</span><span class="p">:</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;vendor-research&quot;</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">    </span><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;1.0&quot;</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Vendor</span><span class="nv"> </span><span class="s">research</span><span class="nv"> </span><span class="s">A2A</span><span class="nv"> </span><span class="s">agent&quot;</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">    </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">30</span>
+</code></pre></div>
+<p>Wire body (abbreviated):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">&quot;agent_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;vendor-research-agent&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">&quot;agent_card_params&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;vendor-research&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="nt">&quot;version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1.0&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">    </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Vendor research A2A agent&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">    </span><span class="nt">&quot;url&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;http://vendor-research-agent.default.svc:9001&quot;</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">  </span><span class="p">},</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">  </span><span class="nt">&quot;timeout&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">30</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="p">}</span>
+</code></pre></div>
+<p>Note <code>spec.params.timeout</code> lands at the top level — <code>AgentConfig</code>
+diverges from MCP where <code>spec.params</code> would nest under a wrapper.</p>
+<h2 id="with-secret-substituted-auth">With secret-substituted auth<a class="headerlink" href="#with-secret-substituted-auth" title="Permanent link">&para;</a></h2>
+<p>Placeholders work in BOTH bags (two-pass substitution, shared secret
+map):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">endpoint</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://research-agent.example.com&quot;</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span><span class="nt">agentCard</span><span class="p">:</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;research&quot;</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Research</span><span class="nv"> </span><span class="s">agent</span><span class="nv"> </span><span class="s">—</span><span class="nv"> </span><span class="s">Bearer-auth&quot;</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">    </span><span class="nt">authorization</span><span class="p">:</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bearer</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">      </span><span class="nt">bearer</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;{{AGENT_TOKEN}}&quot;</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="w">    </span><span class="nt">extra_headers</span><span class="p">:</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="w">      </span><span class="nt">X-Tenant</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;{{TENANT_ID}}&quot;</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="w">  </span><span class="nt">secrets</span><span class="p">:</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> as</span><span class="p">:</span><span class="w"> </span><span class="nv">AGENT_TOKEN</span><span class="p p-Indicator">,</span><span class="nt"> secretRef</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">agent-creds</span><span class="p p-Indicator">,</span><span class="nt"> key</span><span class="p">:</span><span class="w"> </span><span class="nv">TOKEN</span><span class="w"> </span><span class="p p-Indicator">}</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> as</span><span class="p">:</span><span class="w"> </span><span class="nv">TENANT_ID</span><span class="p p-Indicator">,</span><span class="nt">   secretRef</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">agent-creds</span><span class="p p-Indicator">,</span><span class="nt"> key</span><span class="p">:</span><span class="w"> </span><span class="nv">TENANT</span><span class="w"> </span><span class="p p-Indicator">}</span><span class="w"> </span><span class="p p-Indicator">}</span>
+</code></pre></div>
+<p><code>spec.secrets[].as</code> declared but unreferenced in either bag → Normal
+Event <code>reason=UnusedSecretRef</code> (advisory, not a failure).</p>
+<h2 id="projectionoverride-collisions-4">ProjectionOverride collisions (4)<a class="headerlink" href="#projectionoverride-collisions-4" title="Permanent link">&para;</a></h2>
+<p>The operator stamps four structural keys on top of user input. Each
+collision emits a Warning Event keyed by the offending field — at
+most one per reconcile pass per key:</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Source of truth</th>
+<th>What the operator overlays</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>agent_name</code></td>
+<td><code>metadata.name</code></td>
+<td>Drops <code>spec.params.agent_name</code>.</td>
+</tr>
+<tr>
+<td><code>agent_card_params</code></td>
+<td><code>spec.agentCard</code></td>
+<td>Drops <code>spec.params.agent_card_params</code>.</td>
+</tr>
+<tr>
+<td><code>agent_card_params.url</code></td>
+<td><code>spec.endpoint</code></td>
+<td>Drops <code>spec.agentCard.url</code>.</td>
+</tr>
+<tr>
+<td><code>model_info</code></td>
+<td>LiteLLM-reserved (per spec §6.6)</td>
+<td>NOT overlaid — passes through, warning only.</td>
+</tr>
+</tbody>
+</table>
+<p>To avoid the warnings, do not set the colliding keys in <code>spec.params</code>
+/ <code>spec.agentCard</code> — let the operator stamp them.</p>
+<h2 id="drift-detection">Drift detection<a class="headerlink" href="#drift-detection" title="Permanent link">&para;</a></h2>
+<p>Per-reconcile SHA-256 hash over the rendered merged body (params +
+agentCard + overlays). On mismatch the reconciler issues
+<code>PUT /v1/agents/&lt;agentID&gt;</code> (wholesale-replace per LiteLLM 1.83.10).
+Vanish-probe path: row missing → <code>POST /v1/agents</code>, re-pin <code>agentID</code>,
+increment <code>drift_corrected_total{domain=a2aagent,action=create_missing}</code>.</p>
+<h2 id="status-what-to-read">Status: what to read<a class="headerlink" href="#status-what-to-read" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>a2a<span class="w"> </span>vendor-research-agent<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.status.lastRendered}{&quot;\n&quot;}&#39;</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="c1"># {&quot;agentCardKeys&quot;:[&quot;description&quot;,&quot;name&quot;,&quot;version&quot;],&quot;agentID&quot;:&quot;&lt;uuid&gt;&quot;,&quot;at&quot;:&quot;...&quot;,&quot;hash&quot;:&quot;abc...&quot;,&quot;paramsKeys&quot;:[&quot;timeout&quot;]}</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>kubectl<span class="w"> </span>get<span class="w"> </span>a2a<span class="w"> </span>vendor-research-agent<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.status.conditions[?(@.type==&quot;Ready&quot;)]}{&quot;\n&quot;}&#39;</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="c1"># {&quot;type&quot;:&quot;Ready&quot;,&quot;status&quot;:&quot;True&quot;,&quot;reason&quot;:&quot;Synced&quot;}</span>
+</code></pre></div>
+<p><code>Ready=False</code> reasons:</p>
+<ul>
+<li><code>LiteLLMUnavailable</code> — <code>LiteLLMConnection/default</code> not Ready.</li>
+<li><code>LiteLLMRejected</code> — 4xx from LiteLLM (e.g. malformed agent card).</li>
+<li><code>SecretNotFound</code> — Secret/placeholder unbound.</li>
+<li><code>InvalidConfig</code> — duplicate <code>spec.secrets[].as</code>, or invalid JSON in
+  either bag.</li>
+</ul>
+<h2 id="see-also">See also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="https://github.com/ackstorm/alitellm-operator/tree/main/examples/example-deploy/06-a2aagent.yaml">Example on GitHub</a></li>
 <li><a href="../../api-reference/litellm.ackstorm.ai/#litellma2aagent">API Reference: LiteLLMA2AAgent</a></li>
 </ul>
-</div>
 
 
 
