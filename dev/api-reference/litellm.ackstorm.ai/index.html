@@ -3364,7 +3364,7 @@ the +kubebuilder:validation:Required + MinLength=1 markers below.</p>
 <tbody>
 <tr>
 <td><code>endpoint</code> <em>string</em></td>
-<td>Endpoint is the base URL of the LiteLLM instance the operator<br />will probe and mutate against. Example:<br />"http://litellm.default.svc.cluster.local:4000".<br />The endpoint is used for both the periodic GET /models probe<br />(CONN-03, see internal/litellm/keyinfo.go for the §6.1 deviation<br />note) and every Phase 3+ domain mutation call. The value is<br />trimmed of any trailing slash by litellm.NewClient at the wire<br />layer; users may include or omit the trailing slash without<br />observable effect.</td>
+<td>Endpoint is the base URL of the LiteLLM instance the operator<br />will probe and mutate against. Example:<br />"http://litellm.default.svc.cluster.local:4000".<br />The endpoint is used for both the periodic POST /key/health probe<br />(CONN-03, see internal/litellm/keyinfo.go for the §6.1 deviation<br />note) and every Phase 3+ domain mutation call. The value is<br />trimmed of any trailing slash by litellm.NewClient at the wire<br />layer; users may include or omit the trailing slash without<br />observable effect.</td>
 <td></td>
 <td>MinLength: 1 <br />Required: {} <br /></td>
 </tr>
@@ -3427,7 +3427,7 @@ via the Ready condition itself, no extra fields needed.</p>
 </tr>
 <tr>
 <td><code>conditions</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#condition-v1-meta">Condition</a> array</em></td>
-<td>Conditions carries the standard metav1.Condition list. The single<br />type defined for LiteLLMConnection is <code>Ready</code>, with reason values<br />drawn from the §6.0 reason set:<br />- Synced — probe succeeded; cache is fresh.<br />- Connecting — entry state, no probe outcome yet.<br />- Unreachable — transient probe failure (5xx, network).<br />- BadMasterKey — 401 from the LiteLLM master-key probe.<br />- SecretNotFound — masterKeySecretRef Secret or key missing.<br />Phase 3+ dependents read this condition via the cache snapshot<br />(internal/connection.Cache), never via direct CR Get.</td>
+<td>Conditions carries the standard metav1.Condition list. Two<br />condition types are defined for LiteLLMConnection:<br />Ready (primary connect / auth signal) — reason drawn from the<br />§6.0 reason set:<br />- Synced — probe succeeded; cache is fresh.<br />- Connecting — entry state, no probe outcome yet.<br />- Unreachable — transient probe failure (5xx, network).<br />- BadMasterKey — 401 from the LiteLLM master-key probe.<br />- SecretNotFound — masterKeySecretRef Secret or key missing.<br />LoggingHealthy (secondary — sourced from POST /key/health response<br />body's logging_callbacks.status field):<br />- Healthy — proxy reports logging callbacks healthy.<br />- Unhealthy — proxy reports at least one logging callback unhealthy.<br />- Unknown — probe succeeded but proxy did not report a status.<br />- ProbeError — probe failed before logging health could be read.<br />Phase 3+ dependents read the Ready condition via the cache snapshot<br />(internal/connection.Cache), never via direct CR Get. LoggingHealthy<br />is informational only; not consumed by other reconcilers.</td>
 <td></td>
 <td></td>
 </tr>
