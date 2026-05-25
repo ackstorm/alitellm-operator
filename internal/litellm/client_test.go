@@ -88,8 +88,8 @@ func TestProbeConnectionPathIsKeyHealth(t *testing.T) {
 	if gotPath != "/key/health" {
 		t.Fatalf("path: want /key/health, got %q", gotPath)
 	}
-	if gotMethod != "POST" {
-		t.Errorf("method: want POST, got %q", gotMethod)
+	if gotMethod != http.MethodPost {
+		t.Errorf("method: want %s, got %q", http.MethodPost, gotMethod)
 	}
 	if gotAuth != "Bearer "+testMasterKey {
 		t.Errorf("auth header: want %q, got %q", "Bearer "+testMasterKey, gotAuth)
@@ -214,7 +214,7 @@ func TestNon2xxNon401IsGenericError(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(t, srv.URL)
-	_, err := c.makeRequest(context.Background(), "POST", "/model/new", map[string]any{})
+	_, err := c.makeRequest(context.Background(), http.MethodPost, "/model/new", map[string]any{})
 	if err == nil {
 		t.Fatalf("expected error on 422")
 	}
