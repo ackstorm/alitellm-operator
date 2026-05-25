@@ -37,15 +37,26 @@ gen-crd-ref-docs: ## Generate API reference documentation from Go types.
 
 .PHONY: docs
 
+# Host path for nested `docker run -v ...:/docs` invocations below.
+# When this Makefile runs inside the devtools container (`./scripts/dev.sh
+# make docs-build`), $(abspath ...) resolves to /workspace — which doesn't
+# exist on the host. The nested `docker run` shells out to the host Docker
+# daemon (via the mounted /var/run/docker.sock), so the bind-mount path
+# must be a HOST path, not a container path. scripts/dev.sh exports
+# HOST_PWD with the host workspace path; honor it when set, else fall
+# back to $(abspath ...) for host-only invocations.
+DOCS_HOST_ROOT ?= $(if $(HOST_PWD),$(HOST_PWD),$(abspath $(DOCS_DIR)/..))
+
+
 .PHONY: install-docs
 install-docs: install-mkdocs ## Install all documentation dependencies
 
 .PHONY: docs-serve
 docs-serve: gen-crd-ref-docs install-mkdocs
-	docker run --rm -it -p 8000:8000 -v $(DOCS_DIR)/..:/docs squidfunk/mkdocs-material:latest serve -a 0.0.0.0:8000
+	docker run --rm -it -p 8000:8000 -v $(DOCS_HOST_ROOT):/docs squidfunk/mkdocs-material:latest serve -a 0.0.0.0:8000
 .PHONY: docs-build
 docs-build: gen-crd-ref-docs
-	docker run --rm -it -v $(DOCS_DIR)/..:/docs squidfunk/mkdocs-material:latest build 
+	docker run --rm -v $(DOCS_HOST_ROOT):/docs squidfunk/mkdocs-material:latest build
 
 .PHONY: docs-build-local
 docs-build-local: gen-crd-ref-docs install-mkdocs

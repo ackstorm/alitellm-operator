@@ -68,6 +68,7 @@ exec docker run --rm "${TTY_ARGS[@]}" \
     -e GOMODCACHE=/workspace/.gocache/gopath/pkg/mod \
     -e ENVTEST_BIN_DIR=/workspace/.gocache/envtest \
     -e KUBECONFIG=/workspace/.gocache/kube/config \
+    -e HOST_PWD="${WORKSPACE}" \
     -e LITELLM_SPIKE_URL="${LITELLM_SPIKE_URL:-http://localhost:4000}" \
     -e LITELLM_SPIKE_MASTER_KEY="${LITELLM_SPIKE_MASTER_KEY:-}" \
     -e LITELLM_VERSION="${LITELLM_VERSION:-}" \
