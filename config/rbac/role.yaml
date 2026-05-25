@@ -27,6 +27,7 @@ rules:
   - litellmguardrails
   - litellmmcpserverdiscoveries
   - litellmmcpservers
+  - litellmmodelaliases
   - litellmmodeldiscoveries
   - litellmmodels
   - litellmteams
@@ -46,6 +47,7 @@ rules:
   - litellmguardrails/finalizers
   - litellmmcpserverdiscoveries/finalizers
   - litellmmcpservers/finalizers
+  - litellmmodelaliases/finalizers
   - litellmmodeldiscoveries/finalizers
   - litellmmodels/finalizers
   - litellmteams/finalizers
@@ -59,6 +61,7 @@ rules:
   - litellmguardrails/status
   - litellmmcpserverdiscoveries/status
   - litellmmcpservers/status
+  - litellmmodelaliases/status
   - litellmmodeldiscoveries/status
   - litellmmodels/status
   - litellmteams/status

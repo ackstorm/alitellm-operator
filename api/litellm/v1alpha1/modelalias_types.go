@@ -141,11 +141,13 @@ type LiteLLMModelAliasStatus struct {
 // +kubebuilder:resource:scope=Namespaced,shortName=modelalias,categories=litellm
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=".status.conditions[?(@.type=='Ready')].status"
 // +kubebuilder:printcolumn:name="Reason",type=string,JSONPath=".status.conditions[?(@.type=='Ready')].reason"
-// +kubebuilder:printcolumn:name="Entries",type=integer,JSONPath=".spec.aliases.length()"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=".metadata.creationTimestamp"
-// +kubebuilder:validation:XValidation:rule="self.spec.aliases.all(e, self.spec.aliases.exists_one(f, f.name == e.name))",message="spec.aliases[].name must be unique within a single LiteLLMModelAlias"
 
 // LiteLLMModelAlias is the Schema for the litellmmodelaliases API.
+//
+// Intra-CR uniqueness of spec.aliases[].name is enforced by Kubernetes via
+// the +listType=map +listMapKey=name markers on the Aliases field — no CEL
+// rule needed.
 //
 // One CR contributes ONE OR MORE entries to LiteLLM
 // router_settings.model_group_alias via spec.aliases. The operator

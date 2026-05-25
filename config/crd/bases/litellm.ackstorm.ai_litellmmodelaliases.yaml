@@ -25,9 +25,6 @@ spec:
     - jsonPath: .status.conditions[?(@.type=='Ready')].reason
       name: Reason
       type: string
-    - jsonPath: .spec.aliases.length()
-      name: Entries
-      type: integer
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -36,6 +33,10 @@ spec:
       openAPIV3Schema:
         description: |-
           LiteLLMModelAlias is the Schema for the litellmmodelaliases API.
+
+          Intra-CR uniqueness of spec.aliases[].name is enforced by Kubernetes via
+          the +listType=map +listMapKey=name markers on the Aliases field — no CEL
+          rule needed.
 
           One CR contributes ONE OR MORE entries to LiteLLM
           router_settings.model_group_alias via spec.aliases. The operator
@@ -256,10 +257,6 @@ spec:
                 type: integer
             type: object
         type: object
-        x-kubernetes-validations:
-        - message: spec.aliases[].name must be unique within a single LiteLLMModelAlias
-          rule: self.spec.aliases.all(e, self.spec.aliases.exists_one(f, f.name ==
-            e.name))
     served: true
     storage: true
     subresources:

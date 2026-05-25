@@ -231,6 +231,12 @@ type MockServer struct {
 	// fires so existing tests that never touch guardrails do not pay
 	// any setup cost. See mock/guardrail.go for the per-route logic.
 	guardrails *guardrailState
+
+	// routerSettings is the in-memory mirror of LiteLLM router_settings
+	// driven by POST /config/update and read by GET /get/config/callbacks.
+	// Used by ModelAlias envtests to assert the operator's read-merge-write
+	// against router_settings.model_group_alias.
+	routerSettings map[string]any
 }
 
 // RecordedCall is one entry in the mock's audit log.
@@ -261,6 +267,7 @@ func NewServer(t *testing.T) *MockServer {
 		teamByAlias:       make(map[string]string),
 		perTeamMutations:  make(map[string]int64),
 		pathCalls:         make(map[string]int64),
+		routerSettings:    map[string]any{"model_group_alias": map[string]any{}},
 	}
 	m.mode.Store(ModeHappy)
 	m.srv = httptest.NewServer(http.HandlerFunc(m.handle))
@@ -1342,6 +1349,52 @@ func (m *MockServer) statefulBody(r *http.Request) []byte {
 		return m.handleGuardrailList()
 	}
 
+	// LiteLLM router_settings round-trip — used by the ModelAlias
+	// reconciler's read-merge-write against router_settings.model_group_alias.
+	if method == http.MethodGet && path == "/get/config/callbacks" {
+		m.mu.Lock()
+		body, _ := json.Marshal(map[string]any{
+			"status":          "success",
+			"router_settings": m.routerSettings,
+		})
+		m.mu.Unlock()
+		return body
+	}
+	if method == http.MethodPost && path == "/config/update" {
+		var reqBody map[string]any
+		if b, err := io.ReadAll(r.Body); err == nil {
+			_ = json.Unmarshal(b, &reqBody)
+		}
+		if rs, ok := reqBody["router_settings"].(map[string]any); ok {
+			m.mu.Lock()
+			m.routerSettings = rs
+			m.mu.Unlock()
+		}
+		return []byte(`{"status":"success"}`)
+	}
+
 	// POST/PUT mutations — return an empty success body.
 	return []byte(`{}`)
+}
+
+// ModelGroupAlias returns a snapshot of the current
+// router_settings.model_group_alias map, for use by ModelAlias envtests.
+// Returns an empty (non-nil) map if no aliases have been written.
+func (m *MockServer) ModelGroupAlias() map[string]string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := map[string]string{}
+	if m.routerSettings == nil {
+		return out
+	}
+	raw, ok := m.routerSettings["model_group_alias"].(map[string]any)
+	if !ok {
+		return out
+	}
+	for k, v := range raw {
+		if sv, ok := v.(string); ok {
+			out[k] = sv
+		}
+	}
+	return out
 }
