@@ -203,7 +203,10 @@ git log --all --format='%aN <%aE>' | sort -u | sed 's/^/  /'
 
 # --- 11. Urgent TODO markers ---
 hdr "11. urgent TODO / DO-NOT-COMMIT markers"
-TODO_HITS=$(git grep -nE '(DO[ _-]?NOT[ _-]?COMMIT|XXX[ _-]?REMOVE|TODO:?[ ]?(remove|delete|drop|secret))' 2>/dev/null || true)
+# Exclude this gate script itself (it names the literal markers in its
+# own comments) to avoid self-reflection false-positives.
+TODO_HITS=$(git grep -nE '(DO[ _-]?NOT[ _-]?COMMIT|XXX[ _-]?REMOVE|TODO:?[ ]?(remove|delete|drop|secret))' \
+              -- ':!scripts/pre-push-check.sh' 2>/dev/null || true)
 if [[ -z $TODO_HITS ]]; then
   ok "no urgent TODO markers"
 else
@@ -241,18 +244,23 @@ fi
 # --- 14. go mod tidy drift ---
 hdr "14. go mod tidy drift"
 # Snapshot go.mod / go.sum BEFORE tidy so we can restore them on drift —
-# pre-push must not mutate the working tree.
-SAVED_GOMOD=$(cat go.mod 2>/dev/null)
-SAVED_GOSUM=$(cat go.sum 2>/dev/null)
+# pre-push must not mutate the working tree. Use cp (not bash $(cat) +
+# printf '%s') because the latter strips trailing newlines, which then
+# manifests as a phantom 'No newline at end of file' diff on the next
+# run. The snapshot lives in a tempdir until the gate exits.
+SNAP_DIR=$(mktemp -d)
+trap 'rm -rf "$SNAP_DIR"' EXIT
+cp go.mod "$SNAP_DIR/go.mod" 2>/dev/null || true
+cp go.sum "$SNAP_DIR/go.sum" 2>/dev/null || true
 if ./scripts/dev.sh go mod tidy >/tmp/gomod-tidy.txt 2>&1; then
   if git diff --quiet -- go.mod go.sum 2>/dev/null; then
     ok "go.mod / go.sum are tidy"
   else
     fail "go mod tidy produced uncommitted drift in go.mod / go.sum"
     git --no-pager diff -- go.mod go.sum | head -40
-    # Restore so the pre-push check does not leave dirty state.
-    printf '%s' "$SAVED_GOMOD" > go.mod
-    printf '%s' "$SAVED_GOSUM" > go.sum
+    # Restore byte-for-byte so the pre-push check does not leave dirty state.
+    [[ -f "$SNAP_DIR/go.mod" ]] && cp "$SNAP_DIR/go.mod" go.mod
+    [[ -f "$SNAP_DIR/go.sum" ]] && cp "$SNAP_DIR/go.sum" go.sum
   fi
 else
   fail "go mod tidy exited non-zero (see /tmp/gomod-tidy.txt)"
