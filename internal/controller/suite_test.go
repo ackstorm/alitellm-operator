@@ -561,6 +561,23 @@ func setupAndRun(m *testing.M) int {
 		return 1
 	}
 
+	// MALIAS — ModelAlias reconciler. Shares connCache with the rest.
+	// All CR events coalesce onto sentinel work-key ModelAliasSingletonKey,
+	// so the envtest suite sees one HTTP write per reconcile pass regardless
+	// of how many CRs change in the window.
+	modelAliasReconciler := &ModelAliasReconciler{
+		Client:    mgr.GetClient(),
+		Scheme:    mgr.GetScheme(),
+		Cache:     connCache,
+		Recorder:  mgr.GetEventRecorderFor("modelalias-controller"),
+		Namespace: WatchNamespace,
+		Log:       logr.Discard(),
+	}
+	if err := modelAliasReconciler.SetupWithManager(mgr); err != nil {
+		fmt.Fprintf(os.Stderr, "SetupWithManager(ModelAlias): %v\n", err)
+		return 1
+	}
+
 	// Task 3: master-key Secret 'litellm-master-key' in
 	// WatchNamespace so AC-C1 envtests can observe Ready=Synced.
 	// k8sClient is the direct client (bypasses the manager cache) so

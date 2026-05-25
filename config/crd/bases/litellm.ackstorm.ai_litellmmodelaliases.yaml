@@ -1,0 +1,263 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.0
+  name: litellmmodelaliases.litellm.ackstorm.ai
+spec:
+  group: litellm.ackstorm.ai
+  names:
+    categories:
+    - litellm
+    kind: LiteLLMModelAlias
+    listKind: LiteLLMModelAliasList
+    plural: litellmmodelaliases
+    shortNames:
+    - modelalias
+    singular: litellmmodelalias
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: Ready
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Ready')].reason
+      name: Reason
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          LiteLLMModelAlias is the Schema for the litellmmodelaliases API.
+
+          Intra-CR uniqueness of spec.aliases[].name is enforced by Kubernetes via
+          the +listType=map +listMapKey=name markers on the Aliases field — no CEL
+          rule needed.
+
+          One CR contributes ONE OR MORE entries to LiteLLM
+          router_settings.model_group_alias via spec.aliases. The operator
+          aggregates ALL LiteLLMModelAlias CRs cluster-wide:
+
+           1. Sort CRs by (namespace, name) ASC.
+           2. For each CR, iterate spec.aliases in declared array order.
+           3. Last (CR, entry) per alias name wins.
+           4. GET /get/config/callbacks → splice the merged map into the existing
+              router_settings.model_group_alias → POST /config/update.
+
+          Per-entry winner/loser state is surfaced in status.aliasStatuses[].
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: "LiteLLMModelAliasSpec is a collection of model_group_alias
+              entries\ncontributed by a single CR. The operator aggregates ALL LiteLLMModelAlias\nCRs
+              cluster-wide into one merged map and writes it via\nPOST /config/update,
+              preserving unrelated router_settings keys via\nread-merge-write against
+              GET /get/config/callbacks.\n\nMALIAS-01 — declarative declaration of
+              router_settings.model_group_alias.\nMALIAS-02 — conflict resolution:
+              sort by (CR namespace, CR name) ASC,\n\n\tthen iterate spec.aliases
+              in declared array order; last write per\n\talias name wins. Losers across
+              CRs surface in\n\tstatus.aliasStatuses[].conflictsWith on the loser
+              CR.\n\nMALIAS-03 — deletion of any LiteLLMModelAlias triggers a full\n\n\trebuild-and-rewrite
+              via the finalizer\n\t`modelaliases.litellm.ackstorm.ai/finalizer`, so
+              no orphan entries\n\tsurvive in LiteLLM."
+            properties:
+              aliases:
+                description: |-
+                  Aliases is the list of (name, value) entries this CR contributes to
+                  router_settings.model_group_alias. Intra-CR duplicate names are
+                  rejected at admission via CEL (see kubebuilder:validation:XValidation
+                  on the parent type) — within one CR, every entry's name must be
+                  unique. Cross-CR duplicates are resolved at reconcile time.
+                items:
+                  description: |-
+                    ModelAliasEntry is one (name, value) pair contributing to LiteLLM's
+                    router_settings.model_group_alias map.
+
+                      - Name  — the map KEY (what clients send as "model", e.g. "ackstorm.smart").
+                      - Value — the map VALUE (an existing LiteLLM model_name or model_group,
+                        e.g. "GEMINI.gemini-3-pro-preview").
+
+                    The operator does NOT validate that Value resolves to a live LiteLLM
+                    model — LiteLLM resolves at inference time.
+                  properties:
+                    name:
+                      description: |-
+                        Name is the model_group_alias map KEY — the model name clients send to
+                        LiteLLM. Must match `^[A-Za-z0-9][A-Za-z0-9._/-]{0,252}$`. Cluster-wide
+                        uniqueness across all LiteLLMModelAlias CRs is enforced at reconcile
+                        time (alphabetical-last-wins on (CR namespace, CR name, array index));
+                        losers report Ready=False reason=AliasConflict in
+                        status.aliasStatuses[].
+                      maxLength: 253
+                      minLength: 1
+                      pattern: ^[A-Za-z0-9][A-Za-z0-9._/-]{0,252}$
+                      type: string
+                    value:
+                      description: |-
+                        Value is the resolved LiteLLM model_name or model_group the alias
+                        points to. The operator forwards it verbatim into the merged
+                        router_settings.model_group_alias map.
+                      maxLength: 253
+                      minLength: 1
+                      type: string
+                  required:
+                  - name
+                  - value
+                  type: object
+                maxItems: 128
+                minItems: 1
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
+            required:
+            - aliases
+            type: object
+          status:
+            description: LiteLLMModelAliasStatus is the observed state of a multi-entry
+              alias CR.
+            properties:
+              aliasStatuses:
+                description: |-
+                  AliasStatuses carries one entry per spec.aliases item, in the same
+                  order as spec.aliases. Surfaces per-entry winner/loser state so
+                  users can diagnose conflicts when one CR contributes many aliases.
+                items:
+                  description: |-
+                    AliasEntryStatus is the observed state of one ModelAliasEntry.
+
+                      - Applied        — true iff this entry currently holds the slot for its
+                        Name in LiteLLM router_settings.model_group_alias (i.e. won the
+                        alphabetical-last-wins tie-break across all CRs).
+                      - ConflictsWith  — when Applied=false, "<namespace>/<name>#<index>" of
+                        the CR+entry that won the slot.
+                      - AppliedValue   — when Applied=true, the Value last successfully
+                        written for this Name.
+                  properties:
+                    applied:
+                      description: |-
+                        Applied is true iff this entry is the current winner for Name in
+                        LiteLLM router_settings.model_group_alias.
+                      type: boolean
+                    appliedValue:
+                      description: |-
+                        AppliedValue is the Value the operator last successfully wrote into
+                        router_settings.model_group_alias[Name] for this entry. Empty until
+                        the first successful POST /config/update on which this entry won.
+                      type: string
+                    conflictsWith:
+                      description: |-
+                        ConflictsWith is "<namespace>/<name>#<index>" identifying the winning
+                        CR+entry when Applied=false; empty when Applied=true.
+                      type: string
+                    name:
+                      description: |-
+                        Name mirrors spec.aliases[].name for the entry this status row
+                        describes.
+                      type: string
+                  required:
+                  - applied
+                  - name
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
+              conditions:
+                description: |-
+                  Conditions carries the standard metav1.Condition list. The single
+                  type defined for LiteLLMModelAlias is `Ready`, with reasons:
+                    - Synced               — every spec.aliases entry won its slot;
+                                             all AliasStatuses[].Applied == true.
+                    - PartialAliasConflict — at least one spec.aliases entry lost the
+                                             slot to another CR; see AliasStatuses[]
+                                             for per-entry detail.
+                    - LiteLLMUnavailable   — LiteLLMConnection/default not Ready.
+                    - LiteLLMRejected      — LiteLLM returned a non-2xx response on
+                                             GET /get/config/callbacks or
+                                             POST /config/update.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              observedGeneration:
+                description: ObservedGeneration is the metadata.generation last reconciled.
+                format: int64
+                type: integer
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

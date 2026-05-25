@@ -497,6 +497,25 @@ func main() {
 		os.Exit(1)
 	}
 
+	// MALIAS — ModelAliasReconciler aggregates ALL LiteLLMModelAlias CRs
+	// cluster-wide into one router_settings.model_group_alias map and writes
+	// it via /config/update. The reconciler coalesces all CR events onto the
+	// sentinel key controller.ModelAliasSingletonKey so concurrent edits
+	// produce ONE HTTP write per debounce window. No field indexer and no
+	// safety-relist Runnable — periodic resync is handled inside Reconcile
+	// via the RequeueAfter return.
+	if err := (&controller.ModelAliasReconciler{
+		Client:    mgr.GetClient(),
+		Scheme:    mgr.GetScheme(),
+		Cache:     connCache,
+		Recorder:  mgr.GetEventRecorderFor("modelalias-controller"),
+		Namespace: watchNS,
+		Log:       ctrl.Log.WithName("controller").WithName("ModelAlias"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to set up ModelAlias reconciler")
+		os.Exit(1)
+	}
+
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

@@ -1,0 +1,27 @@
+---
+# Dogfood LiteLLMModelAlias CR — one CR contributing multiple entries to
+# LiteLLM router_settings.model_group_alias. The operator aggregates ALL
+# LiteLLMModelAlias CRs cluster-wide into the merged map and writes the
+# block via /config/update (read-merge-write — unrelated router keys are
+# preserved).
+#
+# Within one CR, every spec.aliases[].name must be unique
+# (enforced by Kubernetes via listType=map+listMapKey=name). Cross-CR
+# duplicates are resolved at reconcile time: sort by (CR namespace, CR
+# name) ASC, then by declared array index — last write wins; losers
+# report Ready=False reason=PartialAliasConflict and surface the winner
+# in status.aliasStatuses[].conflictsWith.
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMModelAlias
+metadata:
+  name: ackstorm-aliases
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  aliases:
+    - name: "ackstorm.smart"
+      value: "GEMINI.gemini-3-pro-preview"
+    - name: "ackstorm.fast"
+      value: "GEMINI.gemini-3-flash"
