@@ -1233,6 +1233,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#aliasentrystatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AliasEntryStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#budgetspec" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1453,6 +1464,50 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#litellmmodelalias" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMModelAlias
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmmodelaliaslist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMModelAliasList
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmmodelaliasspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMModelAliasSpec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmmodelaliasstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMModelAliasStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#litellmmodeldiscovery" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1611,6 +1666,17 @@
     <span class="md-ellipsis">
       
         MCPServerStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#modelaliasentry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ModelAliasEntry
       
     </span>
   </a>
@@ -2036,6 +2102,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#aliasentrystatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AliasEntryStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#budgetspec" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2256,6 +2333,50 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#litellmmodelalias" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMModelAlias
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmmodelaliaslist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMModelAliasList
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmmodelaliasspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMModelAliasSpec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmmodelaliasstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMModelAliasStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#litellmmodeldiscovery" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2414,6 +2535,17 @@
     <span class="md-ellipsis">
       
         MCPServerStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#modelaliasentry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ModelAliasEntry
       
     </span>
   </a>
@@ -2624,6 +2756,8 @@
 <li><a href="#litellmmcpserverdiscoverylist">LiteLLMMCPServerDiscoveryList</a></li>
 <li><a href="#litellmmcpserverlist">LiteLLMMCPServerList</a></li>
 <li><a href="#litellmmodel">LiteLLMModel</a></li>
+<li><a href="#litellmmodelalias">LiteLLMModelAlias</a></li>
+<li><a href="#litellmmodelaliaslist">LiteLLMModelAliasList</a></li>
 <li><a href="#litellmmodeldiscovery">LiteLLMModelDiscovery</a></li>
 <li><a href="#litellmmodeldiscoverylist">LiteLLMModelDiscoveryList</a></li>
 <li><a href="#litellmmodellist">LiteLLMModelList</a></li>
@@ -2784,6 +2918,55 @@ A2AAgent.</p>
 <tr>
 <td><code>at</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#time-v1-meta">Time</a></em></td>
 <td>At is the timestamp of the last SUCCESSFUL render (NOT every<br />reconcile attempt — transient failures do not update this field).</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="aliasentrystatus">AliasEntryStatus<a class="headerlink" href="#aliasentrystatus" title="Permanent link">&para;</a></h4>
+<p>AliasEntryStatus is the observed state of one ModelAliasEntry.</p>
+<ul>
+<li>Applied        — true iff this entry currently holds the slot for its
+    Name in LiteLLM router_settings.model_group_alias (i.e. won the
+    alphabetical-last-wins tie-break across all CRs).</li>
+<li>ConflictsWith  — when Applied=false, "<namespace>/<name>#<index>" of
+    the CR+entry that won the slot.</li>
+<li>AppliedValue   — when Applied=true, the Value last successfully
+    written for this Name.</li>
+</ul>
+<p><em>Appears in:</em>
+- <a href="#litellmmodelaliasstatus">LiteLLMModelAliasStatus</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code> <em>string</em></td>
+<td>Name mirrors spec.aliases[].name for the entry this status row<br />describes.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>applied</code> <em>boolean</em></td>
+<td>Applied is true iff this entry is the current winner for Name in<br />LiteLLM router_settings.model_group_alias.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>appliedValue</code> <em>string</em></td>
+<td>AppliedValue is the Value the operator last successfully wrote into<br />router_settings.model_group_alias[Name] for this entry. Empty until<br />the first successful POST /config/update on which this entry won.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>conflictsWith</code> <em>string</em></td>
+<td>ConflictsWith is "<namespace>/<name>#<index>" identifying the winning<br />CR+entry when Applied=false; empty when Applied=true.</td>
 <td></td>
 <td></td>
 </tr>
@@ -3859,6 +4042,199 @@ finalizer name is "models.litellm.ackstorm.ai/finalizer".</p>
 </tr>
 </tbody>
 </table>
+<h4 id="litellmmodelalias">LiteLLMModelAlias<a class="headerlink" href="#litellmmodelalias" title="Permanent link">&para;</a></h4>
+<p>LiteLLMModelAlias is the Schema for the litellmmodelaliases API.</p>
+<p>Intra-CR uniqueness of spec.aliases[].name is enforced by Kubernetes via
+the +listType=map +listMapKey=name markers on the Aliases field — no CEL
+rule needed.</p>
+<p>One CR contributes ONE OR MORE entries to LiteLLM
+router_settings.model_group_alias via spec.aliases. The operator
+aggregates ALL LiteLLMModelAlias CRs cluster-wide:</p>
+<ol>
+<li>Sort CRs by (namespace, name) ASC.</li>
+<li>For each CR, iterate spec.aliases in declared array order.</li>
+<li>Last (CR, entry) per alias name wins.</li>
+<li>GET /get/config/callbacks → splice the merged map into the existing
+    router_settings.model_group_alias → POST /config/update.</li>
+</ol>
+<p>Per-entry winner/loser state is surfaced in status.aliasStatuses[].</p>
+<p><em>Appears in:</em>
+- <a href="#litellmmodelaliaslist">LiteLLMModelAliasList</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td><code>litellm.ackstorm.ai/v1alpha1</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td><code>LiteLLMModelAlias</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td>Kind is a string value representing the REST resource this object represents.<br />Servers may infer this from the endpoint the client submits requests to.<br />Cannot be updated.<br />In CamelCase.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td>APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>metadata</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta">ObjectMeta</a></em></td>
+<td>Refer to Kubernetes API documentation for fields of <code>metadata</code>.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>spec</code> <em><a href="#litellmmodelaliasspec">LiteLLMModelAliasSpec</a></em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>status</code> <em><a href="#litellmmodelaliasstatus">LiteLLMModelAliasStatus</a></em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="litellmmodelaliaslist">LiteLLMModelAliasList<a class="headerlink" href="#litellmmodelaliaslist" title="Permanent link">&para;</a></h4>
+<p>LiteLLMModelAliasList contains a list of LiteLLMModelAlias.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td><code>litellm.ackstorm.ai/v1alpha1</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td><code>LiteLLMModelAliasList</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td>Kind is a string value representing the REST resource this object represents.<br />Servers may infer this from the endpoint the client submits requests to.<br />Cannot be updated.<br />In CamelCase.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td>APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>metadata</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#listmeta-v1-meta">ListMeta</a></em></td>
+<td>Refer to Kubernetes API documentation for fields of <code>metadata</code>.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>items</code> <em><a href="#litellmmodelalias">LiteLLMModelAlias</a> array</em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="litellmmodelaliasspec">LiteLLMModelAliasSpec<a class="headerlink" href="#litellmmodelaliasspec" title="Permanent link">&para;</a></h4>
+<p>LiteLLMModelAliasSpec is a collection of model_group_alias entries
+contributed by a single CR. The operator aggregates ALL LiteLLMModelAlias
+CRs cluster-wide into one merged map and writes it via
+POST /config/update, preserving unrelated router_settings keys via
+read-merge-write against GET /get/config/callbacks.</p>
+<p>MALIAS-01 — declarative declaration of router_settings.model_group_alias.
+MALIAS-02 — conflict resolution: sort by (CR namespace, CR name) ASC,</p>
+<div class="highlight"><pre><span></span><code>then iterate spec.aliases in declared array order; last write per
+alias name wins. Losers across CRs surface in
+status.aliasStatuses[].conflictsWith on the loser CR.
+</code></pre></div>
+<p>MALIAS-03 — deletion of any LiteLLMModelAlias triggers a full</p>
+<div class="highlight"><pre><span></span><code>rebuild-and-rewrite via the finalizer
+`modelaliases.litellm.ackstorm.ai/finalizer`, so no orphan entries
+survive in LiteLLM.
+</code></pre></div>
+<p><em>Appears in:</em>
+- <a href="#litellmmodelalias">LiteLLMModelAlias</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>aliases</code> <em><a href="#modelaliasentry">ModelAliasEntry</a> array</em></td>
+<td>Aliases is the list of (name, value) entries this CR contributes to<br />router_settings.model_group_alias. Intra-CR duplicate names are<br />rejected at admission via CEL (see kubebuilder:validation:XValidation<br />on the parent type) — within one CR, every entry's name must be<br />unique. Cross-CR duplicates are resolved at reconcile time.</td>
+<td></td>
+<td>MaxItems: 128 <br />MinItems: 1 <br />Required: {} <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="litellmmodelaliasstatus">LiteLLMModelAliasStatus<a class="headerlink" href="#litellmmodelaliasstatus" title="Permanent link">&para;</a></h4>
+<p>LiteLLMModelAliasStatus is the observed state of a multi-entry alias CR.</p>
+<p><em>Appears in:</em>
+- <a href="#litellmmodelalias">LiteLLMModelAlias</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>observedGeneration</code> <em>integer</em></td>
+<td>ObservedGeneration is the metadata.generation last reconciled.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>conditions</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#condition-v1-meta">Condition</a> array</em></td>
+<td>Conditions carries the standard metav1.Condition list. The single<br />type defined for LiteLLMModelAlias is <code>Ready</code>, with reasons:<br />  - Synced               — every spec.aliases entry won its slot;<br />                           all AliasStatuses[].Applied == true.<br />  - PartialAliasConflict — at least one spec.aliases entry lost the<br />                           slot to another CR; see AliasStatuses[]<br />                           for per-entry detail.<br />  - LiteLLMUnavailable   — LiteLLMConnection/default not Ready.<br />  - LiteLLMRejected      — LiteLLM returned a non-2xx response on<br />                           GET /get/config/callbacks or<br />                           POST /config/update.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>aliasStatuses</code> <em><a href="#aliasentrystatus">AliasEntryStatus</a> array</em></td>
+<td>AliasStatuses carries one entry per spec.aliases item, in the same<br />order as spec.aliases. Surfaces per-entry winner/loser state so<br />users can diagnose conflicts when one CR contributes many aliases.</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
 <h4 id="litellmmodeldiscovery">LiteLLMModelDiscovery<a class="headerlink" href="#litellmmodeldiscovery" title="Permanent link">&para;</a></h4>
 <p>LiteLLMModelDiscovery is the Schema for the litellmmodeldiscoveries API — the
 first Pipeline B CRD (spec §3.3 / §7.1, _FINALv3 two-pipeline model).
@@ -4673,6 +5049,42 @@ Phase 5 D-03 (nested <code>lastRendered</code> substruct).</p>
 <td>LastRendered is the operator-side drift source of truth per Phase 3<br />D-01 / D-07 (extended for MCPServer per Phase 5 D-03). It records<br />the post-substitution rendered state that was last successfully<br />applied to LiteLLM. The reconciler compares the current desired<br />state hash against <code>lastRendered.hash</code> to detect drift without<br />querying the LiteLLM API on every reconcile.</td>
 <td></td>
 <td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="modelaliasentry">ModelAliasEntry<a class="headerlink" href="#modelaliasentry" title="Permanent link">&para;</a></h4>
+<p>ModelAliasEntry is one (name, value) pair contributing to LiteLLM's
+router_settings.model_group_alias map.</p>
+<ul>
+<li>Name  — the map KEY (what clients send as "model", e.g. "ackstorm.smart").</li>
+<li>Value — the map VALUE (an existing LiteLLM model_name or model_group,
+    e.g. "GEMINI.gemini-3-pro-preview").</li>
+</ul>
+<p>The operator does NOT validate that Value resolves to a live LiteLLM
+model — LiteLLM resolves at inference time.</p>
+<p><em>Appears in:</em>
+- <a href="#litellmmodelaliasspec">LiteLLMModelAliasSpec</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code> <em>string</em></td>
+<td>Name is the model_group_alias map KEY — the model name clients send to<br />LiteLLM. Must match <code>^[A-Za-z0-9][A-Za-z0-9._/-]\{0,252\}$</code>. Cluster-wide<br />uniqueness across all LiteLLMModelAlias CRs is enforced at reconcile<br />time (alphabetical-last-wins on (CR namespace, CR name, array index));<br />losers report Ready=False reason=AliasConflict in<br />status.aliasStatuses[].</td>
+<td></td>
+<td>MaxLength: 253 <br />MinLength: 1 <br />Pattern: <code>^[A-Za-z0-9][A-Za-z0-9._/-]\{0,252\}$</code> <br />Required: {} <br /></td>
+</tr>
+<tr>
+<td><code>value</code> <em>string</em></td>
+<td>Value is the resolved LiteLLM model_name or model_group the alias<br />points to. The operator forwards it verbatim into the merged<br />router_settings.model_group_alias map.</td>
+<td></td>
+<td>MaxLength: 253 <br />MinLength: 1 <br />Required: {} <br /></td>
 </tr>
 </tbody>
 </table>
