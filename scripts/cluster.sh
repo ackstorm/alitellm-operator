@@ -166,7 +166,13 @@ apply_fixtures() {
   kubectl -n default wait --for=condition=Ready \
     litellmconnection/default --timeout="${FIXTURE_WAIT_TIMEOUT:-180s}"
 }
-print_status() {
+print_status() (
+  # Subshell scope so `set +e` does not leak to callers. All probes below are
+  # informational — never fail the status command. `kubectl get ns a b c`
+  # returns non-zero if ANY listed namespace is absent (common in fresh
+  # clusters or partial hydration); under `set -e` that aborts print_status
+  # mid-execution and the helm/CR/condition sections never render.
+  set +e
   echo "== kind clusters =="
   kind get clusters
   echo
@@ -188,7 +194,7 @@ print_status() {
   kubectl -n default get litellmconnections,models,modeldiscoveries,mcpservers,mcpserverdiscoveries,a2aagents,teams \
     -o jsonpath='{range .items[*]}{.kind}/{.metadata.name}: {.status.conditions[?(@.type=="Ready")].status}={.status.conditions[?(@.type=="Ready")].reason}{"\n"}{end}' \
     2>/dev/null
-}
+)
 
 case "${1:-}" in
   up|hydrate|down|keep|status) "cmd_${1}" ;;
