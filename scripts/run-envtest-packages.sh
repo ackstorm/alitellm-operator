@@ -174,12 +174,17 @@ finish_one() {
     else
         failed=1
         printf 'FAIL %s (%ss)\n' "${pkg}" "${elapsed}" >&2
-        sed -n '1,240p' "${log}" >&2
-        local lines
-        lines="$(wc -l < "${log}")"
-        if [[ "${lines}" -gt 240 ]]; then
-            printf '... log truncated; last 160 lines follow ...\n' >&2
-            tail -n 160 "${log}" >&2
+        # Print the full log on failure. Prior head-240 + tail-160 truncation
+        # routinely hid the actual `--- FAIL:` marker in mid-run output,
+        # forcing local reproduction to identify which test failed. CI log
+        # surfaces tolerate the extra volume; a failing run is rare.
+        cat "${log}" >&2
+        # Echo a FAIL summary at the end so the failing test name is easy to
+        # spot in long logs.
+        local fail_summary
+        fail_summary="$(grep -E '^--- FAIL:' "${log}" || true)"
+        if [[ -n "${fail_summary}" ]]; then
+            printf '\n=== %s failed tests ===\n%s\n' "${pkg}" "${fail_summary}" >&2
         fi
     fi
 
