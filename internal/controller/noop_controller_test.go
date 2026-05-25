@@ -94,7 +94,7 @@ type NoOpReconciler struct {
 	Scheme *runtime.Scheme
 
 	// LiteLLM is the per-instance REST client. The probe
-	// path is /models per the spike pivot.
+	// path is POST /key/health.
 	LiteLLM *litellm.Client
 
 	// Cache is the Phase-1 stub for the §7.7 connection cache. Phase 2
@@ -120,7 +120,7 @@ type NoOpReconciler struct {
 
 // Reconcile is the no-op loop. Steps:
 // 1. Increment the call counter (test observability).
-// 2. Probe LiteLLM (GET /models — keyinfo.go).
+// 2. Probe LiteLLM (POST /key/health — keyinfo.go).
 // 3. If 401: invalidate cache, return nil (REL-06 anti-storm).
 // 4. If transient error: return err for controller-runtime's exponential
 // backoff (REL-02 default rate limiter; NO RequeueAfter).
@@ -129,7 +129,7 @@ func (r *NoOpReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	r.ReconcileCalls.Add(1)
 	logger := log.FromContext(ctx).WithValues("noop-reconciler", req.NamespacedName)
 
-	err := r.LiteLLM.ProbeConnection(ctx)
+	_, err := r.LiteLLM.ProbeConnection(ctx)
 	if err != nil {
 		// REL-06 §7.7 fast-path: if the error is the typed *Auth401Error,
 		// take the anti-storm exit — invalidate the cache stub, log at

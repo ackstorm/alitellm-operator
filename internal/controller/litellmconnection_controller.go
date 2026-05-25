@@ -94,12 +94,14 @@ var connectionReasonAll = []string{
 // stale-for-this-generation.
 // - Step 4: resolve the masterKeySecretRef Secret (missing → SecretNotFound).
 // - Step 5: build fresh *litellm.Client (D-03 — never pooled).
-// - Step 6: probe via Client.ProbeConnection (GET /models per D-13);
+// - Step 6: probe via Client.ProbeConnection (POST /key/health —
+// auth-gated, also returns the proxy's logging-callback health);
 // classify outcome:
 // - 401 (*Auth401Error) → Ready=False, BadMasterKey, return nil (anti-storm).
 // - transient (non-401) → Ready=False, Unreachable, return err
 // (controller-runtime's ItemExponentialFailureRateLimiter retries).
-// - success → Ready=True, Synced, return RequeueAfter 5m
+// - success → Ready=True, Synced, AND a secondary LoggingHealthy
+// condition reflecting probe.LoggingStatus; return RequeueAfter 5m
 // (D-05 — the ONE permitted RequeueAfter in production code).
 //
 // The cache (connection.ConnectionCache — interface, not concrete type
@@ -326,7 +328,7 @@ func (r *LiteLLMConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	liteLLMClient := litellm.NewClient(conn.Spec.Endpoint, string(masterKeyValue), r.Log.WithName("probe"), clientOpts...)
 
 	// ─── Step 6: Probe + classify ──────────────────────────────────
-	probeErr := liteLLMClient.ProbeConnection(ctx)
+	probeResult, probeErr := liteLLMClient.ProbeConnection(ctx)
 
 	// 401 — BadMasterKey (permanent classification per D-06).
 	var auth401 *litellm.Auth401Error
@@ -337,7 +339,15 @@ func (r *LiteLLMConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		// field name in this file.
 		msg := "401 from " + auth401.Path
 		// WR-03: capture-and-log so apierrors.IsConflict storms are observable.
-		if werr := r.writeStatus(ctx, &conn, metav1.ConditionFalse, "BadMasterKey", msg); werr != nil {
+		// Combined Ready+LoggingHealthy write in one Patch to avoid the
+		// double-watch-event self-loop the Connection For-watch would
+		// otherwise observe (FIX10 review note about Connection's
+		// generation-blind predicate).
+		if werr := r.writeReadyAndLoggingHealthy(
+			ctx, &conn,
+			metav1.ConditionFalse, "BadMasterKey", msg,
+			metav1.ConditionUnknown, "ProbeError", "probe failed before logging-callback health could be read",
+		); werr != nil {
 			logStatusUpdateErr(logger, werr, "reason", "BadMasterKey")
 		}
 		r.Cache.Rebuild(connection.ConnectionSnapshot{
@@ -363,7 +373,11 @@ func (r *LiteLLMConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		// to include in the message.
 		msg := "probe failed: " + probeErr.Error()
 		// WR-03: capture-and-log so apierrors.IsConflict storms are observable.
-		if werr := r.writeStatus(ctx, &conn, metav1.ConditionFalse, "Unreachable", msg); werr != nil {
+		if werr := r.writeReadyAndLoggingHealthy(
+			ctx, &conn,
+			metav1.ConditionFalse, "Unreachable", msg,
+			metav1.ConditionUnknown, "ProbeError", "probe failed before logging-callback health could be read",
+		); werr != nil {
 			logStatusUpdateErr(logger, werr, "reason", "Unreachable")
 		}
 		r.Cache.Rebuild(connection.ConnectionSnapshot{
@@ -380,8 +394,32 @@ func (r *LiteLLMConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	// ─── Synced — success path ─────────────────────────────────────
+	// Compute LoggingHealthy from probeResult so the combined writer
+	// applies both conditions in a single Patch (single watch event,
+	// minimal self-loop chatter).
+	var (
+		lhStatus  metav1.ConditionStatus
+		lhReason  string
+		lhMessage string
+	)
+	switch probeResult.LoggingStatus {
+	case "healthy":
+		lhStatus, lhReason = metav1.ConditionTrue, "Healthy"
+	case "unhealthy":
+		lhStatus, lhReason = metav1.ConditionFalse, "Unhealthy"
+	default:
+		lhStatus, lhReason = metav1.ConditionUnknown, "Unknown"
+	}
+	lhMessage = probeResult.LoggingDetails
+	if lhMessage == "" {
+		lhMessage = "logging callbacks: " + probeResult.LoggingStatus
+	}
 	// WR-03: capture-and-log so apierrors.IsConflict storms are observable.
-	if werr := r.writeStatus(ctx, &conn, metav1.ConditionTrue, reasonSynced, "probe ok"); werr != nil {
+	if werr := r.writeReadyAndLoggingHealthy(
+		ctx, &conn,
+		metav1.ConditionTrue, reasonSynced, "probe ok",
+		lhStatus, lhReason, lhMessage,
+	); werr != nil {
 		logStatusUpdateErr(logger, werr, "reason", reasonSynced)
 	}
 	// FIX2.txt L-12 (2026-05-22): GitOps tools (Flux, kustomize)
@@ -472,6 +510,79 @@ func (r *LiteLLMConnectionReconciler) writeStatus(
 	// Patch (MergeFrom) instead of Update: status subresource merge patches
 	// do not embed resourceVersion so concurrent reconciles do not collide
 	// with HTTP 409. Conflict logs become genuinely rare instead of routine.
+	return r.Status().Patch(ctx, conn, client.MergeFrom(orig))
+}
+
+// writeReadyAndLoggingHealthy applies BOTH the Ready and LoggingHealthy
+// conditions in a single status Patch. Used by the three probe-outcome
+// paths (BadMasterKey, Unreachable, Synced) so only one Watch event
+// fires per probe — avoiding the self-loop the Connection For-watch
+// would otherwise observe (it lacks GenerationChangedPredicate per the
+// deferred FIX10 review note).
+//
+// Skip-when-equal: if both conditions already match the requested
+// status/reason/message AND ObservedGeneration aligns with Generation,
+// the function returns nil without patching. Conservative — any single
+// difference triggers the full patch.
+//
+// §10 one-hot Ready gauge updates on every Ready-change path (mirrors
+// writeStatus semantics). No gauge for LoggingHealthy yet.
+//
+// §9.1: caller responsibility — never feed a master key into either
+// message field.
+func (r *LiteLLMConnectionReconciler) writeReadyAndLoggingHealthy(
+	ctx context.Context,
+	conn *litellmv1alpha1.LiteLLMConnection,
+	readyStatus metav1.ConditionStatus,
+	readyReason, readyMessage string,
+	lhStatus metav1.ConditionStatus,
+	lhReason, lhMessage string,
+) error {
+	// Skip-when-equal: BOTH conditions must already match for skip.
+	readyEqual := statusReadyUnchanged(conn.Status.Conditions, conn.Status.ObservedGeneration, conn.Generation, readyStatus, readyReason, readyMessage)
+	lhEqual := false
+	for _, c := range conn.Status.Conditions {
+		if c.Type != "LoggingHealthy" {
+			continue
+		}
+		if c.Status == lhStatus &&
+			c.Reason == lhReason &&
+			c.Message == lhMessage &&
+			c.ObservedGeneration == conn.Generation {
+			lhEqual = true
+		}
+		break
+	}
+	if readyEqual && lhEqual {
+		return nil
+	}
+
+	// §10: one-hot ConnectionReady gauge. Clear all reasons to 0,
+	// then set the active Ready reason to 1.
+	for _, rk := range connectionReasonAll {
+		metrics.ConnectionReady.WithLabelValues(rk).Set(0)
+	}
+	metrics.ConnectionReady.WithLabelValues(readyReason).Set(1)
+
+	orig := conn.DeepCopy()
+	now := metav1.Now()
+	apimeta.SetStatusCondition(&conn.Status.Conditions, metav1.Condition{
+		Type:               "Ready",
+		Status:             readyStatus,
+		Reason:             readyReason,
+		Message:            readyMessage,
+		ObservedGeneration: conn.Generation,
+		LastTransitionTime: now,
+	})
+	apimeta.SetStatusCondition(&conn.Status.Conditions, metav1.Condition{
+		Type:               "LoggingHealthy",
+		Status:             lhStatus,
+		Reason:             lhReason,
+		Message:            lhMessage,
+		ObservedGeneration: conn.Generation,
+		LastTransitionTime: now,
+	})
+	conn.Status.ObservedGeneration = conn.Generation
 	return r.Status().Patch(ctx, conn, client.MergeFrom(orig))
 }
 

@@ -25,8 +25,9 @@ import (
 // 2. Fire exactly ONE event on cache.Channel (D-10 storm gate).
 // 3. Cause the LiteLLMConnection reconciler's WatchesRawSource handler
 // to enqueue a reconcile of `<watchNs>/default` — observed via
-// mockServer.Reads incrementing (the reconciler probes via GET
-// /models) and cache.Snapshot.Ready transitioning back to true.
+// PathCallCount("/key/health") incrementing (the reconciler probes
+// via POST /key/health) and cache.Snapshot.Ready transitioning back
+// to true.
 //
 // Procedure:
 //
@@ -69,7 +70,7 @@ func TestConnectionFastPathEnqueue_AC_C3c(t *testing.T) {
 
 	// Snapshot reads AFTER initial Synced so the post-Invalidate delta
 	// reflects only the fast-path-triggered probe.
-	baselineReads := mockServer.Reads()
+	baselineReads := mockServer.PathCallCount("/key/health")
 
 	// Trigger the 401 fast-path.
 	connCache.InvalidateOn401()
@@ -105,9 +106,9 @@ func TestConnectionFastPathEnqueue_AC_C3c(t *testing.T) {
 	}
 
 	// The reconciler must have probed at least once.
-	postReads := mockServer.Reads()
+	postReads := mockServer.PathCallCount("/key/health")
 	if postReads <= baselineReads {
-		t.Errorf("AC-C3c FAIL: mockServer.Reads() did not increment after InvalidateOn401() (before=%d, after=%d) — the channel-driven enqueue did not reach the reconciler",
+		t.Errorf("AC-C3c FAIL: PathCallCount(/key/health) did not increment after InvalidateOn401() (before=%d, after=%d) — the channel-driven enqueue did not reach the reconciler",
 			baselineReads, postReads)
 	}
 	t.Logf("AC-C3c: reads before=%d, after=%d (delta=%d); cache returned to Synced in <5s", baselineReads, postReads, postReads-baselineReads)
@@ -117,7 +118,7 @@ func TestConnectionFastPathEnqueue_AC_C3c(t *testing.T) {
 //
 // Without the gate, calling InvalidateOn401 five times in a tight loop
 // would fire five channel events and enqueue five reconciles, producing
-// at least five probe (GET /models) calls on the mock. With the gate,
+// at least five probe (POST /key/health) calls on the mock. With the gate,
 // the five rapid calls collapse to AT MOST ONE channel event AND ONE
 // enqueued reconcile per invalidation cycle (the gate resets on the
 // next Rebuild).
@@ -161,7 +162,7 @@ func TestConnectionFastPathStormGate_D_10(t *testing.T) {
 	if snap.Reason != reasonSynced {
 		t.Fatalf("initial Synced never reached: snap=%+v", snap)
 	}
-	baselineReads := mockServer.Reads()
+	baselineReads := mockServer.PathCallCount("/key/health")
 
 	// Storm: 5 InvalidateOn401 calls back-to-back, no sleeps.
 	for i := 0; i < 5; i++ {
@@ -185,7 +186,7 @@ func TestConnectionFastPathStormGate_D_10(t *testing.T) {
 	// D-10 strict bound: the read delta must be <= 3. Without the gate,
 	// 5 channel events ⇒ 5 enqueued reconciles ⇒ delta would be 5+
 	// (the asymmetry is the regression catch).
-	postReads := mockServer.Reads()
+	postReads := mockServer.PathCallCount("/key/health")
 	delta := postReads - baselineReads
 	if delta > 3 {
 		t.Errorf("D-10 FAIL: 5 successive InvalidateOn401() produced %d reads (delta from baseline %d); storm gate should bound this to <= 3",
@@ -199,7 +200,7 @@ func TestConnectionFastPathStormGate_D_10(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	// Second invalidation — gate must be re-armed.
-	preSecondReads := mockServer.Reads()
+	preSecondReads := mockServer.PathCallCount("/key/health")
 	connCache.InvalidateOn401()
 
 	deadline = time.Now().Add(5 * time.Second)
@@ -214,7 +215,7 @@ func TestConnectionFastPathStormGate_D_10(t *testing.T) {
 	if !secondSnap.Ready || secondSnap.Reason != reasonSynced {
 		t.Fatalf("D-10 reset FAIL: cache did not return to Ready=Synced within 5s of post-reset InvalidateOn401(); the storm gate was not re-armed by the previous Rebuild")
 	}
-	postSecondReads := mockServer.Reads()
+	postSecondReads := mockServer.PathCallCount("/key/health")
 	if postSecondReads <= preSecondReads {
 		t.Errorf("D-10 reset FAIL: post-reset InvalidateOn401() did not trigger a probe (reads before=%d, after=%d)",
 			preSecondReads, postSecondReads)

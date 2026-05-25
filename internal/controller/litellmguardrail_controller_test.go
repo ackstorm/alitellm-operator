@@ -363,30 +363,44 @@ func TestGuardRail_DriftCorrection_OnSpecEdit(t *testing.T) {
 		t.Fatalf("Update CR (drift): %v", err)
 	}
 
-	// Wait for the PUT — mutation counter bumps to 2; same guardrailID.
-	deadline := time.Now().Add(5 * time.Second)
+	// Wait for the PUT — mutation counter bumps to 2 AND LastBody
+	// reflects the new threshold. Polling both in the same loop avoids
+	// the CI flake where the safety-relist runnable's accelerated cadence
+	// (100ms in suite_test.go) interleaves a re-CREATE with the
+	// spec-edit-driven PUT: the mutation count crosses 2 on the
+	// re-CREATE leg while LastGuardrailBody still points at the original
+	// CREATE's pool[0] entry (threshold=0.5). The original single-shot
+	// assert flaked on the slower CI runner; the polling form lets the
+	// PUT land observably.
+	deadline := time.Now().Add(10 * time.Second)
+	var (
+		bodyConverged bool
+		lastBody      map[string]any
+	)
 	for time.Now().Before(deadline) {
 		if mockServer.MutationsByGuardrailName(name) >= 2 {
-			break
+			lastBody = mockServer.LastGuardrailBody(name)
+			if lastBody != nil {
+				if p, ok := lastBody["litellm_params"].(map[string]any); ok {
+					if p["threshold"] == float64(0.9) {
+						bodyConverged = true
+						break
+					}
+				}
+			}
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
 	if got := mockServer.MutationsByGuardrailName(name); got < 2 {
 		t.Fatalf("post-drift mutations: got %d want >= 2 (PUT did not fire)", got)
 	}
+	if !bodyConverged {
+		t.Errorf("threshold not propagated within 10s: last body=%v want threshold=0.9", lastBody)
+	}
 	// guardrailID preserved across the PUT.
 	if mockServer.GetGuardrailID(name) != id {
 		t.Errorf("guardrailID changed across drift PUT: %q -> %q",
 			id, mockServer.GetGuardrailID(name))
-	}
-	// Wire body reflects the new threshold value.
-	body := mockServer.LastGuardrailBody(name)
-	if body == nil {
-		t.Fatal("LastGuardrailBody nil after PUT")
-	}
-	params := body["litellm_params"].(map[string]any)
-	if params["threshold"] != float64(0.9) {
-		t.Errorf("threshold not propagated: got %v want 0.9", params["threshold"])
 	}
 }
 
@@ -718,8 +732,13 @@ func TestGuardRail_SafetyRelist_CreateMissing(t *testing.T) {
 		t.Fatalf("clear GuardrailID via Status().Update: %v", err)
 	}
 
-	// Wait up to 5s for the create_missing counter to bump.
-	deadline := time.Now().Add(5 * time.Second)
+	// Wait up to 15s for the create_missing counter to bump. Original
+	// budget was 5s but CI runners under load (envtest + the Connection
+	// reconciler's 5min RequeueAfter cycle + the 100ms safety-relist
+	// runnable competing for the workqueue) regularly slip past 5s.
+	// 15s is comfortably above observed CI worst-case (~7s) and still
+	// fails fast on a genuine regression where the counter never fires.
+	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
 		after := testutil.ToFloat64(metrics.DriftCorrectedTotal.WithLabelValues("guardrail", "create_missing"))
 		if after-before >= 1 {
@@ -729,7 +748,7 @@ func TestGuardRail_SafetyRelist_CreateMissing(t *testing.T) {
 	}
 	after := testutil.ToFloat64(metrics.DriftCorrectedTotal.WithLabelValues("guardrail", "create_missing"))
 	if delta := after - before; delta < 1 {
-		t.Fatalf("create_missing NOT incremented after out-of-band DELETE + safety re-list; delta=%.0f", delta)
+		t.Fatalf("create_missing NOT incremented after out-of-band DELETE + safety re-list within 15s; delta=%.0f", delta)
 	}
 
 	// Mock has a fresh entry under the same name; ID differs from the

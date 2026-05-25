@@ -44,10 +44,10 @@ func TestWithRateLimit_GatesOutboundRate(t *testing.T) {
 
 	ctx := context.Background()
 	start := time.Now()
-	if err := c.ProbeConnection(ctx); err != nil {
+	if _, err := c.ProbeConnection(ctx); err != nil {
 		t.Fatalf("ProbeConnection #1: %v", err)
 	}
-	if err := c.ProbeConnection(ctx); err != nil {
+	if _, err := c.ProbeConnection(ctx); err != nil {
 		t.Fatalf("ProbeConnection #2: %v", err)
 	}
 	elapsed := time.Since(start)
@@ -79,7 +79,7 @@ func TestWithRateLimit_DisabledOnZeroRPS(t *testing.T) {
 	ctx := context.Background()
 	start := time.Now()
 	for i := 0; i < 5; i++ {
-		if err := c.ProbeConnection(ctx); err != nil {
+		if _, err := c.ProbeConnection(ctx); err != nil {
 			t.Fatalf("ProbeConnection #%d: %v", i, err)
 		}
 	}
@@ -107,13 +107,13 @@ func TestWithRateLimit_ContextCancelShortCircuits(t *testing.T) {
 	c := NewClient(srv.URL, testMasterKey, logr.Discard(), WithRateLimit(0.1, 1))
 
 	ctx := context.Background()
-	if err := c.ProbeConnection(ctx); err != nil {
+	if _, err := c.ProbeConnection(ctx); err != nil {
 		t.Fatalf("ProbeConnection #1: %v", err)
 	}
 
 	ctx2, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
-	err := c.ProbeConnection(ctx2)
+	_, err := c.ProbeConnection(ctx2)
 	if err == nil {
 		t.Fatalf("ProbeConnection #2: want error from ctx cancel, got nil")
 	}

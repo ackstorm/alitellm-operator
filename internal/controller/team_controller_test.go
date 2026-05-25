@@ -2449,8 +2449,9 @@ func TestTeamReconciler_AC_T3_DeleteReturns404IsSuccess(t *testing.T) {
 //
 // We deliberately do NOT assert on connCache.Snapshot Ready
 // transitioning to false. The LiteLLMConnectionReconciler probes
-// continuously via the `/models` route (which remains happy under
-// Mode401DeleteTeam), so any 401-driven cache invalidation is
+// continuously via POST /key/health (which remains happy under
+// Mode401DeleteTeam — only POST /team/delete returns 401), so any
+// 401-driven cache invalidation is
 // immediately re-Synced by the next probe — the window is too narrow
 // to observe deterministically without instrumenting the cache itself
 // with an invalidation counter. The structural anti-storm guarantee is

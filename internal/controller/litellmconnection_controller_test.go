@@ -225,17 +225,18 @@ func TestConnectionProbeLoop_BadMasterKey(t *testing.T) {
 	}
 
 	// REL-06 anti-storm: 401 returns nil (NOT err), so controller-runtime
-	// must NOT enqueue exponential-backoff retries. Mutations should stay
-	// at 0 across a 2.5s window — the mock counts /models GET as a Read,
-	// not a Mutation, so a runaway reconcile would still produce 0
-	// Mutations. We check Mutations as a defense-in-depth — any non-zero
-	// would indicate the reconciler is calling POST/PUT/DELETE paths it
-	// shouldn't.
-	mutationsBefore := mockServer.Mutations()
+	// must NOT enqueue exponential-backoff retries. The probe is POST
+	// /key/health (counted as a Mutation by the mock); after BadMasterKey
+	// the reconciler returns nil with no RequeueAfter, so the
+	// /key/health-mutation delta in a 2.5s window should be 0. We
+	// specifically check the probe path here instead of all Mutations
+	// because /key/health is the only mutation the connection reconciler
+	// emits — non-zero delta indicates a runaway reconcile.
+	probeBefore := mockServer.PathCallCount("/key/health")
 	time.Sleep(2500 * time.Millisecond)
-	deltaMutations := mockServer.Mutations() - mutationsBefore
-	if deltaMutations != 0 {
-		t.Errorf("REL-06 anti-storm FAIL: %d mutations during 2.5s window after BadMasterKey (expected 0)", deltaMutations)
+	deltaProbes := mockServer.PathCallCount("/key/health") - probeBefore
+	if deltaProbes != 0 {
+		t.Errorf("REL-06 anti-storm FAIL: %d /key/health probes during 2.5s window after BadMasterKey (expected 0)", deltaProbes)
 	}
 
 	// Re-Get and assert condition.

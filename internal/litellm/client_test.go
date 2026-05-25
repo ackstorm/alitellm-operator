@@ -37,7 +37,7 @@ func Test401IsTypedError(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(t, srv.URL)
-	err := c.ProbeConnection(context.Background())
+	_, err := c.ProbeConnection(context.Background())
 	if err == nil {
 		t.Fatalf("expected error on 401, got nil")
 	}
@@ -46,15 +46,17 @@ func Test401IsTypedError(t *testing.T) {
 	if !errors.As(err, &auth401) {
 		t.Fatalf("expected errors.As to resolve *Auth401Error; got %T: %v", err, err)
 	}
-	if auth401.Path != "/models" {
-		t.Errorf("Auth401Error.Path: want /models, got %q", auth401.Path)
+	if auth401.Path != "/key/health" {
+		t.Errorf("Auth401Error.Path: want /key/health, got %q", auth401.Path)
 	}
 }
 
-// TestProbeConnectionPathIsModels — the probe path is /models (NOT the
-// legacy spec-§6.1 key-info path), per the spike pivot recorded in
-// 01-01-SUMMARY.md. Mock captures r.URL.Path AND the auth header.
-func TestProbeConnectionPathIsModels(t *testing.T) {
+// TestProbeConnectionPathIsKeyHealth — the probe path is POST /key/health
+// (swapped from GET /models). The endpoint is auth-gated (so 401 detection
+// still works) AND returns the proxy's view of master-key + logging
+// callback health, which the connection reconciler surfaces as a
+// secondary LoggingHealthy condition.
+func TestProbeConnectionPathIsKeyHealth(t *testing.T) {
 	var (
 		mu        sync.Mutex
 		gotPath   string
@@ -68,22 +70,26 @@ func TestProbeConnectionPathIsModels(t *testing.T) {
 		gotMethod = r.Method
 		mu.Unlock()
 		w.WriteHeader(200)
-		_, _ = w.Write([]byte(`{"data":[]}`))
+		_, _ = w.Write([]byte(`{"key":"healthy","logging_callbacks":{"status":"healthy","details":""}}`))
 	}))
 	defer srv.Close()
 
 	c := newTestClient(t, srv.URL)
-	if err := c.ProbeConnection(context.Background()); err != nil {
+	res, err := c.ProbeConnection(context.Background())
+	if err != nil {
 		t.Fatalf("ProbeConnection: %v", err)
+	}
+	if res.LoggingStatus != "healthy" {
+		t.Errorf("ProbeResult.LoggingStatus: want healthy, got %q", res.LoggingStatus)
 	}
 
 	mu.Lock()
 	defer mu.Unlock()
-	if gotPath != "/models" {
-		t.Fatalf("path: want /models (pivot from legacy key-info path), got %q", gotPath)
+	if gotPath != "/key/health" {
+		t.Fatalf("path: want /key/health, got %q", gotPath)
 	}
-	if gotMethod != "GET" {
-		t.Errorf("method: want GET, got %q", gotMethod)
+	if gotMethod != http.MethodPost {
+		t.Errorf("method: want %s, got %q", http.MethodPost, gotMethod)
 	}
 	if gotAuth != "Bearer "+testMasterKey {
 		t.Errorf("auth header: want %q, got %q", "Bearer "+testMasterKey, gotAuth)
@@ -112,7 +118,7 @@ func TestAuthHeaderOverrideViaEnv(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(t, srv.URL)
-	if err := c.ProbeConnection(context.Background()); err != nil {
+	if _, err := c.ProbeConnection(context.Background()); err != nil {
 		t.Fatalf("ProbeConnection: %v", err)
 	}
 
@@ -171,7 +177,7 @@ func TestMakeRequestDefersDrainAndClose(t *testing.T) {
 
 	c := newTestClient(t, srv.URL)
 	for i := 0; i < 1000; i++ {
-		if err := c.ProbeConnection(context.Background()); err != nil {
+		if _, err := c.ProbeConnection(context.Background()); err != nil {
 			t.Fatalf("iter %d: %v", i, err)
 		}
 	}
@@ -208,7 +214,7 @@ func TestNon2xxNon401IsGenericError(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(t, srv.URL)
-	_, err := c.makeRequest(context.Background(), "POST", "/model/new", map[string]any{})
+	_, err := c.makeRequest(context.Background(), http.MethodPost, "/model/new", map[string]any{})
 	if err == nil {
 		t.Fatalf("expected error on 422")
 	}
