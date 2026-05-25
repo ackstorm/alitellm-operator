@@ -177,17 +177,23 @@ security: lint ## Phase 4 — in-container security umbrella: gosec (via lint) +
 	bash scripts/govulncheck-gate.sh
 	$(MAKE) fuzz-short
 
+.PHONY: pre-commit
+pre-commit: ## Host-only — fast local gate (lint-changed + unit). Runs automatically on `git commit` once `make hooks` is installed.
+	./scripts/pre-commit-check.sh
+
 .PHONY: pre-push
-pre-push: ## Host-only — gitleaks + trufflehog (origin/main..HEAD scope) + 13 other publication gates. Uses docker on host; do NOT call via ./scripts/dev.sh.
+pre-push: ## Host-only — 17-gate pre-publication check (gitleaks + trufflehog + lint + unit + SPDX + govulncheck + ...). Uses docker on host; do NOT call via ./scripts/dev.sh.
 	./scripts/pre-push-check.sh
 
 .PHONY: verify
-verify: ## Host-only — full pre-publication gate bundle: in-container security + host pre-push. Single command for all gates.
+verify: ## Host-only — full pre-publication gate bundle: lint + unit + in-container security + host pre-push. Single command for all gates.
+	./scripts/dev.sh make lint
+	./scripts/dev.sh make unit
 	./scripts/dev.sh make security
 	$(MAKE) pre-push
 
 .PHONY: hooks
-hooks: ## Install git hooks (pre-push -> scripts/pre-push-check.sh).
+hooks: ## Install git hooks (pre-commit + pre-push).
 	./scripts/install-hooks.sh
 
 ##@ Release
