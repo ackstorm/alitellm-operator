@@ -12,13 +12,26 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-// AC-N3: the operator never reaches LiteLLM's /user/* or /key/* paths.
-// Tail the full LiteLLM access log and assert no HTTP request line
-// references those prefixes. LiteLLM logs every HTTP request as:
-// INFO: <ip>:<port> - "<METHOD> <PATH> HTTP/1.1" <STATUS> .
+// AC-N3: the operator never reaches LiteLLM's /user/* or /key/* paths
+// EXCEPT the auth-gated probe at POST /key/health (owned by the
+// LiteLLMConnection reconciler — see internal/litellm/keyinfo.go for
+// the rationale). Tail the full LiteLLM access log and assert no HTTP
+// request line references the forbidden subset. LiteLLM logs every
+// HTTP request as:
+//
+//	INFO: <ip>:<port> - "<METHOD> <PATH> HTTP/1.1" <STATUS> .
+//
 // so a per-line regex against the path token is sufficient.
-var forbiddenLiteLLMPathRE = regexp.MustCompile(
-	`"[A-Z]+\s+/(user|key)(/|\s|\?)`,
+// RE2 lacks lookahead, so we match the broad /user|/key prefix and
+// then filter out the allow-listed /key/health probe path with a
+// second pass.
+var (
+	forbiddenLiteLLMPathRE = regexp.MustCompile(
+		`"[A-Z]+\s+/(user|key)(/|\s|\?)`,
+	)
+	probePathAllowedRE = regexp.MustCompile(
+		`"[A-Z]+\s+/key/health(\s|\?)`,
+	)
 )
 
 // envtest counterparts: internal/controller/{model,mcpserver,mcpserverdiscovery,modeldiscovery,a2aagent}_ac_n3_test.go
@@ -40,8 +53,17 @@ var _ = Describe("Scope AC-N3", func() {
 		).CombinedOutput()
 		Expect(err).NotTo(HaveOccurred(), "kubectl logs failed: %s", string(out))
 
-		matches := forbiddenLiteLLMPathRE.FindAllString(string(out), -1)
+		raw := forbiddenLiteLLMPathRE.FindAllString(string(out), -1)
+		// Filter out the allow-listed POST /key/health probe — the
+		// Connection reconciler's own auth-gated health check.
+		var matches []string
+		for _, m := range raw {
+			if probePathAllowedRE.MatchString(m) {
+				continue
+			}
+			matches = append(matches, m)
+		}
 		Expect(matches).To(BeEmpty(),
-			"AC-N3 violation: operator hit /user/ or /key/ paths: %v", matches)
+			"AC-N3 violation: operator hit /user/ or /key/ paths (excluding /key/health probe): %v", matches)
 	})
 })
