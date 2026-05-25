@@ -31,10 +31,10 @@ mkdir -p "${WORKSPACE}/.gocache/gopath" \
          "${WORKSPACE}/.gocache/envtest" \
          "${WORKSPACE}/.gocache/kube"
 
-DOCKER_GID="$(getent group docker | cut -d: -f3)"
-if [[ -z "${DOCKER_GID}" ]]; then
-    echo "scripts/dev.sh: cannot resolve docker group GID on host" >&2
-    exit 1
+DOCKER_GID="$(getent group docker 2>/dev/null | cut -d: -f3 || true)"
+DOCKER_GROUP_ADD=()
+if [[ -n "${DOCKER_GID}" ]]; then
+    DOCKER_GROUP_ADD=(--group-add "${DOCKER_GID}")
 fi
 
 # TTY only if stdin is a terminal — keeps CI / non-interactive callers working.
@@ -57,7 +57,7 @@ fi
 
 exec docker run --rm "${TTY_ARGS[@]}" \
     --user "$(id -u):$(id -g)" \
-    --group-add "${DOCKER_GID}" \
+    "${DOCKER_GROUP_ADD[@]}" \
     --add-host=host.docker.internal:host-gateway \
     --network=host \
     -v "${WORKSPACE}:/workspace" \
