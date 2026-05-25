@@ -377,3 +377,26 @@ type GuardrailEntry struct {
 type GuardrailListResponse struct {
 	Guardrails []GuardrailEntry `json:"guardrails"`
 }
+
+// RouterSettings is the operator's typed view of LiteLLM router_settings
+// for the purpose of editing model_group_alias. All non-alias keys are
+// preserved opaquely under Extra so a read-merge-write does NOT clobber
+// settings the operator does not understand.
+type RouterSettings struct {
+	// ModelGroupAlias is the typed view of router_settings.model_group_alias.
+	ModelGroupAlias map[string]string `json:"-"`
+
+	// Extra carries every other key in router_settings verbatim. The
+	// operator preserves these on read-merge-write so unrelated router
+	// configuration is never accidentally cleared.
+	Extra map[string]any `json:"-"`
+}
+
+// ConfigCallbacksResponse is the GET /get/config/callbacks envelope, scoped
+// to the fields the operator cares about. Unknown top-level keys are
+// preserved by the JSON decoder via the use of a generic map at the call
+// site.
+type ConfigCallbacksResponse struct {
+	Status         string         `json:"status"`
+	RouterSettings map[string]any `json:"router_settings"`
+}
