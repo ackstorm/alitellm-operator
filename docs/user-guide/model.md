@@ -1,10 +1,175 @@
 # LiteLLMModel
 
-Declarative model registration (provider, params) attached to a
-`LiteLLMConnection`.
+Declarative model entry in LiteLLM. Owns one `(litellm_params,
+model_info)` pair, projected via `POST /model/{new,update}` against
+the `LiteLLMConnection/default` instance.
 
-!!! warning "Placeholder"
-    Full usage docs pending. For now see:
+Shape is flat: `spec.params` (→ `litellm_params`) and `spec.info`
+(→ `model_info`) are both free-form pass-through bags. No `spec.type`
+discriminator. User-authored and Discovery-generated CRs are
+reconciled identically.
 
-    - [Examples on GitHub](https://github.com/ackstorm/alitellm-operator/tree/main/examples)
-    - [API Reference: LiteLLMModel](../api-reference/litellm.ackstorm.ai.md#litellmmodel)
+## Quick reference
+
+| Field             | Required | Notes                                                                          |
+|-------------------|----------|--------------------------------------------------------------------------------|
+| `metadata.name`   | yes      | LiteLLM `model_name` (the alias clients call). Unique per Connection.          |
+| `spec.params`     | yes      | `litellm_params` bag. Must at minimum carry a `model:` key.                    |
+| `spec.params.model` | yes    | `<provider>/<id>` (e.g. `anthropic/claude-sonnet-4.5`, `gemini/gemini-2.5-flash`). |
+| `spec.params.api_key` | varies | Usually `{{NAME}}` resolved from `spec.secrets[]`.                          |
+| `spec.params.api_base` | no  | Override upstream base URL.                                                    |
+| `spec.info`       | no       | `model_info` bag — `description`, `mode`, custom metadata.                     |
+| `spec.secrets[]`  | no       | `{as, secretRef: {name, key}}` for `{{NAME}}` substitution in `params`/`info`. |
+
+After `kubectl apply`, expect:
+
+- `status.conditions[type=Ready].status=True` / `reason=Synced`.
+- `status.lastRendered.modelID` pinned with the LiteLLM-assigned UUID
+  (`model_info.id`). Pinned to skip a `GET /model/info` on every
+  reconcile.
+- `status.lastRendered.hash` = SHA-256 of the rendered body.
+
+## Minimal example
+
+```yaml
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMModel
+metadata:
+  name: claude-sonnet-4-5
+  namespace: default
+spec:
+  params:
+    model: "anthropic/claude-sonnet-4.5"
+    api_key: "{{ANTHROPIC_API_KEY}}"
+    api_base: "https://api.anthropic.com"
+  info:
+    description: "Anthropic Sonnet 4.5"
+  secrets:
+    - as: ANTHROPIC_API_KEY
+      secretRef:
+        name: anthropic-api-key
+        key:  ANTHROPIC_API_KEY
+```
+
+After apply, callers reach the model with:
+
+```bash
+curl $LITELLM/chat/completions \
+  -H "Authorization: Bearer $KEY" \
+  -d '{"model":"claude-sonnet-4-5","messages":[{"role":"user","content":"hi"}]}'
+```
+
+(`model` field in the request is `metadata.name`, not the upstream
+provider id.)
+
+## Secret substitution
+
+`spec.secrets[].as` declares the placeholder name; `{{NAME}}` inside
+ANY string leaf in `spec.params` or `spec.info` is replaced with the
+plaintext value at reconcile time. Constraints:
+
+- `as` must match `^[A-Z_][A-Z0-9_]*$` (admission-time CEL).
+- `as` values unique within the CR (runtime check, `Ready=False`
+  `reason=DuplicateSecretAs` on violation).
+- Secret must live in the SAME namespace as the Model CR. No cross-NS
+  resolution.
+- Secret material NEVER appears in logs, Events, or
+  `status.conditions[].message`.
+
+Secret rotation propagates within ~30s (Secret-watch path on the
+controller).
+
+Missing Secret / key → `Ready=False`, `reason=SecretNotFound`.
+Placeholder without binding → `Ready=False`,
+`reason=UnresolvedPlaceholder`.
+
+## Common provider shapes
+
+**OpenAI / Anthropic / xAI** (HTTP API, key-based):
+
+```yaml
+spec:
+  params:
+    model:   "openai/gpt-4o"
+    api_key: "{{OPENAI_API_KEY}}"
+```
+
+**Google Gemini**:
+
+```yaml
+spec:
+  params:
+    model:   "gemini/gemini-2.5-flash"
+    api_key: "{{GEMINI_API_KEY}}"
+```
+
+**AWS Bedrock** (no `api_key`, uses AWS creds):
+
+```yaml
+spec:
+  params:
+    model:                 "bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0"
+    aws_access_key_id:     "{{AWS_ACCESS_KEY_ID}}"
+    aws_secret_access_key: "{{AWS_SECRET_ACCESS_KEY}}"
+    aws_region_name:       "us-east-1"
+  secrets:
+    - { as: AWS_ACCESS_KEY_ID,     secretRef: { name: aws-creds, key: AWS_ACCESS_KEY_ID } }
+    - { as: AWS_SECRET_ACCESS_KEY, secretRef: { name: aws-creds, key: AWS_SECRET_ACCESS_KEY } }
+```
+
+**Ollama / local OpenAI-compatible** (no key, custom base):
+
+```yaml
+spec:
+  params:
+    model:    "openai/llama3.3"
+    api_base: "http://ollama.default.svc:11434/v1"
+    api_key:  "ollama"
+```
+
+## Drift detection + correction
+
+On every reconcile the rendered post-substitution body is hashed
+(SHA-256, RFC 8785 canonical JSON, excluding `model_info.id`). The
+hash is compared against `status.lastRendered.hash`:
+
+- Match → no LiteLLM call (steady state).
+- Mismatch → `POST /model/update`, increments
+  `drift_corrected_total{domain=model,action=update_drifted}`.
+- Vanish (row missing in LiteLLM) → `POST /model/new`, re-pin
+  `modelID`, increment
+  `drift_corrected_total{domain=model,action=create_missing}`.
+
+`spec.params` or `spec.info` shrinkage (a key removed from either bag)
+triggers delete-and-recreate — `POST /model/update` is wholesale-replace
+on LiteLLM, but the shrinkage path was retained from earlier
+defect-mitigation work and `modelID` is re-pinned in the same
+reconcile.
+
+## `spec.info.id` is operator-controlled
+
+Setting `spec.info.id` is silently overridden by the operator's
+overlay (the pinned `modelID`) and emits a Warning Event
+`reason=ProjectionOverride`. Do not set it.
+
+## Status: what to read
+
+```bash
+kubectl get mdl claude-sonnet-4-5 -o jsonpath='{.status.lastRendered}{"\n"}'
+# {"at":"...","hash":"abc...","infoKeys":["description"],"modelID":"<uuid>","paramsKeys":["api_base","api_key","model"]}
+
+kubectl get mdl claude-sonnet-4-5 -o jsonpath='{.status.conditions[?(@.type=="Ready")]}{"\n"}'
+# {"type":"Ready","status":"True","reason":"Synced"}
+```
+
+`Ready=False` reasons beyond the secret-related ones above:
+
+- `LiteLLMUnavailable` — `LiteLLMConnection/default` not Ready.
+- `LiteLLMRejected` — LiteLLM returned 4xx/5xx on mutation. Inspect
+  `message` for the upstream payload.
+
+## See also
+
+- [Example on GitHub](https://github.com/ackstorm/alitellm-operator/tree/main/examples/example-deploy/02-model.yaml)
+- [LiteLLMModelDiscovery](model-discovery.md) — auto-generate Model CRs from a Connection's `/models`.
+- [API Reference: LiteLLMModel](../api-reference/litellm.ackstorm.ai.md#litellmmodel)
