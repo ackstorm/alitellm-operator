@@ -33,9 +33,9 @@ User and VirtualKey lifecycle.
 
 ## Status
 
-v0.1.0-alpha — early-access. API surface may change before v0.1.0 /
-v1beta1. The authoritative contract is the operator spec; see
-[PUBLISH.md](PUBLISH.md) for the release/publication procedure.
+v0.4.7 — early-access. API surface may change before v1beta1. The
+authoritative contract is the operator spec; see [PUBLISH.md](PUBLISH.md)
+for the release/publication procedure.
 
 ## Quick Start
 
@@ -51,13 +51,28 @@ Install the operator via Helm (OCI):
 
 ```bash
 helm install lo oci://ghcr.io/ackstorm/charts/alitellm-operator \
-  --version 0.1.0-alpha \
+  --version 0.4.7 \
   --namespace default --create-namespace
 ```
 
 Then create a `LiteLLMConnection/default` CR pointing to your LiteLLM
-endpoint and referencing the master-key Secret. See
-`config/samples/litellm_v1alpha1_litellmconnection.yaml` for an example.
+endpoint and referencing the master-key Secret:
+
+```yaml
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMConnection
+metadata:
+  name: default
+  namespace: default
+spec:
+  endpoint: http://litellm.default.svc.cluster.local:4000
+  masterKeySecretRef:
+    name: litellm-master-key
+    key:  master-key
+```
+
+See [`examples/example-deploy/`](examples/example-deploy/) for runnable
+samples covering every CRD.
 
 ## Documentation
 

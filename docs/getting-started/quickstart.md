@@ -1,39 +1,47 @@
 # Quick Start
 
-This guide creates your first `LiteLLMConnection` plus a sample `LiteLLMTeam`
-and `LiteLLMModel`. It assumes you already have a LiteLLM proxy running
-somewhere reachable from the cluster.
+End-to-end: install the operator, declare the singleton
+`LiteLLMConnection/default`, create your first `LiteLLMTeam` and
+`LiteLLMModel`, then call the model through the LiteLLM proxy.
 
 ## Prerequisites
 
-- alitellm-operator [installed](installation.md) in your cluster.
-- An existing LiteLLM proxy URL and master key.
-- `kubectl` access to the cluster.
+- alitellm-operator [installed](installation.md) in the cluster
+  (default watch namespace: `default`).
+- An existing LiteLLM proxy reachable from the cluster.
+- `kubectl` access.
 
 !!! note
-    `alitellm-operator` does **not** deploy LiteLLM itself. It reconciles
-    resources **against** a running LiteLLM proxy. If you need to deploy
-    LiteLLM as well, use the upstream Helm chart from
-    [BerriAI/litellm](https://github.com/BerriAI/litellm) first.
+    `alitellm-operator` does NOT deploy LiteLLM. Use the
+    [BerriAI/litellm](https://github.com/BerriAI/litellm) upstream
+    Helm chart first if you need a proxy.
 
-## 1. Store the master key
+The watch namespace is whatever you set as Helm `watchNamespace`
+(default `default`). Every CR below lands there.
+
+## 1. Master-key Secret
 
 ```bash
-kubectl create namespace litellm
-kubectl -n litellm create secret generic litellm-master-key \
-  --from-literal=master-key='sk-...'
+NS=default
+kubectl -n $NS create secret generic litellm-master-key \
+  --from-literal=master-key='sk-...your-master-key...'
 ```
 
-## 2. Declare the Connection
+## 2. LiteLLMConnection/default
+
+In v1alpha1 every dependent CR binds implicitly to
+`LiteLLMConnection/default` — there is no per-CR `connectionRef`. The
+name MUST be `default`.
 
 ```yaml
+# connection.yaml
 apiVersion: litellm.ackstorm.ai/v1alpha1
 kind: LiteLLMConnection
 metadata:
-  name: proxy-prod
-  namespace: litellm
+  name: default
+  namespace: default
 spec:
-  url: https://litellm.example.com
+  endpoint: http://litellm.default.svc.cluster.local:4000
   masterKeySecretRef:
     name: litellm-master-key
     key:  master-key
@@ -41,51 +49,120 @@ spec:
 
 ```bash
 kubectl apply -f connection.yaml
-kubectl -n litellm wait --for=condition=Ready litellmconnection/proxy-prod --timeout=60s
+kubectl wait --for=condition=Ready litellmconnection/default --timeout=60s
 ```
 
-## 3. Declare a Team and a Model
+Expected: `Ready=True, reason=Probed`. The operator just hit
+`GET <endpoint>/key/info` with the master key.
+
+## 3. Provider API key
+
+Most providers need a Secret. OpenAI example:
+
+```bash
+kubectl -n default create secret generic openai-api-key \
+  --from-literal=OPENAI_API_KEY='sk-...your-openai-key...'
+```
+
+## 4. LiteLLMModel
+
+`metadata.name` IS the alias clients call. `spec.params` becomes the
+`litellm_params` body verbatim; `{{NAME}}` placeholders are resolved
+from `spec.secrets[]` before the body reaches LiteLLM.
 
 ```yaml
-apiVersion: litellm.ackstorm.ai/v1alpha1
-kind: LiteLLMTeam
-metadata:
-  name: team-platform
-  namespace: litellm
-spec:
-  connectionRef: { name: proxy-prod }
-  teamAlias: platform
-  maxBudget: 100.0
----
+# model.yaml
 apiVersion: litellm.ackstorm.ai/v1alpha1
 kind: LiteLLMModel
 metadata:
   name: gpt-4o-mini
-  namespace: litellm
+  namespace: default
 spec:
-  connectionRef: { name: proxy-prod }
-  modelName: gpt-4o-mini
-  litellmParams:
-    model:  openai/gpt-4o-mini
-    apiKey: ${OPENAI_API_KEY}
+  params:
+    model:   openai/gpt-4o-mini
+    api_key: "{{OPENAI_API_KEY}}"
+  info:
+    description: "OpenAI gpt-4o-mini via dogfood operator"
+  secrets:
+    - as: OPENAI_API_KEY
+      secretRef:
+        name: openai-api-key
+        key:  OPENAI_API_KEY
 ```
 
 ```bash
-kubectl apply -f team.yaml -f model.yaml
-kubectl -n litellm get litellmteams,litellmmodels
+kubectl apply -f model.yaml
+kubectl wait --for=condition=Ready mdl/gpt-4o-mini --timeout=60s
+kubectl get mdl gpt-4o-mini -o jsonpath='{.status.lastRendered.modelID}{"\n"}'
+# <litellm-assigned UUID>
 ```
+
+## 5. LiteLLMTeam (optional — used for budget / rate-limit)
+
+`metadata.name` IS the LiteLLM `team_alias`. There is no
+`spec.teamAlias`. Budget and rate limits live in typed sub-blocks.
+
+```yaml
+# team.yaml
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMTeam
+metadata:
+  name: platform
+  namespace: default
+spec:
+  budget:
+    limit: 100.0
+    period: "30d"
+  rateLimits:
+    rpm: 600
+    tpm: 100000
+```
+
+```bash
+kubectl apply -f team.yaml
+kubectl wait --for=condition=Ready team/platform --timeout=60s
+kubectl get team platform -o jsonpath='{.status.lastRendered.teamID}{"\n"}'
+```
+
+## 6. Call the model
+
+```bash
+kubectl -n default port-forward svc/litellm 4000:4000 &
+
+curl http://localhost:4000/chat/completions \
+  -H "Authorization: Bearer sk-...master-key..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4o-mini",
+    "messages": [{"role": "user", "content": "ping"}]
+  }'
+```
+
+Note `"model"` in the body is the CR's `metadata.name`
+(`gpt-4o-mini`), NOT the upstream provider id.
+
+## What just happened
+
+- Operator reconciled `LiteLLMConnection/default` → probed LiteLLM →
+  cached the snapshot.
+- `LiteLLMModel/gpt-4o-mini` reconciler resolved `{{OPENAI_API_KEY}}`
+  from the Secret, hashed the rendered body, called
+  `POST /model/new`, pinned the assigned UUID to
+  `status.lastRendered.modelID`.
+- `LiteLLMTeam/platform` reconciler stamped `team_alias=platform`,
+  projected budget + rate-limits, called `POST /team/update`, pinned
+  `status.lastRendered.teamID`.
+
+Subsequent reconciles short-circuit when the hash matches; the
+operator only re-issues HTTP calls on spec edit, Secret rotation, or
+drift detection (LiteLLM-side out-of-band mutation).
 
 ## Next steps
 
-- Walk through the [User Guide](../user-guide/index.md) for the remaining
-  resource kinds (A2A agents, MCP servers, discovery).
-- See the runnable manifests under
-  [`examples/`](https://github.com/ackstorm/alitellm-operator/tree/main/examples).
-- Review the [API Reference](../api-reference/litellm.ackstorm.ai.md) for the full schema
-  of each resource.
-
-!!! warning "Schema accuracy"
-    The field names above (`teamAlias`, `maxBudget`, `litellmParams.model`,
-    etc.) are illustrative. Always check the auto-generated
-    [API Reference](../api-reference/litellm.ackstorm.ai.md) or the CRDs under
-    `config/crd/bases/` for the authoritative schema.
+- [User Guide](../user-guide/index.md) — every CRD, real field shapes,
+  status semantics.
+- [Examples](https://github.com/ackstorm/alitellm-operator/tree/main/examples/example-deploy)
+  — runnable manifests for every kind including A2A agents, MCP servers,
+  Discovery, and GuardRails.
+- [API Reference](../api-reference/litellm.ackstorm.ai.md) — auto-generated
+  schema for every CRD.

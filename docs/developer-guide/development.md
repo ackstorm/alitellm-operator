@@ -1,230 +1,180 @@
-## Getting Started
+# Development
 
-It is expected that the operator will be deployed in the same namespace as the litellm service.
+Local dev loop for `alitellm-operator`. The repo deliberately keeps
+the host clean — there is NO `go`, `kubebuilder`, `controller-gen`,
+`kustomize`, `setup-envtest`, or `golangci-lint` on PATH. Everything
+runs through the devtools container.
 
-### Prerequisites
-- go version v1.22.0+
-- docker version 17.03+.
-- kubectl version v1.11.3+.
-- Access to a Kubernetes v1.11.3+ cluster.
-- vCluster (v0.33.1+) (optional, for local development)
+For higher-level orientation see [Architecture](architecture.md).
+For PR / commit / release flow see [Contributions](contributions.md).
 
-### Local Development Setup
+## Prerequisites
 
-#### Quick Start with vind (vCluster in docker)
+- **Docker** (host) — image pulls + the devtools container.
+- **kind** + **kubectl** + **helm** (host) — for the E2E loop. Only
+  invoked outside the devtools container.
+- That's it. The devtools container ships pinned Go 1.24.13,
+  kubebuilder v4.4.0, controller-runtime v0.19.4, k8s.io/* v0.31.0,
+  govulncheck v1.3.0.
 
-For local development, you can use the provided Makefile targets to set up a complete development environment:
+## Devtools container
 
-> [!IMPORTANT]
-> Your Docker must be configured to use the [containerd image store](https://docs.docker.com/engine/storage/containerd/).
-
-```sh
-# As a one off, ensure vCluster is configured to use the docker driver
-vcluster use driver docker
-
-# Create a vind cluster and bootstrap the development environment
-make vind-bootstrap-full
-
-# Or recreate the entire cluster if needed
-make vind-bootstrap-full-recreate
+```bash
+./scripts/dev.sh <command>                # one-shot
+./scripts/dev.sh bash                     # interactive shell
+LITELLM_DEVTOOLS_REBUILD=1 ./scripts/dev.sh true   # force rebuild
 ```
 
-This will:
-1. Create a vCluster (if it doesn't exist)
-2. Generate manifests and install CRDs
-3. Install extra samples and basic samples
-4. Set up the complete development environment
-5. Create a load balancer service for the litellm example service
-6. You will be able to run the controller locally through your IDE of choice
+The wrapper:
 
-```sh
-# Get the IP address of the load balancer service
-kubectl get svc litellm-example-loadbalancer -n litellm -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+- Mounts the repo at `/workspace`.
+- Mounts `/var/run/docker.sock` (so e2e can spawn kind / mock images
+  from inside).
+- Preserves host UID:GID — no root-owned files in the working tree.
+- Persists Go module + build caches under `.gocache/`.
+- Resolves `KUBEBUILDER_ASSETS` for envtest.
 
-# Go to the returned IP address in your browser to access the litellm example service
+`make` targets that shell out to `go` MUST be prefixed
+`./scripts/dev.sh`. Targets that only call `kubectl`/`docker`/`helm`/
+`kind`/`bash` (`make cluster-up`, `make operator-redeploy`,
+`make logs-*`, `make pre-push`) run on the host.
+
+## Inner loop — code → unit → envtest
+
+```bash
+./scripts/dev.sh make unit                # ~5s warm, every iteration
+./scripts/dev.sh make unit-pkg PKG=./internal/litellm/...
+./scripts/dev.sh make envtest-fast        # ~3m, no -race, dev loop
+./scripts/dev.sh make envtest-run         # ~7m, -race, before commit
+./scripts/dev.sh make envtest-pkg PKG=./internal/controller/... \
+                                  FOCUS=TestTeamReconciler_AC_T4 \
+                                  TIMEOUT=10m
+./scripts/dev.sh make lint                # full repo
+./scripts/dev.sh make lint-changed        # only packages touched vs origin/main
 ```
 
-> [!NOTE]
-> On macOS (Docker Desktop), LoadBalancer services may require elevated privileges and
-> the `jsonpath` command above can return empty. If you need a real LoadBalancer IP on
-> Docker Desktop, try running Docker with `sudo`. As an alternative, use port-forward:
-> ```sh
-> kubectl port-forward svc/litellm-example-loadbalancer 8080:80 -n litellm
-> # Then open http://localhost:8080 in your browser
-> ```
+`make test-all` = `unit` + `envtest-run`.
 
-#### Manual Development Setup
-If you prefer to set up manually or use an existing cluster:
+## Codegen + manifests
 
-**Generate manifests and install CRDs:**
-```sh
-make install
+```bash
+./scripts/dev.sh make manifests           # regenerate CRDs + RBAC + webhooks
+./scripts/dev.sh make generate            # regenerate zz_generated_deepcopy.go
+./scripts/dev.sh make gen-crd-ref-docs    # regenerate docs/api-reference/
+./scripts/dev.sh make fmt                 # go fmt
 ```
 
-**Install sample resources:**
-```sh
-# Install basic samples
-make install-samples
+CRD output lands in `config/crd/bases/` + `deploy/helm/alitellm-operator/crd-sources/`
+(the chart bundle). The Helm chart's `templates/install.yaml` is
+regenerated from kustomize via `make helm-sync` — there is a CI gate
+(`helm-sync-check`) that fails on drift.
 
-# Install extra samples (includes namespace and PostgreSQL cluster)
-make install-samples-extra
+## E2E loop (kind + Helm)
+
+`make e2e-full` is the clean-room final gate (~10m from cold). It
+brings kind up, installs the chart, runs Ginkgo, tears down. For
+iteration use the kept-cluster loop:
+
+```bash
+# 1. Bring cluster up once; keep state across iterations
+./scripts/dev.sh make e2e-keep
+# = scripts/cluster.sh keep + make e2e (NO teardown after)
+
+# 2. Diagnose live
+./scripts/dev.sh bash -c "kubectl -n default logs deploy/alitellm-operator --tail=200"
+./scripts/dev.sh bash -c "kubectl -n default describe team finance"
+
+# 3. Iterate with focused tests
+./scripts/dev.sh make e2e-focus FOCUS="rateLimits composite"
+
+# 4. After code edit → hot-reload → re-test (~30s)
+./scripts/dev.sh make operator-redeploy
+./scripts/dev.sh make e2e-focus FOCUS="..."
+
+# 5. Final gate from clean
+make cluster-down
+./scripts/dev.sh make e2e-full
 ```
 
-### Development Workflow
+Never push a change touching `internal/controller/`,
+`internal/litellm/`, `api/litellm/v1alpha1/`,
+`deploy/helm/alitellm-operator/`, or `test/e2e/` without confirming
+E2E green.
 
-#### Code Generation and Validation
-```sh
-# Generate manifests (CRDs, RBAC, webhooks)
-make manifests
+## Waiting on cluster state — use blessed targets
 
-# Generate code (DeepCopy methods)
-make generate
+Naked polling loops (`until ...; do sleep N; done`) are banned —
+they hang when the polled target disappears. Use the make targets
+that wrap `kubectl wait` / `kubectl rollout status` / `docker wait`
+with explicit timeouts:
 
-# Format code
-make fmt
+| Need                            | Target                                               |
+|---------------------------------|------------------------------------------------------|
+| CR `Ready=True`                 | `make wait-cr-ready KIND=... NAME=... NS=...`        |
+| Operator Deployment ready       | `make wait-operator`                                 |
+| LiteLLM Deployment ready        | `make wait-litellm`                                  |
+| Mock pods ready                 | `make wait-mocks`                                    |
+| Container exit + PASS/FAIL      | `make wait-container NAME=<container>`               |
+| Full cluster hydration          | `make cluster-up` (synchronous; don't poll after)    |
+| Operator hot-reload + ready     | `make operator-redeploy` (bounded `rollout status`)  |
 
-# Run static analysis
-make vet
+Default `WAIT_TIMEOUT=300s` (override per call). Add a new `wait-*`
+target if the need isn't covered.
 
-# Run linter
-make lint
+## Security + pre-push gates
 
-# Run linter with auto-fixes
-make lint-fix
+```bash
+./scripts/dev.sh make security    # gosec + govulncheck + fuzz-short (~6m)
+make pre-push                     # host-only; 15 publication gates
 ```
 
-#### Testing
-```sh
-# Run unit tests
-make test
+`make pre-push` MUST run on the host — it spawns gitleaks/trufflehog
+containers on host docker; calling it via `./scripts/dev.sh` nests
+docker mounts that don't resolve.
 
-# Run end-to-end tests (requires Kind cluster)
-make test-e2e
+`make verify` = `security` + `pre-push`. `make hooks` installs the
+git pre-push hook.
+
+If a govulncheck advisory is reachable, fix it. If it cannot be
+fixed (e.g. waiting for an upstream stdlib release), add an entry to
+`references/security/govulncheck-acknowledged.md` in the SAME commit
+that introduces the dependency change.
+
+## Useful inspection targets
+
+```bash
+make logs-operator      # tail operator with timestamps
+make logs-litellm       # tail LiteLLM
+make logs-mocks         # tail openai-mock + kubeai-mock in parallel
+make pf-litellm         # port-forward LiteLLM svc → localhost:4000
+make pf-openai-mock     # port-forward openai-mock → localhost:8081
+make pf-kubeai-mock     # port-forward kubeai-mock → localhost:8082
+make mock-mode INSTANCE=openai-mock MODE=reject-401   # flip a mock's auth mode
 ```
 
-#### Building
-```sh
-# Build the manager binary locally
-make build
+## Environment variables (development)
 
-# Run the controller locally (for development) in terminal
-make run
+| Variable                                 | Effect                                                          |
+|------------------------------------------|-----------------------------------------------------------------|
+| `LITELLM_DEVTOOLS_REBUILD=1`             | Force rebuild of the devtools container on next `./scripts/dev.sh` call. |
+| `KUBEBUILDER_ASSETS`                     | Resolved by `scripts/dev.sh`; do not override.                  |
+| `IMG`                                    | Image tag for `make docker-load` (kind sideload). Default `alitellm-operator:e2e`. |
+| `LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL`| Override the vanish-probe cadence at operator runtime. Floor 5s. Useful for tightening drift recovery in dev. |
+| `WATCH_NAMESPACE`                        | Override the operator's watch namespace. Default `default`.     |
 
-# Build Docker image
-make docker-build
+## Where to read next
 
-# Build for multiple platforms
-make docker-buildx
-```
+- [Architecture](architecture.md) — reconciler shape, list cache,
+  vanish probe.
+- [Contributions](contributions.md) — PR + commit + review flow.
+- [Release Process](release-process.md) — cutting a release.
+- [`CLAUDE.md`](https://github.com/ackstorm/alitellm-operator/blob/main/CLAUDE.md)
+  — agent-facing surgical reference card (authoritative for the
+  guardrails on dev loop, waits, and pre-push).
 
-### Deployment
+## Help
 
-#### To Deploy on the cluster
-**Build and push your image to the location specified by `IMG`:**
-
-```sh
-make docker-build docker-push IMG=<some-registry>/alitellm-operator:tag
-```
-
-**NOTE:** This image ought to be published in the personal registry you specified.
-And it is required to have access to pull the image from the working environment.
-Make sure you have the proper permission to the registry if the above commands don't work.
-
-**Install the CRDs into the cluster:**
-
-```sh
-make install
-```
-
-**Deploy the Manager to the cluster with the image specified by `IMG`:**
-
-```sh
-make deploy IMG=<some-registry>/alitellm-operator:tag
-```
-
-> **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
-privileges or be logged in as admin.
-
-**Create instances of your solution**
-You can apply the samples (examples) from the config/sample:
-
-```sh
-# Install basic samples
-kubectl apply -k config/samples/
-
-# Or use the Makefile target
-make install-samples
-```
-
->**NOTE**: Ensure that the samples has default values to test it out.
-
-#### Alternative Deployment Methods
-
-**Build and load image to Kind cluster:**
-```sh
-make docker-build docker-load IMG=controller:latest
-```
-
-**Generate consolidated installer:**
-```sh
-make build-installer IMG=<your-image>
-# This creates dist/install.yaml with CRDs and deployment
-```
-
-### To Uninstall
-**Delete the instances (CRs) from the cluster:**
-
-```sh
-# Remove samples
-kubectl delete -k config/samples/
-
-# Or use the Makefile target
-make uninstall-samples
-```
-
-**Delete the APIs(CRDs) from the cluster:**
-
-```sh
-make uninstall
-```
-
-**UnDeploy the controller from the cluster:**
-
-```sh
-make undeploy
-```
-
-**Clean up Kind cluster (if using local development):**
-```sh
-make kind-cluster-delete
-```
-
-### Development Tools
-
-The project includes several development tools that are automatically managed:
-
-- **controller-gen**: Generates CRDs, RBAC, and webhook configurations
-- **kustomize**: Manages Kubernetes manifests
-- **envtest**: Provides test environment for controller-runtime
-- **golangci-lint**: Code linting and analysis
-- **crd-ref-docs**: Generates CRD documentation
-- **openapi-generator**: Generates OpenAPI specifications
-
-These tools are automatically downloaded to the `bin/` directory when needed.
-
-### Environment Variables
-
-Key environment variables for development:
-
-- `IMG`: Docker image for the controller (default: `controller:latest`)
-- `VERSION`: Project version for bundles (default: `0.0.1`)
-- `CONTAINER_TOOL`: Container tool to use (default: `docker`)
-- `LOCALBIN`: Directory for development tools (default: `./bin`)
-
-### Help
-
-To see all available Makefile targets and their descriptions:
-
-```sh
-make help
+```bash
+make help              # all Makefile targets
+./scripts/dev.sh make help
 ```
