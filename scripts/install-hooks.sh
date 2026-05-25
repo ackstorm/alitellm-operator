@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
 # Install git hooks for alitellm-operator.
 #
-# Currently installs:
-#   pre-push -> scripts/pre-push-check.sh
-#     Runs the full 15-gate pre-publication check before every `git push`.
-#     Idempotent — safe to re-run.
+# Installs:
+#   pre-commit -> scripts/pre-commit-check.sh
+#     Runs `make lint-changed` + `make unit` on every commit. Fast
+#     (~5-30s warm); fail blocks the commit. Bypass with --no-verify
+#     when you have a justified reason — pre-push still enforces the
+#     full lint sweep.
+#   pre-push   -> scripts/pre-push-check.sh
+#     Runs the full 17-gate pre-publication check before every `git push`.
+#     Includes gitleaks/trufflehog/SPDX/govulncheck plus the defensive
+#     full-sweep golangci-lint + make unit.
 #
-# Usage: ./scripts/install-hooks.sh
-#        (or via `make hooks`)
+# Idempotent — safe to re-run.
 set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
@@ -16,28 +21,29 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
 cd "$REPO_ROOT"
 
 HOOKS_DIR="$(git rev-parse --git-path hooks)"
-HOOK_PATH="${HOOKS_DIR}/pre-push"
-TARGET="../../scripts/pre-push-check.sh"
-
-if [[ ! -x scripts/pre-push-check.sh ]]; then
-  echo "scripts/pre-push-check.sh missing or not executable" >&2
-  exit 1
-fi
-
 mkdir -p "$HOOKS_DIR"
 
-# Replace any existing pre-push (back up if non-symlink + non-empty).
-if [[ -e "$HOOK_PATH" && ! -L "$HOOK_PATH" ]]; then
-  BACKUP="${HOOK_PATH}.bak.$(date -u +%Y%m%dT%H%M%SZ)"
-  mv "$HOOK_PATH" "$BACKUP"
-  echo "backed up existing $HOOK_PATH -> $BACKUP"
-fi
+install_hook() {
+  local name="$1" target="$2"
+  local hook_path="${HOOKS_DIR}/${name}"
+  if [[ ! -x "scripts/${target##*/}" ]]; then
+    echo "scripts/${target##*/} missing or not executable" >&2
+    return 1
+  fi
+  # Backup any prior non-symlink hook.
+  if [[ -e "$hook_path" && ! -L "$hook_path" ]]; then
+    local backup="${hook_path}.bak.$(date -u +%Y%m%dT%H%M%SZ)"
+    mv "$hook_path" "$backup"
+    echo "backed up existing $hook_path -> $backup"
+  fi
+  ln -sf "$target" "$hook_path"
+  if [[ -L "$hook_path" ]]; then
+    echo "installed: $hook_path -> $(readlink "$hook_path")"
+  else
+    echo "failed to install $hook_path" >&2
+    return 1
+  fi
+}
 
-ln -sf "$TARGET" "$HOOK_PATH"
-
-if [[ -L "$HOOK_PATH" ]]; then
-  echo "installed: $HOOK_PATH -> $(readlink "$HOOK_PATH")"
-else
-  echo "failed to install $HOOK_PATH" >&2
-  exit 1
-fi
+install_hook pre-commit "../../scripts/pre-commit-check.sh"
+install_hook pre-push   "../../scripts/pre-push-check.sh"

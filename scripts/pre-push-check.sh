@@ -12,6 +12,8 @@
 #  13. govulncheck   (HIGH advisories vs ack-list — wrapper-enforced 1:1)
 #  14. go mod tidy   (go.mod / go.sum drift blocks push)
 #  15. license-header SPDX gate (every in-scope *.go starts with SPDX line)
+#  16. golangci-lint full sweep (defensive — pre-commit runs lint-changed)
+#  17. make unit     (pure-logic regression — ~5-10s warm)
 #
 # Soft checks (warnings only):
 #   7. internal hostnames / private IPv4 in tracked files
@@ -278,6 +280,36 @@ if [[ -z $MISSING_SPDX ]]; then
 else
   fail "files missing SPDX header:"
   printf '%s' "$MISSING_SPDX" | head -20
+fi
+
+# --- 16. golangci-lint full sweep ---
+# Defensive gate: pre-commit runs `make lint-changed` (scoped to touched
+# packages) on every commit; this is the FULL sweep, catching anything
+# a `--no-verify` commit or a stale BASE_REF would have masked. Runs in
+# the devtools container.
+hdr "16. golangci-lint full sweep"
+if [[ -x scripts/dev.sh ]]; then
+  if ./scripts/dev.sh make lint >/tmp/pre-push-lint.log 2>&1; then
+    ok "golangci-lint clean"
+  else
+    fail "golangci-lint reported issues — see /tmp/pre-push-lint.log"
+  fi
+else
+  warn "scripts/dev.sh missing — skipping lint gate (rebuild devtools image)"
+fi
+
+# --- 17. unit tests ---
+# Catches the simplest class of breakage that CI would otherwise flag.
+# Runs via devtools container; ~5-10s warm.
+hdr "17. unit tests"
+if [[ -x scripts/dev.sh ]]; then
+  if ./scripts/dev.sh make unit >/tmp/pre-push-unit.log 2>&1; then
+    ok "make unit clean"
+  else
+    fail "make unit failed — see /tmp/pre-push-unit.log"
+  fi
+else
+  warn "scripts/dev.sh missing — skipping unit gate (rebuild devtools image)"
 fi
 
 # --- Summary ---
