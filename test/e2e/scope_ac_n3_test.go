@@ -7,6 +7,7 @@ package e2e_test
 import (
 	"os/exec"
 	"regexp"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -21,16 +22,15 @@ import (
 //
 //	INFO: <ip>:<port> - "<METHOD> <PATH> HTTP/1.1" <STATUS> .
 //
-// so a per-line regex against the path token is sufficient.
-// RE2 lacks lookahead, so we match the broad /user|/key prefix and
-// then filter out the allow-listed /key/health probe path with a
-// second pass.
+// Line-level matching: each log line is checked for a forbidden path
+// token. The /key/health probe is allow-listed by a separate match
+// because RE2 lacks lookahead.
 var (
 	forbiddenLiteLLMPathRE = regexp.MustCompile(
 		`"[A-Z]+\s+/(user|key)(/|\s|\?)`,
 	)
 	probePathAllowedRE = regexp.MustCompile(
-		`"[A-Z]+\s+/key/health(\s|\?)`,
+		`"[A-Z]+\s+/key/health(\s|/|\?)`,
 	)
 )
 
@@ -53,17 +53,23 @@ var _ = Describe("Scope AC-N3", func() {
 		).CombinedOutput()
 		Expect(err).NotTo(HaveOccurred(), "kubectl logs failed: %s", string(out))
 
-		raw := forbiddenLiteLLMPathRE.FindAllString(string(out), -1)
-		// Filter out the allow-listed POST /key/health probe — the
-		// Connection reconciler's own auth-gated health check.
-		var matches []string
-		for _, m := range raw {
-			if probePathAllowedRE.MatchString(m) {
+		// Line-level filter: a forbidden /user/* or /key/* match is
+		// downgraded to a violation only when the SAME line does not
+		// carry the allow-listed /key/health probe. This avoids the
+		// captured-fragment pitfall where the forbidden regex returns
+		// just `"POST /key/` (no `health` suffix) and the allow-list
+		// regex can never match against the truncated fragment.
+		var violations []string
+		for _, line := range strings.Split(string(out), "\n") {
+			if !forbiddenLiteLLMPathRE.MatchString(line) {
 				continue
 			}
-			matches = append(matches, m)
+			if probePathAllowedRE.MatchString(line) {
+				continue
+			}
+			violations = append(violations, line)
 		}
-		Expect(matches).To(BeEmpty(),
-			"AC-N3 violation: operator hit /user/ or /key/ paths (excluding /key/health probe): %v", matches)
+		Expect(violations).To(BeEmpty(),
+			"AC-N3 violation: operator hit /user/ or /key/ paths (excluding /key/health probe): %v", violations)
 	})
 })
