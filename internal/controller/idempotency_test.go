@@ -23,7 +23,7 @@ import (
 //
 // 1. mockServer.SetMode(ModeHappy); reset mock counters.
 // 2. Create a Model CR in WATCH_NAMESPACE; wait for the first reconcile
-// (the no-op reconciler triggers a GET /models probe).
+// (the no-op reconciler triggers a POST /key/health probe).
 // 3. Snapshot mock.Mutations and reconcileCalls AFTER the first
 // reconcile — this is t=0 for the steady-state window.
 // 4. Observe for 10 seconds with SafetyRelistInterval=1s (already wired

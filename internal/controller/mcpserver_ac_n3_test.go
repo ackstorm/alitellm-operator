@@ -28,18 +28,20 @@ func TestMCPServer_AC_N3_NoUserOrKeyCalls(t *testing.T) {
 	ensureNoMCPServer(t, ctx, "ac-n3-mcpserver")
 	resetConnCacheSnapshot()
 
-	// Capture baseline PathCallCount BEFORE the LiteLLMConnection setup
-	// (which probes GET /models — separate from the /user/* and /key/*
-	// surfaces we are asserting here).
-	priorUserCalls := mockServer.PathCallCount("/user/")
-	priorKeyCalls := mockServer.PathCallCount("/key/")
-
 	cleanupConn := setupReadyConnectionMCP(t, ctx)
 	t.Cleanup(func() {
 		mockServer.SetMode(mock.ModeHappy)
 		cleanupConn()
 		ensureNoMCPServer(t, context.Background(), "ac-n3-mcpserver")
 	})
+
+	// Capture baseline PathCallCount AFTER Connection is Synced AND
+	// separately track the probe path so any in-flight Connection
+	// re-reconciles (probes to /key/health) can be subtracted from
+	// the /key/ prefix delta below.
+	priorUserCalls := mockServer.PathCallCount("/user/")
+	priorKeyCalls := mockServer.PathCallCount("/key/")
+	priorKeyHealthCalls := mockServer.PathCallCount("/key/health")
 
 	// Apply MCPServer CR.
 	cr := &litellmv1alpha1.LiteLLMMCPServer{
@@ -85,8 +87,10 @@ func TestMCPServer_AC_N3_NoUserOrKeyCalls(t *testing.T) {
 		t.Errorf("AC-N3 violation: MCPServer reconciler issued %d new /user/* call(s) (want 0)",
 			got)
 	}
-	if got := mockServer.PathCallCount("/key/") - priorKeyCalls; got != 0 {
-		t.Errorf("AC-N3 violation: MCPServer reconciler issued %d new /key/* call(s) (want 0)",
-			got)
+	keyAllDelta := mockServer.PathCallCount("/key/") - priorKeyCalls
+	keyHealthDelta := mockServer.PathCallCount("/key/health") - priorKeyHealthCalls
+	if got := keyAllDelta - keyHealthDelta; got != 0 {
+		t.Errorf("AC-N3 violation: MCPServer reconciler issued %d new /key/* call(s) excluding Connection probe (want 0; total /key/ delta=%d, /key/health delta=%d)",
+			got, keyAllDelta, keyHealthDelta)
 	}
 }

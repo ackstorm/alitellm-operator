@@ -1152,8 +1152,8 @@ func TestModel_LiteLLMRejected_OnHTTP422(t *testing.T) {
 	ensureNoModel(t, ctx, "rejected-test")
 	resetConnCacheSnapshot()
 
-	// Ensure LiteLLMConnection/default is ready (the mock returns 200 for GET /models
-	// in Mode422, only POST /model/new returns 422).
+	// Ensure LiteLLMConnection/default is ready (the mock returns 200 for
+	// the POST /key/health probe in Mode422; only POST /model/new returns 422).
 	ensureNoConnectionDefault(t, ctx)
 	connCR := connDefaultCR()
 	if err := k8sClient.Create(ctx, connCR); err != nil {
@@ -2126,16 +2126,16 @@ func TestModel_RedactionCanary_AC_S1(t *testing.T) {
 	t.Run("LiteLLMRejected", func(t *testing.T) {
 		sink.Reset()
 		// Ensure connection cache is Ready before testing LiteLLMRejected.
-		// Mode422 only returns 422 on POST /model/new — GET /models stays 200.
-		// Force cache Ready directly — probe-loop recovery latency is not
-		// under test here.
+		// Mode422 only returns 422 on POST /model/new — the POST /key/health
+		// probe stays 200. Force cache Ready directly — probe-loop recovery
+		// latency is not under test here.
 		mockServer.SetMode(mock.ModeHappy)
 		connCache.Rebuild(connection.ConnectionSnapshot{
 			Ready:  true,
 			Reason: reasonSynced,
 			Client: savedConnClient,
 		})
-		// Now set 422 mode — POST /model/new returns 422, GET /models returns 200.
+		// Now set 422 mode — POST /model/new returns 422, POST /key/health stays 200.
 		mockServer.SetMode(mock.Mode422)
 		mockServer.ResetCounters()
 		mockServer.ResetModels()

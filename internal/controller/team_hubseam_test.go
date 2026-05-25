@@ -38,12 +38,6 @@ func TestTeamHubSeam_AC_DC1_VirtualKeysCoexist(t *testing.T) {
 	ensureNoTeam(t, ctx, "hubseam-trigger")
 	resetConnCacheSnapshot()
 
-	// Capture baseline PathCallCount before the LiteLLMConnection setup
-	// (which probes GET /models — separate from the /user/* and /key/*
-	// surfaces we care about here).
-	priorUserCalls := mockServer.PathCallCount("/user/")
-	priorKeyCalls := mockServer.PathCallCount("/key/")
-
 	cleanupConn := setupReadyConnectionTeam(t, ctx)
 	t.Cleanup(func() {
 		mockServer.SetMode(mock.ModeHappy)
@@ -51,6 +45,14 @@ func TestTeamHubSeam_AC_DC1_VirtualKeysCoexist(t *testing.T) {
 		ensureNoTeam(t, context.Background(), "engineering")
 		ensureNoTeam(t, context.Background(), "hubseam-trigger")
 	})
+
+	// Capture baseline PathCallCount AFTER Connection is Synced AND
+	// separately track the probe path so any in-flight Connection
+	// re-reconciles (probes to /key/health) can be subtracted from
+	// the /key/ prefix delta below.
+	priorUserCalls := mockServer.PathCallCount("/user/")
+	priorKeyCalls := mockServer.PathCallCount("/key/")
+	priorKeyHealthCalls := mockServer.PathCallCount("/key/health")
 
 	// ─── Step 1: Apply Team/engineering with budget ──────────────────────
 	cr := &litellmv1alpha1.LiteLLMTeam{
@@ -191,8 +193,10 @@ func TestTeamHubSeam_AC_DC1_VirtualKeysCoexist(t *testing.T) {
 		t.Errorf("AC-DC1 + TEAM-09 violation: operator issued %d new /user/* call(s) during Team reconciliation (want 0)",
 			got)
 	}
-	if got := mockServer.PathCallCount("/key/") - priorKeyCalls; got != 0 {
-		t.Errorf("AC-DC1 + TEAM-09 violation: operator issued %d new /key/* call(s) during Team reconciliation (want 0)",
-			got)
+	keyAllDelta := mockServer.PathCallCount("/key/") - priorKeyCalls
+	keyHealthDelta := mockServer.PathCallCount("/key/health") - priorKeyHealthCalls
+	if got := keyAllDelta - keyHealthDelta; got != 0 {
+		t.Errorf("AC-DC1 + TEAM-09 violation: operator issued %d new /key/* call(s) during Team reconciliation excluding Connection probe (want 0; total /key/ delta=%d, /key/health delta=%d)",
+			got, keyAllDelta, keyHealthDelta)
 	}
 }

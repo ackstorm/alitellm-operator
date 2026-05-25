@@ -745,8 +745,19 @@ func (m *MockServer) handle(w http.ResponseWriter, r *http.Request) {
 	// does not currently use PATCH for the verbs the operator issues,
 	// but the upstream OpenAPI does mention PATCH /model/{id}/update —
 	// recording it lets us catch any future regression).
-	switch strings.ToUpper(r.Method) {
-	case http.MethodGet, http.MethodHead:
+	//
+	// Special case: POST /key/health is the connection probe (formerly
+	// GET /models). Even though the HTTP verb is POST, semantically the
+	// probe is a read-only health check owned by the LiteLLMConnection
+	// reconciler, not a domain mutation. Counting it under reads
+	// preserves the invariant that every test asserting "Mutations() == 0
+	// when the reconciler-under-test does not call domain mutation paths"
+	// continues to hold across the probe swap.
+	switch {
+	case strings.ToUpper(r.Method) == http.MethodPost && r.URL.Path == "/key/health":
+		m.reads.Add(1)
+	case strings.ToUpper(r.Method) == http.MethodGet,
+		strings.ToUpper(r.Method) == http.MethodHead:
 		m.reads.Add(1)
 	default:
 		m.mutations.Add(1)
@@ -870,7 +881,19 @@ func (m *MockServer) statefulBody(r *http.Request) []byte {
 	method := r.Method
 	path := r.URL.Path
 
-	// GET /models — connection probe.
+	// POST /key/health — connection probe (LiteLLM's auth-gated
+	// key+logging health endpoint, swapped in from GET /models). Empty
+	// POST body authenticates via Authorization header alone; the
+	// response carries the master-key liveness AND the configured
+	// logging-callback health, which the connection reconciler surfaces
+	// as the secondary LoggingHealthy condition.
+	if method == http.MethodPost && path == "/key/health" {
+		return []byte(`{"key":"healthy","logging_callbacks":{"callbacks":[],"status":"healthy","details":"No logger exceptions triggered, system is healthy."}}`)
+	}
+
+	// GET /models — legacy probe path. Kept around so any direct test
+	// callers (and the connection_proxy_test invariant) still get a
+	// 200 response; not used by the operator's probe anymore.
 	if method == http.MethodGet && path == "/models" {
 		return []byte(`{"data":[]}`)
 	}

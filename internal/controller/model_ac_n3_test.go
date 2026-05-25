@@ -29,12 +29,6 @@ func TestModel_AC_N3_NoUserOrKeyCalls(t *testing.T) {
 	ensureNoModel(t, ctx, "ac-n3-model")
 	resetConnCacheSnapshot()
 
-	// Capture baseline PathCallCount BEFORE the LiteLLMConnection setup
-	// (which probes GET /models — separate from the /user/* and /key/*
-	// surfaces we are asserting here).
-	priorUserCalls := mockServer.PathCallCount("/user/")
-	priorKeyCalls := mockServer.PathCallCount("/key/")
-
 	// Set up a ready LiteLLMConnection so the Model reconciler can
 	// proceed past connection-gating.
 	ensureNoConnectionDefault(t, ctx)
@@ -52,6 +46,18 @@ func TestModel_AC_N3_NoUserOrKeyCalls(t *testing.T) {
 	if snap.Reason != reasonSynced {
 		t.Fatalf("LiteLLMConnection not Synced within 30s; reason=%q", snap.Reason)
 	}
+
+	// Capture baseline PathCallCount AFTER the LiteLLMConnection reaches
+	// Synced. The Connection reconciler probes POST /key/health on its
+	// own cadence; we baseline post-Synced AND separately track the
+	// probe path so any in-flight Connection re-reconciles can be
+	// subtracted from the /key/ prefix delta below. Without the
+	// subtraction, the Connection self-loop (FIX10 review note —
+	// Connection's For watch has no GenerationChangedPredicate) would
+	// be misattributed to the Model reconciler.
+	priorUserCalls := mockServer.PathCallCount("/user/")
+	priorKeyCalls := mockServer.PathCallCount("/key/")
+	priorKeyHealthCalls := mockServer.PathCallCount("/key/health")
 
 	// Apply Model CR.
 	cr := &litellmv1alpha1.LiteLLMModel{
@@ -95,8 +101,13 @@ func TestModel_AC_N3_NoUserOrKeyCalls(t *testing.T) {
 		t.Errorf("AC-N3 violation: Model reconciler issued %d new /user/* call(s) (want 0)",
 			got)
 	}
-	if got := mockServer.PathCallCount("/key/") - priorKeyCalls; got != 0 {
-		t.Errorf("AC-N3 violation: Model reconciler issued %d new /key/* call(s) (want 0)",
-			got)
+	// Subtract Connection probe (/key/health) traffic from the /key/
+	// prefix delta — those calls are Connection-reconciler-owned and
+	// must not be misattributed to the Model reconciler.
+	keyAllDelta := mockServer.PathCallCount("/key/") - priorKeyCalls
+	keyHealthDelta := mockServer.PathCallCount("/key/health") - priorKeyHealthCalls
+	if got := keyAllDelta - keyHealthDelta; got != 0 {
+		t.Errorf("AC-N3 violation: Model reconciler issued %d new /key/* call(s) excluding Connection probe (want 0; total /key/ delta=%d, /key/health delta=%d)",
+			got, keyAllDelta, keyHealthDelta)
 	}
 }
