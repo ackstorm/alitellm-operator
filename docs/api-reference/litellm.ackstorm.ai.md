@@ -20,6 +20,8 @@ Package v1alpha1 contains API Schema definitions for the litellm v1alpha1 API gr
 - [LiteLLMMCPServerDiscoveryList](#litellmmcpserverdiscoverylist)
 - [LiteLLMMCPServerList](#litellmmcpserverlist)
 - [LiteLLMModel](#litellmmodel)
+- [LiteLLMModelAlias](#litellmmodelalias)
+- [LiteLLMModelAliasList](#litellmmodelaliaslist)
 - [LiteLLMModelDiscovery](#litellmmodeldiscovery)
 - [LiteLLMModelDiscoveryList](#litellmmodeldiscoverylist)
 - [LiteLLMModelList](#litellmmodellist)
@@ -127,6 +129,33 @@ _Appears in:_
 | `agentCardKeys` _string array_ | AgentCardKeys is the sorted list of top-level keys present in<br />spec.agentCard at the time of the last successful render.<br />Phase 5 D-04 informational field — not load-bearing for<br />shrinkage detection (Probe 7 ✓ — PUT IS wholesale-replace on<br />A2A). |  |  |
 | `agentID` _string_ | AgentID is the LiteLLM-assigned UUID (agent_id) for this A2A<br />agent entry. Pinned per Phase 5 D-02 so the reconciler can call<br />`DELETE /v1/agents/<agent_id>` directly on the finalizer path<br />without re-resolving by name. On first reconcile, resolved from<br />the POST /v1/agents response body's `agent_id` field.<br />Diverges from spec §6.6: documented in<br />spec/DEFECTS-1.82.6.md row `DEF-§6.4/§6.6-ID-PERSIST`. |  |  |
 | `at` _[Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#time-v1-meta)_ | At is the timestamp of the last SUCCESSFUL render (NOT every<br />reconcile attempt — transient failures do not update this field). |  |  |
+
+
+#### AliasEntryStatus
+
+
+
+AliasEntryStatus is the observed state of one ModelAliasEntry.
+
+  - Applied        — true iff this entry currently holds the slot for its
+    Name in LiteLLM router_settings.model_group_alias (i.e. won the
+    alphabetical-last-wins tie-break across all CRs).
+  - ConflictsWith  — when Applied=false, "<namespace>/<name>#<index>" of
+    the CR+entry that won the slot.
+  - AppliedValue   — when Applied=true, the Value last successfully
+    written for this Name.
+
+
+
+_Appears in:_
+- [LiteLLMModelAliasStatus](#litellmmodelaliasstatus)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `name` _string_ | Name mirrors spec.aliases[].name for the entry this status row<br />describes. |  |  |
+| `applied` _boolean_ | Applied is true iff this entry is the current winner for Name in<br />LiteLLM router_settings.model_group_alias. |  |  |
+| `appliedValue` _string_ | AppliedValue is the Value the operator last successfully wrote into<br />router_settings.model_group_alias[Name] for this entry. Empty until<br />the first successful POST /config/update on which this entry won. |  |  |
+| `conflictsWith` _string_ | ConflictsWith is "<namespace>/<name>#<index>" identifying the winning<br />CR+entry when Applied=false; empty when Applied=true. |  |  |
 
 
 #### BudgetSpec
@@ -676,6 +705,115 @@ _Appears in:_
 | `status` _[ModelStatus](#modelstatus)_ |  |  |  |
 
 
+#### LiteLLMModelAlias
+
+
+
+LiteLLMModelAlias is the Schema for the litellmmodelaliases API.
+
+Intra-CR uniqueness of spec.aliases[].name is enforced by Kubernetes via
+the +listType=map +listMapKey=name markers on the Aliases field — no CEL
+rule needed.
+
+One CR contributes ONE OR MORE entries to LiteLLM
+router_settings.model_group_alias via spec.aliases. The operator
+aggregates ALL LiteLLMModelAlias CRs cluster-wide:
+
+ 1. Sort CRs by (namespace, name) ASC.
+ 2. For each CR, iterate spec.aliases in declared array order.
+ 3. Last (CR, entry) per alias name wins.
+ 4. GET /get/config/callbacks → splice the merged map into the existing
+    router_settings.model_group_alias → POST /config/update.
+
+Per-entry winner/loser state is surfaced in status.aliasStatuses[].
+
+
+
+_Appears in:_
+- [LiteLLMModelAliasList](#litellmmodelaliaslist)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `apiVersion` _string_ | `litellm.ackstorm.ai/v1alpha1` | | |
+| `kind` _string_ | `LiteLLMModelAlias` | | |
+| `kind` _string_ | Kind is a string value representing the REST resource this object represents.<br />Servers may infer this from the endpoint the client submits requests to.<br />Cannot be updated.<br />In CamelCase.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds |  |  |
+| `apiVersion` _string_ | APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources |  |  |
+| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
+| `spec` _[LiteLLMModelAliasSpec](#litellmmodelaliasspec)_ |  |  |  |
+| `status` _[LiteLLMModelAliasStatus](#litellmmodelaliasstatus)_ |  |  |  |
+
+
+#### LiteLLMModelAliasList
+
+
+
+LiteLLMModelAliasList contains a list of LiteLLMModelAlias.
+
+
+
+
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `apiVersion` _string_ | `litellm.ackstorm.ai/v1alpha1` | | |
+| `kind` _string_ | `LiteLLMModelAliasList` | | |
+| `kind` _string_ | Kind is a string value representing the REST resource this object represents.<br />Servers may infer this from the endpoint the client submits requests to.<br />Cannot be updated.<br />In CamelCase.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds |  |  |
+| `apiVersion` _string_ | APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources |  |  |
+| `metadata` _[ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#listmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
+| `items` _[LiteLLMModelAlias](#litellmmodelalias) array_ |  |  |  |
+
+
+#### LiteLLMModelAliasSpec
+
+
+
+LiteLLMModelAliasSpec is a collection of model_group_alias entries
+contributed by a single CR. The operator aggregates ALL LiteLLMModelAlias
+CRs cluster-wide into one merged map and writes it via
+POST /config/update, preserving unrelated router_settings keys via
+read-merge-write against GET /get/config/callbacks.
+
+MALIAS-01 — declarative declaration of router_settings.model_group_alias.
+MALIAS-02 — conflict resolution: sort by (CR namespace, CR name) ASC,
+
+	then iterate spec.aliases in declared array order; last write per
+	alias name wins. Losers across CRs surface in
+	status.aliasStatuses[].conflictsWith on the loser CR.
+
+MALIAS-03 — deletion of any LiteLLMModelAlias triggers a full
+
+	rebuild-and-rewrite via the finalizer
+	`modelaliases.litellm.ackstorm.ai/finalizer`, so no orphan entries
+	survive in LiteLLM.
+
+
+
+_Appears in:_
+- [LiteLLMModelAlias](#litellmmodelalias)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `aliases` _[ModelAliasEntry](#modelaliasentry) array_ | Aliases is the list of (name, value) entries this CR contributes to<br />router_settings.model_group_alias. Intra-CR duplicate names are<br />rejected at admission via CEL (see kubebuilder:validation:XValidation<br />on the parent type) — within one CR, every entry's name must be<br />unique. Cross-CR duplicates are resolved at reconcile time. |  | MaxItems: 128 <br />MinItems: 1 <br />Required: \{\} <br /> |
+
+
+#### LiteLLMModelAliasStatus
+
+
+
+LiteLLMModelAliasStatus is the observed state of a multi-entry alias CR.
+
+
+
+_Appears in:_
+- [LiteLLMModelAlias](#litellmmodelalias)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `observedGeneration` _integer_ | ObservedGeneration is the metadata.generation last reconciled. |  |  |
+| `conditions` _[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#condition-v1-meta) array_ | Conditions carries the standard metav1.Condition list. The single<br />type defined for LiteLLMModelAlias is `Ready`, with reasons:<br />  - Synced               — every spec.aliases entry won its slot;<br />                           all AliasStatuses[].Applied == true.<br />  - PartialAliasConflict — at least one spec.aliases entry lost the<br />                           slot to another CR; see AliasStatuses[]<br />                           for per-entry detail.<br />  - LiteLLMUnavailable   — LiteLLMConnection/default not Ready.<br />  - LiteLLMRejected      — LiteLLM returned a non-2xx response on<br />                           GET /get/config/callbacks or<br />                           POST /config/update. |  |  |
+| `aliasStatuses` _[AliasEntryStatus](#aliasentrystatus) array_ | AliasStatuses carries one entry per spec.aliases item, in the same<br />order as spec.aliases. Surfaces per-entry winner/loser state so<br />users can diagnose conflicts when one CR contributes many aliases. |  |  |
+
+
 #### LiteLLMModelDiscovery
 
 
@@ -1152,6 +1290,31 @@ _Appears in:_
 | `observedGeneration` _integer_ | ObservedGeneration is the metadata.generation of the MCPServer CR<br />the reconciler most recently processed successfully. Consumers can<br />compare this against metadata.generation to detect whether the<br />current spec has been reconciled yet (Phase 3 OWN-08 carry-forward). |  |  |
 | `conditions` _[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#condition-v1-meta) array_ | Conditions carries the standard metav1.Condition list. The single<br />type defined for MCPServer is `Ready`, with reason values from §6.0:<br />- Synced — rendered body matches LiteLLM; no drift.<br />- LiteLLMUnavailable — LiteLLMConnection/default not Ready<br />(D-08 echo-reason from connection cache).<br />- LiteLLMRejected — LiteLLM returned a 4xx (non-401) on mutation.<br />- SecretNotFound — a spec.secrets[].secretRef is missing OR<br />a `\{\{NAME\}\}` placeholder has no matching<br />spec.secrets[].as entry.<br />- InvalidConfig — spec.params not valid JSON, or duplicate<br />spec.secrets[].as values. |  |  |
 | `lastRendered` _[MCPServerLastRenderedStatus](#mcpserverlastrenderedstatus)_ | LastRendered is the operator-side drift source of truth per Phase 3<br />D-01 / D-07 (extended for MCPServer per Phase 5 D-03). It records<br />the post-substitution rendered state that was last successfully<br />applied to LiteLLM. The reconciler compares the current desired<br />state hash against `lastRendered.hash` to detect drift without<br />querying the LiteLLM API on every reconcile. |  |  |
+
+
+#### ModelAliasEntry
+
+
+
+ModelAliasEntry is one (name, value) pair contributing to LiteLLM's
+router_settings.model_group_alias map.
+
+  - Name  — the map KEY (what clients send as "model", e.g. "ackstorm.smart").
+  - Value — the map VALUE (an existing LiteLLM model_name or model_group,
+    e.g. "GEMINI.gemini-3-pro-preview").
+
+The operator does NOT validate that Value resolves to a live LiteLLM
+model — LiteLLM resolves at inference time.
+
+
+
+_Appears in:_
+- [LiteLLMModelAliasSpec](#litellmmodelaliasspec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `name` _string_ | Name is the model_group_alias map KEY — the model name clients send to<br />LiteLLM. Must match `^[A-Za-z0-9][A-Za-z0-9._/-]\{0,252\}$`. Cluster-wide<br />uniqueness across all LiteLLMModelAlias CRs is enforced at reconcile<br />time (alphabetical-last-wins on (CR namespace, CR name, array index));<br />losers report Ready=False reason=AliasConflict in<br />status.aliasStatuses[]. |  | MaxLength: 253 <br />MinLength: 1 <br />Pattern: `^[A-Za-z0-9][A-Za-z0-9._/-]\{0,252\}$` <br />Required: \{\} <br /> |
+| `value` _string_ | Value is the resolved LiteLLM model_name or model_group the alias<br />points to. The operator forwards it verbatim into the merged<br />router_settings.model_group_alias map. |  | MaxLength: 253 <br />MinLength: 1 <br />Required: \{\} <br /> |
 
 
 #### ModelDiscoveryFilters
