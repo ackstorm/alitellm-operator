@@ -1,0 +1,61 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# setup-devtools — pull the pre-built devtools image from GHCR, restore Go
+# caches, and fall back to a local build if the registry image is missing.
+#
+# The devtools image is content-addressed by the SHA-256 of Dockerfile.devtools.
+# `.github/workflows/devtools-image.yml` builds and pushes the image to
+# `ghcr.io/<owner>/litellm-devtools:<hash>` whenever Dockerfile.devtools (or
+# the image workflow itself) changes. Other CI jobs use this composite action
+# to consume the pre-built image instead of rebuilding from scratch.
+#
+# Fallback semantics:
+#   - If `docker pull` succeeds, the image is tagged as `litellm-devtools:latest`
+#     and scripts/dev.sh skips its own build (existing image detection).
+#   - If `docker pull` fails (hash not yet pushed, GHCR unavailable, fork PR
+#     without packages: read), scripts/dev.sh builds the image locally — slower
+#     but always correct.
+
+name: setup-devtools
+description: Restore Go caches, pull pre-built devtools image from GHCR, fall back to local build.
+
+runs:
+  using: composite
+  steps:
+    - name: Cache Go module + build caches (mounted into devtools container)
+      uses: actions/cache@v5  # v4.3.0
+      with:
+        path: |
+          .gocache/build
+          .gocache/gopath
+        key: ${{ runner.os }}-devtools-${{ hashFiles('**/go.sum', 'Dockerfile.devtools') }}
+        restore-keys: ${{ runner.os }}-devtools-
+
+    - name: Compute devtools image reference
+      id: ref
+      shell: bash
+      run: |
+        HASH=$(sha256sum Dockerfile.devtools | cut -c1-12)
+        OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+        echo "hash=$HASH" >> "$GITHUB_OUTPUT"
+        echo "image=ghcr.io/$OWNER/litellm-devtools:$HASH" >> "$GITHUB_OUTPUT"
+
+    - name: Log in to GHCR
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+    - name: Pull pre-built devtools image (best-effort)
+      shell: bash
+      run: |
+        if docker pull "${{ steps.ref.outputs.image }}" 2>/dev/null; then
+          docker tag "${{ steps.ref.outputs.image }}" litellm-devtools:latest
+          echo "::notice::Pulled pre-built devtools image ${{ steps.ref.outputs.hash }}"
+        else
+          echo "::notice::No pre-built devtools image for hash ${{ steps.ref.outputs.hash }} — will build locally"
+        fi
+
+    - name: Ensure devtools image exists (build locally if pull missed)
+      shell: bash
+      run: ./scripts/dev.sh true

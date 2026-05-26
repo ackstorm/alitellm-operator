@@ -1,0 +1,89 @@
+name: devtools-image
+
+# Builds and pushes the pre-baked devtools image consumed by ci.yml jobs.
+# Image is content-addressed by sha256(Dockerfile.devtools) — same hash
+# computed by .github/actions/setup-devtools. Subsequent CI jobs pull the
+# tagged image instead of rebuilding from scratch (~30s warm / 2-3min cold
+# saved per job, × 5 jobs per PR).
+#
+# Triggers:
+#   - push:main when Dockerfile.devtools or this workflow changes
+#   - pull_request when those paths change (builds + pushes so the PR's
+#     CI run can consume the new image)
+#   - workflow_dispatch for manual rebuilds (first push to seed `:latest`,
+#     forced rebuild via UI, etc.)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Dockerfile.devtools'
+      - '.github/workflows/devtools-image.yml'
+      - '.github/actions/setup-devtools/**'
+  pull_request:
+    paths:
+      - 'Dockerfile.devtools'
+      - '.github/workflows/devtools-image.yml'
+      - '.github/actions/setup-devtools/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: devtools-image-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-push:
+    name: Build + push devtools image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6  # v4.3.1
+
+      - name: Compute image reference
+        id: ref
+        run: |
+          HASH=$(sha256sum Dockerfile.devtools | cut -c1-12)
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "hash=$HASH" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/$OWNER/litellm-devtools:$HASH" >> "$GITHUB_OUTPUT"
+          echo "latest=ghcr.io/$OWNER/litellm-devtools:latest" >> "$GITHUB_OUTPUT"
+          echo "buildcache=ghcr.io/$OWNER/litellm-devtools:buildcache" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build + push devtools image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.devtools
+          push: true
+          tags: |
+            ${{ steps.ref.outputs.image }}
+            ${{ github.ref == 'refs/heads/main' && steps.ref.outputs.latest || '' }}
+          cache-from: type=registry,ref=${{ steps.ref.outputs.buildcache }}
+          cache-to: type=registry,ref=${{ steps.ref.outputs.buildcache }},mode=max
+          provenance: false
+
+      - name: Summary
+        run: |
+          {
+            echo "### Devtools image"
+            echo ""
+            echo "- Hash: \`${{ steps.ref.outputs.hash }}\`"
+            echo "- Pushed: \`${{ steps.ref.outputs.image }}\`"
+            if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+              echo "- Also tagged: \`${{ steps.ref.outputs.latest }}\`"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

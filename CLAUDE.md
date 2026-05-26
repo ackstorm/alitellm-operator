@@ -122,16 +122,28 @@ alitellm-operator/
 
 | Event                                 | lint | unit | envtest | security | e2e |
 |---------------------------------------|------|------|---------|----------|-----|
-| push: feature branch                  |  ✓   |  ✓   |   -     |    -     |  -  |
+| push: feature branch (no PR)          |  -   |  -   |   -     |    -     |  -  |
 | pull_request → main                   |  ✓   |  ✓   |   ✓     |    ✓     |  ✓  |
-| push: main (non-release)              |  ✓   |  ✓   |   ✓     |    ✓     |  -  |
+| pull_request → main (draft)           |  ✓   |  ✓   |   ✓     |    ✓     |  -  |
+| push: main (post-merge)               |  -   |  -   |   -     |    -     |  -  |
 | push: main `chore(release): v*`       |  -   |  -   |   -     |    -     |  -  (release.yml owns it) |
 
-E2E runs once per change: on the PR. Post-merge skips it (already
-green on the PR ref). Docs-only commits (paths-ignore: `**/*.md`,
-`docs/**`, `.planning/**`, `references/**`, `FIX*.txt`, `LICENSE`,
-`NOTICE`, `CODEOWNERS`, `.gitignore`) skip `ci.yml` entirely. Detail
-and tradeoffs: `references/docs/workflow.md`.
+**PR-only invariant**: `ci.yml` triggers exclusively on `pull_request`.
+Branch protection on `main` enforces PR workflow (required checks:
+Lint / Unit / Envtest / Security / E2E (kind + helm + ginkgo); linear
+history required; no force-push; no deletions). Post-merge SHA on main
+has identical content to the PR head SHA, so re-running CI on push
+main would be dup. Release commits are handled by `release.yml`.
+Soak / leak / fuzz harnesses live in `nightly.yml` (04:00 UTC +
+workflow_dispatch).
+
+Docs-only PRs (paths-ignore: `**/*.md`, `docs/**`, `.planning/**`,
+`references/**`, `FIX*.txt`, `LICENSE`, `NOTICE`, `CODEOWNERS`,
+`.gitignore`) skip `ci.yml` entirely — required status checks therefore
+will not report on docs-only PRs, so an admin merge or status check
+override is needed to land them.
+
+Detail and tradeoffs: `references/docs/workflow.md`.
 
 ## Toolchain — host has NO Go (always Docker)
 
@@ -150,7 +162,16 @@ invocation goes through the devtools container via `./scripts/dev.sh`.
   preserves host UID:GID, persists Go module + build caches under
   `.gocache/`, resolves `KUBEBUILDER_ASSETS`.
 - Image: `litellm-devtools:latest` (built from `Dockerfile.devtools` on
-  first use; force rebuild with `LITELLM_DEVTOOLS_REBUILD=1`).
+  first use locally; force rebuild with `LITELLM_DEVTOOLS_REBUILD=1`).
+- CI consumes a pre-baked image from GHCR
+  (`ghcr.io/<owner>/litellm-devtools:<hash>`, where hash =
+  `sha256(Dockerfile.devtools)[:12]`). `.github/workflows/devtools-image.yml`
+  builds + pushes when `Dockerfile.devtools` changes;
+  `.github/actions/setup-devtools` pulls in each CI job (~30s warm /
+  2-3min cold saved per job × 5 jobs = ~10min/PR). On miss (first push,
+  PR that changes Dockerfile.devtools racing the image workflow, GHCR
+  unavailable), the composite action falls back to a local build — slower
+  but always correct.
 - Pinned: Go 1.24.13, kubebuilder v4.4.0, controller-runtime v0.19.4,
   k8s.io/* v0.31.0, govulncheck v1.3.0.
 
