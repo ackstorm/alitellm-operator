@@ -4,6 +4,7 @@ package conflict_test
 
 import (
 	"testing"
+	"time"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,10 +33,24 @@ func TestNewLoserCondition_SetsReasonAndMessage(t *testing.T) {
 
 func TestApplyLoserCondition_IdempotentWriteAndClear(t *testing.T) {
 	var conds []metav1.Condition
+
 	conflict.ApplyLoserCondition(&conds, 1, "ns/winner")
-	if c := meta.FindStatusCondition(conds, "Ready"); c == nil || c.Reason != conflict.ConditionReasonConflict {
-		t.Fatalf("expected Conflict condition set")
+	first := meta.FindStatusCondition(conds, "Ready")
+	if first == nil || first.Reason != conflict.ConditionReasonConflict {
+		t.Fatalf("expected Conflict condition set on first apply")
 	}
+	captured := first.LastTransitionTime
+
+	time.Sleep(10 * time.Millisecond)
+	conflict.ApplyLoserCondition(&conds, 1, "ns/winner")
+	second := meta.FindStatusCondition(conds, "Ready")
+	if second == nil {
+		t.Fatal("expected Conflict condition still present on second apply")
+	}
+	if !second.LastTransitionTime.Equal(&captured) {
+		t.Fatalf("LastTransitionTime changed on idempotent re-apply: was %v, now %v", captured, second.LastTransitionTime)
+	}
+
 	conflict.ClearLoserCondition(&conds)
 	if c := meta.FindStatusCondition(conds, "Ready"); c != nil && c.Reason == conflict.ConditionReasonConflict {
 		t.Fatalf("expected Conflict condition cleared")
