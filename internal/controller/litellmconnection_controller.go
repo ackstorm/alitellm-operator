@@ -51,6 +51,11 @@ const (
 	reasonBadMasterKey       = "BadMasterKey"
 	reasonSecretNotFound     = "SecretNotFound"
 	reasonLiteLLMUnavailable = "LiteLLMUnavailable"
+	// reasonInvalidEndpoint — spec.endpoint failed wire-level
+	// litellm.ValidateEndpoint (e.g., Unicode host slipped past CRD
+	// Pattern, or admission unavailable). Operator-action-required:
+	// no requeue, Spec edit retriggers via the Connection watch.
+	reasonInvalidEndpoint = "InvalidEndpoint"
 )
 
 // Event reason constants — recorded via record.EventRecorder.Eventf.
@@ -71,7 +76,7 @@ const connNotReadyUnreachableMsg = "LiteLLMConnection/default not Ready (reason:
 // SecretNotFound}; "Absent" is reserved for finalizer path
 // and is NEVER set by writeStatus in this plan.
 var connectionReasonAll = []string{
-	reasonSynced, reasonConnecting, reasonAbsent, reasonUnreachable, reasonBadMasterKey, reasonSecretNotFound,
+	reasonSynced, reasonConnecting, reasonAbsent, reasonUnreachable, reasonBadMasterKey, reasonSecretNotFound, reasonInvalidEndpoint,
 }
 
 // +kubebuilder:rbac:groups=litellm.ackstorm.ai,resources=litellmconnections,verbs=get;list;watch;create;update;patch;delete
