@@ -252,7 +252,7 @@ func (r *LiteLLMConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			// write is non-fatal (continue to probe so the terminal-reason
 			// write below can land); the logger.Error makes the failure
 			// visible without blocking forward progress.
-			if err := r.writeStatus(ctx, &conn, metav1.ConditionFalse, reasonConnecting, "probing endpoint"); err != nil {
+			if err := r.writeStatus(ctx, &conn, reasonConnecting, "probing endpoint"); err != nil {
 				// Non-fatal: the terminal-reason write below will set the final Ready condition.
 				logStatusUpdateErr(logger, err, "reason", reasonConnecting)
 			}
@@ -269,7 +269,7 @@ func (r *LiteLLMConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		if apierrors.IsNotFound(err) {
 			msg := "Secret " + req.Namespace + "/" + conn.Spec.MasterKeySecretRef.Name + " not found"
 			// WR-03: capture-and-log so apierrors.IsConflict storms are observable.
-			if werr := r.writeStatus(ctx, &conn, metav1.ConditionFalse, reasonSecretNotFound, msg); werr != nil {
+			if werr := r.writeStatus(ctx, &conn, reasonSecretNotFound, msg); werr != nil {
 				logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
 			}
 			r.Cache.Rebuild(connection.ConnectionSnapshot{
@@ -295,7 +295,7 @@ func (r *LiteLLMConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		msg := "Secret " + req.Namespace + "/" + conn.Spec.MasterKeySecretRef.Name +
 			":" + conn.Spec.MasterKeySecretRef.Key + " key not found"
 		// WR-03: capture-and-log so apierrors.IsConflict storms are observable.
-		if werr := r.writeStatus(ctx, &conn, metav1.ConditionFalse, reasonSecretNotFound, msg); werr != nil {
+		if werr := r.writeStatus(ctx, &conn, reasonSecretNotFound, msg); werr != nil {
 			logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
 		}
 		r.Cache.Rebuild(connection.ConnectionSnapshot{
@@ -316,7 +316,7 @@ func (r *LiteLLMConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// retriggers on Spec edit.
 	if err := litellm.ValidateEndpoint(conn.Spec.Endpoint); err != nil {
 		msg := "spec.endpoint: " + err.Error()
-		if werr := r.writeStatus(ctx, &conn, metav1.ConditionFalse, reasonInvalidEndpoint, msg); werr != nil {
+		if werr := r.writeStatus(ctx, &conn, reasonInvalidEndpoint, msg); werr != nil {
 			logStatusUpdateErr(logger, werr, "reason", reasonInvalidEndpoint)
 		}
 		r.Cache.Rebuild(connection.ConnectionSnapshot{
@@ -496,13 +496,14 @@ func (r *LiteLLMConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 // helper does not redact. Callers MUST ensure no master key value
 // reaches `message`.
 //
-// Reasons emitted by this method are exactly: Synced, Connecting,
-// Unreachable, BadMasterKey, SecretNotFound. "Absent" is NEVER written
-// here (reserved for finalizer path).
+// Status is always ConditionFalse here — the success path uses
+// writeReadyAndLoggingHealthy. Reasons emitted are exactly:
+// Connecting, Unreachable, BadMasterKey, SecretNotFound,
+// InvalidEndpoint. "Absent" is NEVER written here (reserved for
+// finalizer path); "Synced" is never written here (writeReadyAndLoggingHealthy).
 func (r *LiteLLMConnectionReconciler) writeStatus(
 	ctx context.Context,
 	conn *litellmv1alpha1.LiteLLMConnection,
-	status metav1.ConditionStatus,
 	reason, message string,
 ) error {
 	// Skip-when-equal: identical Ready condition + ObservedGeneration
@@ -510,7 +511,7 @@ func (r *LiteLLMConnectionReconciler) writeStatus(
 	// resourceVersion and feed the 409 storm the WR-03 gate observes.
 	// The metric gauge is also a no-op on this path (same labels would
 	// be re-set to the same values), so the guard sits ahead of it.
-	if statusReadyUnchanged(conn.Status.Conditions, conn.Status.ObservedGeneration, conn.Generation, status, reason, message) {
+	if statusReadyUnchanged(conn.Status.Conditions, conn.Status.ObservedGeneration, conn.Generation, metav1.ConditionFalse, reason, message) {
 		return nil
 	}
 
@@ -524,7 +525,7 @@ func (r *LiteLLMConnectionReconciler) writeStatus(
 	orig := conn.DeepCopy()
 	cond := metav1.Condition{
 		Type:               "Ready",
-		Status:             status,
+		Status:             metav1.ConditionFalse,
 		Reason:             reason,
 		Message:            message,
 		ObservedGeneration: conn.Generation,
