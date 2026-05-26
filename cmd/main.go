@@ -28,6 +28,7 @@ import (
 	"github.com/ackstorm/alitellm-operator/internal/connection"
 	"github.com/ackstorm/alitellm-operator/internal/controller"
 	"github.com/ackstorm/alitellm-operator/internal/identity"
+	"github.com/ackstorm/alitellm-operator/internal/litellm"
 	"github.com/ackstorm/alitellm-operator/internal/toolhive"
 
 	// Blank-import the metrics package so its init registers the §10
@@ -99,6 +100,13 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	// Issue #26: emit a loud Error-level startup banner if
+	// LITELLM_OPERATOR_DANGEROUSLY_LOG_BODIES=true so a misconfigured
+	// deploy that ships with body logging on cannot exfiltrate
+	// substituted provider API keys silently. The helper is a no-op
+	// when the env var is unset or any value other than "true".
+	litellm.WarnIfDangerouslyLogBodies(setupLog)
 
 	// SCOPE-04: WATCH_NAMESPACE enforcement via cache.Options.DefaultNamespaces.
 	// The manager's informer cache is filtered at construction so a CR
