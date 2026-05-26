@@ -24,9 +24,10 @@ metadata:
 ---
 # Source: config/rbac/role.yaml
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: Role
 metadata:
-  name: alitellm-operator-manager-role
+  name: alitellm-operator-role
+  namespace: system
 rules:
 - apiGroups:
   - ""
@@ -48,8 +49,10 @@ rules:
   resources:
   - litellma2aagents
   - litellmconnections
+  - litellmguardrails
   - litellmmcpserverdiscoveries
   - litellmmcpservers
+  - litellmmodelaliases
   - litellmmodeldiscoveries
   - litellmmodels
   - litellmteams
@@ -66,8 +69,10 @@ rules:
   resources:
   - litellma2aagents/finalizers
   - litellmconnections/finalizers
+  - litellmguardrails/finalizers
   - litellmmcpserverdiscoveries/finalizers
   - litellmmcpservers/finalizers
+  - litellmmodelaliases/finalizers
   - litellmmodeldiscoveries/finalizers
   - litellmmodels/finalizers
   - litellmteams/finalizers
@@ -78,8 +83,10 @@ rules:
   resources:
   - litellma2aagents/status
   - litellmconnections/status
+  - litellmguardrails/status
   - litellmmcpserverdiscoveries/status
   - litellmmcpservers/status
+  - litellmmodelaliases/status
   - litellmmodeldiscoveries/status
   - litellmmodels/status
   - litellmteams/status
@@ -91,16 +98,17 @@ rules:
 ---
 # Source: config/rbac/role_binding.yaml
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: RoleBinding
 metadata:
   labels:
     app.kubernetes.io/name: workspace
     app.kubernetes.io/managed-by: kustomize
-  name: alitellm-operator-manager-rolebinding
+  name: alitellm-operator-rolebinding
+  namespace: system
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: alitellm-operator-manager-role
+  kind: Role
+  name: alitellm-operator-role
 subjects:
 - kind: ServiceAccount
   name: alitellm-operator

@@ -78,6 +78,23 @@ type ModelSpec struct {
 	// newer CEL library version). The admission-time CEL alternative is
 	// deferred to v1beta1 when a higher Kubernetes floor can be assumed.
 	Secrets []SecretSubstitution `json:"secrets,omitempty"`
+
+	// DeletionPolicy controls finalizer behavior when the LiteLLM-side
+	// DELETE cannot be confirmed (LiteLLM unavailable, 401, transient
+	// error already retried). Defaults to "Orphan" to preserve REL-06
+	// anti-storm: the CR is freed even if the LiteLLM entry may linger.
+	// "Delete" blocks finalizer removal until the LiteLLM-side ack
+	// succeeds, suitable for GitOps users who must not see "synced"
+	// while a backend resource still exists.
+	//
+	// Annotation override (`litellm.ackstorm.ai/deletion-policy-override`)
+	// takes precedence over this field for runtime break-glass without a
+	// spec mutation.
+	//
+	// +kubebuilder:validation:Enum=Orphan;Delete
+	// +kubebuilder:default=Orphan
+	// +optional
+	DeletionPolicy string `json:"deletionPolicy,omitempty"`
 }
 
 // SecretSubstitution maps a Kubernetes Secret key to an uppercase NAME that

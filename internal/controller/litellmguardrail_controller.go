@@ -34,6 +34,7 @@ import (
 
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 	"github.com/ackstorm/alitellm-operator/internal/connection"
+	"github.com/ackstorm/alitellm-operator/internal/controller/deletionpolicy"
 	"github.com/ackstorm/alitellm-operator/internal/litellm"
 	"github.com/ackstorm/alitellm-operator/internal/metrics"
 	"github.com/ackstorm/alitellm-operator/internal/substitution"
@@ -151,6 +152,21 @@ func (r *GuardRailReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// ─── Step 2: Deletion path ─────────────────────────────────────────────
 	if !gr.DeletionTimestamp.IsZero() {
 		if controllerutil.ContainsFinalizer(&gr, guardrailFinalizer) {
+			// Issue #23: resolve effective deletion policy once.
+			policy := deletionpolicy.Resolve(&gr, gr.Spec.DeletionPolicy)
+			onAckMissing := func(reason string) error {
+				if policy == deletionpolicy.Delete {
+					metrics.DeletionBlocked.Record(guardrailKind, gr.Namespace, gr.Name)
+					r.Recorder.Eventf(&gr, corev1.EventTypeWarning, "LiteLLMDeleteBlocked",
+						"deletionPolicy=Delete and LiteLLM ack missing (%s); finalizer retained", reason)
+					return fmt.Errorf("delete blocked: %s", reason)
+				}
+				metrics.DeletionOrphanedTotal.WithLabelValues(guardrailKind).Inc()
+				r.Recorder.Eventf(&gr, corev1.EventTypeNormal, "LiteLLMDeleteOrphaned",
+					"deletionPolicy=Orphan and LiteLLM ack missing (%s); finalizer removed; entry may persist", reason)
+				return nil
+			}
+
 			snap := r.Cache.Snapshot()
 			guardrailID := gr.Status.LastRendered.GuardrailID
 			if snap.Ready && guardrailID != "" {
@@ -160,9 +176,16 @@ func (r *GuardRailReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 					case errors.As(err, &auth401):
 						r.Cache.InvalidateOn401()
 						logger.Info("deletion: 401 fast-path; cache invalidated", "path", auth401.Path)
-						// Anti-storm: fall through to remove finalizer.
+						// Issue #23: gate on resolved policy.
+						if gerr := onAckMissing("401 on DeleteGuardrail"); gerr != nil {
+							return ctrl.Result{}, gerr
+						}
 					case is4xxError(err):
 						// 404 / 4xx — treat as success; entry is already gone.
+						// Not ack-missing — LiteLLM positively reports the entry
+						// is gone, so finalizer removal is safe under both
+						// policies.
+						metrics.DeletionBlocked.Forget(guardrailKind, gr.Namespace, gr.Name)
 						logger.V(1).Info("deletion: 4xx from LiteLLM; treating as already-absent",
 							"guardrailID", guardrailID, "error", err.Error())
 					default:
@@ -171,15 +194,25 @@ func (r *GuardRailReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 					}
 				} else {
 					metrics.DriftCorrectedTotal.WithLabelValues("guardrail", "delete_vanished").Inc()
+					metrics.DeletionBlocked.Forget(guardrailKind, gr.Namespace, gr.Name)
 					logger.Info("finalizer removed; LiteLLM guardrail deleted",
 						"guardrailID", guardrailID)
 				}
 			} else {
-				logger.Info("LiteLLM unavailable on deletion OR guardrail_id never persisted; finalizer removed; entry MAY persist in LiteLLM",
-					"snapReady", snap.Ready, "guardrailID", guardrailID)
+				// Issue #23: gate on resolved policy. Reason distinguishes
+				// the two sub-cases so the Event/log is actionable.
+				reason := "LiteLLM unavailable"
+				if guardrailID == "" {
+					reason = "guardrail_id never persisted"
+				}
+				if err := onAckMissing(reason); err != nil {
+					return ctrl.Result{}, err
+				}
 			}
 
 			metrics.CRStatusAgeTracker.Forget(guardrailKind, gr.Name)
+			// Issue #23: idempotent Forget — clears DeletionBlocked gauge.
+			metrics.DeletionBlocked.Forget(guardrailKind, gr.Namespace, gr.Name)
 			controllerutil.RemoveFinalizer(&gr, guardrailFinalizer)
 			if err := r.Update(ctx, &gr); err != nil {
 				return ctrl.Result{}, err

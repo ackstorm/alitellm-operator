@@ -175,6 +175,18 @@ var DriftCorrectedTotal = prometheus.NewCounterVec(
 	[]string{"domain", "action"},
 )
 
+// DeletionOrphanedTotal — Issue #23: counter incremented on every code
+// path where the operator removed a finalizer without confirming the
+// LiteLLM-side delete (deletionPolicy=Orphan + ack-missing). Labeled
+// by kind so operators can alert on a specific CRD's orphan rate.
+var DeletionOrphanedTotal = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "litellm_operator_deletion_orphaned_total",
+		Help: "Count of CRs whose finalizer was removed without LiteLLM-side delete ack (deletionPolicy=Orphan).",
+	},
+	[]string{"kind"},
+)
+
 // ConnectionReady — spec §10: gauge labeled by reason.
 // reasons ∈ {Synced, Connecting, Absent, Unreachable, BadMasterKey,
 // SecretNotFound}. Exactly one reason should be 1 at any time.
@@ -259,6 +271,17 @@ var (
 	childCRWriteActions  = []string{"create", "update", "delete"}
 	childCRWriteResults  = []string{"success", "error"}
 
+	// litellm_operator_deletion_orphaned_total{kind} — Issue #23.
+	// Uses full kind names ("LiteLLM*") to match the per-controller
+	// `*Kind` constants used at increment sites (modelKind="LiteLLMModel"
+	// etc.). Intentionally diverges from `allKinds` (which uses bare
+	// names like "Model") because pre-touch label values must match
+	// what controllers actually emit.
+	deletionPolicyKinds = []string{
+		"LiteLLMModel", "LiteLLMTeam", "LiteLLMMCPServer",
+		"LiteLLMA2AAgent", "LiteLLMGuardRail",
+	}
+
 	// connection_ready{reason}.
 	connectionReadyReasons = []string{
 		"Synced", "Connecting", "Absent", "Unreachable", "BadMasterKey", "SecretNotFound",
@@ -283,6 +306,8 @@ func init() {
 		CRStatusAgeTracker, // OBS-03: custom Collector — replaces CRStatusAgeSeconds GaugeVec
 		ChildCRWritesTotal,
 		LitellmOperatorReconcileTotal,
+		DeletionOrphanedTotal,
+		DeletionBlocked, // Issue #23: custom Collector — emits one sample per blocked CR
 	)
 
 	// Pre-touch every enumerated label combination from spec §10's
@@ -372,6 +397,17 @@ func init() {
 	// this is correct: there are no tracked CRs until reconciliation starts.
 	// The old name="" sentinel pre-touch is no longer needed because the
 	// custom Collector reports live ages, not zero sentinels.
+
+	// litellm_operator_deletion_orphaned_total{kind} — Issue #23.
+	// Pre-touch every kind affected by spec.deletionPolicy so /metrics
+	// enumerates the full surface on first scrape (Assumption A5 /
+	// AC-O1). Connection is excluded (no LiteLLM-side delete);
+	// Discovery kinds are excluded (their finalizers run on the
+	// Discovery parent, not on the child — children are Orphan-forced
+	// and counted under their kind here).
+	for _, k := range deletionPolicyKinds {
+		DeletionOrphanedTotal.WithLabelValues(k)
+	}
 
 	// child_cr_writes_total{kind, action, result} — Phase 4 OBS-04 / D-10.
 	// 2 Discovery kinds × 3 actions × 2 results = 12 combos. Pre-touched

@@ -12,6 +12,8 @@
 #  13. govulncheck   (HIGH advisories vs ack-list — wrapper-enforced 1:1)
 #  14. go mod tidy   (go.mod / go.sum drift blocks push)
 #  15. license-header SPDX gate (every in-scope *.go starts with SPDX line)
+#  16. golangci-lint full sweep (defensive — pre-commit runs lint-changed)
+#  17. make unit     (pure-logic regression — ~5-10s warm)
 #
 # Soft checks (warnings only):
 #   7. internal hostnames / private IPv4 in tracked files
@@ -201,7 +203,10 @@ git log --all --format='%aN <%aE>' | sort -u | sed 's/^/  /'
 
 # --- 11. Urgent TODO markers ---
 hdr "11. urgent TODO / DO-NOT-COMMIT markers"
-TODO_HITS=$(git grep -nE '(DO[ _-]?NOT[ _-]?COMMIT|XXX[ _-]?REMOVE|TODO:?[ ]?(remove|delete|drop|secret))' 2>/dev/null || true)
+# Exclude this gate script itself (it names the literal markers in its
+# own comments) to avoid self-reflection false-positives.
+TODO_HITS=$(git grep -nE '(DO[ _-]?NOT[ _-]?COMMIT|XXX[ _-]?REMOVE|TODO:?[ ]?(remove|delete|drop|secret))' \
+              -- ':!scripts/pre-push-check.sh' 2>/dev/null || true)
 if [[ -z $TODO_HITS ]]; then
   ok "no urgent TODO markers"
 else
@@ -239,18 +244,23 @@ fi
 # --- 14. go mod tidy drift ---
 hdr "14. go mod tidy drift"
 # Snapshot go.mod / go.sum BEFORE tidy so we can restore them on drift —
-# pre-push must not mutate the working tree.
-SAVED_GOMOD=$(cat go.mod 2>/dev/null)
-SAVED_GOSUM=$(cat go.sum 2>/dev/null)
+# pre-push must not mutate the working tree. Use cp (not bash $(cat) +
+# printf '%s') because the latter strips trailing newlines, which then
+# manifests as a phantom 'No newline at end of file' diff on the next
+# run. The snapshot lives in a tempdir until the gate exits.
+SNAP_DIR=$(mktemp -d)
+trap 'rm -rf "$SNAP_DIR"' EXIT
+cp go.mod "$SNAP_DIR/go.mod" 2>/dev/null || true
+cp go.sum "$SNAP_DIR/go.sum" 2>/dev/null || true
 if ./scripts/dev.sh go mod tidy >/tmp/gomod-tidy.txt 2>&1; then
   if git diff --quiet -- go.mod go.sum 2>/dev/null; then
     ok "go.mod / go.sum are tidy"
   else
     fail "go mod tidy produced uncommitted drift in go.mod / go.sum"
     git --no-pager diff -- go.mod go.sum | head -40
-    # Restore so the pre-push check does not leave dirty state.
-    printf '%s' "$SAVED_GOMOD" > go.mod
-    printf '%s' "$SAVED_GOSUM" > go.sum
+    # Restore byte-for-byte so the pre-push check does not leave dirty state.
+    [[ -f "$SNAP_DIR/go.mod" ]] && cp "$SNAP_DIR/go.mod" go.mod
+    [[ -f "$SNAP_DIR/go.sum" ]] && cp "$SNAP_DIR/go.sum" go.sum
   fi
 else
   fail "go mod tidy exited non-zero (see /tmp/gomod-tidy.txt)"
@@ -278,6 +288,36 @@ if [[ -z $MISSING_SPDX ]]; then
 else
   fail "files missing SPDX header:"
   printf '%s' "$MISSING_SPDX" | head -20
+fi
+
+# --- 16. golangci-lint full sweep ---
+# Defensive gate: pre-commit runs `make lint-changed` (scoped to touched
+# packages) on every commit; this is the FULL sweep, catching anything
+# a `--no-verify` commit or a stale BASE_REF would have masked. Runs in
+# the devtools container.
+hdr "16. golangci-lint full sweep"
+if [[ -x scripts/dev.sh ]]; then
+  if ./scripts/dev.sh make lint >/tmp/pre-push-lint.log 2>&1; then
+    ok "golangci-lint clean"
+  else
+    fail "golangci-lint reported issues — see /tmp/pre-push-lint.log"
+  fi
+else
+  warn "scripts/dev.sh missing — skipping lint gate (rebuild devtools image)"
+fi
+
+# --- 17. unit tests ---
+# Catches the simplest class of breakage that CI would otherwise flag.
+# Runs via devtools container; ~5-10s warm.
+hdr "17. unit tests"
+if [[ -x scripts/dev.sh ]]; then
+  if ./scripts/dev.sh make unit >/tmp/pre-push-unit.log 2>&1; then
+    ok "make unit clean"
+  else
+    fail "make unit failed — see /tmp/pre-push-unit.log"
+  fi
+else
+  warn "scripts/dev.sh missing — skipping unit gate (rebuild devtools image)"
 fi
 
 # --- Summary ---

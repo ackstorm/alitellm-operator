@@ -160,23 +160,27 @@ Targets that only call `kubectl`/`docker`/`helm`/`kind`/bash run on host
 
 ## Test phases
 
-| Phase            | Command                              | When                                  |
-|------------------|--------------------------------------|---------------------------------------|
-| `make unit`      | pure-logic, ~5s warm                 | every iteration                       |
-| `make envtest-run` | controller-runtime envtest (race), ~7m | before commit on controller changes |
-| `make envtest-fast` | envtest without -race, ~3m        | dev inner loop                        |
-| `make e2e-full`  | kind + Helm + Ginkgo, ~6m            | final gate before commit              |
-| `make security`  | gosec + govulncheck + fuzz-short, ≤6m | in-container; before commit          |
-| `make pre-push`  | gitleaks + trufflehog + 13 gates     | host-only; before push                |
+| Phase              | Command                                | When                                  |
+|--------------------|----------------------------------------|---------------------------------------|
+| `make unit`        | pure-logic, ~5s warm                   | every iteration                       |
+| `make lint-changed`| golangci-lint scoped to touched pkgs   | every iteration                       |
+| `make lint`        | golangci-lint full sweep               | before commit (pre-commit hook)       |
+| `make envtest-run` | controller-runtime envtest (race), ~7m | before commit on controller changes   |
+| `make envtest-fast`| envtest without -race, ~3m            | dev inner loop                        |
+| `make e2e-full`    | kind + Helm + Ginkgo, ~6m             | final gate before commit              |
+| `make security`    | gosec + govulncheck + fuzz-short, ≤6m | in-container; before push             |
+| `make pre-commit`  | lint-changed + unit                   | host-only; runs on every `git commit` once `make hooks` installed |
+| `make pre-push`    | gitleaks + trufflehog + 15 gates (incl. full lint + unit) | host-only; before push |
 
 Umbrella targets:
 - `make test-all` = `unit` + `envtest-run`
-- `make verify` = `./scripts/dev.sh make security` + `make pre-push`
-- `make hooks` installs `.git/hooks/pre-push -> scripts/pre-push-check.sh`
+- `make verify` = `./scripts/dev.sh make lint` + `./scripts/dev.sh make unit` + `./scripts/dev.sh make security` + `make pre-push`
+- `make hooks` installs `.git/hooks/pre-commit -> scripts/pre-commit-check.sh`
+  AND `.git/hooks/pre-push -> scripts/pre-push-check.sh`
 
 `make pre-push` is host-only — it spawns gitleaks/trufflehog containers
 on host docker. Do NOT call it via `./scripts/dev.sh` (would nest docker
-mounts that don't resolve).
+mounts that don't resolve). The same applies to `make pre-commit`.
 
 Inner-loop iteration helpers:
 - `make unit-pkg PKG=./internal/litellm/...`
@@ -286,12 +290,22 @@ pushed as `ghcr.io/ackstorm/alitellm-operator:main` +
 - `id-token: write` in the workflow (already set).
 - cosign on PATH (release.yml installs via `sigstore/cosign-installer`).
 
-## Publication — pre-push gates are non-negotiable
+## Publication — pre-commit and pre-push gates are non-negotiable
 
-Public remote: `git@github.com:ackstorm/alitellm-operator.git`. Before
-any `git push`, run `make pre-push` (or rely on the installed hook).
+Public remote: `git@github.com:ackstorm/alitellm-operator.git`. The
+local gate strategy splits across two hook stages so the cost of
+"oops, CI failed lint" is paid locally before the commit even lands:
 
-Hard gates (15) — failure blocks push:
+- `pre-commit` (`make pre-commit`) — fast: `make lint-changed`
+  (golangci-lint scoped to touched packages) + `make unit`. Runs on
+  every `git commit` once `make hooks` is installed. Bypass with
+  `--no-verify` only for justified WIP commits; the full lint sweep
+  still fires on push.
+- `pre-push` (`make pre-push`) — full: 17-gate publication check
+  (lint + unit live INSIDE the 17 as defensive gates 16+17 so the
+  push is still safe even if pre-commit was bypassed).
+
+Hard gates (17) — failure blocks push:
 - gitleaks + trufflehog (scope: `origin/main..HEAD`; full history on
   first push). Allowlist: `.gitleaks.toml`.
 - Large files >2 MB
@@ -304,9 +318,12 @@ Hard gates (15) — failure blocks push:
 - `go mod tidy` drift
 - Per-file SPDX license header
   (`// SPDX-License-Identifier: Apache-2.0`)
+- golangci-lint full sweep (`make lint` inside devtools container)
+- `make unit` (pure-logic regression — `./scripts/dev.sh make unit`)
 
 If a gate fails, fix the root cause — never `--no-verify` or otherwise
-bypass.
+bypass. Note: `--no-verify` skips ONLY the local hook; it does not
+exempt CI, which reruns the same gates.
 
 ## Waiting for state — use blessed make targets
 

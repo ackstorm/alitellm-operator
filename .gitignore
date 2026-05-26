@@ -17,6 +17,14 @@ coverage.txt
 *.test
 *.out
 
+# Local logs (envtest, race, ad-hoc dumps)
+*.log
+.logs/
+
+# Planning / session scratch
+.planning/
+docs/plans/
+
 # Editor / OS noise
 .DS_Store
 *.swp

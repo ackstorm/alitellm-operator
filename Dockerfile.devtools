@@ -10,6 +10,11 @@
 
 FROM golang:1.26-bookworm
 
+# Use bash with pipefail for all RUN directives — abort on any failure in a
+# pipeline (e.g. `curl ... | tar ...`). POSIX sh swallows the curl exit code
+# otherwise, which can produce a "successful" build with missing binaries.
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 ARG KUBEBUILDER_VERSION=v4.4.0
 ARG CONTROLLER_GEN_VERSION=v0.16.5
 ARG KUSTOMIZE_VERSION=v5.4.3

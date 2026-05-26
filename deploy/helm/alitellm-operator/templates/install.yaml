@@ -50,9 +50,10 @@ rules:
   - patch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: Role
 metadata:
-  name: alitellm-operator-manager-role
+  name: alitellm-operator-role
+  namespace: {{ .Release.Namespace }}
 rules:
 - apiGroups:
   - ""
@@ -77,6 +78,7 @@ rules:
   - litellmguardrails
   - litellmmcpserverdiscoveries
   - litellmmcpservers
+  - litellmmodelaliases
   - litellmmodeldiscoveries
   - litellmmodels
   - litellmteams
@@ -96,6 +98,7 @@ rules:
   - litellmguardrails/finalizers
   - litellmmcpserverdiscoveries/finalizers
   - litellmmcpservers/finalizers
+  - litellmmodelaliases/finalizers
   - litellmmodeldiscoveries/finalizers
   - litellmmodels/finalizers
   - litellmteams/finalizers
@@ -109,6 +112,7 @@ rules:
   - litellmguardrails/status
   - litellmmcpserverdiscoveries/status
   - litellmmcpservers/status
+  - litellmmodelaliases/status
   - litellmmodeldiscoveries/status
   - litellmmodels/status
   - litellmteams/status
@@ -680,16 +684,17 @@ subjects:
   namespace: {{ .Release.Namespace }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: RoleBinding
 metadata:
   labels:
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/name: workspace
-  name: alitellm-operator-manager-rolebinding
+  name: alitellm-operator-rolebinding
+  namespace: {{ .Release.Namespace }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: alitellm-operator-manager-role
+  kind: Role
+  name: alitellm-operator-role
 subjects:
 - kind: ServiceAccount
   name: alitellm-operator
@@ -778,10 +783,6 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: {{ .Values.watchNamespace }}
-        {{- if .Values.safetyRelistInterval }}
-        - name: LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL
-          value: {{ .Values.safetyRelistInterval | quote }}
-        {{- end }}
         {{- range .Values.extraEnv }}
         - name: {{ .name }}
           value: {{ .value | quote }}

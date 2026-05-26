@@ -420,3 +420,17 @@ func TestConnectionSecretRotation_AC_C3a(t *testing.T) {
 		t.Errorf("cache.Snapshot().Reason = %q after rotation; want Synced", newSnap.Reason)
 	}
 }
+
+func TestConnectionReasonAll_IncludesInvalidEndpoint(t *testing.T) {
+	t.Parallel()
+	found := false
+	for _, r := range connectionReasonAll {
+		if r == reasonInvalidEndpoint {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("connectionReasonAll missing %q; metrics one-hot gauge will not reset it", reasonInvalidEndpoint)
+	}
+}

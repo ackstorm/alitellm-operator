@@ -1,8 +1,9 @@
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: Role
 metadata:
-  name: alitellm-operator-manager-role
+  name: alitellm-operator-role
+  namespace: system
 rules:
 - apiGroups:
   - ""
@@ -27,6 +28,7 @@ rules:
   - litellmguardrails
   - litellmmcpserverdiscoveries
   - litellmmcpservers
+  - litellmmodelaliases
   - litellmmodeldiscoveries
   - litellmmodels
   - litellmteams
@@ -46,6 +48,7 @@ rules:
   - litellmguardrails/finalizers
   - litellmmcpserverdiscoveries/finalizers
   - litellmmcpservers/finalizers
+  - litellmmodelaliases/finalizers
   - litellmmodeldiscoveries/finalizers
   - litellmmodels/finalizers
   - litellmteams/finalizers
@@ -59,6 +62,7 @@ rules:
   - litellmguardrails/status
   - litellmmcpserverdiscoveries/status
   - litellmmcpservers/status
+  - litellmmodelaliases/status
   - litellmmodeldiscoveries/status
   - litellmmodels/status
   - litellmteams/status

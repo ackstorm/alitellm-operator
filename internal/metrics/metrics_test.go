@@ -211,3 +211,41 @@ func TestChildCRWritesTotalLabelCombosArePreTouched(t *testing.T) {
 		t.Fatalf("child_cr_writes_total: want >= 12 {kind, action, result} combos pre-touched, got %d", count)
 	}
 }
+
+// TestDeletionOrphanedTotalPreTouched — Issue #23: verifies every kind
+// label combo is pre-touched at init time so the metric appears on
+// first scrape (Assumption A5, mirrors DriftCorrectedTotal). Uses
+// deletionPolicyKinds (full LiteLLM* names matching the per-controller
+// *Kind constants) rather than allKinds because the label values must
+// align with what controllers actually emit at increment sites.
+func TestDeletionOrphanedTotalPreTouched(t *testing.T) {
+	got := testutil.CollectAndCount(DeletionOrphanedTotal, "litellm_operator_deletion_orphaned_total")
+	want := len(deletionPolicyKinds)
+	if got != want {
+		t.Fatalf("DeletionOrphanedTotal pre-touch count: got %d, want %d (deletionPolicyKinds)", got, want)
+	}
+}
+
+// TestDeletionBlockedTrackerRecordForget — Issue #23: verifies the
+// gauge collector emits one sample per tracked CR and Forget removes
+// the sample.
+func TestDeletionBlockedTrackerRecordForget(t *testing.T) {
+	tr := NewDeletionBlockedTracker()
+	tr.Record("LiteLLMModel", "ns1", "foo")
+	tr.Record("LiteLLMModel", "ns1", "bar")
+
+	if n := testutil.CollectAndCount(tr, "litellm_operator_deletion_blocked"); n != 2 {
+		t.Fatalf("after 2 Record: count=%d, want 2", n)
+	}
+
+	tr.Forget("LiteLLMModel", "ns1", "foo")
+	if n := testutil.CollectAndCount(tr, "litellm_operator_deletion_blocked"); n != 1 {
+		t.Fatalf("after Forget: count=%d, want 1", n)
+	}
+
+	// Forget of absent key is a no-op.
+	tr.Forget("LiteLLMModel", "ns1", "never-recorded")
+	if n := testutil.CollectAndCount(tr, "litellm_operator_deletion_blocked"); n != 1 {
+		t.Fatalf("after Forget of absent key: count=%d, want 1", n)
+	}
+}

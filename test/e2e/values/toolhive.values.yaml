@@ -14,6 +14,25 @@
 crdsChartVersion:     0.0.55      # see test/e2e/CHART_PINS.md
 operatorChartVersion: 0.5.5       # independent of crdsChartVersion
 
-resources:
-  requests: { cpu: 50m, memory: 64Mi }
-  limits:   { cpu: 500m, memory: 256Mi }
+# All operator-tunable knobs nest under `operator:` (chart 0.5.5 schema).
+# A top-level `resources:` key — as used pre-2026-05-26 — is silently
+# dropped by the chart's templating.
+#
+# Default chart probe timeoutSeconds is unset → kubelet default is 1s,
+# too tight for the cold-start path on a single-node kind cluster.
+# Cold-start on a fresh kind node + Go runtime warm-up + leader-election
+# settle commonly blows past the 1s budget and the kubelet kills the
+# pod before /healthz returns.
+operator:
+  livenessProbe:
+    httpGet: { path: /healthz, port: health }
+    initialDelaySeconds: 30
+    periodSeconds: 20
+    timeoutSeconds: 5
+    failureThreshold: 6
+  readinessProbe:
+    httpGet: { path: /readyz, port: health }
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6

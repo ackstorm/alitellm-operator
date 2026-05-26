@@ -33,9 +33,11 @@ User and VirtualKey lifecycle.
 
 ## Status
 
-v0.4.7 — early-access. API surface may change before v1beta1. The
-authoritative contract is the operator spec; see [PUBLISH.md](PUBLISH.md)
-for the release/publication procedure.
+Early-access. API surface may change before v1beta1. The current
+version and changelog are on the
+[Releases page](https://github.com/ackstorm/alitellm-operator/releases/latest).
+The authoritative contract is the operator spec; see
+[PUBLISH.md](PUBLISH.md) for the release/publication procedure.
 
 ## Quick Start
 
@@ -47,11 +49,13 @@ Prerequisites:
 - A Kubernetes Secret in the `default` namespace holding the LiteLLM
   master key
 
-Install the operator via Helm (OCI):
+Install the operator via Helm (OCI). The command below installs the
+latest published chart; for reproducible deploys, pin `--version
+<X.Y.Z>` to a release listed on the
+[Releases page](https://github.com/ackstorm/alitellm-operator/releases).
 
 ```bash
 helm install lo oci://ghcr.io/ackstorm/charts/alitellm-operator \
-  --version 0.4.7 \
   --namespace default --create-namespace
 ```
 
@@ -79,7 +83,21 @@ samples covering every CRD.
 - Publication / release procedure: [PUBLISH.md](PUBLISH.md)
 - Working with this codebase as an AI agent: [CLAUDE.md](CLAUDE.md)
 - E2E test environment: [test/e2e/README.md](test/e2e/README.md)
+- Deletion semantics (Orphan vs Delete, break-glass annotation):
+  [docs/concepts/deletion-semantics.md](docs/concepts/deletion-semantics.md)
 - Attribution: [NOTICE](NOTICE)
+
+### Deletion semantics (Issue #23)
+
+By default, deleting a `LiteLLM*` CR removes the operator's finalizer
+even if the LiteLLM-side delete cannot be confirmed (`spec.deletionPolicy:
+Orphan`, REL-06 anti-storm). GitOps users should set
+`spec.deletionPolicy: Delete` so the CR stays in `Terminating` until
+LiteLLM acks. Break-glass at runtime via the annotation
+`litellm.ackstorm.ai/deletion-policy-override`. See
+[docs/concepts/deletion-semantics.md](docs/concepts/deletion-semantics.md)
+for the full trade-off, recovery procedures, and the
+Discovery-owned-children rule.
 
 ## CI overview
 

@@ -260,3 +260,34 @@ func contains(s, sub string) bool {
 	}
 	return false
 }
+
+// TestNewClient_PreservesPathPrefix locks the prefix-preservation
+// contract referenced by issue #25 acceptance bullet — reverse-proxy
+// deployments mount LiteLLM under a path prefix (e.g.
+// https://gw/litellm) and the operator must concatenate path segments
+// onto the prefix, not strip it. Pins behavior so future refactors of
+// strings.TrimRight do not silently regress this.
+func TestNewClient_PreservesPathPrefix(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"http://litellm:4000", "http://litellm:4000"},
+		{"http://litellm:4000/", "http://litellm:4000"},
+		{"http://litellm:4000///", "http://litellm:4000"},
+		{"https://gw.example.com/litellm", "https://gw.example.com/litellm"},
+		{"https://gw.example.com/litellm/", "https://gw.example.com/litellm"},
+		{"https://gw.example.com/litellm/v1", "https://gw.example.com/litellm/v1"},
+		{"https://[::1]:4000", "https://[::1]:4000"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.in, func(t *testing.T) {
+			t.Parallel()
+			c := NewClient(tc.in, "sk-test", logr.Discard())
+			if c.endpoint != tc.want {
+				t.Fatalf("endpoint = %q, want %q", c.endpoint, tc.want)
+			}
+		})
+	}
+}

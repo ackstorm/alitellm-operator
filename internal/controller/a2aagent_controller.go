@@ -29,6 +29,7 @@ import (
 
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 	"github.com/ackstorm/alitellm-operator/internal/connection"
+	"github.com/ackstorm/alitellm-operator/internal/controller/deletionpolicy"
 	"github.com/ackstorm/alitellm-operator/internal/identity"
 	"github.com/ackstorm/alitellm-operator/internal/litellm"
 	"github.com/ackstorm/alitellm-operator/internal/metrics"
@@ -178,6 +179,21 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// ─── Step 2a: Deletion path ────────────────────────────────────────────
 	if !a2a.DeletionTimestamp.IsZero() {
 		if controllerutil.ContainsFinalizer(&a2a, a2aAgentFinalizer) {
+			// Issue #23: resolve effective deletion policy once.
+			policy := deletionpolicy.Resolve(&a2a, a2a.Spec.DeletionPolicy)
+			onAckMissing := func(reason string) error {
+				if policy == deletionpolicy.Delete {
+					metrics.DeletionBlocked.Record(a2aAgentKind, a2a.Namespace, a2a.Name)
+					r.Recorder.Eventf(&a2a, corev1.EventTypeWarning, "LiteLLMDeleteBlocked",
+						"deletionPolicy=Delete and LiteLLM ack missing (%s); finalizer retained", reason)
+					return fmt.Errorf("delete blocked: %s", reason)
+				}
+				metrics.DeletionOrphanedTotal.WithLabelValues(a2aAgentKind).Inc()
+				r.Recorder.Eventf(&a2a, corev1.EventTypeNormal, "LiteLLMDeleteOrphaned",
+					"deletionPolicy=Orphan and LiteLLM ack missing (%s); finalizer removed; entry may persist", reason)
+				return nil
+			}
+
 			snap := r.Cache.Snapshot()
 			if snap.Ready {
 				agentID := a2a.Status.LastRendered.AgentID
@@ -194,25 +210,34 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 						if errors.As(err, &auth401) {
 							r.Cache.InvalidateOn401()
 							logger.Info("deletion: 401 fast-path; cache invalidated", "path", auth401.Path)
-							// Anti-storm: fall through to remove finalizer.
+							if gerr := onAckMissing("401 on DeleteAgent"); gerr != nil {
+								return ctrl.Result{}, gerr
+							}
 						} else {
 							// Transient error — return for backoff. Finalizer stays.
 							return ctrl.Result{}, err
 						}
 					} else {
 						metrics.DriftCorrectedTotal.WithLabelValues("a2a", "delete_vanished").Inc()
+						metrics.DeletionBlocked.Forget(a2aAgentKind, a2a.Namespace, a2a.Name)
 						logger.Info("finalizer removed; LiteLLM A2A agent deleted", "agentID", agentID)
 					}
 				} else {
+					metrics.DeletionBlocked.Forget(a2aAgentKind, a2a.Namespace, a2a.Name)
 					logger.Info("finalizer removed; LiteLLM entry already absent (no pinned ID, name-resolve returned empty)", "name", a2a.Name)
 				}
 			} else {
-				logger.Info("LiteLLM unavailable on deletion; finalizer removed; A2A entry MAY persist until next reconcile with valid connection")
+				// Issue #23: gate on resolved policy.
+				if err := onAckMissing("LiteLLM unavailable"); err != nil {
+					return ctrl.Result{}, err
+				}
 			}
 
 			// OBS-03: drop the cr_status_age_seconds label before the CR is gone
 			// so /metrics cardinality never grows monotonically (T-07-01-01).
 			metrics.CRStatusAgeTracker.Forget(a2aAgentKind, a2a.Name)
+			// Issue #23: idempotent Forget — clears DeletionBlocked gauge.
+			metrics.DeletionBlocked.Forget(a2aAgentKind, a2a.Namespace, a2a.Name)
 			controllerutil.RemoveFinalizer(&a2a, a2aAgentFinalizer)
 			if err := r.Update(ctx, &a2a); err != nil {
 				return ctrl.Result{}, err
