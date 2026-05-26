@@ -30,6 +30,14 @@ resources:
     namespaced: true
   domain: ackstorm.ai
   group: litellm
+  kind: LiteLLMModelAlias
+  path: github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1
+  version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  domain: ackstorm.ai
+  group: litellm
   kind: LiteLLMModelDiscovery
   path: github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1
   version: v1alpha1
