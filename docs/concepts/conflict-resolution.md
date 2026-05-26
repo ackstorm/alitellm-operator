@@ -30,7 +30,6 @@ something other than `metadata.name`.
 
 | Kind                         | Natural key on the LiteLLM side                                     | Conflict surface in namespace-scoped mode                                              |
 |------------------------------|---------------------------------------------------------------------|----------------------------------------------------------------------------------------|
-| `LiteLLMGuardRail`           | `spec.guardrailName` (user-set)                                     | Real. Two CRs can set the same guardrailName in one namespace.                         |
 | `LiteLLMMCPServer`           | sanitized `metadata.name` (the LiteLLM `server_name`)               | Real. Sanitization (dot↔dash, depending on connection separator) can collapse two distinct `metadata.name` values onto the same LiteLLM `server_name`. |
 | `LiteLLMMCPServerDiscovery`  | child `metadata.name` produced into `WatchNamespace`                | Real. Two Discovery CRs can produce the same child name.                               |
 | `LiteLLMModelAlias`          | each `spec.aliases[].name` slot                                     | Real (slot-level). Aggregated last-wins per slot across all CRs.                       |
@@ -39,9 +38,20 @@ something other than `metadata.name`.
 | `LiteLLMA2AAgent`            | `metadata.name`                                                     | None in namespace-scoped mode.                                                         |
 | `LiteLLMConnection`          | —                                                                   | No LiteLLM-side natural key; no conflict surface.                                      |
 | `LiteLLMModelDiscovery`      | child `metadata.name` (Kubernetes-layer)                            | Resolved at the Kubernetes layer via Server-Side Apply with `ForceOwnership` — deliberate exception. |
+| `LiteLLMGuardRail`           | `spec.guardrailName` (user-set)                                     | None — shared guardrailName is the LB-pool feature; each CR contributes its own LiteLLM row to a pool. |
 
 Kinds with "None" rows above are listed for completeness; the resolver
 is not wired on them because the conflict cannot occur.
+
+## GuardRail is intentionally not wired
+
+Two `LiteLLMGuardRail` CRs sharing `spec.guardrailName` is a feature,
+not a conflict: each CR creates its own LiteLLM guardrail row under
+the shared name, and LiteLLM load-balances across the pool. The
+sibling-pool logic in the controller (`checkGuardrailPool`) verifies
+the pool members agree on provider and reports `PoolProviderMismatch`
+when they do not. Applying alpha-last-wins here would silently break
+the pool.
 
 ## Why "last wins" and not "first wins"
 

@@ -2,9 +2,7 @@
 
 - **Status:** Accepted (2026-05-26)
 - **Deciders:** @juanca, @ackstorm-operator-team
-- **Supersedes:** prior per-kind ad-hoc strategies (GuardRail sibling
-  rejection, MCPServerDiscovery intra-discovery first-wins,
-  MCPServerDiscovery cross-Discovery `DuplicateDiscovery` skip).
+- **Supersedes:** prior per-kind ad-hoc strategies (MCPServerDiscovery intra-discovery first-wins, MCPServerDiscovery cross-Discovery DuplicateDiscovery skip).
 
 ## Context
 
@@ -28,13 +26,21 @@ The kinds with a real conflict surface had inconsistent behavior:
 
 | Kind                       | Old behavior                                                                  |
 |----------------------------|-------------------------------------------------------------------------------|
-| LiteLLMGuardRail           | Sibling rejection: if another CR already owned the guardrailName, create a new |
 | LiteLLMMCPServer           | None — sanitization collapse onto the same `server_name` went silently         |
 | LiteLLMMCPServerDiscovery  | Intra-discovery: first-wins; Cross-discovery: `DuplicateDiscovery` skip-and-warn |
 | LiteLLMModelAlias          | Aggregate, alpha-last-wins per slot (already aligned)                          |
 
 This made the operator's behavior unpredictable across kinds and gave
 users no single mental model for "which CR is in charge?".
+
+`LiteLLMGuardRail` was initially classified as a conflict-bearing
+kind under the assumption that its `anySiblingOwns` gate was
+sibling-rejection. On closer reading the gate enables a deliberate
+load-balancing-pool pattern: multiple CRs sharing `spec.guardrailName`
+each create their own LiteLLM row and form a pool. Applying
+alpha-last-wins here would silently delete pool members. The kind is
+therefore left wired to its existing LB-pool semantics and is
+documented as having no alpha-last-wins conflict surface.
 
 ## Decision
 
@@ -46,7 +52,6 @@ and do not call LiteLLM.
 
 The rule is applied to:
 
-- `LiteLLMGuardRail` (replaces sibling-rejection)
 - `LiteLLMMCPServer` (new — handles sanitization-collapse case)
 - `LiteLLMMCPServerDiscovery` intra-discovery dedup (flipped from
   first-wins to last-wins)
@@ -54,7 +59,7 @@ The rule is applied to:
   (replaces `DuplicateDiscovery` skip with alpha-last-Discovery wins)
 
 `LiteLLMModelAlias` already implements the rule per slot.
-`LiteLLMConnection` has no conflict surface.
+`LiteLLMConnection` and `LiteLLMGuardRail` have no alpha-last-wins conflict surface; GuardRail's shared-name pattern is the LB-pool feature.
 `LiteLLMTeam`, `LiteLLMModel`, `LiteLLMA2AAgent` have no reachable
 conflict surface in namespace-scoped mode and are not wired (would be
 dead code).
@@ -68,9 +73,6 @@ Server-Side Apply with `ForceOwnership` — deliberate exception.
   inspecting LiteLLM state or operator logs.
 - Renaming a CR is the single supported "I want this one to win"
   affordance.
-- `LiteLLMGuardRail`'s sibling-rejection becomes resolve-with-loser:
-  a sibling no longer triggers creation of a second LiteLLM guardrail;
-  the alphabetically-last CR wins.
 - `LiteLLMMCPServer` gains a resolver on the sanitized server_name. CR
   sets that previously relied on silently overwriting each other after
   sanitization will see the alphabetically-last CR own the LiteLLM
