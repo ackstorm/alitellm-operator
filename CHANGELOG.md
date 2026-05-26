@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (BREAKING)
+- **`SkippedCandidate.Reason` enum rename: `DuplicateDiscovery` →
+  `Conflict`** (ADR-0001). Applies to both
+  `LiteLLMModelDiscovery.status.skippedCandidates[].reason` and
+  `LiteLLMMCPServerDiscovery.status.skippedCandidates[].reason`. The
+  CRD validation enum is updated; CRs that previously read or
+  alert-matched on `reason=DuplicateDiscovery` must switch to
+  `reason=Conflict`. The Prometheus metric
+  `discovery_skipped_total{reason}` label value is renamed
+  identically. Behavior is unchanged in this PR (first-create-wins
+  on cross-Discovery collisions); alpha-last-wins ownership transfer
+  between Discoveries is deferred to a follow-up PR (requires a
+  get-then-update path to replace `metadata.ownerReferences`).
+
 ### Added
 - **Alpha-last-wins conflict resolution (ADR-0001):** new shared
   package `internal/controller/conflict` providing `Key`,

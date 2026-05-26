@@ -1514,10 +1514,10 @@ func TestModelDiscovery_AC_CF2b_AdoptionRecognition(t *testing.T) {
 	}
 }
 
-// TestModelDiscovery_AC_CF3_DuplicateDiscovery locks spec §6.3 line 808
+// TestModelDiscovery_AC_CF3_Conflict locks spec §6.3 line 808
 // (MDISC-13): two ModelDiscovery CRs that would produce the same child
 // name race; the loser records status.skippedCandidates[
-// reason=DuplicateDiscovery, ownedBy=<winner-info>]. The winner's
+// reason=Conflict, ownedBy=<winner-info>]. The winner's
 // children are intact.
 //
 // Flow:
@@ -1529,10 +1529,10 @@ func TestModelDiscovery_AC_CF2b_AdoptionRecognition(t *testing.T) {
 // "anthropic") so it derives the same child name.
 // 4. disc-b's SSA Patch returns AlreadyExists → classify → the existing
 // child has a controller ownerRef pointing at disc-a (DIFFERENT UID
-// from disc-b) → DuplicateDiscovery skip with ownedBy containing
+// from disc-b) → Conflict skip with ownedBy containing
 // "ModelDiscovery/disc-a/<UID>".
 // 5. Assert: disc-a still owns the child; disc-b records the skip.
-func TestModelDiscovery_AC_CF3_DuplicateDiscovery(t *testing.T) {
+func TestModelDiscovery_AC_CF3_Conflict(t *testing.T) {
 	ctx := context.Background()
 	const aName = "cf3-disc-a"
 	const bName = "cf3-disc-b"
@@ -1572,7 +1572,7 @@ func TestModelDiscovery_AC_CF3_DuplicateDiscovery(t *testing.T) {
 	if initialA[0].Name != sharedChild {
 		t.Fatalf("disc-a child name: got %q, want %q", initialA[0].Name, sharedChild)
 	}
-	// Record disc-a's UID — the loser's DuplicateDiscovery skip MUST
+	// Record disc-a's UID — the loser's Conflict skip MUST
 	// reference this UID as the winner's identity.
 	var mdARefreshed litellmv1alpha1.LiteLLMModelDiscovery
 	if err := k8sClient.Get(ctx, client.ObjectKey{Name: aName, Namespace: WatchNamespace}, &mdARefreshed); err != nil {
@@ -1586,10 +1586,10 @@ func TestModelDiscovery_AC_CF3_DuplicateDiscovery(t *testing.T) {
 		t.Fatalf("create disc-b: %v", err)
 	}
 
-	// Poll for disc-b's DuplicateDiscovery skip.
-	skip, mdBAfter := pollSkippedReason(t, ctx, bName, "DuplicateDiscovery", 30*time.Second)
-	if skip.Reason != "DuplicateDiscovery" {
-		t.Fatalf("disc-b expected status.skippedCandidates[reason=DuplicateDiscovery]; got %+v\nFull status: %+v",
+	// Poll for disc-b's Conflict skip.
+	skip, mdBAfter := pollSkippedReason(t, ctx, bName, "Conflict", 30*time.Second)
+	if skip.Reason != "Conflict" {
+		t.Fatalf("disc-b expected status.skippedCandidates[reason=Conflict]; got %+v\nFull status: %+v",
 			mdBAfter.Status.SkippedCandidates, mdBAfter.Status)
 	}
 	if skip.Name != sharedChild {

@@ -204,7 +204,7 @@ func TestModelDiscovery_RawExtension_Preserves(t *testing.T) {
 func TestModelDiscovery_SkippedCandidate_ReasonEnum_Compiles(t *testing.T) {
 	cases := []SkippedCandidate{
 		{Name: "a", Reason: "ExplicitModelExists"},
-		{Name: "b", Reason: "DuplicateDiscovery", OwnedBy: "default/other-discovery"},
+		{Name: "b", Reason: "Conflict", OwnedBy: "default/other-discovery"},
 		{Name: "c", Reason: "InvalidDiscoveredName", Message: "name too long"},
 	}
 	if len(cases) != 3 {
