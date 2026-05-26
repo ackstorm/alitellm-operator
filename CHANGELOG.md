@@ -30,6 +30,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### BREAKING
 
+- **`LiteLLMConnection.spec.endpoint` validation tightened (#25):**
+  endpoints are now validated at admission and at wire-level.
+  Endpoints must match
+  `^https?://[^@\s?#]+(:[0-9]{1,5})?(/[^\s?#]*)?$` and pass three
+  additional CEL XValidation rules (scheme, no userinfo, no
+  whitespace). Wire-level: `litellm.ValidateEndpoint` additionally
+  rejects raw Unicode hosts (Punycode required), out-of-range ports,
+  opaque URIs, and control characters. Invalid endpoints surface as
+  `Ready=False reason=InvalidEndpoint` with no requeue (Spec edit
+  retriggers).
+
+  Upgrade audit — run this one-liner BEFORE upgrading to find
+  `LiteLLMConnection` objects that would be rejected by the new
+  validation. Fix the endpoint values (or temporarily quarantine the
+  resources) before the upgrade lands:
+
+  ```bash
+  kubectl get litellmconnections.litellm.ackstorm.ai -A \
+    -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{"\t"}{.spec.endpoint}{"\n"}{end}' \
+    | awk -F'\t' '
+        $2 !~ /^https?:\/\/[^@[:space:]?#]+(:[0-9]+)?(\/[^[:space:]?#]*)?$/ {
+          print "REJECT", $0
+        }'
+  ```
+
+  Output `REJECT <ns>/<name> <endpoint>` lines mark resources that
+  need remediation. An empty output means all current Connection
+  objects satisfy the new contract.
+
 - **RBAC scope-down (#21):** The operator's manager role is now a
   namespaced `Role` (`alitellm-operator-role`) + `RoleBinding`
   (`alitellm-operator-rolebinding`) bound in `.Release.Namespace`,
