@@ -122,3 +122,36 @@ func drainAndClose(body io.ReadCloser) {
 	_, _ = io.Copy(io.Discard, body)
 	_ = body.Close()
 }
+
+// WarnIfDangerouslyLogBodies emits a loud, distinctive Error-level
+// startup banner when LITELLM_OPERATOR_DANGEROUSLY_LOG_BODIES is set to
+// the literal string "true". Returns true when the banner fired (for
+// test convenience; production callers ignore the return value).
+//
+// The predicate matches newHTTPClient byte-for-byte: only the exact
+// string "true" enables body logging, and only the exact string "true"
+// trips the banner. Other truthy spellings ("1", "yes", "TRUE") are
+// rejected by both — the banner remains an invariant of "bodies are
+// being logged", not of "operator saw something truthy in the env".
+//
+// Banner shape: boxed ASCII, env var name verbatim, production-risk
+// statement. Emitted via Error level (not Info) so the line survives
+// any reasonable log filter and surfaces in plain-text log scans.
+//
+// Cross-ref: spec §9.1 (log hygiene contract); Issue #26.
+func WarnIfDangerouslyLogBodies(log logr.Logger) bool {
+	if os.Getenv(EnvDangerouslyLogBodies) != "true" {
+		return false
+	}
+	log.Error(nil,
+		"############################################################\n"+
+			"## DANGER: LITELLM_OPERATOR_DANGEROUSLY_LOG_BODIES=true   ##\n"+
+			"## Request/response bodies WILL be logged in full.        ##\n"+
+			"## Bodies contain substituted provider API keys.          ##\n"+
+			"## DISABLE THIS FOR PRODUCTION.                           ##\n"+
+			"############################################################",
+		"env", EnvDangerouslyLogBodies,
+		"value", "true",
+	)
+	return true
+}
