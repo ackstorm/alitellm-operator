@@ -127,8 +127,10 @@ var DiscoveryGeneratedCount = prometheus.NewGaugeVec(
 )
 
 // DiscoverySkippedTotal — spec §10: counter labeled by kind, reason.
-// reasons ∈ {ExplicitModelExists, DuplicateDiscovery, InvalidDiscoveredName,
-// EndpointUnknown, ExplicitMCPServerExists}.
+// reasons ∈ {ExplicitModelExists, Conflict, InvalidDiscoveredName,
+// EndpointUnknown, ExplicitMCPServerExists, InvalidTransport,
+// NameCollision}. `Conflict` (ADR-0001 alpha-last-wins among
+// Discoveries) replaced the prior `DuplicateDiscovery` value.
 var DiscoverySkippedTotal = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
 		Name: "discovery_skipped_total",
@@ -266,10 +268,12 @@ var (
 	// discovery_refresh_total{result}.
 	discoveryRefreshResults = []string{"success", "error"}
 
-	// discovery_skipped_total{reason}.
+	// discovery_skipped_total{reason}. `Conflict` (ADR-0001) replaced
+	// `DuplicateDiscovery`.
 	discoverySkippedReasons = []string{
-		"ExplicitModelExists", "DuplicateDiscovery", "InvalidDiscoveredName",
+		"ExplicitModelExists", "Conflict", "InvalidDiscoveredName",
 		"EndpointUnknown", "ExplicitMCPServerExists",
+		"InvalidTransport", "NameCollision",
 	}
 
 	// discovery_failed_total{reason} — _FINALv3 (D-10) narrowing: this

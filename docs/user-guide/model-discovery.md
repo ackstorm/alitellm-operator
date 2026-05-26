@@ -176,7 +176,9 @@ DNS-1123 validation failure → entry in `status.skippedCandidates` with
 `reason=InvalidDiscoveredName`. Name collision with a user-authored
 Model whose ownerRef does NOT point at this Discovery → `skippedCandidates`
 entry `reason=ExplicitModelExists`. Collision with another
-Discovery's child → `reason=DuplicateDiscovery` (smallest UID wins).
+Discovery's child → `reason=Conflict` (renamed from `DuplicateDiscovery`
+per ADR-0001 for cross-kind consistency; first-create-wins until a
+follow-up PR adds alpha-last-wins ownership transfer).
 
 ## Status — what to read
 

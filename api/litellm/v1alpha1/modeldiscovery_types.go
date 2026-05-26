@@ -362,9 +362,11 @@ type ModelDiscoveryStatus struct {
 	// ExplicitModelExists — a child with the same name already exists
 	// and its controller ownerRef does NOT point
 	// at this Discovery (MDISC-14).
-	// DuplicateDiscovery — a child with the same name exists and is
+	// Conflict — a child with the same name exists and is
 	// owned by a DIFFERENT ModelDiscovery
 	// (MDISC-13). OwnedBy names the winner.
+	// Renamed from `DuplicateDiscovery` for
+	// cross-kind consistency (ADR-0001).
 	// InvalidDiscoveredName — the candidate's normalized name failed
 	// DNS-1123 subdomain validation (MDISC-11).
 	//
@@ -413,21 +415,23 @@ type SkippedCandidate struct {
 	// ExplicitModelExists — name collides with a user-authored Model
 	// (no controller ownerRef back at this
 	// Discovery) — MDISC-14.
-	// DuplicateDiscovery — name collides with a child owned by a
-	// different ModelDiscovery — MDISC-13. The
-	// OwnedBy field names the winning
-	// Discovery (<namespace>/<name>).
+	// Conflict — name collides with a child owned by a
+	// different ModelDiscovery — MDISC-13.
+	// OwnedBy names the winner
+	// (<Kind>/<Name>/<UID>). Renamed from
+	// `DuplicateDiscovery` for cross-kind
+	// consistency (ADR-0001).
 	// InvalidDiscoveredName — normalized name failed DNS-1123 subdomain
 	// validation — MDISC-11.
 	//
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum=ExplicitModelExists;DuplicateDiscovery;InvalidDiscoveredName
+	// +kubebuilder:validation:Enum=ExplicitModelExists;Conflict;InvalidDiscoveredName
 	Reason string `json:"reason"`
 
 	// OwnedBy is the <namespace>/<name> of the ModelDiscovery winning a
-	// DuplicateDiscovery collision. Empty for ExplicitModelExists (no
-	// Discovery owns the conflicting child) and InvalidDiscoveredName
-	// (no collision — the candidate's own name was rejected).
+	// Conflict collision. Empty for ExplicitModelExists (no Discovery
+	// owns the conflicting child) and InvalidDiscoveredName (no
+	// collision — the candidate's own name was rejected).
 	//
 	// +optional
 	OwnedBy string `json:"ownedBy,omitempty"`

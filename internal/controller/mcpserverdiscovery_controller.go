@@ -917,13 +917,18 @@ func buildChildMCPServer(
 //	(skip=ExplicitMCPServerExists, retryable=false, err=nil)
 //	 No controller ownerRef → user-authored LiteLLMMCPServer.
 //
-//	(skip=DuplicateDiscovery, retryable=false, err=nil)
-//	 Controller ownerRef points at a DIFFERENT LiteLLMMCPServerDiscovery
-//	 (different UID, or different Kind entirely).
+//	(skip=Conflict, retryable=false, err=nil)
+//	 Controller ownerRef points at a DIFFERENT controller (foreign
+//	 Kind, or another Discovery that wins alpha-last-wins). The
+//	 OwnedBy field names the winner.
 //
 //	(skip=nil, retryable=true, err=nil)
 //	 Either NotFound (raced delete) OR ownerRef points at THIS
-//	 Discovery (transient apiserver/cache race — retry next reconcile).
+//	 Discovery (transient apiserver/cache race — retry next
+//	 reconcile) OR another MCPServerDiscovery owns the child but this
+//	 Discovery sorts alpha-last by <namespace>/<name> (ADR-0001 alpha-
+//	 last-wins between Discoveries — next SSA Patch with
+//	 ForceOwnership wins the child's controller ownerRef).
 //
 //	(skip=nil, retryable=false, err=<get-err>)
 //	 Non-NotFound apiserver error — surface as ChildCRWriteFailed.
@@ -963,9 +968,13 @@ func (r *MCPServerDiscoveryReconciler) classifyAlreadyExists(
 		return nil, true, nil
 	}
 	// Different controller (different Discovery UID, or different Kind).
+	// Per ADR-0001 this is a `Conflict` skip. Alpha-last-wins ownership
+	// transfer between Discoveries is intentionally NOT applied here —
+	// it requires a get-then-update path to replace metadata.ownerReferences
+	// across field managers and is deferred to a follow-up PR.
 	return &litellmv1alpha1.MCPServerSkippedCandidate{
 		Name:    childName,
-		Reason:  "DuplicateDiscovery",
+		Reason:  "Conflict",
 		OwnedBy: ctrlRef.Kind + "/" + ctrlRef.Name + "/" + string(ctrlRef.UID),
 	}, false, nil
 }

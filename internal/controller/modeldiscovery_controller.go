@@ -37,7 +37,7 @@
 // that step with the full 5-step pipeline + `SkippedCandidates`
 // (InvalidDiscoveredName) and cascade-vanish detection.
 // - replaces the `AlreadyExists` handling with K8s-native
-// conflict resolution (`ExplicitModelExists` / `DuplicateDiscovery`)
+// conflict resolution (`ExplicitModelExists` / `Conflict`)
 // and adoption.
 
 package controller
@@ -622,7 +622,7 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		// the colliding object BEFORE attempting Patch:
 		// - No existing object → Patch as normal (happy path).
 		// - Owned by us (UID) → Patch (idempotent re-apply).
-		// - Owned by another MD → DuplicateDiscovery skip (MDISC-13).
+		// - Owned by another MD → Conflict skip (MDISC-13).
 		// - No controller owner → ExplicitModelExists skip (MDISC-14).
 		// The extra Get is cheap (single named lookup, served from the
 		// controller-runtime cache after the first reconcile) and is the
@@ -665,7 +665,7 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			//
 			// - No controller ownerRef → ExplicitModelExists
 			// (user-authored LiteLLMModel)
-			// - Controller ownerRef points at a → DuplicateDiscovery
+			// - Controller ownerRef points at a → Conflict
 			// DIFFERENT LiteLLMModelDiscovery (cross-Discovery race)
 			// - Controller ownerRef points at → retryable transient
 			// THIS Discovery (UID match) (SSA's ForceOwnership
@@ -707,7 +707,7 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 					continue
 				}
 				if classifiedSkip != nil {
-					// ExplicitModelExists or DuplicateDiscovery — the child
+					// ExplicitModelExists or Conflict — the child
 					// is NOT ours to write. Record in skipped[] (per
 					// spec §6.3 line 870 enum) and move on. No metric for
 					// SSA success/error: the Patch never landed.
@@ -1182,7 +1182,7 @@ func (r *ModelDiscoveryReconciler) writeBothConditionsObj(
 //	 from MDISC-14 — Discovery records a skip with ownedBy=<name>
 //	 (the user's LiteLLMModel has no parent to point at).
 //
-//	(skip=DuplicateDiscovery, retryable=false, err=nil)
+//	(skip=Conflict, retryable=false, err=nil)
 //	 The existing child's controller ownerRef points at a DIFFERENT
 //	 LiteLLMModelDiscovery (different UID, or different Kind entirely — a
 //	 third-party controller could plant a LiteLLMModel). Loser records a
@@ -1249,15 +1249,20 @@ func (r *ModelDiscoveryReconciler) classifyAlreadyExists(
 		// SSA field-manager identity may have drifted — investigate.)
 		return nil, true, nil
 	}
-	// Different controller (different LiteLLMModelDiscovery UID, or different
-	// Kind entirely). MDISC-13: classify as DuplicateDiscovery and name
-	// the winner. OwnedBy is "<Kind>/<Name>/<UID>" for fully-qualified
-	// identification (Kind is included because a third-party controller
-	// could have planted the LiteLLMModel — Kind!=LiteLLMModelDiscovery is itself a
-	// useful diagnostic signal).
+	// Different controller (different LiteLLMModelDiscovery UID, or
+	// different Kind entirely). MDISC-13: classify as `Conflict` per
+	// ADR-0001 and name the winner. OwnedBy is "<Kind>/<Name>/<UID>"
+	// for fully-qualified identification (Kind is included because a
+	// third-party controller could have planted the LiteLLMModel —
+	// Kind!=LiteLLMModelDiscovery is itself a useful diagnostic signal).
+	//
+	// Alpha-last-wins ownership transfer between Discoveries is
+	// intentionally NOT applied here — it requires a get-then-update
+	// path to replace metadata.ownerReferences across field managers
+	// and is deferred to a follow-up PR.
 	return &litellmv1alpha1.SkippedCandidate{
 		Name:    childName,
-		Reason:  "DuplicateDiscovery",
+		Reason:  "Conflict",
 		OwnedBy: ctrlRef.Kind + "/" + ctrlRef.Name + "/" + string(ctrlRef.UID),
 	}, false, nil
 }

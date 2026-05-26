@@ -302,10 +302,11 @@ type MCPServerDiscoveryStatus struct {
 	// ExplicitMCPServerExists — a child with the same name already
 	// exists and its controller ownerRef
 	// does NOT point at this Discovery.
-	// DuplicateDiscovery — a child with the same name exists and
-	// is owned by a DIFFERENT Discovery
-	// (structurally rare under dotted naming).
-	// OwnedBy names the winner.
+	// Conflict — a child with the same name exists and
+	// is owned by a DIFFERENT Discovery.
+	// OwnedBy names the winner. Renamed from
+	// `DuplicateDiscovery` for cross-kind
+	// consistency (ADR-0001).
 	// EndpointUnknown — the ToolHive object has empty/absent
 	// status.url (MSDISC-12).
 	// InvalidTransport — the ToolHive object's status.transport
@@ -360,10 +361,12 @@ type MCPServerSkippedCandidate struct {
 	// ExplicitMCPServerExists — name collides with a user-authored
 	// MCPServer (no controller ownerRef
 	// back at this Discovery).
-	// DuplicateDiscovery — name collides with a child owned by
+	// Conflict — name collides with a child owned by
 	// a different MCPServerDiscovery.
 	// OwnedBy names the winning Discovery
-	// (<namespace>/<name>).
+	// (<Kind>/<Name>/<UID>). Renamed from
+	// `DuplicateDiscovery` for cross-kind
+	// consistency (ADR-0001).
 	// EndpointUnknown — ToolHive object's status.url is empty
 	// or absent (MSDISC-12).
 	// InvalidTransport — ToolHive object's status.transport
@@ -378,21 +381,22 @@ type MCPServerSkippedCandidate struct {
 	// NameCollision — two upstream ToolHive objects from
 	// different namespaces produced the same
 	// `<spec.prefix>-<source-name>` child name
-	// within a single discovery. The first
-	// occurrence wins; later occurrences are
-	// skipped (FIX4.txt H-2 v0.3.0). The user
-	// rename one upstream or split the
-	// discovery into prefix-distinct ones.
+	// within a single discovery. Alpha-last-wins
+	// (ADR-0001) — the entry with the alpha-LAST
+	// `(sourceNamespace, sourceName)` ASC key
+	// survives; earlier occurrences are skipped.
+	// Rename one upstream or split the discovery
+	// into prefix-distinct ones to resolve.
 	//
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum=ExplicitMCPServerExists;DuplicateDiscovery;EndpointUnknown;InvalidTransport;NameCollision
+	// +kubebuilder:validation:Enum=ExplicitMCPServerExists;Conflict;EndpointUnknown;InvalidTransport;NameCollision
 	Reason string `json:"reason"`
 
 	// OwnedBy is the <namespace>/<name> of the MCPServerDiscovery
-	// winning a DuplicateDiscovery collision (or the explicit MCPServer
-	// owner for ExplicitMCPServerExists). Empty for EndpointUnknown
-	// and InvalidTransport (no collision — the candidate's own data
-	// was rejected).
+	// winning a Conflict collision — or the explicit MCPServer owner
+	// for ExplicitMCPServerExists. Empty for EndpointUnknown and
+	// InvalidTransport (no collision — the candidate's own data was
+	// rejected).
 	//
 	// +optional
 	OwnedBy string `json:"ownedBy,omitempty"`
