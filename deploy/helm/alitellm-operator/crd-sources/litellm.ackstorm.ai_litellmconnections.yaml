@@ -72,7 +72,7 @@ spec:
                   will probe and mutate against. Example:
                   "http://litellm.default.svc.cluster.local:4000".
 
-                  The endpoint is used for both the periodic GET /models probe
+                  The endpoint is used for both the periodic POST /key/health probe
                   (CONN-03, see internal/litellm/keyinfo.go for the §6.1 deviation
                   note) and every Phase 3+ domain mutation call. The value is
                   trimmed of any trailing slash by litellm.NewClient at the wire
@@ -208,16 +208,27 @@ spec:
             properties:
               conditions:
                 description: |-
-                  Conditions carries the standard metav1.Condition list. The single
-                  type defined for LiteLLMConnection is `Ready`, with reason values
-                  drawn from the §6.0 reason set:
+                  Conditions carries the standard metav1.Condition list. Two
+                  condition types are defined for LiteLLMConnection:
+
+                  Ready (primary connect / auth signal) — reason drawn from the
+                  §6.0 reason set:
                   - Synced — probe succeeded; cache is fresh.
                   - Connecting — entry state, no probe outcome yet.
                   - Unreachable — transient probe failure (5xx, network).
                   - BadMasterKey — 401 from the LiteLLM master-key probe.
                   - SecretNotFound — masterKeySecretRef Secret or key missing.
-                  Phase 3+ dependents read this condition via the cache snapshot
-                  (internal/connection.Cache), never via direct CR Get.
+
+                  LoggingHealthy (secondary — sourced from POST /key/health response
+                  body's logging_callbacks.status field):
+                  - Healthy — proxy reports logging callbacks healthy.
+                  - Unhealthy — proxy reports at least one logging callback unhealthy.
+                  - Unknown — probe succeeded but proxy did not report a status.
+                  - ProbeError — probe failed before logging health could be read.
+
+                  Phase 3+ dependents read the Ready condition via the cache snapshot
+                  (internal/connection.Cache), never via direct CR Get. LoggingHealthy
+                  is informational only; not consumed by other reconcilers.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.

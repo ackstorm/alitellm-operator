@@ -101,6 +101,24 @@ spec:
                   inherit. A *bool is used so a nil value omits the field from the
                   rendered body (rather than sending the Go zero value).
                 type: boolean
+              deletionPolicy:
+                default: Orphan
+                description: |-
+                  DeletionPolicy controls finalizer behavior when the LiteLLM-side
+                  DELETE cannot be confirmed (LiteLLM unavailable, 401, transient
+                  error already retried). Defaults to "Orphan" to preserve REL-06
+                  anti-storm: the CR is freed even if the LiteLLM entry may linger.
+                  "Delete" blocks finalizer removal until the LiteLLM-side ack
+                  succeeds, suitable for GitOps users who must not see "synced"
+                  while a backend resource still exists.
+
+                  Annotation override (`litellm.ackstorm.ai/deletion-policy-override`)
+                  takes precedence over this field for runtime break-glass without a
+                  spec mutation.
+                enum:
+                - Orphan
+                - Delete
+                type: string
               guardrailName:
                 description: |-
                   GuardrailName is the litellm_params.guardrail_name path key used
