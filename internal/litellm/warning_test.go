@@ -43,3 +43,21 @@ func TestWarnIfDangerouslyLogBodies_FiresOnTrue(t *testing.T) {
 			"banner may have been emitted at Info level. Got:\n%s", out)
 	}
 }
+
+// TestWarnIfDangerouslyLogBodies_SilentWhenUnset asserts that an unset
+// env var produces zero log output (the helper returns false and does
+// not call log.Error).
+func TestWarnIfDangerouslyLogBodies_SilentWhenUnset(t *testing.T) {
+	t.Setenv(EnvDangerouslyLogBodies, "")
+
+	cap := &bytes.Buffer{}
+	logger := logr.New(&bufferSink{buf: cap})
+
+	fired := WarnIfDangerouslyLogBodies(logger)
+	if fired {
+		t.Fatalf("WarnIfDangerouslyLogBodies returned true with unset env, want false")
+	}
+	if out := cap.String(); out != "" {
+		t.Errorf("captured log non-empty with unset env; got:\n%s", out)
+	}
+}
