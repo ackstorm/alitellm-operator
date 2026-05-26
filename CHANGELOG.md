@@ -111,6 +111,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (FIX7 H-1).
 
 ### Security
+- Operator now emits a loud `Error`-level boxed startup banner when `LITELLM_OPERATOR_DANGEROUSLY_LOG_BODIES=true`, naming the env var verbatim and stating that request/response bodies (which carry substituted provider API keys) will be logged. Issue #26.
 
 ### BREAKING CHANGES
 - **`LiteLLMModel.status.lastRendered.litellmModelID` renamed to
