@@ -2024,7 +2024,9 @@ implements OpenAI's <code>GET /v1/models</code> + chat-completions.</p>
 <code>reason=InvalidDiscoveredName</code>. Name collision with a user-authored
 Model whose ownerRef does NOT point at this Discovery → <code>skippedCandidates</code>
 entry <code>reason=ExplicitModelExists</code>. Collision with another
-Discovery's child → <code>reason=DuplicateDiscovery</code> (smallest UID wins).</p>
+Discovery's child → <code>reason=Conflict</code> (renamed from <code>DuplicateDiscovery</code>
+per ADR-0001 for cross-kind consistency; first-create-wins until a
+follow-up PR adds alpha-last-wins ownership transfer).</p>
 <h2 id="status-what-to-read">Status — what to read<a class="headerlink" href="#status-what-to-read" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>mdisc<span class="w"> </span>openai<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.status}{&quot;\n&quot;}&#39;</span>
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="c1"># {&quot;discoveredCount&quot;:7,&quot;generatedCount&quot;:7,&quot;generatedChildren&quot;:[&quot;openai.gpt-4.1&quot;,...],&quot;lastRefreshAt&quot;:&quot;...&quot;,&quot;conditions&quot;:[...]}</span>
