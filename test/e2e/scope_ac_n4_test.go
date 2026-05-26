@@ -95,7 +95,7 @@ var _ = Describe("Scope AC-N4 non-watched namespace", Ordered, ContinueOnFailure
 		//  2. A RoleBinding named alitellm-operator-rolebinding exists.
 		//  3. Legacy ClusterRole/Binding names are absent.
 		//  4. Retained ClusterRoles still present.
-		const opNS = "alitellm-operator-system"
+		const opNS = "default"
 
 		out, err := exec.Command("kubectl", "-n", opNS, "get", "role",
 			"alitellm-operator-role", "-o", "name").CombinedOutput()
@@ -137,7 +137,7 @@ var _ = Describe("Scope AC-N4 non-watched namespace", Ordered, ContinueOnFailure
 		// boundary via `kubectl auth can-i`. The operator's SA must
 		// be allowed secrets list in the watched ns (default) and
 		// denied in the out-of-watch ns (dev).
-		const opNS = "alitellm-operator-system"
+		const opNS = "default"
 		const saName = "alitellm-operator"
 		sa := fmt.Sprintf("system:serviceaccount:%s:%s", opNS, saName)
 
