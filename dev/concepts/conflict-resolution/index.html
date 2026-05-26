@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://ackstorm.github.io/alitellm-operator/dev/user-guide/model/">
+        <link rel="canonical" href="https://ackstorm.github.io/alitellm-operator/dev/concepts/conflict-resolution/">
       
       
-        <link rel="prev" href="../team/">
+        <link rel="prev" href="../../user-guide/guardrail/">
       
       
-        <link rel="next" href="../a2a-agent/">
+        <link rel="next" href="../deletion-semantics/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>LiteLLMModel - alitellm-operator</title>
+        <title>Conflict Resolution - alitellm-operator</title>
       
     
     
@@ -78,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#litellmmodel" class="md-skip">
+        <a href="#conflict-resolution" class="md-skip">
           Skip to content
         </a>
       
@@ -116,7 +116,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              LiteLLMModel
+              Conflict Resolution
             
           </span>
         </div>
@@ -269,13 +269,11 @@
   
   
   
-    
-  
   
     
     
-      <li class="md-tabs__item md-tabs__item--active">
-        <a href="../" class="md-tabs__link">
+      <li class="md-tabs__item">
+        <a href="../../user-guide/" class="md-tabs__link">
           
   
   
@@ -291,11 +289,13 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
-        <a href="../../concepts/conflict-resolution/" class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
           
   
   
@@ -579,31 +579,28 @@
       
   
   
-    
   
   
-  
     
     
     
     
-      
-        
-        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
             
   
   
@@ -621,7 +618,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -639,7 +636,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../" class="md-nav__link">
+      <a href="../../user-guide/" class="md-nav__link">
         
   
   
@@ -667,7 +664,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../connection/" class="md-nav__link">
+      <a href="../../user-guide/connection/" class="md-nav__link">
         
   
   
@@ -695,7 +692,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../team/" class="md-nav__link">
+      <a href="../../user-guide/team/" class="md-nav__link">
         
   
   
@@ -720,37 +717,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    LiteLLMModel
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../user-guide/model/" class="md-nav__link">
         
   
   
@@ -766,114 +736,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#quick-reference" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Quick reference
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#minimal-example" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Minimal example
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#secret-substitution" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Secret substitution
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#common-provider-shapes" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Common provider shapes
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#drift-detection-correction" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Drift detection + correction
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#specinfoid-is-operator-controlled" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        spec.info.id is operator-controlled
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#status-what-to-read" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Status: what to read
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#see-also" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        See also
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -886,7 +748,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../a2a-agent/" class="md-nav__link">
+      <a href="../../user-guide/a2a-agent/" class="md-nav__link">
         
   
   
@@ -914,7 +776,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../mcp-server/" class="md-nav__link">
+      <a href="../../user-guide/mcp-server/" class="md-nav__link">
         
   
   
@@ -942,7 +804,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../mcp-server-discovery/" class="md-nav__link">
+      <a href="../../user-guide/mcp-server-discovery/" class="md-nav__link">
         
   
   
@@ -970,7 +832,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../model-discovery/" class="md-nav__link">
+      <a href="../../user-guide/model-discovery/" class="md-nav__link">
         
   
   
@@ -998,7 +860,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../guardrail/" class="md-nav__link">
+      <a href="../../user-guide/guardrail/" class="md-nav__link">
         
   
   
@@ -1030,28 +892,31 @@
       
   
   
+    
   
   
+  
     
     
     
     
+      
+        
+        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
         
           
-        
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
-        
-          
-          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
             
   
   
@@ -1069,7 +934,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1084,10 +949,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../concepts/conflict-resolution/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Conflict Resolution
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1103,6 +995,114 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-rule" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The rule
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-the-rule-applies-and-where-it-does-not" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where the rule applies (and where it does not)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#guardrail-is-intentionally-not-wired" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GuardRail is intentionally not wired
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#why-last-wins-and-not-first-wins" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why "last wins" and not "first wins"
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recovery
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observability
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-not-a-conflict" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is not a conflict
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#why-litellmmodeldiscovery-is-different" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why LiteLLMModelDiscovery is different
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1115,7 +1115,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../concepts/deletion-semantics/" class="md-nav__link">
+      <a href="../deletion-semantics/" class="md-nav__link">
         
   
   
@@ -1576,10 +1576,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#quick-reference" class="md-nav__link">
+  <a href="#the-rule" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Quick reference
+        The rule
       
     </span>
   </a>
@@ -1587,10 +1587,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#minimal-example" class="md-nav__link">
+  <a href="#where-the-rule-applies-and-where-it-does-not" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Minimal example
+        Where the rule applies (and where it does not)
       
     </span>
   </a>
@@ -1598,10 +1598,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#secret-substitution" class="md-nav__link">
+  <a href="#guardrail-is-intentionally-not-wired" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Secret substitution
+        GuardRail is intentionally not wired
       
     </span>
   </a>
@@ -1609,10 +1609,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#common-provider-shapes" class="md-nav__link">
+  <a href="#why-last-wins-and-not-first-wins" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Common provider shapes
+        Why "last wins" and not "first wins"
       
     </span>
   </a>
@@ -1620,10 +1620,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#drift-detection-correction" class="md-nav__link">
+  <a href="#recovery" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Drift detection + correction
+        Recovery
       
     </span>
   </a>
@@ -1631,10 +1631,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#specinfoid-is-operator-controlled" class="md-nav__link">
+  <a href="#observability" class="md-nav__link">
     <span class="md-ellipsis">
       
-        spec.info.id is operator-controlled
+        Observability
       
     </span>
   </a>
@@ -1642,10 +1642,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#status-what-to-read" class="md-nav__link">
+  <a href="#what-is-not-a-conflict" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Status: what to read
+        What is not a conflict
       
     </span>
   </a>
@@ -1653,10 +1653,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#see-also" class="md-nav__link">
+  <a href="#why-litellmmodeldiscovery-is-different" class="md-nav__link">
     <span class="md-ellipsis">
       
-        See also
+        Why LiteLLMModelDiscovery is different
       
     </span>
   </a>
@@ -1683,184 +1683,141 @@
   
 
 
-<h1 id="litellmmodel">LiteLLMModel<a class="headerlink" href="#litellmmodel" title="Permanent link">&para;</a></h1>
-<p>Declarative model entry in LiteLLM. Owns one <code>(litellm_params,
-model_info)</code> pair, projected via <code>POST /model/{new,update}</code> against
-the <code>LiteLLMConnection/default</code> instance.</p>
-<p>Shape is flat: <code>spec.params</code> (→ <code>litellm_params</code>) and <code>spec.info</code>
-(→ <code>model_info</code>) are both free-form pass-through bags. No <code>spec.type</code>
-discriminator. User-authored and Discovery-generated CRs are
-reconciled identically.</p>
-<h2 id="quick-reference">Quick reference<a class="headerlink" href="#quick-reference" title="Permanent link">&para;</a></h2>
+<h1 id="conflict-resolution">Conflict resolution<a class="headerlink" href="#conflict-resolution" title="Permanent link">&para;</a></h1>
+<p>The operator runs one reconciler per CRD, but multiple CRs of the same
+kind can describe the same LiteLLM-side entity. When two or more CRs
+share the same <strong>natural key</strong> for their kind, the operator applies a
+single, deterministic rule.</p>
+<h2 id="the-rule">The rule<a class="headerlink" href="#the-rule" title="Permanent link">&para;</a></h2>
+<blockquote>
+<p>Sort the colliding CRs by <code>&lt;namespace&gt;/&lt;name&gt;</code> in lexicographic
+ascending order. The <strong>last</strong> CR in that order wins. Every other
+("loser") CR stops calling LiteLLM and surfaces:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>status.conditions:
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>  - type: Ready
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    status: &quot;False&quot;
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    reason: Conflict
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    message: superseded by &lt;winner-namespace&gt;/&lt;winner-name&gt;
+</code></pre></div>
+</blockquote>
+<h2 id="where-the-rule-applies-and-where-it-does-not">Where the rule applies (and where it does not)<a class="headerlink" href="#where-the-rule-applies-and-where-it-does-not" title="Permanent link">&para;</a></h2>
+<p>The operator is <strong>namespace-scoped</strong>: the manager's informer cache is
+restricted to <code>WatchNamespace</code>. The apiserver enforces uniqueness on
+<code>(namespace, metadata.name)</code>. So a cross-CR conflict only exists when
+the LiteLLM-side natural key for a kind can collide between two CRs
+<strong>in the same namespace</strong> — which requires the natural key to be
+something other than <code>metadata.name</code>.</p>
 <table>
 <thead>
 <tr>
-<th>Field</th>
-<th>Required</th>
-<th>Notes</th>
+<th>Kind</th>
+<th>Natural key on the LiteLLM side</th>
+<th>Conflict surface in namespace-scoped mode</th>
 </tr>
 </thead>
 <tbody>
 <tr>
+<td><code>LiteLLMMCPServer</code></td>
+<td>sanitized <code>metadata.name</code> (the LiteLLM <code>server_name</code>)</td>
+<td>Real. Sanitization (dot↔dash, depending on connection separator) can collapse two distinct <code>metadata.name</code> values onto the same LiteLLM <code>server_name</code>.</td>
+</tr>
+<tr>
+<td><code>LiteLLMMCPServerDiscovery</code></td>
+<td>child <code>metadata.name</code> produced into <code>WatchNamespace</code></td>
+<td>Real. Two Discovery CRs can produce the same child name.</td>
+</tr>
+<tr>
+<td><code>LiteLLMModelAlias</code></td>
+<td>each <code>spec.aliases[].name</code> slot</td>
+<td>Real (slot-level). Aggregated last-wins per slot across all CRs.</td>
+</tr>
+<tr>
+<td><code>LiteLLMTeam</code></td>
+<td><code>metadata.name</code> (the operator forces <code>team_alias = metadata.name</code>)</td>
+<td>None in namespace-scoped mode (apiserver uniqueness forbids two CRs in one namespace).</td>
+</tr>
+<tr>
+<td><code>LiteLLMModel</code></td>
 <td><code>metadata.name</code></td>
-<td>yes</td>
-<td>LiteLLM <code>model_name</code> (the alias clients call). Unique per Connection.</td>
+<td>None in namespace-scoped mode.</td>
 </tr>
 <tr>
-<td><code>spec.params</code></td>
-<td>yes</td>
-<td><code>litellm_params</code> bag. Must at minimum carry a <code>model:</code> key.</td>
+<td><code>LiteLLMA2AAgent</code></td>
+<td><code>metadata.name</code></td>
+<td>None in namespace-scoped mode.</td>
 </tr>
 <tr>
-<td><code>spec.params.model</code></td>
-<td>yes</td>
-<td><code>&lt;provider&gt;/&lt;id&gt;</code> (e.g. <code>anthropic/claude-sonnet-4.5</code>, <code>gemini/gemini-2.5-flash</code>).</td>
+<td><code>LiteLLMConnection</code></td>
+<td>—</td>
+<td>No LiteLLM-side natural key; no conflict surface.</td>
 </tr>
 <tr>
-<td><code>spec.params.api_key</code></td>
-<td>varies</td>
-<td>Usually <code>{{NAME}}</code> resolved from <code>spec.secrets[]</code>.</td>
+<td><code>LiteLLMModelDiscovery</code></td>
+<td>child <code>metadata.name</code> (Kubernetes-layer)</td>
+<td>Resolved at the Kubernetes layer via Server-Side Apply with <code>ForceOwnership</code> — deliberate exception.</td>
 </tr>
 <tr>
-<td><code>spec.params.api_base</code></td>
-<td>no</td>
-<td>Override upstream base URL.</td>
-</tr>
-<tr>
-<td><code>spec.info</code></td>
-<td>no</td>
-<td><code>model_info</code> bag — <code>description</code>, <code>mode</code>, custom metadata.</td>
-</tr>
-<tr>
-<td><code>spec.secrets[]</code></td>
-<td>no</td>
-<td><code>{as, secretRef: {name, key}}</code> for <code>{{NAME}}</code> substitution in <code>params</code>/<code>info</code>.</td>
+<td><code>LiteLLMGuardRail</code></td>
+<td><code>spec.guardrailName</code> (user-set)</td>
+<td>None — shared guardrailName is the LB-pool feature; each CR contributes its own LiteLLM row to a pool.</td>
 </tr>
 </tbody>
 </table>
-<p>After <code>kubectl apply</code>, expect:</p>
+<p>Kinds with "None" rows above are listed for completeness; the resolver
+is not wired on them because the conflict cannot occur.</p>
+<h2 id="guardrail-is-intentionally-not-wired">GuardRail is intentionally not wired<a class="headerlink" href="#guardrail-is-intentionally-not-wired" title="Permanent link">&para;</a></h2>
+<p>Two <code>LiteLLMGuardRail</code> CRs sharing <code>spec.guardrailName</code> is a feature,
+not a conflict: each CR creates its own LiteLLM guardrail row under
+the shared name, and LiteLLM load-balances across the pool. The
+sibling-pool logic in the controller (<code>checkGuardrailPool</code>) verifies
+the pool members agree on provider and reports <code>PoolProviderMismatch</code>
+when they do not. Applying alpha-last-wins here would silently break
+the pool.</p>
+<h2 id="why-last-wins-and-not-first-wins">Why "last wins" and not "first wins"<a class="headerlink" href="#why-last-wins-and-not-first-wins" title="Permanent link">&para;</a></h2>
+<p>A common alternative is first-create-wins. We chose last-by-name-wins
+because it is <strong>purely a function of <code>metadata.namespace</code> and
+<code>metadata.name</code></strong> — values the user already controls and that are
+visible in <code>kubectl get</code> listings. There is no hidden timestamp, no
+ordering by <code>creationTimestamp</code>, no race with the apiserver clock. The
+same CR set produces the same winner across operator restarts and CR
+re-creations.</p>
+<p>If you want a different CR to win, rename it so it sorts last.</p>
+<h2 id="recovery">Recovery<a class="headerlink" href="#recovery" title="Permanent link">&para;</a></h2>
+<p>When the current winner is deleted (or renamed so it no longer
+collides), the operator re-evaluates the candidate set. The next CR in
+sort order is promoted, its <code>Conflict</code> condition is cleared, and a
+normal reconcile drives the LiteLLM entity to its spec.</p>
+<h2 id="observability">Observability<a class="headerlink" href="#observability" title="Permanent link">&para;</a></h2>
 <ul>
-<li><code>status.conditions[type=Ready].status=True</code> / <code>reason=Synced</code>.</li>
-<li><code>status.lastRendered.modelID</code> pinned with the LiteLLM-assigned UUID
-  (<code>model_info.id</code>). Pinned to skip a <code>GET /model/info</code> on every
-  reconcile.</li>
-<li><code>status.lastRendered.hash</code> = SHA-256 of the rendered body.</li>
+<li>Loser CRs emit a <code>ConflictDetected</code> Kubernetes Event with the winner key.</li>
+<li>Winner CRs emit a <code>ConflictWon</code> Event when they take over after a
+  previous winner left the set.</li>
+<li>The metric <code>litellm_operator_conflicts_total{kind, role}</code> increments
+  with <code>role=loser</code> on every transition into Conflict and <code>role=winner</code>
+  on every promotion.</li>
 </ul>
-<h2 id="minimal-example">Minimal example<a class="headerlink" href="#minimal-example" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">litellm.ackstorm.ai/v1alpha1</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">LiteLLMModel</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nt">metadata</span><span class="p">:</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">claude-sonnet-4-5</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">default</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="nt">model</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;anthropic/claude-sonnet-4.5&quot;</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="nt">api_key</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;{{ANTHROPIC_API_KEY}}&quot;</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">    </span><span class="nt">api_base</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://api.anthropic.com&quot;</span>
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">  </span><span class="nt">info</span><span class="p">:</span>
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Anthropic</span><span class="nv"> </span><span class="s">Sonnet</span><span class="nv"> </span><span class="s">4.5&quot;</span>
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">  </span><span class="nt">secrets</span><span class="p">:</span>
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">as</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ANTHROPIC_API_KEY</span>
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">      </span><span class="nt">secretRef</span><span class="p">:</span>
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">        </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">anthropic-api-key</span>
-<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="w">        </span><span class="nt">key</span><span class="p">:</span><span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">ANTHROPIC_API_KEY</span>
-</code></pre></div>
-<p>After apply, callers reach the model with:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>curl<span class="w"> </span><span class="nv">$LITELLM</span>/chat/completions<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Authorization: Bearer </span><span class="nv">$KEY</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;model&quot;:&quot;claude-sonnet-4-5&quot;,&quot;messages&quot;:[{&quot;role&quot;:&quot;user&quot;,&quot;content&quot;:&quot;hi&quot;}]}&#39;</span>
-</code></pre></div>
-<p>(<code>model</code> field in the request is <code>metadata.name</code>, not the upstream
-provider id.)</p>
-<h2 id="secret-substitution">Secret substitution<a class="headerlink" href="#secret-substitution" title="Permanent link">&para;</a></h2>
-<p><code>spec.secrets[].as</code> declares the placeholder name; <code>{{NAME}}</code> inside
-ANY string leaf in <code>spec.params</code> or <code>spec.info</code> is replaced with the
-plaintext value at reconcile time. Constraints:</p>
+<h2 id="what-is-not-a-conflict">What is <strong>not</strong> a conflict<a class="headerlink" href="#what-is-not-a-conflict" title="Permanent link">&para;</a></h2>
 <ul>
-<li><code>as</code> must match <code>^[A-Z_][A-Z0-9_]*$</code> (admission-time CEL).</li>
-<li><code>as</code> values unique within the CR (runtime check, <code>Ready=False</code>
-  <code>reason=DuplicateSecretAs</code> on violation).</li>
-<li>Secret must live in the SAME namespace as the Model CR. No cross-NS
-  resolution.</li>
-<li>Secret material NEVER appears in logs, Events, or
-  <code>status.conditions[].message</code>.</li>
+<li>Two CRs of any kind with different <code>metadata.name</code> whose specs happen
+  to describe the same upstream provider model or remote URL: not a
+  conflict (different natural keys; LiteLLM stores them as separate
+  entries).</li>
+<li>A <code>LiteLLMTeam</code> (or <code>LiteLLMModel</code>, <code>LiteLLMA2AAgent</code>) CR whose name
+  matches an existing pre-LiteLLM entry created outside the operator:
+  the operator adopts the existing entry on first reconcile via its
+  per-kind adoption logic (LiteLLM <code>team_id</code> smallest-wins,
+  <code>GetModelInfoByName</code>, <code>resolveAgentIDByName</code>, etc.). This is
+  LiteLLM-side adoption, not cross-CR conflict.</li>
 </ul>
-<p>Secret rotation propagates within ~30s (Secret-watch path on the
-controller).</p>
-<p>Missing Secret / key → <code>Ready=False</code>, <code>reason=SecretNotFound</code>.
-Placeholder without binding → <code>Ready=False</code>,
-<code>reason=UnresolvedPlaceholder</code>.</p>
-<h2 id="common-provider-shapes">Common provider shapes<a class="headerlink" href="#common-provider-shapes" title="Permanent link">&para;</a></h2>
-<p><strong>OpenAI / Anthropic / xAI</strong> (HTTP API, key-based):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="nt">model</span><span class="p">:</span><span class="w">   </span><span class="s">&quot;openai/gpt-4o&quot;</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="nt">api_key</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;{{OPENAI_API_KEY}}&quot;</span>
-</code></pre></div>
-<p><strong>Google Gemini</strong>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="nt">model</span><span class="p">:</span><span class="w">   </span><span class="s">&quot;gemini/gemini-2.5-flash&quot;</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span><span class="nt">api_key</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;{{GEMINI_API_KEY}}&quot;</span>
-</code></pre></div>
-<p><strong>AWS Bedrock</strong> (no <code>api_key</code>, uses AWS creds):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="nt">model</span><span class="p">:</span><span class="w">                 </span><span class="s">&quot;bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0&quot;</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span><span class="nt">aws_access_key_id</span><span class="p">:</span><span class="w">     </span><span class="s">&quot;{{AWS_ACCESS_KEY_ID}}&quot;</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">    </span><span class="nt">aws_secret_access_key</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;{{AWS_SECRET_ACCESS_KEY}}&quot;</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">    </span><span class="nt">aws_region_name</span><span class="p">:</span><span class="w">       </span><span class="s">&quot;us-east-1&quot;</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">  </span><span class="nt">secrets</span><span class="p">:</span>
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> as</span><span class="p">:</span><span class="w"> </span><span class="nv">AWS_ACCESS_KEY_ID</span><span class="p p-Indicator">,</span><span class="nt">     secretRef</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">aws-creds</span><span class="p p-Indicator">,</span><span class="nt"> key</span><span class="p">:</span><span class="w"> </span><span class="nv">AWS_ACCESS_KEY_ID</span><span class="w"> </span><span class="p p-Indicator">}</span><span class="w"> </span><span class="p p-Indicator">}</span>
-<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> as</span><span class="p">:</span><span class="w"> </span><span class="nv">AWS_SECRET_ACCESS_KEY</span><span class="p p-Indicator">,</span><span class="nt"> secretRef</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">aws-creds</span><span class="p p-Indicator">,</span><span class="nt"> key</span><span class="p">:</span><span class="w"> </span><span class="nv">AWS_SECRET_ACCESS_KEY</span><span class="w"> </span><span class="p p-Indicator">}</span><span class="w"> </span><span class="p p-Indicator">}</span>
-</code></pre></div>
-<p><strong>Ollama / local OpenAI-compatible</strong> (no key, custom base):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="nt">model</span><span class="p">:</span><span class="w">    </span><span class="s">&quot;openai/llama3.3&quot;</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="nt">api_base</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;http://ollama.default.svc:11434/v1&quot;</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">    </span><span class="nt">api_key</span><span class="p">:</span><span class="w">  </span><span class="s">&quot;ollama&quot;</span>
-</code></pre></div>
-<h2 id="drift-detection-correction">Drift detection + correction<a class="headerlink" href="#drift-detection-correction" title="Permanent link">&para;</a></h2>
-<p>On every reconcile the rendered post-substitution body is hashed
-(SHA-256, RFC 8785 canonical JSON, excluding <code>model_info.id</code>). The
-hash is compared against <code>status.lastRendered.hash</code>:</p>
-<ul>
-<li>Match → no LiteLLM call (steady state).</li>
-<li>Mismatch → <code>POST /model/update</code>, increments
-  <code>drift_corrected_total{domain=model,action=update_drifted}</code>.</li>
-<li>Vanish (row missing in LiteLLM) → <code>POST /model/new</code>, re-pin
-  <code>modelID</code>, increment
-  <code>drift_corrected_total{domain=model,action=create_missing}</code>.</li>
-</ul>
-<p><code>spec.params</code> or <code>spec.info</code> shrinkage (a key removed from either bag)
-triggers delete-and-recreate — <code>POST /model/update</code> is wholesale-replace
-on LiteLLM, but the shrinkage path was retained from earlier
-defect-mitigation work and <code>modelID</code> is re-pinned in the same
-reconcile.</p>
-<h2 id="specinfoid-is-operator-controlled"><code>spec.info.id</code> is operator-controlled<a class="headerlink" href="#specinfoid-is-operator-controlled" title="Permanent link">&para;</a></h2>
-<p>Setting <code>spec.info.id</code> is silently overridden by the operator's
-overlay (the pinned <code>modelID</code>) and emits a Warning Event
-<code>reason=ProjectionOverride</code>. Do not set it.</p>
-<h2 id="status-what-to-read">Status: what to read<a class="headerlink" href="#status-what-to-read" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>mdl<span class="w"> </span>claude-sonnet-4-5<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.status.lastRendered}{&quot;\n&quot;}&#39;</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="c1"># {&quot;at&quot;:&quot;...&quot;,&quot;hash&quot;:&quot;abc...&quot;,&quot;infoKeys&quot;:[&quot;description&quot;],&quot;modelID&quot;:&quot;&lt;uuid&gt;&quot;,&quot;paramsKeys&quot;:[&quot;api_base&quot;,&quot;api_key&quot;,&quot;model&quot;]}</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>kubectl<span class="w"> </span>get<span class="w"> </span>mdl<span class="w"> </span>claude-sonnet-4-5<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.status.conditions[?(@.type==&quot;Ready&quot;)]}{&quot;\n&quot;}&#39;</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="c1"># {&quot;type&quot;:&quot;Ready&quot;,&quot;status&quot;:&quot;True&quot;,&quot;reason&quot;:&quot;Synced&quot;}</span>
-</code></pre></div>
-<p><code>Ready=False</code> reasons beyond the secret-related ones above:</p>
-<ul>
-<li><code>LiteLLMUnavailable</code> — <code>LiteLLMConnection/default</code> not Ready.</li>
-<li><code>LiteLLMRejected</code> — LiteLLM returned 4xx/5xx on mutation. Inspect
-  <code>message</code> for the upstream payload.</li>
-</ul>
-<h2 id="see-also">See also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
-<ul>
-<li><a href="https://github.com/ackstorm/alitellm-operator/tree/main/examples/example-deploy/02-model.yaml">Example on GitHub</a></li>
-<li><a href="../model-discovery/">LiteLLMModelDiscovery</a> — auto-generate Model CRs from a Connection's <code>/models</code>.</li>
-<li><a href="../../api-reference/litellm.ackstorm.ai/#litellmmodel">API Reference: LiteLLMModel</a></li>
-</ul>
+<h2 id="why-litellmmodeldiscovery-is-different">Why <code>LiteLLMModelDiscovery</code> is different<a class="headerlink" href="#why-litellmmodeldiscovery-is-different" title="Permanent link">&para;</a></h2>
+<p><code>LiteLLMModelDiscovery</code> does not use the alpha-last-wins rule. It
+writes child <code>LiteLLMModel</code> CRs via Kubernetes Server-Side Apply with
+<code>ForceOwnership</code>. Conflict resolution happens at the Kubernetes layer:
+if a child CR is already owned by a different discovery (or by a
+user), SSA either takes ownership (when <code>ForceOwnership</code> is asserted)
+or rejects the write. The discovery-level reconciler raises
+<code>Ready=False, Reason=ChildConflict</code> with a message identifying the
+foreign owner.</p>
 
 
 
