@@ -304,8 +304,7 @@ spec:
             instead
           rule: '!self.spec.endpoint.contains(''@'')'
         - message: spec.endpoint must not contain whitespace
-          rule: "!self.spec.endpoint.contains(' ') && !self.spec.endpoint.contains('\t')
-            && !self.spec.endpoint.contains('\n')"
+          rule: '!self.spec.endpoint.matches(''\\s'')'
     served: true
     storage: true
     subresources:

@@ -200,7 +200,7 @@ type LiteLLMConnectionStatus struct {
 // +kubebuilder:validation:XValidation:rule="self.metadata.name == 'default'",message="LiteLLMConnection name must be 'default' (singleton per spec §6.1)"
 // +kubebuilder:validation:XValidation:rule="self.spec.endpoint.startsWith('http://') || self.spec.endpoint.startsWith('https://')",message="spec.endpoint must use http:// or https:// scheme"
 // +kubebuilder:validation:XValidation:rule="!self.spec.endpoint.contains('@')",message="spec.endpoint must not contain userinfo (user:pass@host); use spec.masterKeySecretRef instead"
-// +kubebuilder:validation:XValidation:rule="!self.spec.endpoint.contains(' ') && !self.spec.endpoint.contains('\t') && !self.spec.endpoint.contains('\n')",message="spec.endpoint must not contain whitespace"
+// +kubebuilder:validation:XValidation:rule="!self.spec.endpoint.matches('\\\\s')",message="spec.endpoint must not contain whitespace"
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=".status.conditions[?(@.type=='Ready')].status"
 // +kubebuilder:printcolumn:name="Reason",type=string,JSONPath=".status.conditions[?(@.type=='Ready')].reason"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=".metadata.creationTimestamp"

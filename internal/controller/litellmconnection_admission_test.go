@@ -28,13 +28,13 @@ func TestLiteLLMConnection_Admission_EndpointRejections(t *testing.T) {
 		endpoint string
 		want     string // substring expected in apiserver rejection
 	}{
-		{"missing scheme", "litellm:4000", "Pattern"},
+		{"missing scheme", "litellm:4000", "should match"},
 		{"ftp scheme", "ftp://litellm:4000", "http"},
 		{"userinfo", "http://u:p@litellm:4000", "userinfo"},
 		{"whitespace", "http://litellm:4000 ", "whitespace"},
-		{"query", "http://litellm:4000?a=1", "Pattern"},
-		{"fragment", "http://litellm:4000#f", "Pattern"},
-		{"too long", "http://" + strings.Repeat("a", 2100), "MaxLength"},
+		{"query", "http://litellm:4000?a=1", "should match"},
+		{"fragment", "http://litellm:4000#f", "should match"},
+		{"too long", "http://" + strings.Repeat("a", 2100), "Too long"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
