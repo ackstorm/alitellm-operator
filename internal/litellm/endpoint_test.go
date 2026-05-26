@@ -44,7 +44,6 @@ func TestValidateEndpoint(t *testing.T) {
 		{"control char", "http://litellm:4000\x01", "whitespace or control character"},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			err := ValidateEndpoint(tc.in)
