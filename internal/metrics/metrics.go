@@ -187,6 +187,23 @@ var DeletionOrphanedTotal = prometheus.NewCounterVec(
 	[]string{"kind"},
 )
 
+// ConflictsTotal — ADR-0001 alpha-last-wins conflict resolution metric.
+// Incremented by per-CR conflict resolvers (e.g. MCPServer sanitization-
+// collapse). Labels:
+//   - kind  : the CRD kind that resolved a conflict (e.g. MCPServer).
+//   - role  : "loser"  → the CR short-circuited with Ready=False/Conflict.
+//     "winner" → the CR was promoted after a previous winner
+//     left the candidate set.
+//
+// See docs/concepts/conflict-resolution.md.
+var ConflictsTotal = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "litellm_operator_conflicts_total",
+		Help: "Alpha-last-wins conflict resolutions by CRD kind and role (loser|winner). See ADR-0001.",
+	},
+	[]string{"kind", "role"},
+)
+
 // ConnectionReady — spec §10: gauge labeled by reason.
 // reasons ∈ {Synced, Connecting, Absent, Unreachable, BadMasterKey,
 // SecretNotFound}. Exactly one reason should be 1 at any time.
@@ -308,6 +325,7 @@ func init() {
 		LitellmOperatorReconcileTotal,
 		DeletionOrphanedTotal,
 		DeletionBlocked, // Issue #23: custom Collector — emits one sample per blocked CR
+		ConflictsTotal,  // ADR-0001: alpha-last-wins resolver counter
 	)
 
 	// Pre-touch every enumerated label combination from spec §10's
@@ -397,6 +415,16 @@ func init() {
 	// this is correct: there are no tracked CRs until reconciliation starts.
 	// The old name="" sentinel pre-touch is no longer needed because the
 	// custom Collector reports live ages, not zero sentinels.
+
+	// litellm_operator_conflicts_total{kind, role} — ADR-0001.
+	// Pre-touch every (kind, role) combo wired today so /metrics
+	// enumerates the full surface on first scrape. Add kinds here when
+	// new per-CR resolvers are wired.
+	for _, k := range []string{"MCPServer"} {
+		for _, role := range []string{"loser", "winner"} {
+			ConflictsTotal.WithLabelValues(k, role)
+		}
+	}
 
 	// litellm_operator_deletion_orphaned_total{kind} — Issue #23.
 	// Pre-touch every kind affected by spec.deletionPolicy so /metrics

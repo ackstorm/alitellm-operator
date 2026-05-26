@@ -20,6 +20,7 @@ nav:
     - LiteLLMModelDiscovery: user-guide/model-discovery.md
     - LiteLLMGuardRail: user-guide/guardrail.md
   - Concepts:
+    - Conflict Resolution: concepts/conflict-resolution.md
     - Deletion Semantics: concepts/deletion-semantics.md
   - Developer Guide:
     - Architecture: developer-guide/architecture.md

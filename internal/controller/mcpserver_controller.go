@@ -25,10 +25,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 	"github.com/ackstorm/alitellm-operator/internal/connection"
+	"github.com/ackstorm/alitellm-operator/internal/controller/conflict"
 	"github.com/ackstorm/alitellm-operator/internal/controller/deletionpolicy"
 	"github.com/ackstorm/alitellm-operator/internal/identity"
 	"github.com/ackstorm/alitellm-operator/internal/litellm"
@@ -256,8 +258,79 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
-	// ─── Step 3: Connection-gating (Phase 3 D-08) ──────────────────────────
+	// Snapshot is hoisted above the Connection gate so the conflict
+	// resolver below can run even when LiteLLM is unreachable — a loser
+	// must short-circuit unconditionally so it never issues an HTTP
+	// mutation, regardless of snap.Ready.
 	snap := r.Cache.Snapshot()
+
+	// ─── Conflict resolution (alpha-last-wins, sanitization-aware) ───────
+	// Two LiteLLMMCPServer CRs in the same namespace can have distinct
+	// metadata.name values that sanitize to the same LiteLLM server_name
+	// (e.g. foo.bar and foo-bar both sanitize to foo-bar when separator
+	// is "."). The CR whose <namespace>/<name> sorts LAST wins; every
+	// other candidate short-circuits with Ready=False/Reason=Conflict
+	// BEFORE any LiteLLM HTTP mutation. See docs/concepts/conflict-resolution.md.
+	//
+	// Because the operator caches ONE LiteLLMConnection at a time, every
+	// MCPServer in the namespace shares the same separator at this point
+	// in time, so candidacy can be decided by recomputing the sanitized
+	// name in-memory per CR — no field indexer is needed. The self-watch
+	// in SetupWithManager fans Create/Delete events back to siblings so
+	// the loser→winner promotion and winner→loser appearance fire
+	// promptly.
+	sep := snap.MCPToolPrefixSeparator
+	if sep == "" {
+		sep = litellm.MCPToolPrefixSeparatorDefault
+	}
+	sanitizedName := litellm.SanitizeMCPServerName(mcp.Name, sep)
+	var siblings litellmv1alpha1.LiteLLMMCPServerList
+	if err := r.List(ctx, &siblings, client.InNamespace(mcp.Namespace)); err != nil {
+		return ctrl.Result{}, fmt.Errorf("list mcpservers for conflict resolution: %w", err)
+	}
+	candidates := make([]client.Object, 0, len(siblings.Items))
+	for i := range siblings.Items {
+		s := &siblings.Items[i]
+		if !s.DeletionTimestamp.IsZero() {
+			continue
+		}
+		if litellm.SanitizeMCPServerName(s.Name, sep) == sanitizedName {
+			candidates = append(candidates, s)
+		}
+	}
+	priorReason := ""
+	if c := apimeta.FindStatusCondition(mcp.Status.Conditions, "Ready"); c != nil {
+		priorReason = c.Reason
+	}
+	winner := conflict.ResolveWinner(candidates)
+	if conflict.IsLoser(&mcp, winner) {
+		conflict.ApplyLoserCondition(&mcp.Status.Conditions, mcp.Generation, conflict.Key(winner))
+		if r.Recorder != nil {
+			r.Recorder.Eventf(&mcp, corev1.EventTypeNormal, "ConflictDetected",
+				"superseded by %s for sanitized server_name %q", conflict.Key(winner), sanitizedName)
+		}
+		if priorReason != conflict.ConditionReasonConflict {
+			metrics.ConflictsTotal.WithLabelValues("MCPServer", "loser").Inc()
+		}
+		mcp.Status.ObservedGeneration = mcp.Generation
+		if err := r.Status().Update(ctx, &mcp); err != nil {
+			if apierrors.IsConflict(err) {
+				return ctrl.Result{}, nil
+			}
+			return ctrl.Result{}, fmt.Errorf("set Conflict condition: %w", err)
+		}
+		return ctrl.Result{}, nil
+	}
+	conflict.ClearLoserCondition(&mcp.Status.Conditions)
+	if priorReason == conflict.ConditionReasonConflict {
+		if r.Recorder != nil {
+			r.Recorder.Eventf(&mcp, corev1.EventTypeNormal, "ConflictWon",
+				"promoted to winner for sanitized server_name %q", sanitizedName)
+		}
+		metrics.ConflictsTotal.WithLabelValues("MCPServer", "winner").Inc()
+	}
+
+	// ─── Step 3: Connection-gating (Phase 3 D-08) ──────────────────────────
 	if !snap.Ready {
 		reason := snap.Reason
 		if reason == "" {
@@ -397,7 +470,10 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// field, or when any other step between paramsMap and the LiteLLM
 	// request struct changes shape. Cost: every existing CR's next
 	// reconcile re-renders + UPDATEs in LiteLLM (one PUT each). Cheap.
-	sanitizedName := litellm.SanitizeMCPServerName(mcp.Name, snap.MCPToolPrefixSeparator)
+	// sanitizedName is hoisted from the conflict-resolution block above
+	// — both blocks must agree on the wire-side name. When snap.Ready
+	// is true (the path that reaches here), snap.MCPToolPrefixSeparator
+	// equals the resolver's `sep` and so sanitizedName is identical.
 	merged := map[string]any{
 		"render_version": mcpRenderVersion,
 		"server_name":    sanitizedName,
@@ -805,8 +881,16 @@ func (r *MCPServerReconciler) secretToMCPServers(ctx context.Context, obj client
 // SetupWithManager registers the MCPServerReconciler with controller-runtime.
 //
 // Watches:
-// - For(&LiteLLMMCPServer{}) — primary watch.
-// - Watches(&Secret{}, secretToMCPServers) — SEC-09 rotation propagation.
+//   - For(&LiteLLMMCPServer{}) — primary watch.
+//   - Watches(&Secret{}, secretToMCPServers) — SEC-09 rotation propagation.
+//   - Watches(&LiteLLMMCPServer{}, enqueueMCPServerSiblings) — sibling
+//     fan-in for the alpha-last-wins conflict resolver. On Create/Delete
+//     of any MCPServer in the namespace, re-enqueue every OTHER MCPServer
+//     so loser→winner promotion (winner deleted) and new-winner
+//     appearance (a name that sorts later created) fire promptly. Update
+//     events are filtered out — metadata.name is immutable and any
+//     separator change is already covered by the Connection-fanin above,
+//     so per-status-write Updates would only add reconcile noise.
 //
 // Named("mcpserver") — controller registry name (Phase 5 PATTERNS.md L506).
 // No Owns(.) and no safety re-list channel — Phase 5 may add
@@ -823,12 +907,57 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			handler.EnqueueRequestsFromMapFunc(r.connectionToMCPServers),
 			builder.WithPredicates(connectionReadyTransition()),
 		).
+		Watches(
+			&litellmv1alpha1.LiteLLMMCPServer{},
+			handler.EnqueueRequestsFromMapFunc(r.enqueueMCPServerSiblings),
+			builder.WithPredicates(mcpServerSiblingCreateDelete()),
+		).
 		WithOptions(transientBackoffOptions()).
 		Named("mcpserver")
 	if src := BootEventsSource(r.BootEvents); src != nil {
 		b = b.WatchesRawSource(src)
 	}
 	return b.Complete(r)
+}
+
+// enqueueMCPServerSiblings returns reconcile requests for every OTHER
+// LiteLLMMCPServer in the namespace of obj. Used by the self-watch in
+// SetupWithManager to drive the alpha-last-wins conflict resolver on
+// Create/Delete events: a new sibling may collapse onto the same
+// sanitized name (forcing a winner re-pick), and a deleted sibling may
+// promote a previously-losing CR to winner.
+func (r *MCPServerReconciler) enqueueMCPServerSiblings(ctx context.Context, obj client.Object) []reconcile.Request {
+	me, ok := obj.(*litellmv1alpha1.LiteLLMMCPServer)
+	if !ok {
+		return nil
+	}
+	var list litellmv1alpha1.LiteLLMMCPServerList
+	if err := r.List(ctx, &list, client.InNamespace(me.GetNamespace())); err != nil {
+		return nil
+	}
+	out := make([]reconcile.Request, 0, len(list.Items))
+	for i := range list.Items {
+		if list.Items[i].UID == me.UID {
+			continue
+		}
+		out = append(out, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])})
+	}
+	return out
+}
+
+// mcpServerSiblingCreateDelete fires only on Create/Delete events for
+// the sibling watch. Update events are dropped — metadata.name is
+// immutable, so an Update on a sibling never changes its sanitized
+// name (separator changes fan in via the Connection watch instead),
+// and per-reconcile status writes would create a reconcile storm
+// otherwise. Generic events are likewise irrelevant for this fan-in.
+func mcpServerSiblingCreateDelete() predicate.Predicate {
+	return predicate.Funcs{
+		CreateFunc:  func(_ event.CreateEvent) bool { return true },
+		DeleteFunc:  func(_ event.DeleteEvent) bool { return true },
+		UpdateFunc:  func(_ event.UpdateEvent) bool { return false },
+		GenericFunc: func(_ event.GenericEvent) bool { return false },
+	}
 }
 
 // stampMCPIdentity injects identity.Operator() into the mcp_info bag.

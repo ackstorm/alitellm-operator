@@ -8,6 +8,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Alpha-last-wins conflict resolution (ADR-0001):** new shared
+  package `internal/controller/conflict` providing `Key`,
+  `ResolveWinner`, `IsLoser`, and a `Ready=False, Reason=Conflict`
+  status-condition helper used by per-CR resolvers. Concept doc:
+  `docs/concepts/conflict-resolution.md`; decision record:
+  `references/adr/0001-alpha-last-wins-conflict-resolution.md`.
+- **`LiteLLMMCPServer` resolver for sanitization-collapse:** when two
+  CRs in the same namespace sanitize to the same LiteLLM `server_name`
+  (e.g. `foo.bar` and `foo-bar` both → `foo-bar` under separator `.`),
+  the CR whose `<namespace>/<name>` sorts last wins; the other
+  short-circuits with `Ready=False, Reason=Conflict, Message="superseded
+  by <ns>/<name>"`. Self-watch promotes the loser when the winner is
+  deleted.
+- **Metric `litellm_operator_conflicts_total{kind,role}`:** counter
+  incremented by the resolver on every loser/winner transition.
+  Pre-touched for `kind=MCPServer, role={loser,winner}`.
+- **Events `ConflictDetected` / `ConflictWon`** on the affected
+  `LiteLLMMCPServer` CRs.
+
+### Changed
+- **`LiteLLMMCPServerDiscovery` intra-discovery dedup direction
+  (BREAKING):** flipped from first-seen-wins to alpha-last-wins. When
+  two upstream ToolHive objects in different namespaces share the same
+  `metadata.name` within a single Discovery, the entry with the
+  alpha-LAST `(sourceNamespace, sourceName)` ASC key now wins; earlier
+  occurrences are skipped with `Reason=NameCollision` (unchanged). The
+  parent's `NameCollision` status condition continues to fire. Status
+  output order is unchanged (sort happens before render). Deployments
+  that relied on the prior first-wins survivor will see a different
+  child generated under the colliding name.
+
+### Note (follow-up PR)
+- Cross-`LiteLLMMCPServerDiscovery` collisions still surface with
+  `Reason=DuplicateDiscovery` (skip) rather than the new
+  `Reason=Conflict` semantic. The rename + alpha-last-wins between
+  Discoveries requires CRD enum + Prometheus label changes and is
+  intentionally deferred to a follow-up PR coordinated with
+  `LiteLLMModelDiscovery`.
 - **Configurable deletion policy (#23):** `spec.deletionPolicy`
   (`Orphan` | `Delete`, default `Orphan`) on `LiteLLMModel`,
   `LiteLLMTeam`, `LiteLLMMCPServer`, `LiteLLMA2AAgent`, and
