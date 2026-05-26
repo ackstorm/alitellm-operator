@@ -15,11 +15,11 @@ REST API.
 
 ## What This Is
 
-A declarative, name-scoped GitOps surface for LiteLLM. It manages eight
+A declarative, name-scoped GitOps surface for LiteLLM. It manages nine
 custom resource kinds — LiteLLMConnection, LiteLLMModel,
-LiteLLMModelDiscovery, LiteLLMMCPServer, LiteLLMMCPServerDiscovery,
-LiteLLMA2AAgent, LiteLLMTeam, and LiteLLMGuardRail — across two
-reconciliation pipelines:
+LiteLLMModelAlias, LiteLLMModelDiscovery, LiteLLMMCPServer,
+LiteLLMMCPServerDiscovery, LiteLLMA2AAgent, LiteLLMTeam, and
+LiteLLMGuardRail — across two reconciliation pipelines:
 
 - **Pipeline A** reconciles explicit CRs directly into LiteLLM via its
   REST API using wholesale-replace semantics.
@@ -101,17 +101,30 @@ Discovery-owned-children rule.
 
 ## CI overview
 
+`ci.yml` triggers exclusively on `pull_request` against `main`. Pushes to
+feature branches and post-merge pushes to `main` do not fire `ci.yml`
+(branch protection guarantees the merged commit's content was already
+validated as the PR head). Authoritative trigger reference:
+[`references/docs/workflow.md`](references/docs/workflow.md).
+
 | Trigger | Workflow | Wall-clock budget |
 |---|---|---|
-| Push to any branch | `ci.yml` (lint + unit) | ≤ 4 min |
-| PR → main | `ci.yml` (lint + unit + envtest + e2e) | ≤ 12 min |
-| Push to main (post-merge) | `ci.yml` (lint + unit + envtest + e2e) | ≤ 12 min |
-| Cron 04:00 UTC + manual | `nightly.yml` (long-soak + leak-soak, parallel) | ≤ 60 min |
+| Push to feature branch (no PR) | none (local `make pre-commit` covers WIP) | n/a |
+| PR → main (non-draft) | `ci.yml` (lint + unit + envtest + security + e2e) | ≤ 12 min |
+| PR → main (draft) | `ci.yml` (lint + unit + envtest + security; e2e skipped) | ≤ 8 min |
+| PR → main (any) | `govulncheck.yml` (HIGH advisory gate vs ack-list) | ≤ 3 min |
+| Push to main (post-merge, non-release) | none | n/a |
+| Cron Mon 05:08 UTC | `govulncheck.yml` (drift detection) | ≤ 3 min |
+| Cron 04:00 UTC + workflow_dispatch | `nightly.yml` (long-soak + leak-soak + fuzz, parallel) | ≤ 60 min |
 | `chore(release): v*` commit on main | `release.yml` (tests → bump → image + chart push → gh release → tag) | ≤ 20 min |
 
-Branch protection on `main` requires `lint`, `unit`, `envtest`, `e2e`, and
-`security` to be green before a PR can merge. Draft PRs skip the `e2e` job
-unless the label `run-e2e` is applied.
+Branch protection on `main` requires `Lint`, `Unit`, `Envtest`, `Security`,
+and `E2E (kind + helm + ginkgo)` to be green before a PR can merge.
+Draft PRs skip e2e unconditionally; the rest of the checks still run.
+Docs-only PRs (paths matching `**/*.md`, `docs/**`, `.planning/**`,
+`references/**`, `FIX*.txt`, `LICENSE`, `NOTICE`, `CODEOWNERS`,
+`.gitignore`) skip `ci.yml` entirely — landing them needs an admin merge
+since required checks will show as missing.
 
 ## Cutting a release
 
