@@ -19,10 +19,13 @@ Docker; the devtools container ships the rest.
 
 ## Helm — OCI registry (recommended)
 
+The command below installs the latest published chart. For
+reproducible deploys, pin `--version <X.Y.Z>` to a release listed on
+the [Releases page](https://github.com/ackstorm/alitellm-operator/releases).
+
 ```bash
 helm install alitellm-operator \
   oci://ghcr.io/ackstorm/charts/alitellm-operator \
-  --version 0.4.7 \
   --namespace litellm --create-namespace
 ```
 
@@ -55,7 +58,7 @@ production-suitable for a small dogfood cluster.
 |--------------------------------|-----------------------------------------------|------------------------------------------------------------------------------------------------|
 | `installCRDs`                  | `true`                                        | Set `false` when CRDs are managed out-of-band (Flux/ArgoCD CRD reconciler).                    |
 | `image.repo`                   | `ghcr.io/ackstorm/alitellm-operator`          | Container image.                                                                               |
-| `image.tag`                    | `v0.4.7`                                      | Auto-bumped by release CI.                                                                     |
+| `image.tag`                    | matches chart `appVersion`                    | Auto-bumped by release CI; see [Releases](https://github.com/ackstorm/alitellm-operator/releases). |
 | `image.pullPolicy`             | `IfNotPresent`                                |                                                                                                |
 | `watchNamespace`               | `default`                                     | Single namespace the operator reconciles. CRs in other namespaces are ignored (SCOPE-04).      |
 | `toolhive.enabled`             | `true`                                        | Enables the ClusterRole granting read on ToolHive `MCPServer` / `VirtualMCPServer`.            |
@@ -68,12 +71,11 @@ Other knobs (replicas, nodeSelector, tolerations, leader-election, …)
 are kustomize-locked. To expose more, edit
 `scripts/kustomize-to-helm.sh` + `values.yaml` and run `make helm-sync`.
 
-Example `values.yaml`:
+Example `values.yaml` (omit `image.tag` to use the chart's bundled
+default, which matches `appVersion`):
 
 ```yaml
 watchNamespace: litellm
-image:
-  tag: v0.4.7
 toolhive:
   enabled: false           # cluster has no ToolHive CRDs
 safetyRelistInterval: 30m  # large CR catalogue, prefer fewer LiteLLM probes

@@ -33,9 +33,11 @@ User and VirtualKey lifecycle.
 
 ## Status
 
-v0.4.7 — early-access. API surface may change before v1beta1. The
-authoritative contract is the operator spec; see [PUBLISH.md](PUBLISH.md)
-for the release/publication procedure.
+Early-access. API surface may change before v1beta1. The current
+version and changelog are on the
+[Releases page](https://github.com/ackstorm/alitellm-operator/releases/latest).
+The authoritative contract is the operator spec; see
+[PUBLISH.md](PUBLISH.md) for the release/publication procedure.
 
 ## Quick Start
 
@@ -47,11 +49,13 @@ Prerequisites:
 - A Kubernetes Secret in the `default` namespace holding the LiteLLM
   master key
 
-Install the operator via Helm (OCI):
+Install the operator via Helm (OCI). The command below installs the
+latest published chart; for reproducible deploys, pin `--version
+<X.Y.Z>` to a release listed on the
+[Releases page](https://github.com/ackstorm/alitellm-operator/releases).
 
 ```bash
 helm install lo oci://ghcr.io/ackstorm/charts/alitellm-operator \
-  --version 0.4.7 \
   --namespace default --create-namespace
 ```
 
