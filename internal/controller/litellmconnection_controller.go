@@ -307,6 +307,27 @@ func (r *LiteLLMConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, nil
 	}
 
+	// ─── Step 4b: Wire-level endpoint validation (issue #25) ──────
+	// CRD admission catches obvious malformed endpoints (missing
+	// scheme, userinfo, whitespace, query, fragment). This wire-level
+	// guard catches the residue that slips past — raw Unicode hosts
+	// (Pattern admits any [^@\s?#] sequence), or hand-edited objects
+	// on apiservers without CEL. No requeue: the Connection watch
+	// retriggers on Spec edit.
+	if err := litellm.ValidateEndpoint(conn.Spec.Endpoint); err != nil {
+		msg := "spec.endpoint: " + err.Error()
+		if werr := r.writeStatus(ctx, &conn, metav1.ConditionFalse, reasonInvalidEndpoint, msg); werr != nil {
+			logStatusUpdateErr(logger, werr, "reason", reasonInvalidEndpoint)
+		}
+		r.Cache.Rebuild(connection.ConnectionSnapshot{
+			Ready:      false,
+			Reason:     reasonInvalidEndpoint,
+			Generation: conn.Generation,
+		})
+		metrics.ReconcileTotal.WithLabelValues("LiteLLMConnection", "success").Inc()
+		return ctrl.Result{}, nil
+	}
+
 	// ─── Step 5: Build fresh *litellm.Client (D-03) ────────────────
 	// New http.Client, new transport, new redacting RoundTripper on
 	// EVERY probe. No transport pooling — operator traffic is too
