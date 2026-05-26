@@ -192,8 +192,8 @@ var DeletionOrphanedTotal = prometheus.NewCounterVec(
 // collapse). Labels:
 //   - kind  : the CRD kind that resolved a conflict (e.g. MCPServer).
 //   - role  : "loser"  → the CR short-circuited with Ready=False/Conflict.
-//             "winner" → the CR was promoted after a previous winner
-//             left the candidate set.
+//     "winner" → the CR was promoted after a previous winner
+//     left the candidate set.
 //
 // See docs/concepts/conflict-resolution.md.
 var ConflictsTotal = prometheus.NewCounterVec(
