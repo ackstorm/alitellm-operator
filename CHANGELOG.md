@@ -54,12 +54,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   child generated under the colliding name.
 
 ### Note (follow-up PR)
-- Cross-`LiteLLMMCPServerDiscovery` collisions still surface with
-  `Reason=DuplicateDiscovery` (skip) rather than the new
-  `Reason=Conflict` semantic. The rename + alpha-last-wins between
-  Discoveries requires CRD enum + Prometheus label changes and is
-  intentionally deferred to a follow-up PR coordinated with
-  `LiteLLMModelDiscovery`.
+- Cross-`LiteLLMMCPServerDiscovery` and cross-`LiteLLMModelDiscovery`
+  collisions resolve first-create-wins with `Reason=Conflict` skip on
+  the alpha-second Discovery. Full alpha-last-wins ownership transfer
+  (replacing `metadata.ownerReferences` across SSA field managers) is
+  deferred to a follow-up PR.
 - **Configurable deletion policy (#23):** `spec.deletionPolicy`
   (`Orphan` | `Delete`, default `Orphan`) on `LiteLLMModel`,
   `LiteLLMTeam`, `LiteLLMMCPServer`, `LiteLLMA2AAgent`, and
