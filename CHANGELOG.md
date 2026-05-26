@@ -8,6 +8,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Configurable deletion policy (#23):** `spec.deletionPolicy`
+  (`Orphan` | `Delete`, default `Orphan`) on `LiteLLMModel`,
+  `LiteLLMTeam`, `LiteLLMMCPServer`, `LiteLLMA2AAgent`, and
+  `LiteLLMGuardRail`. Default `Orphan` preserves REL-06 anti-storm
+  semantics (finalizer is removed even when the LiteLLM-side delete
+  cannot be confirmed). Set to `Delete` to block finalizer removal
+  until LiteLLM acks — suitable for GitOps deployments where Argo/Flux
+  must not see "synced" while a backend resource still exists.
+  Annotation `litellm.ackstorm.ai/deletion-policy-override` provides
+  per-CR runtime break-glass without mutating spec. Discovery-owned
+  children always resolve to `Orphan` regardless of spec/annotation
+  so vanish-detection cannot deadlock. `LiteLLMConnection` is
+  excluded — its finalizer runs no LiteLLM HTTP call.
+- Metric `litellm_operator_deletion_orphaned_total{kind}` increments
+  on every `Orphan` finalizer-removed-without-ack path.
+- Metric `litellm_operator_deletion_blocked{kind,namespace,name}`
+  emits 1 per CR currently stuck in Terminating under `Delete` policy.
+- Events `LiteLLMDeleteOrphaned` (Normal) and `LiteLLMDeleteBlocked`
+  (Warning) on the affected code paths.
+- Examples `examples/example-deploy/10-strict-deletion-model.yaml`
+  and `examples/example-deploy/11-strict-deletion-team.yaml`
+  documenting the `Delete` opt-in and break-glass annotation.
 - mcpserver: every key modeled in `litellm.MCPServerRequest` (`auth_type`,
   `credentials`, `mcp_access_groups`, `allowed_tools`, `tool_name_to_*`,
   `extra_headers`, `static_headers`, `command`, `args`, `env`,

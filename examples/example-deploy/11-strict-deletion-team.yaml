@@ -1,0 +1,25 @@
+---
+# Copyright 2026 ACKstorm.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Strict-deletion Team CR (Issue #23). Same contract as
+# 10-strict-deletion-model.yaml — see that file's header for the full
+# discussion of the Orphan vs Delete trade-off and the annotation
+# break-glass.
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMTeam
+metadata:
+  name: strict-team-example
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  deletionPolicy: Delete
+  params:
+    team_alias: strict-team-example

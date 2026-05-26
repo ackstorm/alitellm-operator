@@ -1,0 +1,47 @@
+---
+# Copyright 2026 ACKstorm.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Strict-deletion Model CR (Issue #23).
+#
+# spec.deletionPolicy: Delete makes the operator BLOCK finalizer removal
+# until LiteLLM acks the model delete. Recommended for GitOps-managed
+# deployments (Argo, Flux) where "synced" must not be reported while a
+# backend resource still exists.
+#
+# Default (Orphan, REL-06 anti-storm) preserves the legacy behavior:
+# finalizer is removed even if the LiteLLM-side delete cannot be
+# confirmed (LiteLLM unavailable, 401, etc.).
+#
+# Break-glass: if LiteLLM is permanently unreachable and the CR is
+# stuck in Terminating, annotate the CR to flip the resolved policy at
+# runtime WITHOUT mutating spec:
+#
+#   kubectl annotate litellmmodel strict-model-example \
+#     litellm.ackstorm.ai/deletion-policy-override=Orphan
+#
+# Discovery-owned children always resolve to Orphan regardless of spec
+# or annotation — vanish-detection must not deadlock.
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMModel
+metadata:
+  name: strict-model-example
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  deletionPolicy: Delete
+  params:
+    model: openai/gpt-4o-mini
+    api_key: "{{OPENAI_KEY}}"
+  secrets:
+    - as: OPENAI_KEY
+      secretRef:
+        name: openai-creds
+        key: api_key
