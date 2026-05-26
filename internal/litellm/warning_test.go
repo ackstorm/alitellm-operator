@@ -61,3 +61,30 @@ func TestWarnIfDangerouslyLogBodies_SilentWhenUnset(t *testing.T) {
 		t.Errorf("captured log non-empty with unset env; got:\n%s", out)
 	}
 }
+
+// TestWarnIfDangerouslyLogBodies_SilentOnNonTrueValues asserts the
+// banner predicate matches newHTTPClient byte-for-byte: only the exact
+// string "true" trips it. Other spellings that ParseBool would accept
+// ("1", "yes", "TRUE", "True") MUST NOT trip the banner, because they
+// also do NOT enable body logging in newHTTPClient.
+//
+// This is the invariant under test: banner-fires-iff-bodies-logged.
+func TestWarnIfDangerouslyLogBodies_SilentOnNonTrueValues(t *testing.T) {
+	cases := []string{"false", "0", "1", "yes", "TRUE", "True", "no", "junk"}
+	for _, v := range cases {
+		t.Run(v, func(t *testing.T) {
+			t.Setenv(EnvDangerouslyLogBodies, v)
+
+			cap := &bytes.Buffer{}
+			logger := logr.New(&bufferSink{buf: cap})
+
+			fired := WarnIfDangerouslyLogBodies(logger)
+			if fired {
+				t.Fatalf("WarnIfDangerouslyLogBodies returned true for value %q, want false", v)
+			}
+			if out := cap.String(); out != "" {
+				t.Errorf("captured log non-empty for value %q; got:\n%s", v, out)
+			}
+		})
+	}
+}
