@@ -309,6 +309,9 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			r.Recorder.Eventf(&mcp, corev1.EventTypeNormal, "ConflictDetected",
 				"superseded by %s for sanitized server_name %q", conflict.Key(winner), sanitizedName)
 		}
+		if priorReason != conflict.ConditionReasonConflict {
+			metrics.ConflictsTotal.WithLabelValues("MCPServer", "loser").Inc()
+		}
 		mcp.Status.ObservedGeneration = mcp.Generation
 		if err := r.Status().Update(ctx, &mcp); err != nil {
 			if apierrors.IsConflict(err) {
@@ -319,9 +322,12 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 	conflict.ClearLoserCondition(&mcp.Status.Conditions)
-	if priorReason == conflict.ConditionReasonConflict && r.Recorder != nil {
-		r.Recorder.Eventf(&mcp, corev1.EventTypeNormal, "ConflictWon",
-			"promoted to winner for sanitized server_name %q", sanitizedName)
+	if priorReason == conflict.ConditionReasonConflict {
+		if r.Recorder != nil {
+			r.Recorder.Eventf(&mcp, corev1.EventTypeNormal, "ConflictWon",
+				"promoted to winner for sanitized server_name %q", sanitizedName)
+		}
+		metrics.ConflictsTotal.WithLabelValues("MCPServer", "winner").Inc()
 	}
 
 	// ─── Step 3: Connection-gating (Phase 3 D-08) ──────────────────────────
