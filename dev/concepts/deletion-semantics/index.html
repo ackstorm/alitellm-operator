@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://ackstorm.github.io/alitellm-operator/dev/user-guide/mcp-server/">
+        <link rel="canonical" href="https://ackstorm.github.io/alitellm-operator/dev/concepts/deletion-semantics/">
       
       
-        <link rel="prev" href="../a2a-agent/">
+        <link rel="prev" href="../../user-guide/guardrail/">
       
       
-        <link rel="next" href="../mcp-server-discovery/">
+        <link rel="next" href="../../developer-guide/architecture/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>LiteLLMMCPServer - alitellm-operator</title>
+        <title>Deletion Semantics - alitellm-operator</title>
       
     
     
@@ -78,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#litellmmcpserver" class="md-skip">
+        <a href="#deletion-semantics" class="md-skip">
           Skip to content
         </a>
       
@@ -116,7 +116,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              LiteLLMMCPServer
+              Deletion Semantics
             
           </span>
         </div>
@@ -269,13 +269,11 @@
   
   
   
-    
-  
   
     
     
-      <li class="md-tabs__item md-tabs__item--active">
-        <a href="../" class="md-tabs__link">
+      <li class="md-tabs__item">
+        <a href="../../user-guide/" class="md-tabs__link">
           
   
   
@@ -291,11 +289,13 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
-        <a href="../../concepts/deletion-semantics/" class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
           
   
   
@@ -579,31 +579,28 @@
       
   
   
-    
   
   
-  
     
     
     
     
-      
-        
-        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
             
   
   
@@ -621,7 +618,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -639,7 +636,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../" class="md-nav__link">
+      <a href="../../user-guide/" class="md-nav__link">
         
   
   
@@ -667,7 +664,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../connection/" class="md-nav__link">
+      <a href="../../user-guide/connection/" class="md-nav__link">
         
   
   
@@ -695,7 +692,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../team/" class="md-nav__link">
+      <a href="../../user-guide/team/" class="md-nav__link">
         
   
   
@@ -723,7 +720,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../model/" class="md-nav__link">
+      <a href="../../user-guide/model/" class="md-nav__link">
         
   
   
@@ -751,7 +748,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../a2a-agent/" class="md-nav__link">
+      <a href="../../user-guide/a2a-agent/" class="md-nav__link">
         
   
   
@@ -776,37 +773,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    LiteLLMMCPServer
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../user-guide/mcp-server/" class="md-nav__link">
         
   
   
@@ -822,125 +792,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#quick-reference" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Quick reference
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#minimal-example" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Minimal example
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#with-auth-headers" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        With auth headers
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#accepted-pass-through-fields" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Accepted pass-through fields
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#name-sanitization-mcp-05" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Name sanitization (MCP-05)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#transport-handling" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Transport handling
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#drift-detection" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Drift detection
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#status-what-to-read" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Status: what to read
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#see-also" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        See also
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -953,7 +804,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../mcp-server-discovery/" class="md-nav__link">
+      <a href="../../user-guide/mcp-server-discovery/" class="md-nav__link">
         
   
   
@@ -981,7 +832,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../model-discovery/" class="md-nav__link">
+      <a href="../../user-guide/model-discovery/" class="md-nav__link">
         
   
   
@@ -1009,7 +860,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../guardrail/" class="md-nav__link">
+      <a href="../../user-guide/guardrail/" class="md-nav__link">
         
   
   
@@ -1041,28 +892,31 @@
       
   
   
+    
   
   
+  
     
     
     
     
+      
+        
+        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
         
           
-        
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
-        
-          
-          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
             
   
   
@@ -1080,7 +934,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1095,10 +949,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../concepts/deletion-semantics/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deletion Semantics
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1114,6 +995,92 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#why-two-modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why two modes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-annotation-break-glass" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The annotation break-glass
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#discovery-owned-children-always-orphan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Discovery-owned children always Orphan
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#trade-off-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trade-off summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observability
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recovery-procedures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recovery procedures
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1559,10 +1526,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#quick-reference" class="md-nav__link">
+  <a href="#why-two-modes" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Quick reference
+        Why two modes
       
     </span>
   </a>
@@ -1570,10 +1537,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#minimal-example" class="md-nav__link">
+  <a href="#the-annotation-break-glass" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Minimal example
+        The annotation break-glass
       
     </span>
   </a>
@@ -1581,10 +1548,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#with-auth-headers" class="md-nav__link">
+  <a href="#discovery-owned-children-always-orphan" class="md-nav__link">
     <span class="md-ellipsis">
       
-        With auth headers
+        Discovery-owned children always Orphan
       
     </span>
   </a>
@@ -1592,10 +1559,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#accepted-pass-through-fields" class="md-nav__link">
+  <a href="#trade-off-summary" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Accepted pass-through fields
+        Trade-off summary
       
     </span>
   </a>
@@ -1603,10 +1570,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#name-sanitization-mcp-05" class="md-nav__link">
+  <a href="#observability" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Name sanitization (MCP-05)
+        Observability
       
     </span>
   </a>
@@ -1614,43 +1581,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#transport-handling" class="md-nav__link">
+  <a href="#recovery-procedures" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Transport handling
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#drift-detection" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Drift detection
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#status-what-to-read" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Status: what to read
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#see-also" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        See also
+        Recovery procedures
       
     </span>
   </a>
@@ -1677,165 +1611,143 @@
   
 
 
-<h1 id="litellmmcpserver">LiteLLMMCPServer<a class="headerlink" href="#litellmmcpserver" title="Permanent link">&para;</a></h1>
-<p>Declarative MCP (Model Context Protocol) server registration on a
-LiteLLM proxy. Projected via <code>POST /v1/mcp/server</code> /
-<code>PUT /v1/mcp/server</code> / <code>DELETE /v1/mcp/server/&lt;id&gt;</code>.</p>
-<p>User-authored and <code>LiteLLMMCPServerDiscovery</code>-generated CRs reconcile
-identically — the controller does not branch on <code>ownerReferences</code>.</p>
-<h2 id="quick-reference">Quick reference<a class="headerlink" href="#quick-reference" title="Permanent link">&para;</a></h2>
+<h1 id="deletion-semantics">Deletion Semantics<a class="headerlink" href="#deletion-semantics" title="Permanent link">&para;</a></h1>
+<p>When you delete a <code>LiteLLM*</code> custom resource, the operator runs a
+finalizer that attempts to delete the corresponding entry from LiteLLM
+(via a HTTP API call). If that call <strong>cannot be confirmed</strong> — because
+LiteLLM is unavailable, the master key has been rotated and the
+operator gets a 401, the network is partitioned, etc. — the operator
+has to choose between two failure modes:</p>
+<ul>
+<li><strong>Orphan</strong> (default): remove the finalizer anyway. The CR is freed,
+  the Kubernetes garbage collector reaps it, and the cluster moves on.
+  The LiteLLM-side entry may persist until the operator regains
+  connectivity (next reconcile cycle).</li>
+<li><strong>Delete</strong>: refuse to remove the finalizer until LiteLLM acks.
+  The CR stays in <code>Terminating</code> indefinitely. Controller-runtime
+  exponential backoff keeps retrying.</li>
+</ul>
+<p>This is governed by <code>spec.deletionPolicy</code> on five CRD kinds:
+<code>LiteLLMModel</code>, <code>LiteLLMTeam</code>, <code>LiteLLMMCPServer</code>, <code>LiteLLMA2AAgent</code>,
+<code>LiteLLMGuardRail</code>. <code>LiteLLMConnection</code> is excluded — its finalizer
+runs no LiteLLM HTTP call.</p>
+<h2 id="why-two-modes">Why two modes<a class="headerlink" href="#why-two-modes" title="Permanent link">&para;</a></h2>
+<p>The operator's default behavior is <strong>Orphan</strong>. This is REL-06's
+"anti-storm" trade-off: if LiteLLM is down or auth has broken, the
+cluster operator can still rip out workloads and re-apply later
+without manual finalizer surgery. The downside is that LiteLLM may
+end up with orphan entries (a model registered in LiteLLM whose
+matching <code>LiteLLMModel</code> CR no longer exists).</p>
+<p>For most users this is fine — orphan entries don't break anything;
+they're just stale state that the next manual reconcile or cleanup
+will catch.</p>
+<p>For <strong>GitOps users</strong> (Argo CD, Flux), Orphan is the wrong default.
+GitOps tooling assumes that "CR gone from cluster" implies "resource
+gone from backing API". If LiteLLM keeps the entry alive after the CR
+is removed, Argo will happily mark the application as <code>Synced</code> while
+the LiteLLM proxy is still serving traffic for a model that no longer
+appears in Git. That's a silent compliance and observability gap.</p>
+<p>For GitOps, <strong>Delete</strong> is the right default.</p>
+<h2 id="the-annotation-break-glass">The annotation break-glass<a class="headerlink" href="#the-annotation-break-glass" title="Permanent link">&para;</a></h2>
+<p><code>spec.deletionPolicy</code> is part of the desired state in Git. If a
+production incident leaves LiteLLM permanently unreachable while
+several CRs are stuck in <code>Terminating</code>, you don't want to have to push
+a Git commit changing <code>Delete</code> to <code>Orphan</code> (and wait for the GitOps
+sync) just to unstick the cluster.</p>
+<p>The annotation override gives you a runtime escape hatch that
+<strong>does not mutate spec</strong>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>kubectl<span class="w"> </span>annotate<span class="w"> </span>litellmmodel<span class="w"> </span>my-model<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span>litellm.ackstorm.ai/deletion-policy-override<span class="o">=</span>Orphan
+</code></pre></div>
+<p>On the next reconcile, the resolver sees the annotation and overrides
+the spec. The finalizer drains. The annotation can be removed once
+the incident is resolved.</p>
+<p>The annotation accepts the same values as the field (<code>Orphan</code> |
+<code>Delete</code>). Any other value is silently ignored.</p>
+<h2 id="discovery-owned-children-always-orphan">Discovery-owned children always Orphan<a class="headerlink" href="#discovery-owned-children-always-orphan" title="Permanent link">&para;</a></h2>
+<p>Children created by <code>LiteLLMModelDiscovery</code> or
+<code>LiteLLMMCPServerDiscovery</code> have a controller-owner reference back to
+their Discovery parent. For those children, the resolver <strong>forces
+Orphan</strong> regardless of <code>spec.deletionPolicy</code> or annotation.</p>
+<p>Why: Discovery's vanish-detection works by deleting child CRs when
+the upstream source (Bedrock, OpenAI, ToolHive, ...) no longer
+reports the entry. If a child were <code>Delete</code>-policy and LiteLLM
+became unreachable, the child's finalizer would never drain,
+vanish-detection would deadlock, and Discovery itself would get
+stuck.</p>
+<p>If you want strict deletion of Discovery-managed entries, delete the
+<strong>parent</strong> Discovery CR (which has its own deletion policy logic) —
+not the child.</p>
+<h2 id="trade-off-summary">Trade-off summary<a class="headerlink" href="#trade-off-summary" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
-<th>Field</th>
-<th>Required</th>
-<th>Notes</th>
+<th>Property</th>
+<th><code>Orphan</code> (default)</th>
+<th><code>Delete</code></th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>metadata.name</code></td>
-<td>yes</td>
-<td>Used as LiteLLM <code>server_name</code> after sanitization (see "Name sanitization" below).</td>
+<td>Finalizer drains when LiteLLM is unavailable</td>
+<td>Yes</td>
+<td>No</td>
 </tr>
 <tr>
-<td><code>spec.endpoint</code></td>
-<td>yes</td>
-<td>MCP server URL. Forwarded verbatim as <code>url</code>.</td>
+<td>LiteLLM may end up with orphan entries</td>
+<td>Yes</td>
+<td>No</td>
 </tr>
 <tr>
-<td><code>spec.transport</code></td>
-<td>yes</td>
-<td>Enum: <code>http</code> or <code>sse</code>. <code>stdio</code> is rejected at admission.</td>
+<td>GitOps tooling correctly reports synced state</td>
+<td>No</td>
+<td>Yes</td>
 </tr>
 <tr>
-<td><code>spec.params</code></td>
-<td>no</td>
-<td>Free-form bag forwarded verbatim to <code>NewMCPServerRequest</code>. <code>{{NAME}}</code> substitution applied.</td>
+<td>Risk of CR stuck in <code>Terminating</code></td>
+<td>Low</td>
+<td>High</td>
 </tr>
 <tr>
-<td><code>spec.secrets[]</code></td>
-<td>no</td>
-<td>Substitution map: <code>{as, secretRef: {name, key}}</code>.</td>
+<td>Recovery requires manual action</td>
+<td>No</td>
+<td>Annotation flip</td>
 </tr>
 </tbody>
 </table>
-<p>After <code>kubectl apply</code>, expect:</p>
-<ul>
-<li><code>status.conditions[type=Ready].status=True</code> / <code>reason=Synced</code>.</li>
-<li><code>status.lastRendered.serverID</code> pinned with the LiteLLM-assigned
-  UUID. Used by the finalizer (<code>DELETE /v1/mcp/server/&lt;serverID&gt;</code>).</li>
-<li><code>status.lastRendered.hash</code> = SHA-256 of the rendered body.</li>
-</ul>
-<h2 id="minimal-example">Minimal example<a class="headerlink" href="#minimal-example" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">litellm.ackstorm.ai/v1alpha1</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">LiteLLMMCPServer</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nt">metadata</span><span class="p">:</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">exa-mcp</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">default</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="nt">endpoint</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://exa.ai/mcp/sse&quot;</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">  </span><span class="nt">transport</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sse</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Exa</span><span class="nv"> </span><span class="s">search</span><span class="nv"> </span><span class="s">MCP&quot;</span>
-</code></pre></div>
-<p>After apply, callers reach the MCP server through the LiteLLM proxy
-under the alias <code>exa-mcp</code>.</p>
-<h2 id="with-auth-headers">With auth headers<a class="headerlink" href="#with-auth-headers" title="Permanent link">&para;</a></h2>
-<p>LiteLLM forwards <code>extra_headers</code> on every MCP call. Use the secret-
-substitution path to inject Bearer tokens / API keys without leaking
-them through the CR spec or status:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">endpoint</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://mcp.example.com/sse&quot;</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">transport</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sse</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Internal</span><span class="nv"> </span><span class="s">tools</span><span class="nv"> </span><span class="s">MCP&quot;</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">    </span><span class="nt">auth_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">api_key</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">    </span><span class="nt">mcp_access_groups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">team-engineering</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">    </span><span class="nt">extra_headers</span><span class="p">:</span>
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">      </span><span class="nt">Authorization</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Bearer</span><span class="nv"> </span><span class="s">{{MCP_TOKEN}}&quot;</span>
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">      </span><span class="nt">X-Tenant</span><span class="p">:</span><span class="w">      </span><span class="s">&quot;acme&quot;</span>
-<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">  </span><span class="nt">secrets</span><span class="p">:</span>
-<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">as</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">MCP_TOKEN</span>
-<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="w">      </span><span class="nt">secretRef</span><span class="p">:</span>
-<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="w">        </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mcp-token</span>
-<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="w">        </span><span class="nt">key</span><span class="p">:</span><span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">TOKEN</span>
-</code></pre></div>
-<h2 id="accepted-pass-through-fields">Accepted pass-through fields<a class="headerlink" href="#accepted-pass-through-fields" title="Permanent link">&para;</a></h2>
-<p>Anything modeled in LiteLLM's <code>litellm.proxy.management_endpoints.mcp_management.MCPServerRequest</code>
-is forwarded:</p>
-<ul>
-<li><code>description</code>, <code>mcp_info</code></li>
-<li><code>auth_type</code>, <code>extra_headers</code>, <code>static_headers</code></li>
-<li><code>mcp_access_groups</code>, <code>access_groups</code> (alias — <code>mcp_access_groups</code>
-  wins when both present)</li>
-<li>arbitrary LiteLLM-future keys (<code>x-kubernetes-preserve-unknown-fields:
-  true</code>)</li>
-</ul>
-<p>Reserved structural keys are silently stripped at extraction time —
-the operator stamps them from typed CR fields:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>server_id, server_name, alias, url, transport, spec_path
-</code></pre></div>
-<h2 id="name-sanitization-mcp-05">Name sanitization (MCP-05)<a class="headerlink" href="#name-sanitization-mcp-05" title="Permanent link">&para;</a></h2>
-<p>LiteLLM rejects its own <code>MCP_TOOL_PREFIX_SEPARATOR</code> character inside
-<code>server_name</code> (HTTP 400 <code>"Server name cannot contain '&lt;sep&gt;'."</code>).
-Default separator is <code>-</code>.</p>
-<p>The operator rewrites <code>metadata.name</code> for the wire payload, swapping
-<code>-</code> ↔ <code>.</code> (whichever is the configured separator → the opposite). The
-K8s-side <code>metadata.name</code> is left untouched. Discovery-generated names
-(<code>&lt;discovery&gt;.&lt;source-ns&gt;.&lt;source-name&gt;</code>) survive unchanged.</p>
-<p>Override the separator per Connection:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">litellm.ackstorm.ai/v1alpha1</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">LiteLLMConnection</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nt">metadata</span><span class="p">:</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">default</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">  </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://litellm.litellm.svc:4000</span>
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">  </span><span class="nt">masterKeySecretRef</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">litellm-master-key</span><span class="p p-Indicator">,</span><span class="nt"> key</span><span class="p">:</span><span class="w"> </span><span class="nv">master-key</span><span class="w"> </span><span class="p p-Indicator">}</span>
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">  </span><span class="nt">mcpToolPrefixSeparator</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;.&quot;</span><span class="w">     </span><span class="c1"># default; switch to &quot;-&quot; if you prefer dot-named servers</span>
-</code></pre></div>
-<h2 id="transport-handling">Transport handling<a class="headerlink" href="#transport-handling" title="Permanent link">&para;</a></h2>
-<p><code>spec.transport ∈ {http, sse}</code> is admitted by CEL enum and shipped
-verbatim. <code>stdio</code> is rejected. The Discovery-side normalization
-<code>streamable-http → http</code> is implemented in
-<code>LiteLLMMCPServerDiscovery</code>, NOT here.</p>
-<h2 id="drift-detection">Drift detection<a class="headerlink" href="#drift-detection" title="Permanent link">&para;</a></h2>
-<p>Per-reconcile SHA-256 hash of the rendered post-substitution body
-(including sanitized <code>server_name</code>, <code>url</code>, <code>transport</code>, and
-<code>spec.params</code>) is compared against <code>status.lastRendered.hash</code>:</p>
-<ul>
-<li>Match → no LiteLLM call.</li>
-<li>Mismatch → <code>PUT /v1/mcp/server</code> (wholesale-replace per LiteLLM
-  1.83.10).</li>
-<li>Row vanished in LiteLLM (out-of-band DELETE) → <code>POST /v1/mcp/server</code>,
-  re-pin <code>serverID</code>, increment
-  <code>drift_corrected_total{domain=mcpserver,action=create_missing}</code>.</li>
-</ul>
-<p>The vanish probe uses the shared LIST cache (<code>CachedListMCPServers</code>)
-to coalesce probes across sibling CRs — see
-<code>internal/litellm/list_cache.go</code>.</p>
-<h2 id="status-what-to-read">Status: what to read<a class="headerlink" href="#status-what-to-read" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>mcpsrv<span class="w"> </span>exa-mcp<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.status.lastRendered}{&quot;\n&quot;}&#39;</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="c1"># {&quot;at&quot;:&quot;...&quot;,&quot;hash&quot;:&quot;abc...&quot;,&quot;paramsKeys&quot;:[&quot;description&quot;],&quot;serverID&quot;:&quot;&lt;uuid&gt;&quot;}</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>kubectl<span class="w"> </span>get<span class="w"> </span>mcpsrv<span class="w"> </span>exa-mcp<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.status.conditions[?(@.type==&quot;Ready&quot;)]}{&quot;\n&quot;}&#39;</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="c1"># {&quot;type&quot;:&quot;Ready&quot;,&quot;status&quot;:&quot;True&quot;,&quot;reason&quot;:&quot;Synced&quot;}</span>
-</code></pre></div>
-<p><code>Ready=False</code> reasons:</p>
-<ul>
-<li><code>LiteLLMUnavailable</code> — <code>LiteLLMConnection/default</code> not Ready.</li>
-<li><code>LiteLLMRejected</code> — 4xx (non-401) from LiteLLM. Inspect <code>message</code>.</li>
-<li><code>SecretNotFound</code> — Secret missing or placeholder unbound.</li>
-<li><code>InvalidConfig</code> — duplicate <code>spec.secrets[].as</code> values, or
-  malformed <code>spec.params</code> JSON.</li>
-</ul>
-<h2 id="see-also">See also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
-<ul>
-<li><a href="https://github.com/ackstorm/alitellm-operator/tree/main/examples/example-deploy/04-mcpserver.yaml">Example on GitHub</a></li>
-<li><a href="../mcp-server-discovery/">LiteLLMMCPServerDiscovery</a> — auto-generate
-  MCPServer CRs from ToolHive label-selected servers.</li>
-<li><a href="../../api-reference/litellm.ackstorm.ai/#litellmmcpserver">API Reference: LiteLLMMCPServer</a></li>
-</ul>
+<h2 id="observability">Observability<a class="headerlink" href="#observability" title="Permanent link">&para;</a></h2>
+<p>When a Delete-policy CR is blocked on a missing ack, the operator:</p>
+<ol>
+<li>Increments the <code>litellm_operator_deletion_blocked{kind,namespace,name}</code> gauge.</li>
+<li>Emits a <code>LiteLLMDeleteBlocked</code> Warning Event on the CR (rate-
+   limited by the event recorder's default dedup window).</li>
+<li>Returns an error from the reconcile so controller-runtime requeues
+   with exponential backoff.</li>
+</ol>
+<p>When an Orphan-policy CR drops a finalizer without ack:</p>
+<ol>
+<li>Increments the <code>litellm_operator_deletion_orphaned_total{kind}</code> counter.</li>
+<li>Emits a <code>LiteLLMDeleteOrphaned</code> Normal Event on the CR.</li>
+<li>Returns nil from the reconcile so the CR is garbage-collected.</li>
+</ol>
+<p>Both events name the underlying reason (e.g. <code>401 on DeleteModel</code>,
+<code>LiteLLM unavailable</code>) so you can correlate with operator logs.</p>
+<h2 id="recovery-procedures">Recovery procedures<a class="headerlink" href="#recovery-procedures" title="Permanent link">&para;</a></h2>
+<p><strong>A CR is stuck in <code>Terminating</code> under <code>Delete</code> and LiteLLM is permanently unreachable.</strong></p>
+<ol>
+<li>Check the events: <code>kubectl describe litellmmodel my-model | grep -A 2 LiteLLMDeleteBlocked</code></li>
+<li>Confirm LiteLLM unavailability is intentional/permanent (not a transient blip).</li>
+<li>Apply the annotation override:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>kubectl<span class="w"> </span>annotate<span class="w"> </span>litellmmodel<span class="w"> </span>my-model<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span>litellm.ackstorm.ai/deletion-policy-override<span class="o">=</span>Orphan
+</code></pre></div></li>
+<li>The finalizer drains on the next reconcile (within seconds).</li>
+<li>Remove the annotation if/when LiteLLM comes back, so future deletions honor <code>Delete</code> again.</li>
+</ol>
+<p><strong>A LiteLLM entry was orphaned and you need to clean it up.</strong></p>
+<p>The operator does NOT re-discover orphans automatically (Discovery
+sources are upstream catalogs, not LiteLLM itself). Clean up directly
+via LiteLLM's admin API or UI.</p>
 
 
 

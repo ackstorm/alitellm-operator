@@ -293,6 +293,26 @@
     
     
       <li class="md-tabs__item">
+        <a href="../../concepts/deletion-semantics/" class="md-tabs__link">
+          
+  
+  
+  Concepts
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
         <a href="../../developer-guide/architecture/" class="md-tabs__link">
           
   
@@ -900,7 +920,7 @@
   <span class="md-ellipsis">
     
   
-    Developer Guide
+    Concepts
   
 
     
@@ -913,6 +933,95 @@
         
         <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/deletion-semantics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deletion Semantics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1066,10 +1175,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
         
           
-          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
             
   
   
@@ -1087,8 +1196,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_5">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_6">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1912,10 +2021,10 @@
         
           
         
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
         
           
-          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
             
   
   
@@ -1933,8 +2042,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_7">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -2827,6 +2936,12 @@ each at most once per reconcile pass:
 <td></td>
 <td></td>
 </tr>
+<tr>
+<td><code>deletionPolicy</code> <em>string</em></td>
+<td>DeletionPolicy controls finalizer behavior when the LiteLLM-side<br />DELETE cannot be confirmed (LiteLLM unavailable, 401, transient<br />error already retried). Defaults to "Orphan" to preserve REL-06<br />anti-storm: the CR is freed even if the LiteLLM entry may linger.<br />"Delete" blocks finalizer removal until the LiteLLM-side ack<br />succeeds, suitable for GitOps users who must not see "synced"<br />while a backend resource still exists.<br />Annotation override (<code>litellm.ackstorm.ai/deletion-policy-override</code>)<br />takes precedence over this field for runtime break-glass without a<br />spec mutation.</td>
+<td>Orphan</td>
+<td>Enum: [Orphan Delete] <br /></td>
+</tr>
 </tbody>
 </table>
 <h4 id="a2aagentstatus">A2AAgentStatus<a class="headerlink" href="#a2aagentstatus" title="Permanent link">&para;</a></h4>
@@ -3207,6 +3322,12 @@ client and never touches the LiteLLM Deployment).</p>
 <td>Secrets is the substitution map for {{NAME}} placeholders<br />embedded in spec.params and spec.info string-typed leaves.<br />Each entry maps an uppercase NAME (the as field) to a<br />Kubernetes Secret key (secretRef). Placeholders are replaced<br />with the resolved plaintext value before the body is forwarded<br />to LiteLLM. Secret material never appears in logs, Events, or<br />status conditions.<br />Secrets MUST reside in the same namespace as the<br />LiteLLMGuardRail CR (no cross-namespace resolution in v1alpha1).<br />A missing Secret or key surfaces as Ready=False,<br />reason=SecretNotFound; a {{NAME}} with no matching<br />spec.secrets[] entry surfaces as Ready=False,<br />reason=UnresolvedPlaceholder.<br />String leaves of the form "os.environ/<VAR>" are NOT<br />substituted — they pass through unchanged.</td>
 <td></td>
 <td></td>
+</tr>
+<tr>
+<td><code>deletionPolicy</code> <em>string</em></td>
+<td>DeletionPolicy controls finalizer behavior when the LiteLLM-side<br />DELETE cannot be confirmed (LiteLLM unavailable, 401, transient<br />error already retried). Defaults to "Orphan" to preserve REL-06<br />anti-storm: the CR is freed even if the LiteLLM entry may linger.<br />"Delete" blocks finalizer removal until the LiteLLM-side ack<br />succeeds, suitable for GitOps users who must not see "synced"<br />while a backend resource still exists.<br />Annotation override (<code>litellm.ackstorm.ai/deletion-policy-override</code>)<br />takes precedence over this field for runtime break-glass without a<br />spec mutation.</td>
+<td>Orphan</td>
+<td>Enum: [Orphan Delete] <br /></td>
 </tr>
 </tbody>
 </table>
@@ -5015,6 +5136,12 @@ form so drift detection stays consistent with what LiteLLM stores.</p>
 <td></td>
 <td></td>
 </tr>
+<tr>
+<td><code>deletionPolicy</code> <em>string</em></td>
+<td>DeletionPolicy controls finalizer behavior when the LiteLLM-side<br />DELETE cannot be confirmed (LiteLLM unavailable, 401, transient<br />error already retried). Defaults to "Orphan" to preserve REL-06<br />anti-storm: the CR is freed even if the LiteLLM entry may linger.<br />"Delete" blocks finalizer removal until the LiteLLM-side ack<br />succeeds, suitable for GitOps users who must not see "synced"<br />while a backend resource still exists.<br />Annotation override (<code>litellm.ackstorm.ai/deletion-policy-override</code>)<br />takes precedence over this field for runtime break-glass without a<br />spec mutation.</td>
+<td>Orphan</td>
+<td>Enum: [Orphan Delete] <br /></td>
+</tr>
 </tbody>
 </table>
 <h4 id="mcpserverstatus">MCPServerStatus<a class="headerlink" href="#mcpserverstatus" title="Permanent link">&para;</a></h4>
@@ -5375,6 +5502,12 @@ model_info fields are accepted without a CRD schema change.</p>
 <td>Secrets is the substitution map for resolving {{NAME}} placeholders in<br />spec.params and spec.info string-typed leaves (§5.2, D-05, SEC-03).<br />Each entry maps an uppercase NAME (the as field) to a Kubernetes Secret<br />key (secretRef). Placeholders in the bags are replaced with the resolved<br />plaintext value before the body is forwarded to LiteLLM. Secret material<br />NEVER appears in logs, Events, or status conditions (§9.1, AC-S1).<br />CEL constraints: each as value must match ^[A-Z_][A-Z0-9_]*$ and all as<br />values within a Model must be unique (SEC-03). Violations are rejected<br />at admission — no reconcile is triggered.<br />NOTE: SEC-03 uniqueness of spec.secrets[].as values is enforced as a<br />runtime check in the Model reconciler (see<br />internal/controller/model_controller.go Step 3.5). The CEL XValidation<br />list-uniqueness expression was not expressible in the Kubernetes 1.31<br />CRD CEL environment (toSet and map-then-unique patterns require a<br />newer CEL library version). The admission-time CEL alternative is<br />deferred to v1beta1 when a higher Kubernetes floor can be assumed.</td>
 <td></td>
 <td></td>
+</tr>
+<tr>
+<td><code>deletionPolicy</code> <em>string</em></td>
+<td>DeletionPolicy controls finalizer behavior when the LiteLLM-side<br />DELETE cannot be confirmed (LiteLLM unavailable, 401, transient<br />error already retried). Defaults to "Orphan" to preserve REL-06<br />anti-storm: the CR is freed even if the LiteLLM entry may linger.<br />"Delete" blocks finalizer removal until the LiteLLM-side ack<br />succeeds, suitable for GitOps users who must not see "synced"<br />while a backend resource still exists.<br />Annotation override (<code>litellm.ackstorm.ai/deletion-policy-override</code>)<br />takes precedence over this field for runtime break-glass without a<br />spec mutation.</td>
+<td>Orphan</td>
+<td>Enum: [Orphan Delete] <br /></td>
 </tr>
 </tbody>
 </table>
@@ -5764,6 +5897,12 @@ path for non-default teams, keyed on <code>status.lastRendered.teamID</code>.</p
 <td>Secrets is the substitution map for resolving <code>\{\{NAME\}\}</code><br />placeholders in <code>spec.params</code> string-typed leaves (§5.2, Phase 3<br />D-05). Each entry maps an uppercase NAME (the <code>as</code> field) to a<br />Kubernetes Secret key (<code>secretRef</code>). Placeholders in the bag are<br />replaced with the resolved plaintext value before the body is<br />forwarded to LiteLLM. Secret material NEVER appears in logs,<br />Events, or <code>status.conditions[].message</code> (§9.1, AC-S1 — exercised<br />in envtest redaction canaries).<br />SEC-03 uniqueness of <code>spec.secrets[].as</code> values is enforced as a<br />runtime check in the Team reconciler (same pattern as Model plan<br />03-06 and MCPServer — CEL list-uniqueness was deferred<br />to v1beta1).</td>
 <td></td>
 <td></td>
+</tr>
+<tr>
+<td><code>deletionPolicy</code> <em>string</em></td>
+<td>DeletionPolicy controls finalizer behavior when the LiteLLM-side<br />DELETE cannot be confirmed (LiteLLM unavailable, 401, transient<br />error already retried). Defaults to "Orphan" to preserve REL-06<br />anti-storm: the CR is freed even if the LiteLLM entry may linger.<br />"Delete" blocks finalizer removal until the LiteLLM-side ack<br />succeeds, suitable for GitOps users who must not see "synced"<br />while a backend resource still exists.<br />Annotation override (<code>litellm.ackstorm.ai/deletion-policy-override</code>)<br />takes precedence over this field for runtime break-glass without a<br />spec mutation.</td>
+<td>Orphan</td>
+<td>Enum: [Orphan Delete] <br /></td>
 </tr>
 </tbody>
 </table>
