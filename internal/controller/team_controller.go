@@ -93,35 +93,6 @@ func IndexTeamSecretRefs(o client.Object) []string {
 	return names
 }
 
-// TeamAliasIndexField is the field indexer path used to look up
-// LiteLLMTeam CRs that share the same team_alias. Required by the
-// alpha-last-wins conflict resolver in package conflict.
-//
-// Per TEAM-01 the natural key IS metadata.name — the operator overlays
-// team_alias from team.Name unconditionally, so any user-set
-// spec.params.team_alias is dropped before the LiteLLM HTTP call. The
-// indexer therefore returns team.GetName() verbatim; no fallback path
-// is needed.
-const TeamAliasIndexField = ".spec.params.team_alias" // #nosec G101 -- field-selector JSONPath, not a credential
-
-// IndexTeamAlias is the field indexer function for TeamAliasIndexField.
-// Exported so cmd/main.go can wire it via mgr.GetFieldIndexer.
-func IndexTeamAlias(obj client.Object) []string {
-	t, ok := obj.(*litellmv1alpha1.LiteLLMTeam)
-	if !ok {
-		return nil
-	}
-	return []string{teamAliasOf(t)}
-}
-
-// teamAliasOf returns the LiteLLM team_alias the operator will project
-// for the given CR. Per TEAM-01 this is always metadata.name — the
-// alpha-last-wins conflict resolver and the indexer both depend on this
-// being a pure function with no spec-bag fallback.
-func teamAliasOf(t *litellmv1alpha1.LiteLLMTeam) string {
-	return t.GetName()
-}
-
 // Events RBAC marker inheritance (Phase 5 Task 0 audit, recorded
 // in 05-01-SUMMARY.md): the package-wide
 // `+kubebuilder:rbac:groups="",resources=events,verbs=create;patch` marker

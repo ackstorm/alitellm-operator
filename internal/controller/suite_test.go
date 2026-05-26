@@ -456,17 +456,6 @@ func setupAndRun(m *testing.M) int {
 		fmt.Fprintf(os.Stderr, "IndexField(Team secrets): %v\n", err)
 		return 1
 	}
-	// Alpha-last-wins conflict resolution: register the team_alias indexer
-	// so the reconciler can list siblings sharing a natural key.
-	if err := mgr.GetFieldIndexer().IndexField(
-		ctx,
-		&litellmv1alpha1.LiteLLMTeam{},
-		TeamAliasIndexField,
-		IndexTeamAlias,
-	); err != nil {
-		fmt.Fprintf(os.Stderr, "IndexField(Team alias): %v\n", err)
-		return 1
-	}
 	teamReconciler = &TeamReconciler{
 		Client:    mgr.GetClient(),
 		Scheme:    mgr.GetScheme(),
