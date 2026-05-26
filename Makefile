@@ -51,12 +51,18 @@ help: ## Display this help.
 # Go module cache. ./internal/... was added in plan 01-04 so the
 # NoOpReconciler's RBAC markers (+kubebuilder:rbac:...) are picked up.
 .PHONY: manifests
-manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
+manifests: controller-gen ## Generate WebhookConfiguration, Role and CustomResourceDefinition objects.
 	# crd:allowDangerousTypes=true is required because Team.spec.budget.limit
 	# is *float64 (per spec §6.7 "Float64 precision is adopted for v1alpha1").
 	# controller-gen rejects float types by default; the spec explicitly chose
 	# this contract, so the flag is the documented kubebuilder escape hatch.
+	#
+	# rbac:roleName= passes the legacy name; the post-rewrite below
+	# normalizes the file to (a) kind: Role, (b) name: alitellm-operator-role,
+	# (c) inject metadata.namespace: system. controller-gen has no flag to
+	# emit a namespaced Role directly (see issue #21 plan, Task 3).
 	$(CONTROLLER_GEN) rbac:roleName=alitellm-operator-manager-role crd:allowDangerousTypes=true webhook paths="./api/..." paths="./internal/..." output:crd:artifacts:config=config/crd/bases
+	@scripts/normalize-manager-role.sh
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
