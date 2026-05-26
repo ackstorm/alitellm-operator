@@ -36,8 +36,11 @@ func TestMCPServer_ConflictResolution_SanitizationCollapse_Loser(t *testing.T) {
 	mockServer.ResetRecorded()
 	mockServer.ResetMCPServers()
 
-	const loserName = "foo.bar"   // sanitizes to foo-bar
-	const winnerName = "foo-bar"  // already sanitized
+	// ASCII: '-' (0x2D) < '.' (0x2E). Alpha-last-wins sorts
+	// <namespace>/<name> ASC and returns the LAST → "foo.bar" wins.
+	// Both sanitize to "foo-bar" when separator is ".".
+	const loserName = "foo-bar"  // sorts FIRST → loser
+	const winnerName = "foo.bar" // sorts LAST  → winner (sanitizes to foo-bar)
 
 	ensureNoMCPServer(t, ctx, loserName)
 	ensureNoMCPServer(t, ctx, winnerName)
@@ -134,8 +137,11 @@ func TestMCPServer_ConflictResolution_SanitizationCollapse_LoserPromoted(t *test
 	mockServer.ResetRecorded()
 	mockServer.ResetMCPServers()
 
-	const loserName = "foo.bar"
-	const winnerName = "foo-bar"
+	// Same ASCII ordering as the first scenario: foo-bar sorts FIRST
+	// (loser), foo.bar sorts LAST (winner). Both sanitize to "foo-bar"
+	// under separator=".".
+	const loserName = "foo-bar"
+	const winnerName = "foo.bar"
 
 	ensureNoMCPServer(t, ctx, loserName)
 	ensureNoMCPServer(t, ctx, winnerName)
