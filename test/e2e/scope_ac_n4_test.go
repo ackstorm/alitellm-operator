@@ -87,4 +87,76 @@ var _ = Describe("Scope AC-N4 non-watched namespace", Ordered, ContinueOnFailure
 				"AC-N4 violation: LiteLLM has model_name=%q for unwatched-ns CR", name)
 		}
 	})
+
+	It("operator manager-role is a namespaced Role (not ClusterRole)", func() {
+		// Issue #21 — Helm release installs the operator into
+		// alitellm-operator-system. Assert:
+		//  1. A Role named alitellm-operator-role exists in that ns.
+		//  2. A RoleBinding named alitellm-operator-rolebinding exists.
+		//  3. Legacy ClusterRole/Binding names are absent.
+		//  4. Retained ClusterRoles still present.
+		const opNS = "alitellm-operator-system"
+
+		out, err := exec.Command("kubectl", "-n", opNS, "get", "role",
+			"alitellm-operator-role", "-o", "name").CombinedOutput()
+		Expect(err).NotTo(HaveOccurred(),
+			"alitellm-operator-role Role missing in %s: %s", opNS, string(out))
+		Expect(strings.TrimSpace(string(out))).To(Equal(
+			"role.rbac.authorization.k8s.io/alitellm-operator-role"))
+
+		out, err = exec.Command("kubectl", "-n", opNS, "get", "rolebinding",
+			"alitellm-operator-rolebinding", "-o", "name").CombinedOutput()
+		Expect(err).NotTo(HaveOccurred(),
+			"alitellm-operator-rolebinding missing: %s", string(out))
+
+		for _, legacy := range []struct {
+			kind string
+			name string
+		}{
+			{"clusterrole", "alitellm-operator-manager-role"},
+			{"clusterrolebinding", "alitellm-operator-manager-rolebinding"},
+		} {
+			err := exec.Command("kubectl", "get", legacy.kind, legacy.name).Run()
+			Expect(err).To(HaveOccurred(),
+				"legacy %s %s still exists — RBAC scope-down incomplete",
+				legacy.kind, legacy.name)
+		}
+
+		for _, cr := range []string{
+			"alitellm-operator-metrics-auth-role",
+			"alitellm-operator-metrics-reader",
+		} {
+			err := exec.Command("kubectl", "get", "clusterrole", cr).Run()
+			Expect(err).NotTo(HaveOccurred(),
+				"retained ClusterRole %s missing", cr)
+		}
+	})
+
+	It("operator cannot access Secrets outside WATCH_NAMESPACE", func() {
+		// Confirm the apiserver authorizer enforces the namespace
+		// boundary via `kubectl auth can-i`. The operator's SA must
+		// be allowed secrets list in the watched ns (default) and
+		// denied in the out-of-watch ns (dev).
+		const opNS = "alitellm-operator-system"
+		const saName = "alitellm-operator"
+		sa := fmt.Sprintf("system:serviceaccount:%s:%s", opNS, saName)
+
+		// In-watch: allowed.
+		out, err := exec.Command("kubectl", "auth", "can-i",
+			"list", "secrets", "--as", sa, "-n", "default").CombinedOutput()
+		Expect(err).NotTo(HaveOccurred(), "out=%s", string(out))
+		Expect(strings.TrimSpace(string(out))).To(Equal("yes"))
+
+		// Out-of-watch: denied. `can-i no` exits 1 — treat as success.
+		out, err = exec.Command("kubectl", "auth", "can-i",
+			"list", "secrets", "--as", sa, "-n", "dev").CombinedOutput()
+		exitCode := 0
+		if ee, ok := err.(*exec.ExitError); ok {
+			exitCode = ee.ExitCode()
+		}
+		Expect(exitCode).To(Equal(1),
+			"expected can-i to exit 1 (no), got %d. Output: %s",
+			exitCode, string(out))
+		Expect(strings.TrimSpace(string(out))).To(Equal("no"))
+	})
 })
