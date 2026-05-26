@@ -28,6 +28,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+#### BREAKING
+
+- **RBAC scope-down (#21):** The operator's manager role is now a
+  namespaced `Role` (`alitellm-operator-role`) + `RoleBinding`
+  (`alitellm-operator-rolebinding`) bound in `.Release.Namespace`,
+  replacing the cluster-wide `ClusterRole` + `ClusterRoleBinding`
+  named `alitellm-operator-manager-{role,rolebinding}`. The `-manager-`
+  infix is dropped. Upgrades replace the binding under the new name;
+  Helm's 3-way merge creates the new binding before removing the old,
+  but verify in your environment if the operator pod restarts during
+  the upgrade window.
+
+  ClusterRoles retained (cluster-scoped APIs):
+  - `alitellm-operator-metrics-auth-role`
+  - `alitellm-operator-metrics-reader`
+  - `alitellm-operator-toolhive-reader`
+
 ### Deprecated
 
 ### Removed
