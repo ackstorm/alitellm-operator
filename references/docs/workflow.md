@@ -173,29 +173,35 @@ Prerelease tags `vX.Y.Z-{alpha,beta,rc}*` follow the same flow with
 `.goreleaser.prerelease.yml` and the `preview` mike alias instead of
 `stable`.
 
-## Pre-push gates (15) — host-only
+## Pre-push gates — host-only
 
-`make pre-push` runs `scripts/pre-push-check.sh`. Hard gates (failure
-blocks push):
+`make pre-push` runs `scripts/pre-push-check.sh` (authoritative source
+for the exact gate list and order; this section describes intent, not
+inventory, so the script can evolve without doc drift).
 
-1.  gitleaks (`origin/main..HEAD`; full history on first push)
-2.  trufflehog (same scope)
-3.  Large files >2 MB
-4.  Sensitive file patterns (`.env`, `*.pem`, `*.key`, kubeconfig, ...)
-5.  LICENSE + README presence
-6.  Origin remote matches expected
-7.  ackstorm email leak scan
-8.  Branch is up-to-date with remote
-9.  `.gitignore` sanity (covers `.env`, `.claude`)
-10. Commit-author informational
-11. Urgent TODO / DO-NOT-COMMIT markers (informational warn)
-12. Working tree status (informational warn)
-13. govulncheck residuals match `references/security/govulncheck-acknowledged.md` 1:1
-14. `go mod tidy` drift
-15. Per-file SPDX license header (`// SPDX-License-Identifier: Apache-2.0`)
+Categories covered:
+
+- **Secret scanners** (`gitleaks`, `trufflehog`) over
+  `origin/main..HEAD`, full history on first push.
+- **Filesystem hygiene** — large-file caps, sensitive patterns
+  (`.env`, `*.pem`, `*.key`, kubeconfig, ...), required top-level files
+  (LICENSE, README), `.gitignore` coverage.
+- **Repo identity** — origin remote matches expected, branch is up to
+  date with remote.
+- **Information warns** (do not block) — commit-author summary,
+  urgent TODO / DO-NOT-COMMIT markers, working-tree status.
+- **Build hygiene** — `go mod tidy` drift, govulncheck residuals
+  match the ack-list (`references/security/govulncheck-acknowledged.md`)
+  1:1.
+- **Code provenance** — per-file SPDX license header
+  (`// SPDX-License-Identifier: Apache-2.0`).
+- **Defense in depth** — full `make lint` + `make unit` re-run
+  inside the devtools container, even though `pre-commit` (`make
+  pre-commit`) already covered the touched packages.
 
 Bypass is banned. If a gate fails, fix the root cause, never
-`--no-verify`.
+`--no-verify`. Run `scripts/pre-push-check.sh` directly (or
+`bash -x` it) when you need to see the live count and exact order.
 
 ## Recovery procedures
 
@@ -215,7 +221,7 @@ Bypass is banned. If a gate fails, fix the root cause, never
 # DEV LOOP — feature branch + PR
 git checkout -b fix/foo
 # ... edit ...
-make pre-push                         # 15-gate host check
+make pre-push                         # host-side publication gate
 git push -u origin fix/foo
 gh pr create --base main --title "..." --body "..."
 gh pr checks --watch                  # wait for CI
@@ -245,7 +251,7 @@ make release VERSION=0.3.0-rc.1       # same wrapper; semver suffix supported
 - `.github/workflows/govulncheck.yml` — vuln scan.
 - `.github/workflows/pr-labeler.yml` — auto-label by file paths.
 - `.goreleaser.yml`, `.goreleaser.prerelease.yml`, `.goreleaser.snapshot.yml`
-- `scripts/pre-push-check.sh` — 15-gate host check.
+- `scripts/pre-push-check.sh` — host-side publication gate (authoritative gate list).
 - `CLAUDE.md` — agent-facing single source of truth (sections: Release pipeline, Publication).
 
 Any divergence between this file and the YAML workflows: trust the

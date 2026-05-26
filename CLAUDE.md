@@ -191,7 +191,7 @@ Targets that only call `kubectl`/`docker`/`helm`/`kind`/bash run on host
 | `make e2e-full`    | kind + Helm + Ginkgo, ~6m             | final gate before commit              |
 | `make security`    | gosec + govulncheck + fuzz-short, ≤6m | in-container; before push             |
 | `make pre-commit`  | lint-changed + unit                   | host-only; runs on every `git commit` once `make hooks` installed |
-| `make pre-push`    | gitleaks + trufflehog + 15 gates (incl. full lint + unit) | host-only; before push |
+| `make pre-push`    | full publication gate (secrets, filesystem, build hygiene, SPDX, lint + unit, ...) | host-only; before push |
 
 Umbrella targets:
 - `make test-all` = `unit` + `envtest-run`
@@ -246,7 +246,7 @@ Cutting a release (stable example, `v0.1.0`):
 # Most common — empty release commit (no manifest pre-bump).
 # `make release` runs preconditions (on main, clean tree, in-sync
 # with origin/main), creates `chore(release): v0.1.0` as an empty
-# commit, runs the 15-gate pre-push, and pushes to main.
+# commit, runs the pre-push gate, and pushes to main.
 make release VERSION=0.1.0
 
 # Bundle the release intent with a real change:
@@ -320,27 +320,30 @@ local gate strategy splits across two hook stages so the cost of
 - `pre-commit` (`make pre-commit`) — fast: `make lint-changed`
   (golangci-lint scoped to touched packages) + `make unit`. Runs on
   every `git commit` once `make hooks` is installed. Bypass with
-  `--no-verify` only for justified WIP commits; the full lint sweep
-  still fires on push.
-- `pre-push` (`make pre-push`) — full: 17-gate publication check
-  (lint + unit live INSIDE the 17 as defensive gates 16+17 so the
-  push is still safe even if pre-commit was bypassed).
+  `--no-verify` only for justified WIP commits; full lint + unit still
+  fire on push as defensive gates.
+- `pre-push` (`make pre-push`) — full publication check. The
+  authoritative gate list lives in `scripts/pre-push-check.sh`; the
+  categories below are intent, not inventory, so the script can evolve
+  without doc drift.
 
-Hard gates (17) — failure blocks push:
-- gitleaks + trufflehog (scope: `origin/main..HEAD`; full history on
-  first push). Allowlist: `.gitleaks.toml`.
-- Large files >2 MB
-- Sensitive file patterns (`.env`, `*.pem`, `*.key`, kubeconfig, ...)
-- LICENSE + README presence
-- Origin remote matches expected
-- govulncheck ack-list 1:1 match
-  (see `scripts/govulncheck-gate.sh`; ack-list at
-  `references/security/govulncheck-acknowledged.md`)
-- `go mod tidy` drift
-- Per-file SPDX license header
-  (`// SPDX-License-Identifier: Apache-2.0`)
-- golangci-lint full sweep (`make lint` inside devtools container)
-- `make unit` (pure-logic regression — `./scripts/dev.sh make unit`)
+Gate categories — any failure blocks push:
+- **Secret scanners**: gitleaks + trufflehog over `origin/main..HEAD`
+  (full history on first push). Allowlist: `.gitleaks.toml`.
+- **Filesystem hygiene**: large-file caps, sensitive patterns
+  (`.env`, `*.pem`, `*.key`, kubeconfig, ...), required top-level files
+  (LICENSE, README), `.gitignore` coverage.
+- **Repo identity**: origin remote matches expected, branch up to date.
+- **Build hygiene**: `go mod tidy` drift, govulncheck ack-list 1:1
+  match (`scripts/govulncheck-gate.sh` against
+  `references/security/govulncheck-acknowledged.md`).
+- **Code provenance**: per-file SPDX header
+  (`// SPDX-License-Identifier: Apache-2.0`).
+- **Defense in depth**: full `make lint` + `make unit` re-run inside
+  the devtools container, even when `pre-commit` already covered the
+  touched packages.
+- **Informational warns** (do not block): commit-author summary,
+  urgent TODO / DO-NOT-COMMIT markers, working-tree status.
 
 If a gate fails, fix the root cause — never `--no-verify` or otherwise
 bypass. Note: `--no-verify` skips ONLY the local hook; it does not
@@ -440,8 +443,8 @@ make pre-push       # or rely on the installed git hook
 git push origin main
 ```
 WHY IT FAILS: Pushed secrets, license-header drift, govulncheck advisory
-regressions cannot be untrue-d from public history. The 15-gate script
-is the contract.
+regressions cannot be untrue-d from public history. The pre-push gate
+script is the contract.
 
 ### ❌ Kubectl from host against the kind cluster
 ```bash
