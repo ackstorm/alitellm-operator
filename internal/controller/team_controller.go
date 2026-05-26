@@ -33,6 +33,7 @@ import (
 
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 	"github.com/ackstorm/alitellm-operator/internal/connection"
+	"github.com/ackstorm/alitellm-operator/internal/controller/deletionpolicy"
 	"github.com/ackstorm/alitellm-operator/internal/litellm"
 	"github.com/ackstorm/alitellm-operator/internal/metrics"
 	"github.com/ackstorm/alitellm-operator/internal/substitution"
@@ -863,6 +864,30 @@ func (r *TeamReconciler) reconcileDeletion(ctx context.Context, team *litellmv1a
 		return ctrl.Result{}, nil
 	}
 
+	// Issue #23: resolve effective deletion policy once. Used by the
+	// non-default branch's onAckMissing closure below. The AC-T4
+	// default-team branch intentionally bypasses this gate because its
+	// contract is "re-apply implicit empty body" (not delete) — the
+	// finalizer removal there preserves the LiteLLM-side team aliased
+	// `default`, so blocking it on ack-missing would deadlock cluster
+	// bootstrap.
+	policy := deletionpolicy.Resolve(team, team.Spec.DeletionPolicy)
+	// onAckMissing returns nil on the Orphan branch (caller falls through
+	// to RemoveFinalizer) and a non-nil error on the Delete branch (caller
+	// returns the error for controller-runtime backoff).
+	onAckMissing := func(reason string) error {
+		if policy == deletionpolicy.Delete {
+			metrics.DeletionBlocked.Record(teamKind, team.Namespace, team.Name)
+			r.Recorder.Eventf(team, corev1.EventTypeWarning, "LiteLLMDeleteBlocked",
+				"deletionPolicy=Delete and LiteLLM ack missing (%s); finalizer retained", reason)
+			return fmt.Errorf("delete blocked: %s", reason)
+		}
+		metrics.DeletionOrphanedTotal.WithLabelValues(teamKind).Inc()
+		r.Recorder.Eventf(team, corev1.EventTypeNormal, "LiteLLMDeleteOrphaned",
+			"deletionPolicy=Orphan and LiteLLM ack missing (%s); finalizer removed; entry may persist", reason)
+		return nil
+	}
+
 	if team.Name == teamAliasDefault {
 		// AC-T4 PROTECTED PATH — re-apply the implicit empty body.
 		snap := r.Cache.Snapshot()
@@ -986,9 +1011,11 @@ func (r *TeamReconciler) reconcileDeletion(ctx context.Context, team *litellmv1a
 		// anyway (anti-storm — cannot block CR GC on connection failure).
 		snap := r.Cache.Snapshot()
 		if !snap.Ready {
-			logger.Info("LiteLLM unavailable on deletion; finalizer removed; team entry MAY persist until next reconcile with valid connection",
-				"team", team.Name, "reason", snap.Reason)
-			// Fall through to RemoveFinalizer below (anti-storm).
+			// Issue #23: gate on resolved policy.
+			if err := onAckMissing("LiteLLM unavailable"); err != nil {
+				return ctrl.Result{}, err
+			}
+			// Orphan branch — fall through to RemoveFinalizer below.
 		} else {
 			// Resolve team_id: prefer the status pin, then ListTeamsByAlias.
 			teamID := team.Status.LastRendered.TeamID
@@ -1000,9 +1027,13 @@ func (r *TeamReconciler) reconcileDeletion(ctx context.Context, team *litellmv1a
 					var auth401 *litellm.Auth401Error
 					if errors.As(listErr, &auth401) {
 						r.Cache.InvalidateOn401()
-						logger.Info("delete-resolve: 401 fast-path; cache invalidated; finalizer removed anyway (anti-storm)",
+						logger.Info("delete-resolve: 401 fast-path; cache invalidated",
 							"team", team.Name, "path", auth401.Path)
-						// Fall through to RemoveFinalizer.
+						// Issue #23: gate on resolved policy.
+						if err := onAckMissing("401 on ListTeamsByAlias"); err != nil {
+							return ctrl.Result{}, err
+						}
+						// Orphan branch — fall through to RemoveFinalizer.
 					} else if is4xxNon401Status(listErr, 404) || errors.Is(listErr, litellm.ErrNotFound) {
 						// 404 on the LIST endpoint = permanent LiteLLMRejected
 						// per spec §7.7 line 1432. Finalizer NOT removed.
@@ -1049,9 +1080,13 @@ func (r *TeamReconciler) reconcileDeletion(ctx context.Context, team *litellmv1a
 					var auth401 *litellm.Auth401Error
 					if errors.As(delErr, &auth401) {
 						r.Cache.InvalidateOn401()
-						logger.Info("delete: 401 fast-path; cache invalidated; finalizer removed anyway (anti-storm); LiteLLM entry MAY persist",
+						logger.Info("delete: 401 fast-path; cache invalidated",
 							"team", team.Name, "teamID", teamID, "path", auth401.Path)
-						// Fall through to RemoveFinalizer.
+						// Issue #23: gate on resolved policy.
+						if err := onAckMissing("401 on DeleteTeam"); err != nil {
+							return ctrl.Result{}, err
+						}
+						// Orphan branch — fall through to RemoveFinalizer.
 					} else if is4xxNon401Status(delErr, 404) {
 						// 404 on POST /team/delete = success per spec
 						// §7.5 line 1332. Mirror the happy-path metric.
@@ -1090,6 +1125,9 @@ func (r *TeamReconciler) reconcileDeletion(ctx context.Context, team *litellmv1a
 	// Remove the finalizer + Update.
 	// OBS-03: drop the cr_status_age_seconds label before the CR is gone (T-07-01-01).
 	metrics.CRStatusAgeTracker.Forget(teamKind, team.Name)
+	// Issue #23: idempotent Forget — clears DeletionBlocked gauge
+	// whenever the finalizer actually leaves.
+	metrics.DeletionBlocked.Forget(teamKind, team.Namespace, team.Name)
 	controllerutil.RemoveFinalizer(team, teamFinalizer)
 	if err := r.Update(ctx, team); err != nil {
 		if apierrors.IsConflict(err) || apierrors.IsNotFound(err) {

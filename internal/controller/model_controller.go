@@ -154,17 +154,21 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			// owned children always resolve to Orphan (resolver-enforced) so
 			// vanish-detection cannot be deadlocked by a stuck child.
 			policy := deletionpolicy.Resolve(&model, model.Spec.DeletionPolicy)
-			onAckMissing := func(reason string) (ctrl.Result, error) {
+			// onAckMissing returns nil on the Orphan branch (caller falls
+			// through to RemoveFinalizer) and a non-nil error on the Delete
+			// branch (caller returns the error for controller-runtime
+			// backoff). The error message is the user-visible reason.
+			onAckMissing := func(reason string) error {
 				if policy == deletionpolicy.Delete {
 					metrics.DeletionBlocked.Record(modelKind, model.Namespace, model.Name)
 					r.Recorder.Eventf(&model, corev1.EventTypeWarning, "LiteLLMDeleteBlocked",
 						"deletionPolicy=Delete and LiteLLM ack missing (%s); finalizer retained", reason)
-					return ctrl.Result{}, fmt.Errorf("delete blocked: %s", reason)
+					return fmt.Errorf("delete blocked: %s", reason)
 				}
 				metrics.DeletionOrphanedTotal.WithLabelValues(modelKind).Inc()
 				r.Recorder.Eventf(&model, corev1.EventTypeNormal, "LiteLLMDeleteOrphaned",
 					"deletionPolicy=Orphan and LiteLLM ack missing (%s); finalizer removed; entry may persist", reason)
-				return ctrl.Result{}, nil
+				return nil
 			}
 
 			snap := r.Cache.Snapshot()
@@ -177,8 +181,8 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 						if errors.As(err, &auth401) {
 							r.Cache.InvalidateOn401()
 							logger.Info("deletion: 401 fast-path; cache invalidated", "path", auth401.Path)
-							if res, err := onAckMissing("401 on DeleteModel"); err != nil {
-								return res, err
+							if err := onAckMissing("401 on DeleteModel"); err != nil {
+								return ctrl.Result{}, err
 							}
 						} else {
 							// Transient error — return for backoff. Finalizer stays until delete succeeds.
@@ -201,8 +205,8 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 						if errors.As(err, &auth401) {
 							r.Cache.InvalidateOn401()
 							logger.Info("deletion name-resolve: 401 fast-path; cache invalidated", "path", auth401.Path)
-							if res, err := onAckMissing("401 on GetModelInfoByName"); err != nil {
-								return res, err
+							if err := onAckMissing("401 on GetModelInfoByName"); err != nil {
+								return ctrl.Result{}, err
 							}
 						} else {
 							return ctrl.Result{}, err
@@ -213,8 +217,8 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 							if errors.As(err, &auth401) {
 								r.Cache.InvalidateOn401()
 								logger.Info("deletion: 401 fast-path after name-resolve; cache invalidated", "path", auth401.Path)
-								if res, err := onAckMissing("401 on DeleteModel post-name-resolve"); err != nil {
-									return res, err
+								if err := onAckMissing("401 on DeleteModel post-name-resolve"); err != nil {
+									return ctrl.Result{}, err
 								}
 							} else {
 								return ctrl.Result{}, err
@@ -233,8 +237,8 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 				}
 			} else {
 				// LiteLLM unavailable on deletion — gate on policy (Issue #23).
-				if res, err := onAckMissing("LiteLLM unavailable"); err != nil {
-					return res, err
+				if err := onAckMissing("LiteLLM unavailable"); err != nil {
+					return ctrl.Result{}, err
 				}
 			}
 
