@@ -384,6 +384,17 @@ func main() {
 		setupLog.Error(err, "unable to register Team secrets field indexer")
 		os.Exit(1)
 	}
+	// Alpha-last-wins conflict resolution: index Teams by team_alias so
+	// the reconciler can list siblings sharing a natural key.
+	if err := mgr.GetFieldIndexer().IndexField(
+		context.Background(),
+		&litellmv1alpha1.LiteLLMTeam{},
+		controller.TeamAliasIndexField,
+		controller.IndexTeamAlias,
+	); err != nil {
+		setupLog.Error(err, "unable to register Team team_alias field indexer")
+		os.Exit(1)
+	}
 	// Phase 6 — TeamDefaultRunnable: spec §7.4 line 1313
 	// mandates a synthetic Team/default reconcile on manager start (after
 	// LiteLLMConnection/default first reaches Ready=True) + every 30-min
