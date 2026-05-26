@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (BREAKING)
+- **`SkippedCandidate.Reason` enum rename: `DuplicateDiscovery` →
+  `Conflict`** (ADR-0001). Applies to both
+  `LiteLLMModelDiscovery.status.skippedCandidates[].reason` and
+  `LiteLLMMCPServerDiscovery.status.skippedCandidates[].reason`. The
+  CRD validation enum is updated; CRs that previously read or
+  alert-matched on `reason=DuplicateDiscovery` must switch to
+  `reason=Conflict`. The Prometheus metric
+  `discovery_skipped_total{reason}` label value is renamed
+  identically. Behavior is unchanged in this PR (first-create-wins
+  on cross-Discovery collisions); alpha-last-wins ownership transfer
+  between Discoveries is deferred to a follow-up PR (requires a
+  get-then-update path to replace `metadata.ownerReferences`).
+
 ### Added
 - **Alpha-last-wins conflict resolution (ADR-0001):** new shared
   package `internal/controller/conflict` providing `Key`,
@@ -40,12 +54,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   child generated under the colliding name.
 
 ### Note (follow-up PR)
-- Cross-`LiteLLMMCPServerDiscovery` collisions still surface with
-  `Reason=DuplicateDiscovery` (skip) rather than the new
-  `Reason=Conflict` semantic. The rename + alpha-last-wins between
-  Discoveries requires CRD enum + Prometheus label changes and is
-  intentionally deferred to a follow-up PR coordinated with
-  `LiteLLMModelDiscovery`.
+- Cross-`LiteLLMMCPServerDiscovery` and cross-`LiteLLMModelDiscovery`
+  collisions resolve first-create-wins with `Reason=Conflict` skip on
+  the alpha-second Discovery. Full alpha-last-wins ownership transfer
+  (replacing `metadata.ownerReferences` across SSA field managers) is
+  deferred to a follow-up PR.
 - **Configurable deletion policy (#23):** `spec.deletionPolicy`
   (`Orphan` | `Delete`, default `Orphan`) on `LiteLLMModel`,
   `LiteLLMTeam`, `LiteLLMMCPServer`, `LiteLLMA2AAgent`, and
