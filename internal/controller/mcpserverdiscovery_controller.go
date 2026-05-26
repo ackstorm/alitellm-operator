@@ -432,13 +432,21 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 	candidates := make([]candidate, 0, len(raw))
 	skipped := make([]litellmv1alpha1.MCPServerSkippedCandidate, 0, len(raw))
 	var failed []litellmv1alpha1.MCPServerFailedCandidate
-	// Sort raw objects for deterministic ordering before namespace filter
-	// — keeps status output stable across reconciles.
+	// Sort raw objects DESC by (namespace, name) so the FIRST entry the
+	// first-seen-wins dedup loop encounters for each sourceName is the
+	// alpha-LAST entry under ASC `(namespace, name)` ordering — which
+	// is the survivor under the project-wide alpha-last-wins conflict
+	// rule (docs/concepts/conflict-resolution.md, ADR-0001).
+	//
+	// Note: status output stability is preserved by the post-loop
+	// sort.Slice on `skipped` (line ~699) which sorts by candidate
+	// Name ASC — the rendering layer is order-independent of the
+	// dedup-time iteration direction.
 	sort.Slice(raw, func(i, j int) bool {
 		if raw[i].GetNamespace() != raw[j].GetNamespace() {
-			return raw[i].GetNamespace() < raw[j].GetNamespace()
+			return raw[i].GetNamespace() > raw[j].GetNamespace()
 		}
-		return raw[i].GetName() < raw[j].GetName()
+		return raw[i].GetName() > raw[j].GetName()
 	})
 
 	// FIX4.txt H-2 (v0.3.0): cross-namespace name-collision tracker.
@@ -447,11 +455,16 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 	// ns=tools object=foo), the new naming scheme `<prefix>-<source-name>`
 	// would produce identical child names and the second SSA write would
 	// either silently overwrite the first or AlreadyExists-classify it
-	// as a cross-Discovery duplicate. Loud-fail instead: skip the second
-	// occurrence and surface a NameCollision=True status condition on
+	// as a cross-Discovery duplicate. Loud-fail instead: skip later
+	// occurrences and surface a NameCollision=True status condition on
 	// the parent so the user can rename one upstream or split the
 	// discovery into two prefix-distinct ones.
-	seenSourceName := map[string]string{} // sourceName → first-seen sourceNamespace
+	//
+	// Survivor policy (alpha-last-wins, project-wide per ADR-0001):
+	// with `raw` sorted DESC above, the FIRST occurrence the loop sees
+	// for each sourceName is the alpha-LAST under ASC ordering — that
+	// entry wins. Subsequent occurrences (alpha-earlier) are skipped.
+	seenSourceName := map[string]string{} // sourceName → winning sourceNamespace (alpha-LAST under ASC)
 	nameCollisions := []string{}
 	for _, obj := range raw {
 		// Namespace filter (in-memory; cluster-scoped informer per D-07).
@@ -463,19 +476,22 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 		childName := md.Spec.Prefix + "-" + sourceName
 		ownedBy := obj.GetNamespace() + "/" + sourceName
 
-		// FIX4.txt H-2: intra-discovery name collision. The first
-		// occurrence wins; later occurrences are skipped with a
-		// NameCollision skippedCandidate entry AND a parent-level
-		// NameCollision status condition (set after the candidate loop).
-		if firstNs, dup := seenSourceName[sourceName]; dup {
+		// FIX4.txt H-2: intra-discovery name collision. Alpha-last-wins
+		// (ADR-0001): with `raw` sorted DESC, the FIRST occurrence the
+		// loop sees for each sourceName is the alpha-LAST under ASC
+		// ordering — that entry wins. Subsequent occurrences (alpha-
+		// earlier under ASC) are skipped with a NameCollision
+		// skippedCandidate entry AND a parent-level NameCollision
+		// status condition (set after the candidate loop).
+		if winnerNs, dup := seenSourceName[sourceName]; dup {
 			skipped = append(skipped, litellmv1alpha1.MCPServerSkippedCandidate{
 				Name:    childName,
 				Reason:  "NameCollision",
 				OwnedBy: ownedBy,
-				Message: fmt.Sprintf("source name %q already seen in namespace %q within this discovery — second occurrence skipped (FIX4 H-2)", sourceName, firstNs),
+				Message: fmt.Sprintf("source name %q superseded by namespace %q within this discovery (alpha-last-wins; FIX4 H-2)", sourceName, winnerNs),
 			})
 			nameCollisions = append(nameCollisions,
-				fmt.Sprintf("%q (ns %q vs first-seen ns %q)", sourceName, obj.GetNamespace(), firstNs))
+				fmt.Sprintf("%q (ns %q superseded by ns %q)", sourceName, obj.GetNamespace(), winnerNs))
 			continue
 		}
 		seenSourceName[sourceName] = obj.GetNamespace()
