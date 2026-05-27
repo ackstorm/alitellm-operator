@@ -143,6 +143,28 @@ func TestIsStuckReadyFalse(t *testing.T) {
 			want: true,
 		},
 		{
+			name: "guardrail_ready_false_is_stuck",
+			obj: &litellmv1alpha1.LiteLLMGuardRail{
+				ObjectMeta: metav1.ObjectMeta{Generation: 1},
+				Status: litellmv1alpha1.GuardRailStatus{
+					ObservedGeneration: 1,
+					Conditions:         []metav1.Condition{readyCond(metav1.ConditionFalse, "LiteLLMUnavailable")},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "guardrail_ready_true_not_stuck",
+			obj: &litellmv1alpha1.LiteLLMGuardRail{
+				ObjectMeta: metav1.ObjectMeta{Generation: 2},
+				Status: litellmv1alpha1.GuardRailStatus{
+					ObservedGeneration: 2,
+					Conditions:         []metav1.Condition{readyCond(metav1.ConditionTrue, "Synced")},
+				},
+			},
+			want: false,
+		},
+		{
 			name: "unknown_kind_not_stuck",
 			obj:  &litellmv1alpha1.LiteLLMConnection{},
 			want: false,

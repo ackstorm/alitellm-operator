@@ -185,6 +185,17 @@ func isStuckReadyFalse(obj client.Object) bool {
 		conds, observedGen = t.Status.Conditions, t.Status.ObservedGeneration
 	case *litellmv1alpha1.LiteLLMMCPServerDiscovery:
 		conds, observedGen = t.Status.Conditions, t.Status.ObservedGeneration
+	case *litellmv1alpha1.LiteLLMGuardRail:
+		// Missing case caused the boot-time stuck-Ready=False bug on
+		// operator restart: BootSweeper.Start enumerates GuardRailList
+		// (above) but isStuckReadyFalse returned false via the default
+		// arm, so no GuardRail ever got re-enqueued. Combined with the
+		// connectionReadyTransition predicate firing on the initial-list
+		// Create event BEFORE the Connection reconciler's first probe
+		// populated the cache, the very first reconcile wrote
+		// Ready=False/LiteLLMUnavailable and nothing nudged it again
+		// until the next Spec edit.
+		conds, observedGen = t.Status.Conditions, t.Status.ObservedGeneration
 	default:
 		return false
 	}

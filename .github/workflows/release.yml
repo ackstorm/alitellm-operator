@@ -157,8 +157,34 @@ jobs:
         with:
           version: v3.12.0
 
-      - name: Regenerate CRDs (sanity)
-        run: make generate manifests
+      - name: Regenerate CRDs + chart (sanity + drift gate)
+        # `make helm-sync` runs the full chain: controller-gen
+        # (manifests + generate) → kustomize build → copy CRDs into
+        # deploy/helm/.../crd-sources + re-render templates/install.yaml.
+        # If the in-tree chart diverges from regenerated content, the
+        # release MUST stop here — goreleaser would otherwise package a
+        # stale CRD bundle (the v0.7.0 incident: PR #25 + PR #38 schema
+        # changes never reached users because nothing enforced the
+        # config/crd → crd-sources copy).
+        #
+        # Drift here should be impossible if the PR CI lint gate is
+        # healthy — this is belt + suspenders for admin-merge / hotfix
+        # paths that bypass branch protection.
+        #
+        # build-installer (helm-sync dep) rewrites
+        # config/manager/kustomization.yaml's image pin to
+        # `controller:latest` as a side effect. Snapshot and restore so
+        # the diff check only catches real chart drift.
+        run: |
+          cp config/manager/kustomization.yaml /tmp/kust-snap.yaml
+          make helm-sync
+          cp /tmp/kust-snap.yaml config/manager/kustomization.yaml
+          if ! git diff --quiet -- deploy/helm/alitellm-operator/crd-sources deploy/helm/alitellm-operator/templates/install.yaml; then
+            echo "::error::CHART DRIFT at release time — main is in a broken state. Run 'make helm-sync' on a branch, PR + merge, then re-cut the release."
+            git --no-pager diff --stat -- deploy/helm/alitellm-operator/crd-sources deploy/helm/alitellm-operator/templates/install.yaml
+            git --no-pager diff -- deploy/helm/alitellm-operator/crd-sources deploy/helm/alitellm-operator/templates/install.yaml | head -200
+            exit 1
+          fi
 
       # HRD-09: install cosign for keyless OIDC signing of release artifacts.
       - name: Install cosign
