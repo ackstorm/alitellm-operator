@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Chart CRD drift — PR #25 + PR #38 schema changes did not reach
+  v0.7.0 users.** `deploy/helm/alitellm-operator/crd-sources/` was
+  regenerated and now matches `config/crd/bases/`:
+  - `LiteLLMConnection.spec.endpoint` gains `pattern`, `maxLength=2048`,
+    and three CEL XValidation rules (scheme / userinfo / whitespace)
+    at admission. Without this, invalid endpoints were only caught at
+    reconcile time via `litellm.ValidateEndpoint` (still in the binary).
+  - `LiteLLMMCPServerDiscovery` + `LiteLLMModelDiscovery`
+    `status.skippedCandidates[].reason` enum updated to include
+    `Conflict` (renamed from `DuplicateDiscovery` per ADR-0001).
+    Without this, the v0.7.0 binary's `Reason: "Conflict"` writes
+    would be apiserver-rejected on the first cross-Discovery name
+    collision, stranding the Discovery in a reconcile loop.
+- **GuardRail stuck `Ready=False` after operator restart.**
+  `bootsweep.isStuckReadyFalse` was missing the
+  `*litellmv1alpha1.LiteLLMGuardRail` case (added in v0.3.1 to
+  `BootSweeper.Start`'s enumerated kinds but never to the classifier),
+  so the boot-time safety re-enqueue never fired for guardrails.
+  Combined with the `connectionReadyTransition` predicate firing on
+  the initial-list `Create` event BEFORE the Connection reconciler's
+  first probe populates the cache, every operator restart left
+  guardrails permanently `Ready=False, Reason=LiteLLMUnavailable`
+  until the next spec edit. Observed in prod 2026-05-27 on
+  `LiteLLMGuardRail/credential-filter` ~3h after a restart while the
+  Connection had been `Ready=True` for 4 days.
+
+### Changed
+- **`make helm-sync-check` is now enforced.** Three new gates ensure
+  the chart bundle in `deploy/helm/alitellm-operator/crd-sources/`
+  never falls out of sync with `config/crd/bases/`:
+  - PR CI lint job (`.github/workflows/ci.yml`) — mandatory pre-merge
+    gate; branch protection blocks merge on failure.
+  - Pre-push hook (`scripts/pre-push-check.sh` gate 14b) — local
+    fast-fail mirroring the existing `go mod tidy` drift gate.
+  - Release pipeline (`.github/workflows/release.yml`) — belt + braces;
+    a drifted main blocks `chore(release): v*` before goreleaser
+    packages the chart.
+  - `make helm-sync` was previously documented but invoked nowhere
+    automatically. The v0.7.0 release shipped stale CRDs as a direct
+    consequence.
+
 ### Changed (BREAKING)
 - **`SkippedCandidate.Reason` enum rename: `DuplicateDiscovery` →
   `Conflict`** (ADR-0001). Applies to both

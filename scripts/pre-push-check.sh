@@ -11,6 +11,7 @@
 #   6. origin remote matches expected
 #  13. govulncheck   (HIGH advisories vs ack-list — wrapper-enforced 1:1)
 #  14. go mod tidy   (go.mod / go.sum drift blocks push)
+#  14b. helm-sync     (config/crd → deploy/helm/.../crd-sources drift blocks push)
 #  15. license-header SPDX gate (every in-scope *.go starts with SPDX line)
 #  16. golangci-lint full sweep (defensive — pre-commit runs lint-changed)
 #  17. make unit     (pure-logic regression — ~5-10s warm)
@@ -266,6 +267,48 @@ else
   fail "go mod tidy exited non-zero (see /tmp/gomod-tidy.txt)"
   sed -n '1,20p' /tmp/gomod-tidy.txt
 fi
+
+# --- 14b. chart / CRD drift (helm-sync) ---
+hdr "14b. helm-sync drift (config/crd → deploy/helm/.../crd-sources)"
+# `make helm-sync` regenerates CRDs (controller-gen → config/crd/bases),
+# rebuilds dist/install.yaml, copies CRDs into the chart's crd-sources/,
+# and re-renders templates/install.yaml. Any divergence means a PR landed
+# a schema change in api/ or RBAC change in kustomize without refreshing
+# the published chart — exactly how v0.7.0 shipped stale CRDs for PR #25
+# (endpoint validation) and PR #38 (DuplicateDiscovery → Conflict rename).
+#
+# Snapshot the touched files BEFORE syncing so we can restore on drift.
+# `make helm-sync` also flips config/manager/kustomization.yaml back to
+# `controller:latest` (build-installer dep), so it is included in the
+# snapshot/restore set.
+HELM_SNAP=$(mktemp -d)
+mkdir -p "$HELM_SNAP/crd-sources" "$HELM_SNAP/templates" "$HELM_SNAP/config-manager"
+cp -a deploy/helm/alitellm-operator/crd-sources/.        "$HELM_SNAP/crd-sources/"      2>/dev/null || true
+cp    deploy/helm/alitellm-operator/templates/install.yaml "$HELM_SNAP/templates/install.yaml" 2>/dev/null || true
+cp    config/manager/kustomization.yaml                  "$HELM_SNAP/config-manager/kustomization.yaml" 2>/dev/null || true
+if ./scripts/dev.sh make helm-sync >/tmp/helm-sync.txt 2>&1; then
+  # build-installer always rewrites config/manager/kustomization.yaml's
+  # image pin to controller:latest. Restore it unconditionally before
+  # diffing the chart — the kustomization edit is a side effect, not
+  # drift we care about.
+  cp "$HELM_SNAP/config-manager/kustomization.yaml" config/manager/kustomization.yaml
+  if git diff --quiet -- deploy/helm/alitellm-operator/crd-sources deploy/helm/alitellm-operator/templates/install.yaml 2>/dev/null; then
+    ok "chart crd-sources + templates/install.yaml in sync"
+  else
+    fail "make helm-sync produced uncommitted drift — run 'make helm-sync' and commit the result"
+    git --no-pager diff --stat -- deploy/helm/alitellm-operator/crd-sources deploy/helm/alitellm-operator/templates/install.yaml | head -20
+    # Restore so pre-push does not mutate the working tree.
+    rm -rf deploy/helm/alitellm-operator/crd-sources
+    mkdir -p deploy/helm/alitellm-operator/crd-sources
+    cp -a "$HELM_SNAP/crd-sources/." deploy/helm/alitellm-operator/crd-sources/
+    [[ -f "$HELM_SNAP/templates/install.yaml" ]] && cp "$HELM_SNAP/templates/install.yaml" deploy/helm/alitellm-operator/templates/install.yaml
+  fi
+else
+  cp "$HELM_SNAP/config-manager/kustomization.yaml" config/manager/kustomization.yaml 2>/dev/null || true
+  fail "make helm-sync exited non-zero (see /tmp/helm-sync.txt)"
+  sed -n '1,30p' /tmp/helm-sync.txt
+fi
+rm -rf "$HELM_SNAP"
 
 # --- 15. license-header SPDX gate (HRD-10) ---
 hdr "15. license-header SPDX gate (HRD-10)"
