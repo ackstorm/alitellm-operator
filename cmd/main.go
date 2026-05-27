@@ -244,13 +244,14 @@ func main() {
 	}
 
 	if err := (&controller.ModelReconciler{
-		Client:     mgr.GetClient(),
-		Scheme:     mgr.GetScheme(),
-		Cache:      connCache, // typed as connection.ConnectionCache per D-12
-		Recorder:   mgr.GetEventRecorderFor("model-controller"),
-		Namespace:  watchNS,
-		Log:        ctrl.Log.WithName("controller").WithName("Model"),
-		BootEvents: bootSweep.ModelEvents,
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		Cache:             connCache, // typed as connection.ConnectionCache per D-12
+		Recorder:          mgr.GetEventRecorderFor("model-controller"),
+		Namespace:         watchNS,
+		Log:               ctrl.Log.WithName("controller").WithName("Model"),
+		BootEvents:        bootSweep.ModelEvents,
+		ConnectionRebuilt: connCache.Rebuilt(),
 	}).SetupWithManager(mgr, safetyRelistCh); err != nil {
 		setupLog.Error(err, "unable to set up Model reconciler")
 		os.Exit(1)
@@ -310,13 +311,14 @@ func main() {
 		os.Exit(1)
 	}
 	if err := (&controller.MCPServerReconciler{
-		Client:     mgr.GetClient(),
-		Scheme:     mgr.GetScheme(),
-		Cache:      connCache, // typed as connection.ConnectionCache per D-12
-		Recorder:   mgr.GetEventRecorderFor("mcpserver-controller"),
-		Namespace:  watchNS,
-		Log:        ctrl.Log.WithName("controller").WithName("MCPServer"),
-		BootEvents: bootSweep.MCPServerEvents,
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		Cache:             connCache, // typed as connection.ConnectionCache per D-12
+		Recorder:          mgr.GetEventRecorderFor("mcpserver-controller"),
+		Namespace:         watchNS,
+		Log:               ctrl.Log.WithName("controller").WithName("MCPServer"),
+		BootEvents:        bootSweep.MCPServerEvents,
+		ConnectionRebuilt: connCache.Rebuilt(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to set up MCPServer reconciler")
 		os.Exit(1)
@@ -341,13 +343,14 @@ func main() {
 		os.Exit(1)
 	}
 	if err := (&controller.A2AAgentReconciler{
-		Client:     mgr.GetClient(),
-		Scheme:     mgr.GetScheme(),
-		Cache:      connCache, // typed as connection.ConnectionCache per D-12
-		Recorder:   mgr.GetEventRecorderFor("a2aagent-controller"),
-		Namespace:  watchNS,
-		Log:        ctrl.Log.WithName("controller").WithName("A2AAgent"),
-		BootEvents: bootSweep.A2AAgentEvents,
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		Cache:             connCache, // typed as connection.ConnectionCache per D-12
+		Recorder:          mgr.GetEventRecorderFor("a2aagent-controller"),
+		Namespace:         watchNS,
+		Log:               ctrl.Log.WithName("controller").WithName("A2AAgent"),
+		BootEvents:        bootSweep.A2AAgentEvents,
+		ConnectionRebuilt: connCache.Rebuilt(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to set up A2AAgent reconciler")
 		os.Exit(1)
@@ -406,13 +409,14 @@ func main() {
 	}
 
 	if err := (&controller.TeamReconciler{
-		Client:     mgr.GetClient(),
-		Scheme:     mgr.GetScheme(),
-		Cache:      connCache, // typed as connection.ConnectionCache per D-12
-		Recorder:   mgr.GetEventRecorderFor("team-controller"),
-		Namespace:  watchNS,
-		Log:        ctrl.Log.WithName("controller").WithName("Team"),
-		BootEvents: bootSweep.TeamEvents,
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		Cache:             connCache, // typed as connection.ConnectionCache per D-12
+		Recorder:          mgr.GetEventRecorderFor("team-controller"),
+		Namespace:         watchNS,
+		Log:               ctrl.Log.WithName("controller").WithName("Team"),
+		BootEvents:        bootSweep.TeamEvents,
+		ConnectionRebuilt: connCache.Rebuilt(),
 	}).SetupWithManager(mgr, teamDefaultRequeueCh); err != nil {
 		setupLog.Error(err, "unable to set up Team reconciler")
 		os.Exit(1)
@@ -493,13 +497,14 @@ func main() {
 	}
 
 	if err := (&controller.GuardRailReconciler{
-		Client:     mgr.GetClient(),
-		Scheme:     mgr.GetScheme(),
-		Cache:      connCache,
-		Recorder:   mgr.GetEventRecorderFor("guardrail-controller"),
-		Namespace:  watchNS,
-		Log:        ctrl.Log.WithName("controller").WithName("GuardRail"),
-		BootEvents: bootSweep.GuardRailEvents,
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		Cache:             connCache,
+		Recorder:          mgr.GetEventRecorderFor("guardrail-controller"),
+		Namespace:         watchNS,
+		Log:               ctrl.Log.WithName("controller").WithName("GuardRail"),
+		BootEvents:        bootSweep.GuardRailEvents,
+		ConnectionRebuilt: connCache.Rebuilt(),
 	}).SetupWithManager(mgr, guardrailSafetyRelistCh); err != nil {
 		setupLog.Error(err, "unable to set up GuardRail reconciler")
 		os.Exit(1)
@@ -513,12 +518,13 @@ func main() {
 	// safety-relist Runnable — periodic resync is handled inside Reconcile
 	// via the RequeueAfter return.
 	if err := (&controller.ModelAliasReconciler{
-		Client:    mgr.GetClient(),
-		Scheme:    mgr.GetScheme(),
-		Cache:     connCache,
-		Recorder:  mgr.GetEventRecorderFor("modelalias-controller"),
-		Namespace: watchNS,
-		Log:       ctrl.Log.WithName("controller").WithName("ModelAlias"),
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		Cache:             connCache,
+		Recorder:          mgr.GetEventRecorderFor("modelalias-controller"),
+		Namespace:         watchNS,
+		Log:               ctrl.Log.WithName("controller").WithName("ModelAlias"),
+		ConnectionRebuilt: connCache.Rebuilt(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to set up ModelAlias reconciler")
 		os.Exit(1)

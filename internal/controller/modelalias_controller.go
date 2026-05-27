@@ -18,6 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -66,6 +67,9 @@ type ModelAliasReconciler struct {
 	Recorder  record.EventRecorder
 	Namespace string
 	Log       logr.Logger
+	// ConnectionRebuilt — see GuardRailReconciler.ConnectionRebuilt
+	// (issue #44 cache-population race close). nil-safe.
+	ConnectionRebuilt <-chan event.GenericEvent
 }
 
 // Reconcile implements the ModelAlias aggregate state machine.
@@ -296,7 +300,7 @@ func (r *ModelAliasReconciler) stripDeletingFinalizers(
 // The first Watches() owns the alias informer; Named() satisfies
 // controller-runtime's controller-name requirement.
 func (r *ModelAliasReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+	b := ctrl.NewControllerManagedBy(mgr).
 		Named("modelalias").
 		Watches(
 			&litellmv1alpha1.LiteLLMModelAlias{},
@@ -306,8 +310,11 @@ func (r *ModelAliasReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&litellmv1alpha1.LiteLLMConnection{},
 			handler.EnqueueRequestsFromMapFunc(r.connectionToSingleton),
 			builder.WithPredicates(connectionReadyTransition()),
-		).
-		Complete(r)
+		)
+	if src := ConnectionRebuiltSource(r.ConnectionRebuilt, r.connectionToSingleton); src != nil {
+		b = b.WatchesRawSource(src)
+	}
+	return b.Complete(r)
 }
 
 func (r *ModelAliasReconciler) mapToSingleton(_ context.Context, _ client.Object) []reconcile.Request {

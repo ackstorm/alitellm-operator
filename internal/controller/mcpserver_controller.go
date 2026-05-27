@@ -159,6 +159,9 @@ type MCPServerReconciler struct {
 	Log       logr.Logger
 	// BootEvents (FIX2.txt H-2) — optional BootSweeper channel. nil-safe.
 	BootEvents <-chan event.GenericEvent
+	// ConnectionRebuilt — see GuardRailReconciler.ConnectionRebuilt
+	// (issue #44 cache-population race close). nil-safe.
+	ConnectionRebuilt <-chan event.GenericEvent
 }
 
 // Reconcile implements the LiteLLMMCPServer state machine.
@@ -915,6 +918,9 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		WithOptions(transientBackoffOptions()).
 		Named("mcpserver")
 	if src := BootEventsSource(r.BootEvents); src != nil {
+		b = b.WatchesRawSource(src)
+	}
+	if src := ConnectionRebuiltSource(r.ConnectionRebuilt, r.connectionToMCPServers); src != nil {
 		b = b.WatchesRawSource(src)
 	}
 	return b.Complete(r)

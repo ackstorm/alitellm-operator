@@ -132,6 +132,13 @@ type GuardRailReconciler struct {
 	Namespace  string
 	Log        logr.Logger
 	BootEvents <-chan event.GenericEvent
+	// ConnectionRebuilt is the cache.Rebuilt() channel; fires when the
+	// LiteLLMConnection cache transitions to Ready=true. Wired via
+	// ConnectionRebuiltSource so dependent CRs re-enqueue as soon as
+	// the snapshot is populated, closing the boot-time race the
+	// connectionReadyTransition predicate cannot catch (issue #44).
+	// nil-safe — tests using FakeConnectionCache leave this unset.
+	ConnectionRebuilt <-chan event.GenericEvent
 }
 
 // Reconcile implements the LiteLLMGuardRail state machine.
@@ -812,6 +819,10 @@ func (r *GuardRailReconciler) SetupWithManager(mgr ctrl.Manager, safetyRelistCh 
 		Named("litellmguardrail")
 
 	if src := BootEventsSource(r.BootEvents); src != nil {
+		b = b.WatchesRawSource(src)
+	}
+
+	if src := ConnectionRebuiltSource(r.ConnectionRebuilt, r.connectionToGuardrails); src != nil {
 		b = b.WatchesRawSource(src)
 	}
 

@@ -129,6 +129,9 @@ type ModelReconciler struct {
 	Log       logr.Logger
 	// BootEvents (FIX2.txt H-2) — optional BootSweeper channel. nil-safe.
 	BootEvents <-chan event.GenericEvent
+	// ConnectionRebuilt — see GuardRailReconciler.ConnectionRebuilt
+	// (issue #44 cache-population race close). nil-safe.
+	ConnectionRebuilt <-chan event.GenericEvent
 }
 
 // Reconcile implements the LiteLLMModel state machine.
@@ -874,6 +877,10 @@ func (r *ModelReconciler) SetupWithManager(mgr ctrl.Manager, safetyRelistCh ...c
 		Named("model")
 
 	if src := BootEventsSource(r.BootEvents); src != nil {
+		b = b.WatchesRawSource(src)
+	}
+
+	if src := ConnectionRebuiltSource(r.ConnectionRebuilt, r.connectionToModels); src != nil {
 		b = b.WatchesRawSource(src)
 	}
 

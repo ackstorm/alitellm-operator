@@ -193,6 +193,10 @@ type TeamReconciler struct {
 	// reconcile. Nil-safe: nil channel = no boot sweep wiring.
 	BootEvents <-chan event.GenericEvent
 
+	// ConnectionRebuilt — see GuardRailReconciler.ConnectionRebuilt
+	// (issue #44 cache-population race close). nil-safe.
+	ConnectionRebuilt <-chan event.GenericEvent
+
 	// implicitDefaultMu guards the implicitDefault* fields below. The
 	// synthetic LiteLLMTeam/default reconcile runs without a
 	// Kubernetes CR — there is no status subresource to persist the
@@ -1340,6 +1344,10 @@ func (r *TeamReconciler) SetupWithManager(mgr ctrl.Manager, requeueCh ...chan re
 		Named("team")
 
 	if src := BootEventsSource(r.BootEvents); src != nil {
+		b = b.WatchesRawSource(src)
+	}
+
+	if src := ConnectionRebuiltSource(r.ConnectionRebuilt, r.connectionToTeams); src != nil {
 		b = b.WatchesRawSource(src)
 	}
 

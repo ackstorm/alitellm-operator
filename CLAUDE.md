@@ -172,8 +172,11 @@ invocation goes through the devtools container via `./scripts/dev.sh`.
   PR that changes Dockerfile.devtools racing the image workflow, GHCR
   unavailable), the composite action falls back to a local build — slower
   but always correct.
-- Pinned: Go 1.24.13, kubebuilder v4.4.0, controller-runtime v0.19.4,
-  k8s.io/* v0.31.0, govulncheck v1.3.0.
+- Pinned: Go 1.26 (Dockerfile.devtools, Dockerfile, release.yml; go.mod
+  `go 1.26.0` / `toolchain go1.26.3`), kubebuilder v4.4.0,
+  controller-runtime v0.19.4, k8s.io/* v0.31.0, govulncheck v1.3.0. PR
+  CI and release run the same toolchain (issue #43 close); any future
+  bump MUST update all four surfaces in the same change.
 
 `make` targets shelling out to `go` MUST be prefixed `./scripts/dev.sh`.
 Targets that only call `kubectl`/`docker`/`helm`/`kind`/bash run on host
