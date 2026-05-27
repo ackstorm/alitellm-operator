@@ -72,6 +72,43 @@ func TestModelAliasReconciler_ConnectionNotReady_WritesLiteLLMUnavailable(t *tes
 	}
 }
 
+// TestModelAlias_ReconcileRejectsNonSingletonKey is a defense-in-depth
+// test: even if a future contributor re-adds For(&LiteLLMModelAlias{})
+// or wires a Watches without the mapToSingleton mapper, Reconcile
+// itself rejects non-singleton keys with a no-op + V(2) log.
+//
+// Post-2026-05-26 review finding F3.
+func TestModelAlias_ReconcileRejectsNonSingletonKey(t *testing.T) {
+	r := &ModelAliasReconciler{Namespace: "litellm-system"}
+	res, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Namespace: "litellm-system", Name: "some-alias-name"},
+	})
+	if err != nil {
+		t.Fatalf("expected nil error for non-singleton key, got %v", err)
+	}
+	if !res.IsZero() {
+		t.Fatalf("expected zero Result for non-singleton key, got %+v", res)
+	}
+}
+
+// TestModelAlias_OnlyEnqueuesSingletonKey is the manager-driven
+// counterpart to the guard test above. It would assert that the
+// SetupWithManager wiring never enqueues a non-singleton key onto the
+// work queue. Implementing this requires a manager-driven harness with
+// a work-queue inspector, which this test file does not currently
+// provide (other tests use a fake client directly and exercise
+// Reconcile in-process).
+//
+// The guard test above (TestModelAlias_ReconcileRejectsNonSingletonKey)
+// is sufficient defense in depth: even if SetupWithManager is mis-wired
+// to enqueue per-object keys, Reconcile will no-op on them. We keep
+// this skipped placeholder to document the intent.
+//
+// Post-2026-05-26 review finding F3.
+func TestModelAlias_OnlyEnqueuesSingletonKey(t *testing.T) {
+	t.Skip("requires manager-driven harness; covered by TestModelAlias_ReconcileRejectsNonSingletonKey as defense in depth")
+}
+
 func TestModelAliasReconciler_FinalizerAddedToAliveCR(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := litellmv1alpha1.AddToScheme(scheme); err != nil {

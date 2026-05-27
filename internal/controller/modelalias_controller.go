@@ -77,6 +77,16 @@ type ModelAliasReconciler struct {
 func (r *ModelAliasReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx).WithValues("singleton", req.NamespacedName)
 
+	// Defense in depth (post-2026-05-26 review F3): all alias and
+	// connection events must map to the singleton key via the
+	// SetupWithManager Watches handlers. Any non-singleton key is
+	// either a bug (For default mapper re-introduced) or an external
+	// enqueue we don't service.
+	if req.Name != ModelAliasSingletonKey {
+		logger.V(2).Info("ignoring non-singleton reconcile key", "got", req.Name)
+		return ctrl.Result{}, nil
+	}
+
 	var list litellmv1alpha1.LiteLLMModelAliasList
 	if err := r.List(ctx, &list); err != nil {
 		return ctrl.Result{}, fmt.Errorf("list LiteLLMModelAlias: %w", err)
@@ -279,17 +289,15 @@ func (r *ModelAliasReconciler) stripDeletingFinalizers(
 	return nil
 }
 
-// SetupWithManager wires the reconciler so all events coalesce onto a
-// single sentinel work-queue key via mapToSingleton. The For() declaration
-// owns the informer registration; the additional Watches() remap each
-// event to the sentinel before enqueue.
+// SetupWithManager wires the reconciler so all events coalesce onto the
+// singleton work-queue key. NO For() registration — the default mapper
+// would enqueue the per-object key in addition to the singleton, causing
+// two Reconcile invocations per alias event (post-2026-05-26 review F3).
+// The first Watches() owns the alias informer; Named() satisfies
+// controller-runtime's controller-name requirement.
 func (r *ModelAliasReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("modelalias").
-		For(
-			&litellmv1alpha1.LiteLLMModelAlias{},
-			builder.WithPredicates(),
-		).
 		Watches(
 			&litellmv1alpha1.LiteLLMModelAlias{},
 			handler.EnqueueRequestsFromMapFunc(r.mapToSingleton),
