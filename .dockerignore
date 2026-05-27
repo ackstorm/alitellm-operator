@@ -2,3 +2,9 @@
 # Ignore build and test binaries.
 bin/
 .git/
+# Devtools-container Go module/build cache + envtest assets +
+# kubeconfig. Grows to multiple GB during normal dev (3+ GB observed).
+# Without this entry every `docker build` ships the entire cache as
+# build context to the daemon — slow, expensive, and pointless (the
+# Dockerfile multi-stage builder re-fetches modules inside the image).
+.gocache/
