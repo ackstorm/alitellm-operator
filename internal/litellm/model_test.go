@@ -318,6 +318,31 @@ func TestGetModelInfoByName_5xx(t *testing.T) {
 	}
 }
 
+// TestGetModelInfoByName_404ReturnsNilNil asserts the contract documented
+// in the function godoc: HTTP 404 from /model/info?model_name=<name>
+// resolves to (nil, nil), NOT (nil, *RejectedError{Status:404}).
+//
+// Post-2026-05-26 review finding F4 (finalizer strand on 404). Pre-fix
+// the helper returned the *RejectedError unchanged, leaving the Model
+// controller's deletion-path fallback stuck in controller-runtime
+// exponential backoff because it only special-cased Auth401Error.
+func TestGetModelInfoByName_404ReturnsNilNil(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(404)
+		_, _ = w.Write([]byte(`{"error":{"message":"model not found","type":"not_found","param":null,"code":"404"}}`))
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv.URL)
+	got, err := c.GetModelInfoByName(context.Background(), "my-model")
+	if err != nil {
+		t.Fatalf("GetModelInfoByName: want (nil, nil) on 404, got error: %v", err)
+	}
+	if got != nil {
+		t.Errorf("GetModelInfoByName: want nil result on 404, got %+v", got)
+	}
+}
+
 // TestDeleteModelPath — POST /model/delete with {"id":.} body.
 func TestDeleteModelPath(t *testing.T) {
 	var captured []capturedRequest
