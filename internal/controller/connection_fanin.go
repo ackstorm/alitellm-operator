@@ -10,6 +10,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
@@ -28,11 +29,29 @@ import (
 //     serves both paths.
 //
 // fallback MUST be the reconciler's r.Namespace.
+//
+// Callers MUST log + drop on an empty return (WR-04): a misconfigured
+// Namespace combined with the raw-source path would otherwise silently
+// drop every Ready emit, reproducing CR-01-style stuck-Ready=False
+// symptoms with no operator-side signal.
 func fanInNamespace(obj client.Object, fallback string) string {
 	if conn, ok := obj.(*litellmv1alpha1.LiteLLMConnection); ok && conn != nil {
 		return conn.Namespace
 	}
 	return fallback
+}
+
+// logEmptyFanInNamespace records a V(1) diagnostic when a Connection
+// fan-in mapper resolves to an empty namespace. Centralized so all six
+// mappers share the same observable symptom; never logs at higher
+// verbosity because the empty-namespace path is normally caused by an
+// operator misconfiguration the platform owner should catch in CI.
+func logEmptyFanInNamespace(ctx context.Context, kind string) {
+	log.FromContext(ctx).V(1).Info(
+		"connection fan-in mapper: empty namespace; dropping rebuilt enqueue",
+		"kind", kind,
+		"hint", "set --watch-namespace / WATCH_NAMESPACE on the operator",
+	)
 }
 
 // connectionToMCPServers maps a LiteLLMConnection trigger (either the
@@ -49,6 +68,7 @@ func fanInNamespace(obj client.Object, fallback string) string {
 func (r *MCPServerReconciler) connectionToMCPServers(ctx context.Context, obj client.Object) []reconcile.Request {
 	ns := fanInNamespace(obj, r.Namespace)
 	if ns == "" {
+		logEmptyFanInNamespace(ctx, "LiteLLMMCPServer")
 		return nil
 	}
 	var list litellmv1alpha1.LiteLLMMCPServerList
@@ -68,6 +88,7 @@ func (r *MCPServerReconciler) connectionToMCPServers(ctx context.Context, obj cl
 func (r *ModelReconciler) connectionToModels(ctx context.Context, obj client.Object) []reconcile.Request {
 	ns := fanInNamespace(obj, r.Namespace)
 	if ns == "" {
+		logEmptyFanInNamespace(ctx, "LiteLLMModel")
 		return nil
 	}
 	var list litellmv1alpha1.LiteLLMModelList
@@ -87,6 +108,7 @@ func (r *ModelReconciler) connectionToModels(ctx context.Context, obj client.Obj
 func (r *A2AAgentReconciler) connectionToA2AAgents(ctx context.Context, obj client.Object) []reconcile.Request {
 	ns := fanInNamespace(obj, r.Namespace)
 	if ns == "" {
+		logEmptyFanInNamespace(ctx, "LiteLLMA2AAgent")
 		return nil
 	}
 	var list litellmv1alpha1.LiteLLMA2AAgentList
@@ -106,6 +128,7 @@ func (r *A2AAgentReconciler) connectionToA2AAgents(ctx context.Context, obj clie
 func (r *TeamReconciler) connectionToTeams(ctx context.Context, obj client.Object) []reconcile.Request {
 	ns := fanInNamespace(obj, r.Namespace)
 	if ns == "" {
+		logEmptyFanInNamespace(ctx, "LiteLLMTeam")
 		return nil
 	}
 	var list litellmv1alpha1.LiteLLMTeamList
@@ -122,9 +145,9 @@ func (r *TeamReconciler) connectionToTeams(ctx context.Context, obj client.Objec
 }
 
 // ConnectionRebuiltSource returns a controller-runtime source that
-// drains the cache's "rebuilt" GenericEvent channel and, for each
-// event, invokes mapper(ctx, nil) and enqueues the returned requests.
-// Closes the boot-time race described in issue #44:
+// drains a Cache.Subscribe() channel and, for each event, invokes
+// mapper(ctx, nil) and enqueues the returned requests. Closes the
+// boot-time race described in issue #44:
 //
 //	t0: Connection-watch CreateFunc fires CreateFunc on the initial
 //	    cache list with Ready=true. Mapper enqueues all child CRs.
@@ -139,10 +162,19 @@ func (r *TeamReconciler) connectionToTeams(ctx context.Context, obj client.Objec
 //	          snapshot and writes Ready=True.
 //
 // Pass a nil channel to skip wiring — useful for tests that wire a
-// FakeConnectionCache (the fake does not emit a rebuilt channel).
+// FakeConnectionCache (the fake does not implement Subscribe).
+//
+// Passing a non-nil ch with a nil mapper is a programmer error: the
+// subscriber would drain the channel forever and never enqueue
+// anything, reproducing the very stuck-on-boot symptom #44 was filed
+// for but with no operator-side signal. Panic at setup time so the
+// boot phase fails loudly instead of degrading silently (WR-03).
 func ConnectionRebuiltSource(ch <-chan event.GenericEvent, mapper handler.MapFunc) source.Source {
-	if ch == nil || mapper == nil {
+	if ch == nil {
 		return nil
+	}
+	if mapper == nil {
+		panic("ConnectionRebuiltSource: mapper is nil but ch is non-nil — programmer error")
 	}
 	return source.TypedFunc[reconcile.Request](
 		func(ctx context.Context, q workqueue.TypedRateLimitingInterface[reconcile.Request]) error {

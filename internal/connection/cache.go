@@ -4,6 +4,7 @@ package connection
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 
 	"github.com/go-logr/logr"
@@ -51,22 +52,32 @@ type Cache struct {
 	// `select default` drops the duplicate).
 	ch chan event.GenericEvent
 
-	// rebuiltCh fires a single event on every Rebuild that transitions
-	// the cached snapshot into Ready=true (false→true OR initial). Closes
-	// the boot-time race where a dependent reconciler's Connection-watch
-	// CreateFunc enqueues a child CR BEFORE the connection reconciler's
-	// first probe has populated the snapshot — without this signal the
-	// child reconcile would read Snapshot()==zero, write
-	// Ready=False/LiteLLMUnavailable, and stay stuck until the next spec
-	// edit (the connectionReadyTransition predicate also stays silent
-	// because Ready=True→Ready=True is not a transition).
+	// rebuiltSubs is the slice of per-subscriber cap=1 channels feeding
+	// dependent reconcilers (guardrail, model, mcpserver, a2aagent, team,
+	// modelalias). Subscribe() appends one fresh channel and returns it;
+	// emitRebuilt fans-out a single GenericEvent to EVERY subscriber.
 	//
-	// cap=1 buffer + non-blocking select-default send: a slow consumer
-	// just drops the duplicate; the next genuine transition re-fires.
-	rebuiltCh chan event.GenericEvent
+	// Each emit closes the boot-time race where a dependent reconciler's
+	// Connection-watch CreateFunc enqueues a child CR BEFORE the
+	// connection reconciler's first probe has populated the snapshot —
+	// without this signal the child reconcile would read Snapshot()==zero,
+	// write Ready=False/LiteLLMUnavailable, and stay stuck until the next
+	// spec edit (the connectionReadyTransition predicate also stays
+	// silent because Ready=True→Ready=True is not a transition).
+	//
+	// Per-subscriber cap=1 + non-blocking select-default send: a slow
+	// consumer just drops the duplicate; the next genuine transition
+	// re-fires for every subscriber.
+	//
+	// CR-01 (PR #45 follow-up): the earlier implementation exposed a
+	// single shared `Rebuilt()` channel and Go's exactly-one-receiver
+	// semantics turned the fan-out into a 1-in-N lottery per emit.
+	// Mirrors BootSweeper's per-kind channel design.
+	subsMu      sync.RWMutex
+	rebuiltSubs []chan event.GenericEvent
 
 	// lastReady tracks the most-recent snapshot's Ready value so Rebuild
-	// emits on rebuiltCh only when the snapshot transitions FROM
+	// emits on rebuiltSubs only when the snapshot transitions FROM
 	// not-Ready INTO Ready. Steady-state probe ticks (Ready→Ready,
 	// Connecting→Connecting) generate no churn on dependent reconcilers.
 	lastReady atomic.Bool
@@ -84,11 +95,11 @@ type Cache struct {
 // first reconcile to populate the cache.
 func NewCache(log logr.Logger) *Cache {
 	return &Cache{
-		ch:        make(chan event.GenericEvent, 1),
-		rebuiltCh: make(chan event.GenericEvent, 1),
-		log:       log,
+		ch:  make(chan event.GenericEvent, 1),
+		log: log,
 		// snapshot: zero-value atomic.Pointer — Load returns nil until
 		// the first Rebuild. Snapshot handles the nil case explicitly.
+		// rebuiltSubs: nil — Subscribe() lazy-appends on each call.
 	}
 }
 
@@ -149,19 +160,31 @@ func (c *Cache) Rebuild(snap ConnectionSnapshot) {
 	}
 }
 
-// emitRebuilt performs a non-blocking send on the rebuiltCh, with
-// CR-02 shutdown defenses identical to InvalidateOn401's send path:
-// the closed-flag short-circuit handles the steady case, and the
-// `defer recover` catches the TOCTOU window where Start fires between
-// the check and the send.
+// emitRebuilt fans-out a single GenericEvent to every registered
+// subscriber via per-subscriber non-blocking sends. CR-02 shutdown
+// defenses mirror InvalidateOn401's send path: the closed-flag
+// short-circuit handles the steady case, and the `defer recover`
+// catches the TOCTOU window where Start fires between the check and
+// the send.
+//
+// Snapshot subs under RLock then release before sending so a slow
+// subscriber cannot block other emit cycles or a concurrent Subscribe.
+// Per-channel cap=1 + select-default keeps any single subscriber from
+// blocking the fan-out loop — duplicates collapse into "one event
+// pending".
 func (c *Cache) emitRebuilt() {
 	if c.closed.Load() {
 		return
 	}
+	c.subsMu.RLock()
+	subs := c.rebuiltSubs
+	c.subsMu.RUnlock()
 	defer func() { _ = recover() }()
-	select {
-	case c.rebuiltCh <- event.GenericEvent{}:
-	default:
+	for _, ch := range subs {
+		select {
+		case ch <- event.GenericEvent{}:
+		default:
+		}
 	}
 }
 
@@ -245,39 +268,68 @@ func (c *Cache) Channel() <-chan event.GenericEvent {
 	return c.ch
 }
 
-// Rebuilt returns the read-only event channel that fires every time
-// Rebuild transitions the cached snapshot into Ready=true. Dependent
-// reconcilers (guardrail, model, mcpserver, a2aagent, team, modelalias)
-// wire this through ConnectionRebuiltSource in their SetupWithManager
-// so a re-enqueue happens as soon as the cache is populated — closing
-// the boot-time race the connectionReadyTransition predicate cannot
-// catch (a Ready=True→Ready=True status write is not a transition).
+// Subscribe registers a fresh per-subscriber cap=1 event channel and
+// returns its read-only end. Every Rebuild that transitions the
+// snapshot to Ready=true fans-out exactly one GenericEvent to EVERY
+// channel ever returned by Subscribe.
 //
-// Read-only by direction; all sends originate inside Cache.Rebuild.
-func (c *Cache) Rebuilt() <-chan event.GenericEvent {
-	return c.rebuiltCh
+// Dependent reconcilers (guardrail, model, mcpserver, a2aagent, team,
+// modelalias) call Subscribe once at SetupWithManager time and wire the
+// resulting channel through ConnectionRebuiltSource so a re-enqueue
+// happens as soon as the cache is populated — closing the boot-time
+// race the connectionReadyTransition predicate cannot catch (a
+// Ready=True→Ready=True status write is not a transition).
+//
+// Why per-subscriber and not one shared channel: Go channel semantics
+// deliver each send to EXACTLY ONE receiver. With N reconcilers each
+// running a goroutine doing `<-sharedCh`, only 1-in-N would receive
+// any given Ready emit (the runtime scheduler picks the winner
+// non-deterministically) and N-1 reconcilers would stay stuck — the
+// exact bug PR #45 was meant to fix. This is CR-01 in
+// .planning/reviews/PR-45-REVIEW.md. The per-subscriber slice +
+// per-channel fan-out is the same pattern BootSweeper uses
+// (internal/controller/bootsweep.go:43-75).
+//
+// Subscribe MUST be called before mgr.Start (no add-after-start
+// support); registration order is irrelevant. The returned channel is
+// closed by Cache.Start during graceful shutdown, so source.Channel
+// consumers observe EOF.
+func (c *Cache) Subscribe() <-chan event.GenericEvent {
+	ch := make(chan event.GenericEvent, 1)
+	c.subsMu.Lock()
+	c.rebuiltSubs = append(c.rebuiltSubs, ch)
+	c.subsMu.Unlock()
+	return ch
 }
 
 // Start implements manager.Runnable so the cache participates in the
-// manager's graceful-shutdown lifecycle (D-08 / D-66).// cmd/main.go calls mgr.Add(cache) before mgr.Start; Task 3's
+// manager's graceful-shutdown lifecycle (D-08 / D-66).
+//
+// cmd/main.go calls mgr.Add(cache) before mgr.Start; Task 3's
 // suite_test.go extension calls the same.
 //
 // Behavior: block until ctx is cancelled (manager shutdown), then close
-// the channel so any source.Channel consumer sees the close as its exit
-// signal. Returns nil unconditionally — this Runnable has no failure
-// mode beyond cancellation.
+// every owned channel so any source.Channel consumer sees the close as
+// its exit signal. Returns nil unconditionally — this Runnable has no
+// failure mode beyond cancellation.
 //
-// Per CR-02, c.closed is set BEFORE close(c.ch) so InvalidateOn401 can
-// short-circuit instead of attempting a send on the now-closed channel.
-// The ordering is load-bearing: a concurrent InvalidateOn401 caller that
-// observes closed==true via the entry-guard will return without touching
-// the channel; one that races past the load (TOCTOU) is caught by the
-// `defer recover` defense-in-depth inside InvalidateOn401.
+// Per CR-02, c.closed is set BEFORE the channel closes so
+// InvalidateOn401 / emitRebuilt can short-circuit instead of attempting
+// a send on the now-closed channel. The ordering is load-bearing: a
+// concurrent caller that observes closed==true via the entry-guard
+// returns without touching the channel; one that races past the load
+// (TOCTOU) is caught by the `defer recover` defense-in-depth inside
+// the send paths.
 func (c *Cache) Start(ctx context.Context) error {
 	<-ctx.Done()
 	c.closed.Store(true)
 	close(c.ch)
-	close(c.rebuiltCh)
+	c.subsMu.Lock()
+	for _, ch := range c.rebuiltSubs {
+		close(ch)
+	}
+	c.rebuiltSubs = nil
+	c.subsMu.Unlock()
 	return nil
 }
 

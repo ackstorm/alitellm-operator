@@ -321,6 +321,16 @@ func (r *ModelAliasReconciler) mapToSingleton(_ context.Context, _ client.Object
 	return []reconcile.Request{{NamespacedName: types.NamespacedName{Namespace: r.Namespace, Name: ModelAliasSingletonKey}}}
 }
 
-func (r *ModelAliasReconciler) connectionToSingleton(_ context.Context, _ client.Object) []reconcile.Request {
+func (r *ModelAliasReconciler) connectionToSingleton(ctx context.Context, obj client.Object) []reconcile.Request {
+	// IN-03: route through fanInNamespace so all six connection fan-in
+	// mappers share the same trigger-namespace contract — informer path
+	// uses conn.Namespace, raw-source path falls back to r.Namespace.
+	// The singleton key is always emitted in the operator namespace, so
+	// we use ns purely as the misconfiguration gate.
+	ns := fanInNamespace(obj, r.Namespace)
+	if ns == "" {
+		logEmptyFanInNamespace(ctx, "LiteLLMModelAlias")
+		return nil
+	}
 	return []reconcile.Request{{NamespacedName: types.NamespacedName{Namespace: r.Namespace, Name: ModelAliasSingletonKey}}}
 }
