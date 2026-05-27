@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 
 	"github.com/ackstorm/alitellm-operator/internal/litellm"
 )
@@ -145,64 +146,69 @@ func TestCacheSatisfiesInterface(t *testing.T) {
 	var _ ConnectionCache = (*Cache)(nil)
 }
 
-// TestRebuiltEmitsOnInitialReady — issue #44 close.
-// First Rebuild with Ready=true emits exactly ONE event on Rebuilt().
-func TestRebuiltEmitsOnInitialReady(t *testing.T) {
+// TestSubscribeEmitsOnInitialReady — issue #44 close (PR #45 follow-up).
+// First Rebuild with Ready=true emits exactly ONE event on a Subscribe()
+// channel.
+func TestSubscribeEmitsOnInitialReady(t *testing.T) {
 	c := NewCache(logr.Discard())
+	sub := c.Subscribe()
 	c.Rebuild(ConnectionSnapshot{Ready: true, Reason: "Synced"})
 	select {
-	case <-c.Rebuilt():
+	case <-sub:
 	case <-time.After(1 * time.Second):
-		t.Fatal("expected event on Rebuilt() after initial Ready=true Rebuild")
+		t.Fatal("expected event on Subscribe() channel after initial Ready=true Rebuild")
 	}
 	// No spurious second event on Ready=true→Ready=true.
 	c.Rebuild(ConnectionSnapshot{Ready: true, Reason: "Synced"})
 	select {
-	case <-c.Rebuilt():
-		t.Error("got a duplicate Rebuilt event on Ready=true→Ready=true; transition gate broken")
+	case <-sub:
+		t.Error("got a duplicate event on Ready=true→Ready=true; transition gate broken")
 	case <-time.After(100 * time.Millisecond):
 	}
 }
 
-// TestRebuiltSilentOnNotReady — issue #44 close.
-// Rebuild with Ready=false MUST NOT emit on Rebuilt(); subsequent Ready=true
-// transitions MUST emit.
-func TestRebuiltSilentOnNotReady(t *testing.T) {
+// TestSubscribeSilentOnNotReady — issue #44 close (PR #45 follow-up).
+// Rebuild with Ready=false MUST NOT emit; subsequent Ready=true transitions
+// MUST emit.
+func TestSubscribeSilentOnNotReady(t *testing.T) {
 	c := NewCache(logr.Discard())
+	sub := c.Subscribe()
 	c.Rebuild(ConnectionSnapshot{Ready: false, Reason: "Connecting"})
 	select {
-	case <-c.Rebuilt():
-		t.Fatal("got Rebuilt event on Ready=false Rebuild; want silent")
+	case <-sub:
+		t.Fatal("got event on Ready=false Rebuild; want silent")
 	case <-time.After(100 * time.Millisecond):
 	}
 	c.Rebuild(ConnectionSnapshot{Ready: true, Reason: "Synced"})
 	select {
-	case <-c.Rebuilt():
+	case <-sub:
 	case <-time.After(1 * time.Second):
-		t.Fatal("expected Rebuilt event on false→true transition")
+		t.Fatal("expected event on false→true transition")
 	}
 }
 
-// TestRebuiltReFiresAfterReadyFlap — issue #44 close.
+// TestSubscribeReFiresAfterReadyFlap — issue #44 close (PR #45 follow-up).
 // Ready=true → Ready=false → Ready=true MUST emit on both Ready=true events.
-func TestRebuiltReFiresAfterReadyFlap(t *testing.T) {
+func TestSubscribeReFiresAfterReadyFlap(t *testing.T) {
 	c := NewCache(logr.Discard())
+	sub := c.Subscribe()
 	c.Rebuild(ConnectionSnapshot{Ready: true})
-	<-c.Rebuilt() // drain initial
+	<-sub // drain initial
 	c.Rebuild(ConnectionSnapshot{Ready: false, Reason: "Unreachable"})
 	c.Rebuild(ConnectionSnapshot{Ready: true})
 	select {
-	case <-c.Rebuilt():
+	case <-sub:
 	case <-time.After(1 * time.Second):
-		t.Fatal("expected Rebuilt event on second false→true transition after flap")
+		t.Fatal("expected event on second false→true transition after flap")
 	}
 }
 
-// TestRebuiltClosedOnShutdown — issue #44 close.
-// Cache.Start exit closes the Rebuilt() channel so source.Channel consumers
-// see EOF.
-func TestRebuiltClosedOnShutdown(t *testing.T) {
+// TestSubscribeClosedOnShutdown — issue #44 close (PR #45 follow-up).
+// Cache.Start exit closes every Subscribe() channel so source.Channel
+// consumers see EOF.
+func TestSubscribeClosedOnShutdown(t *testing.T) {
 	c := NewCache(logr.Discard())
+	sub := c.Subscribe()
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- c.Start(ctx) }()
@@ -213,20 +219,22 @@ func TestRebuiltClosedOnShutdown(t *testing.T) {
 		t.Fatal("Start did not return after cancel")
 	}
 	select {
-	case _, ok := <-c.Rebuilt():
+	case _, ok := <-sub:
 		if ok {
-			t.Error("Rebuilt() yielded a value after shutdown; want closed")
+			t.Error("subscriber channel yielded a value after shutdown; want closed")
 		}
 	case <-time.After(500 * time.Millisecond):
-		t.Error("Rebuilt() did not return closed-channel read after shutdown")
+		t.Error("subscriber channel did not return closed-channel read after shutdown")
 	}
 }
 
-// TestRebuiltAfterShutdownNoPanic — issue #44 + CR-02.
-// Calling Rebuild after Start has closed the channel must not panic
-// (the emit path's closed-flag check + defer-recover keep operator alive).
-func TestRebuiltAfterShutdownNoPanic(t *testing.T) {
+// TestSubscribeAfterShutdownNoPanic — issue #44 + CR-02 (PR #45 follow-up).
+// Calling Rebuild after Start has closed every subscriber channel must not
+// panic (the emit path's closed-flag check + defer-recover keep operator
+// alive).
+func TestSubscribeAfterShutdownNoPanic(t *testing.T) {
 	c := NewCache(logr.Discard())
+	_ = c.Subscribe()
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { _ = c.Start(ctx); close(done) }()
@@ -234,6 +242,70 @@ func TestRebuiltAfterShutdownNoPanic(t *testing.T) {
 	<-done
 	// Should not panic.
 	c.Rebuild(ConnectionSnapshot{Ready: true})
+}
+
+// TestSubscribeFanOutToAllSubscribers — CR-01 (PR #45 follow-up).
+//
+// EVERY subscriber receives EVERY false→true Ready transition emit.
+//
+// Before this fix the cache exposed a single shared Rebuilt() channel
+// and Go's exactly-one-receiver semantics turned the fan-out into a
+// 1-in-N lottery per emit: N-1 reconcilers stayed stuck after the cold-
+// start Ready transition the #44 fix was meant to handle. The
+// per-subscriber slice + per-channel non-blocking send (Cache.Subscribe
+// / emitRebuilt) is the correct fan-out — same pattern BootSweeper
+// uses for its per-kind channels. This test would have caught the
+// regression in PR #45 before merge.
+//
+// 6 subscribers matches production wiring (Model, MCPServer, A2AAgent,
+// Team, GuardRail, ModelAlias) but the property under test is "every
+// subscriber receives every emit", not the count itself.
+func TestSubscribeFanOutToAllSubscribers(t *testing.T) {
+	c := NewCache(logr.Discard())
+	const n = 6
+	subs := make([]<-chan event.GenericEvent, n)
+	for i := range subs {
+		subs[i] = c.Subscribe()
+	}
+	c.Rebuild(ConnectionSnapshot{Ready: true})
+	for i, sub := range subs {
+		select {
+		case <-sub:
+		case <-time.After(1 * time.Second):
+			t.Fatalf("subscriber %d did not receive event; fan-out broken", i)
+		}
+	}
+}
+
+// TestSubscribeFanOutAcrossFlap — CR-01 (PR #45 follow-up).
+//
+// On a Ready=true → Ready=false → Ready=true cycle every subscriber MUST
+// receive BOTH Ready=true emits (initial + post-flap recovery). Stress
+// case for the per-subscriber fan-out across multiple transitions.
+func TestSubscribeFanOutAcrossFlap(t *testing.T) {
+	c := NewCache(logr.Discard())
+	const n = 6
+	subs := make([]<-chan event.GenericEvent, n)
+	for i := range subs {
+		subs[i] = c.Subscribe()
+	}
+	c.Rebuild(ConnectionSnapshot{Ready: true})
+	for i, sub := range subs {
+		select {
+		case <-sub:
+		case <-time.After(1 * time.Second):
+			t.Fatalf("subscriber %d missed initial emit", i)
+		}
+	}
+	c.Rebuild(ConnectionSnapshot{Ready: false, Reason: "Unreachable"})
+	c.Rebuild(ConnectionSnapshot{Ready: true})
+	for i, sub := range subs {
+		select {
+		case <-sub:
+		case <-time.After(1 * time.Second):
+			t.Fatalf("subscriber %d missed post-flap emit", i)
+		}
+	}
 }
 
 // TestCache_InvalidateOn401_AfterShutdown_NoPanic — CR-02

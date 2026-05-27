@@ -2565,12 +2565,18 @@ func TestModel_DuplicateSecretsAs_Rejected(t *testing.T) {
 		t.Errorf("SEC-03: want message containing 'duplicate' or 'SEC-03', got %q", cond.Message)
 	}
 
-	// Critical: uniqueness check fires BEFORE Step 4 secret resolution, so NO LiteLLM mutation.
-	if mockServer.Mutations() != 0 {
-		t.Errorf("SEC-03: want mockServer.Mutations()==0 (uniqueness check before LiteLLM call), got %d",
-			mockServer.Mutations())
+	// Critical: uniqueness check fires BEFORE Step 4 secret resolution, so NO
+	// LiteLLM mutation for THIS model. Use the per-model counter so unrelated
+	// mutations from other reconcilers (e.g. the implicit Team/default CREATE
+	// fired by TeamDefaultRunnable when the Connection cache becomes Ready)
+	// can't false-positive this assertion. The total `mockServer.Mutations()`
+	// counter is shared across every reconciler in the envtest manager and
+	// is therefore unsafe to assert exact equality on inside isolated tests.
+	if got := mockServer.MutationsByModelName(modelName); got != 0 {
+		t.Errorf("SEC-03: want MutationsByModelName(%q)==0 (uniqueness check before LiteLLM call), got %d",
+			modelName, got)
 	}
 
-	t.Logf("TestModel_DuplicateSecretsAs_Rejected: Ready=False reason=%q message=%q mutations=%d",
-		cond.Reason, cond.Message, mockServer.Mutations())
+	t.Logf("TestModel_DuplicateSecretsAs_Rejected: Ready=False reason=%q message=%q mutations_for_model=%d total_mutations=%d",
+		cond.Reason, cond.Message, mockServer.MutationsByModelName(modelName), mockServer.Mutations())
 }

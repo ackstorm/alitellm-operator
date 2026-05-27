@@ -366,7 +366,7 @@ func setupAndRun(m *testing.M) int {
 		Recorder:          mgr.GetEventRecorderFor("model-controller"),
 		Namespace:         WatchNamespace,
 		Log:               logr.Discard(),
-		ConnectionRebuilt: connCache.Rebuilt(),
+		ConnectionRebuilt: connCache.Subscribe(),
 	}
 	if err := modelReconciler.SetupWithManager(mgr, modelSafetyRelistCh); err != nil {
 		fmt.Fprintf(os.Stderr, "SetupWithManager(Model): %v\n", err)
@@ -416,7 +416,7 @@ func setupAndRun(m *testing.M) int {
 		Recorder:          mgr.GetEventRecorderFor("mcpserver-controller"),
 		Namespace:         WatchNamespace,
 		Log:               logr.Discard(),
-		ConnectionRebuilt: connCache.Rebuilt(),
+		ConnectionRebuilt: connCache.Subscribe(),
 	}
 	if err := mcpServerReconciler.SetupWithManager(mgr); err != nil {
 		fmt.Fprintf(os.Stderr, "SetupWithManager(MCPServer): %v\n", err)
@@ -441,7 +441,7 @@ func setupAndRun(m *testing.M) int {
 		Recorder:          mgr.GetEventRecorderFor("a2aagent-controller"),
 		Namespace:         WatchNamespace,
 		Log:               logr.Discard(),
-		ConnectionRebuilt: connCache.Rebuilt(),
+		ConnectionRebuilt: connCache.Subscribe(),
 	}
 	if err := a2aAgentReconciler.SetupWithManager(mgr); err != nil {
 		fmt.Fprintf(os.Stderr, "SetupWithManager(A2AAgent): %v\n", err)
@@ -466,7 +466,7 @@ func setupAndRun(m *testing.M) int {
 		Recorder:          mgr.GetEventRecorderFor("team-controller"),
 		Namespace:         WatchNamespace,
 		Log:               logr.Discard(),
-		ConnectionRebuilt: connCache.Rebuilt(),
+		ConnectionRebuilt: connCache.Subscribe(),
 	}
 
 	// Phase 6: wire TeamDefaultRunnable with 100ms tick and
@@ -559,7 +559,7 @@ func setupAndRun(m *testing.M) int {
 		Recorder:          mgr.GetEventRecorderFor("guardrail-controller"),
 		Namespace:         WatchNamespace,
 		Log:               logr.Discard(),
-		ConnectionRebuilt: connCache.Rebuilt(),
+		ConnectionRebuilt: connCache.Subscribe(),
 	}
 	if err := guardrailReconciler.SetupWithManager(mgr, guardrailSafetyRelistCh); err != nil {
 		fmt.Fprintf(os.Stderr, "SetupWithManager(GuardRail): %v\n", err)
@@ -577,7 +577,7 @@ func setupAndRun(m *testing.M) int {
 		Recorder:          mgr.GetEventRecorderFor("modelalias-controller"),
 		Namespace:         WatchNamespace,
 		Log:               logr.Discard(),
-		ConnectionRebuilt: connCache.Rebuilt(),
+		ConnectionRebuilt: connCache.Subscribe(),
 	}
 	if err := modelAliasReconciler.SetupWithManager(mgr); err != nil {
 		fmt.Fprintf(os.Stderr, "SetupWithManager(ModelAlias): %v\n", err)

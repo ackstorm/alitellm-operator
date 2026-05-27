@@ -251,7 +251,7 @@ func main() {
 		Namespace:         watchNS,
 		Log:               ctrl.Log.WithName("controller").WithName("Model"),
 		BootEvents:        bootSweep.ModelEvents,
-		ConnectionRebuilt: connCache.Rebuilt(),
+		ConnectionRebuilt: connCache.Subscribe(),
 	}).SetupWithManager(mgr, safetyRelistCh); err != nil {
 		setupLog.Error(err, "unable to set up Model reconciler")
 		os.Exit(1)
@@ -318,7 +318,7 @@ func main() {
 		Namespace:         watchNS,
 		Log:               ctrl.Log.WithName("controller").WithName("MCPServer"),
 		BootEvents:        bootSweep.MCPServerEvents,
-		ConnectionRebuilt: connCache.Rebuilt(),
+		ConnectionRebuilt: connCache.Subscribe(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to set up MCPServer reconciler")
 		os.Exit(1)
@@ -350,7 +350,7 @@ func main() {
 		Namespace:         watchNS,
 		Log:               ctrl.Log.WithName("controller").WithName("A2AAgent"),
 		BootEvents:        bootSweep.A2AAgentEvents,
-		ConnectionRebuilt: connCache.Rebuilt(),
+		ConnectionRebuilt: connCache.Subscribe(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to set up A2AAgent reconciler")
 		os.Exit(1)
@@ -416,7 +416,7 @@ func main() {
 		Namespace:         watchNS,
 		Log:               ctrl.Log.WithName("controller").WithName("Team"),
 		BootEvents:        bootSweep.TeamEvents,
-		ConnectionRebuilt: connCache.Rebuilt(),
+		ConnectionRebuilt: connCache.Subscribe(),
 	}).SetupWithManager(mgr, teamDefaultRequeueCh); err != nil {
 		setupLog.Error(err, "unable to set up Team reconciler")
 		os.Exit(1)
@@ -504,7 +504,7 @@ func main() {
 		Namespace:         watchNS,
 		Log:               ctrl.Log.WithName("controller").WithName("GuardRail"),
 		BootEvents:        bootSweep.GuardRailEvents,
-		ConnectionRebuilt: connCache.Rebuilt(),
+		ConnectionRebuilt: connCache.Subscribe(),
 	}).SetupWithManager(mgr, guardrailSafetyRelistCh); err != nil {
 		setupLog.Error(err, "unable to set up GuardRail reconciler")
 		os.Exit(1)
@@ -524,7 +524,7 @@ func main() {
 		Recorder:          mgr.GetEventRecorderFor("modelalias-controller"),
 		Namespace:         watchNS,
 		Log:               ctrl.Log.WithName("controller").WithName("ModelAlias"),
-		ConnectionRebuilt: connCache.Rebuilt(),
+		ConnectionRebuilt: connCache.Subscribe(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to set up ModelAlias reconciler")
 		os.Exit(1)
