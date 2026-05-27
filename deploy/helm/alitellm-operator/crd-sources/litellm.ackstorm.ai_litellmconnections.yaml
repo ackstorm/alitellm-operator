@@ -78,7 +78,9 @@ spec:
                   trimmed of any trailing slash by litellm.NewClient at the wire
                   layer; users may include or omit the trailing slash without
                   observable effect.
+                maxLength: 2048
                 minLength: 1
+                pattern: ^https?://[^@\s?#]+(:[0-9]{1,5})?(/[^\s?#]*)?$
                 type: string
               masterKeySecretRef:
                 description: |-
@@ -297,6 +299,13 @@ spec:
         x-kubernetes-validations:
         - message: LiteLLMConnection name must be 'default' (singleton per spec §6.1)
           rule: self.metadata.name == 'default'
+        - message: spec.endpoint must use http:// or https:// scheme
+          rule: self.spec.endpoint.startsWith('http://') || self.spec.endpoint.startsWith('https://')
+        - message: spec.endpoint must not contain userinfo (user:pass@host); use spec.masterKeySecretRef
+            instead
+          rule: '!self.spec.endpoint.contains(''@'')'
+        - message: spec.endpoint must not contain whitespace
+          rule: '!self.spec.endpoint.matches(''\\s'')'
     served: true
     storage: true
     subresources:
