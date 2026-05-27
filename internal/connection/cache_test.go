@@ -145,6 +145,97 @@ func TestCacheSatisfiesInterface(t *testing.T) {
 	var _ ConnectionCache = (*Cache)(nil)
 }
 
+// TestRebuiltEmitsOnInitialReady — issue #44 close.
+// First Rebuild with Ready=true emits exactly ONE event on Rebuilt().
+func TestRebuiltEmitsOnInitialReady(t *testing.T) {
+	c := NewCache(logr.Discard())
+	c.Rebuild(ConnectionSnapshot{Ready: true, Reason: "Synced"})
+	select {
+	case <-c.Rebuilt():
+	case <-time.After(1 * time.Second):
+		t.Fatal("expected event on Rebuilt() after initial Ready=true Rebuild")
+	}
+	// No spurious second event on Ready=true→Ready=true.
+	c.Rebuild(ConnectionSnapshot{Ready: true, Reason: "Synced"})
+	select {
+	case <-c.Rebuilt():
+		t.Error("got a duplicate Rebuilt event on Ready=true→Ready=true; transition gate broken")
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+// TestRebuiltSilentOnNotReady — issue #44 close.
+// Rebuild with Ready=false MUST NOT emit on Rebuilt(); subsequent Ready=true
+// transitions MUST emit.
+func TestRebuiltSilentOnNotReady(t *testing.T) {
+	c := NewCache(logr.Discard())
+	c.Rebuild(ConnectionSnapshot{Ready: false, Reason: "Connecting"})
+	select {
+	case <-c.Rebuilt():
+		t.Fatal("got Rebuilt event on Ready=false Rebuild; want silent")
+	case <-time.After(100 * time.Millisecond):
+	}
+	c.Rebuild(ConnectionSnapshot{Ready: true, Reason: "Synced"})
+	select {
+	case <-c.Rebuilt():
+	case <-time.After(1 * time.Second):
+		t.Fatal("expected Rebuilt event on false→true transition")
+	}
+}
+
+// TestRebuiltReFiresAfterReadyFlap — issue #44 close.
+// Ready=true → Ready=false → Ready=true MUST emit on both Ready=true events.
+func TestRebuiltReFiresAfterReadyFlap(t *testing.T) {
+	c := NewCache(logr.Discard())
+	c.Rebuild(ConnectionSnapshot{Ready: true})
+	<-c.Rebuilt() // drain initial
+	c.Rebuild(ConnectionSnapshot{Ready: false, Reason: "Unreachable"})
+	c.Rebuild(ConnectionSnapshot{Ready: true})
+	select {
+	case <-c.Rebuilt():
+	case <-time.After(1 * time.Second):
+		t.Fatal("expected Rebuilt event on second false→true transition after flap")
+	}
+}
+
+// TestRebuiltClosedOnShutdown — issue #44 close.
+// Cache.Start exit closes the Rebuilt() channel so source.Channel consumers
+// see EOF.
+func TestRebuiltClosedOnShutdown(t *testing.T) {
+	c := NewCache(logr.Discard())
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- c.Start(ctx) }()
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Start did not return after cancel")
+	}
+	select {
+	case _, ok := <-c.Rebuilt():
+		if ok {
+			t.Error("Rebuilt() yielded a value after shutdown; want closed")
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Error("Rebuilt() did not return closed-channel read after shutdown")
+	}
+}
+
+// TestRebuiltAfterShutdownNoPanic — issue #44 + CR-02.
+// Calling Rebuild after Start has closed the channel must not panic
+// (the emit path's closed-flag check + defer-recover keep operator alive).
+func TestRebuiltAfterShutdownNoPanic(t *testing.T) {
+	c := NewCache(logr.Discard())
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { _ = c.Start(ctx); close(done) }()
+	cancel()
+	<-done
+	// Should not panic.
+	c.Rebuild(ConnectionSnapshot{Ready: true})
+}
+
 // TestCache_InvalidateOn401_AfterShutdown_NoPanic — CR-02
 // close.
 //

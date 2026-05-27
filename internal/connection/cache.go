@@ -51,6 +51,26 @@ type Cache struct {
 	// `select default` drops the duplicate).
 	ch chan event.GenericEvent
 
+	// rebuiltCh fires a single event on every Rebuild that transitions
+	// the cached snapshot into Ready=true (false→true OR initial). Closes
+	// the boot-time race where a dependent reconciler's Connection-watch
+	// CreateFunc enqueues a child CR BEFORE the connection reconciler's
+	// first probe has populated the snapshot — without this signal the
+	// child reconcile would read Snapshot()==zero, write
+	// Ready=False/LiteLLMUnavailable, and stay stuck until the next spec
+	// edit (the connectionReadyTransition predicate also stays silent
+	// because Ready=True→Ready=True is not a transition).
+	//
+	// cap=1 buffer + non-blocking select-default send: a slow consumer
+	// just drops the duplicate; the next genuine transition re-fires.
+	rebuiltCh chan event.GenericEvent
+
+	// lastReady tracks the most-recent snapshot's Ready value so Rebuild
+	// emits on rebuiltCh only when the snapshot transitions FROM
+	// not-Ready INTO Ready. Steady-state probe ticks (Ready→Ready,
+	// Connecting→Connecting) generate no churn on dependent reconcilers.
+	lastReady atomic.Bool
+
 	// log is the per-cache logger. Reserved for future diagnostic use; the
 	// hot paths (Snapshot / Rebuild / InvalidateOn401) intentionally do
 	// not log to avoid alloc + lock contention.
@@ -64,8 +84,9 @@ type Cache struct {
 // first reconcile to populate the cache.
 func NewCache(log logr.Logger) *Cache {
 	return &Cache{
-		ch:  make(chan event.GenericEvent, 1),
-		log: log,
+		ch:        make(chan event.GenericEvent, 1),
+		rebuiltCh: make(chan event.GenericEvent, 1),
+		log:       log,
 		// snapshot: zero-value atomic.Pointer — Load returns nil until
 		// the first Rebuild. Snapshot handles the nil case explicitly.
 	}
@@ -113,6 +134,35 @@ func (c *Cache) Rebuild(snap ConnectionSnapshot) {
 	c.snapshot.Store(&snap)
 	// D-10: reset the storm gate so the next 401 fast-path can fire.
 	c.invalidated.Store(false)
+
+	// Emit a rebuilt event on false→true (or initial) Ready transitions
+	// so dependent reconcilers can re-enqueue their CRs and close the
+	// boot-time race against the Connection-watch CreateFunc. Bounded:
+	// steady-state Ready→Ready probe ticks do NOT fire.
+	switch {
+	case snap.Ready:
+		if !c.lastReady.Swap(true) {
+			c.emitRebuilt()
+		}
+	default:
+		c.lastReady.Store(false)
+	}
+}
+
+// emitRebuilt performs a non-blocking send on the rebuiltCh, with
+// CR-02 shutdown defenses identical to InvalidateOn401's send path:
+// the closed-flag short-circuit handles the steady case, and the
+// `defer recover` catches the TOCTOU window where Start fires between
+// the check and the send.
+func (c *Cache) emitRebuilt() {
+	if c.closed.Load() {
+		return
+	}
+	defer func() { _ = recover() }()
+	select {
+	case c.rebuiltCh <- event.GenericEvent{}:
+	default:
+	}
 }
 
 // InvalidateOn401 is called by any Phase 3+ domain reconciler that
@@ -195,6 +245,19 @@ func (c *Cache) Channel() <-chan event.GenericEvent {
 	return c.ch
 }
 
+// Rebuilt returns the read-only event channel that fires every time
+// Rebuild transitions the cached snapshot into Ready=true. Dependent
+// reconcilers (guardrail, model, mcpserver, a2aagent, team, modelalias)
+// wire this through ConnectionRebuiltSource in their SetupWithManager
+// so a re-enqueue happens as soon as the cache is populated — closing
+// the boot-time race the connectionReadyTransition predicate cannot
+// catch (a Ready=True→Ready=True status write is not a transition).
+//
+// Read-only by direction; all sends originate inside Cache.Rebuild.
+func (c *Cache) Rebuilt() <-chan event.GenericEvent {
+	return c.rebuiltCh
+}
+
 // Start implements manager.Runnable so the cache participates in the
 // manager's graceful-shutdown lifecycle (D-08 / D-66).// cmd/main.go calls mgr.Add(cache) before mgr.Start; Task 3's
 // suite_test.go extension calls the same.
@@ -214,6 +277,7 @@ func (c *Cache) Start(ctx context.Context) error {
 	<-ctx.Done()
 	c.closed.Store(true)
 	close(c.ch)
+	close(c.rebuiltCh)
 	return nil
 }
 
