@@ -487,6 +487,31 @@ WHY IT FAILED PRE-v0.3.1: `mcpserver_controller.go` extracted only four
 typed fields and dropped everything else, even though the request struct
 already modeled the full set.
 
+### ❌ Expecting LiteLLM error detail in CR condition.Message
+```yaml
+status:
+  conditions:
+  - type: Ready
+    status: "False"
+    reason: LiteLLMRejected
+    message: 'LiteLLM rejected model create: 400 (code=400)'   # generic
+```
+✅ Opt in if your environment is non-secret-bearing:
+```bash
+kubectl set env -n litellm-system deploy/alitellm-operator \
+  LITELLM_OPERATOR_DANGEROUSLY_INCLUDE_REJECTED_BODY=true
+```
+Note: `LITELLM_OPERATOR_DANGEROUSLY_INCLUDE_REJECTED_BODY` (controls CR
+`status.conditions[].message` content) is distinct from
+`LITELLM_OPERATOR_DANGEROUSLY_LOG_BODIES` (controls transport-layer log
+redaction) — they govern different surfaces and must be flipped
+independently.
+WHY IT IS GENERIC BY DEFAULT: LiteLLM error envelopes can echo inbound
+payload fields (param echo, JSON-decode error citing a value). Operator
+cannot know in general which fields carry provider secrets, so the
+envelope body never lands in CR status. The actionable detail is in
+operator logs (transport-layer-redacted).
+
 ## Repository-specific patterns
 
 - **Reconciler shape**: each controller in `internal/controller/<kind>_controller.go`

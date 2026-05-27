@@ -85,6 +85,35 @@ func (e *RejectedError) Error() string {
 		e.Status, e.Method, e.Path, e.Code)
 }
 
+// IsNotFound returns true when err represents a "not found" response
+// from LiteLLM, regardless of which surface produced it:
+//
+//   - errors.Is(err, ErrNotFound): list-style helpers (GetModelInfo,
+//     GetMCPServer, GetAgent, ...) returned an empty Data array.
+//   - errors.As(err, *RejectedError) with Status == 404: a non-DELETE
+//     request received an HTTP 404 from LiteLLM (e.g., name-resolve
+//     fallback on the deletion path of a Model CR with empty
+//     status.lastRendered.modelID).
+//
+// Use IsNotFound on the deletion path of controllers that need to
+// distinguish "already absent" from "other 4xx" (the latter should
+// surface as LiteLLMRejected and NOT remove the finalizer).
+//
+// Post-2026-05-26 review finding F4.
+func IsNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, ErrNotFound) {
+		return true
+	}
+	var rej *RejectedError
+	if errors.As(err, &rej) && rej.Status == 404 {
+		return true
+	}
+	return false
+}
+
 // processLitellmError parses the {error: {message, type, param, code}}
 // envelope LiteLLM returns on every non-2xx response. On unmarshal
 // failure it returns the raw body capped at 512 bytes and kind="unparsed"

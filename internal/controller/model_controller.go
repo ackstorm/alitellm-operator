@@ -200,7 +200,19 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 				} else {
 					// D-04 stale-status fallback: resolve by name.
 					resolved, err := snap.Client.GetModelInfoByName(ctx, model.Name)
-					if err != nil {
+					switch {
+					case err == nil && resolved == nil:
+						// Post-2026-05-26 review F4: name-resolve returned 404
+						// (or empty Data[]) — entry already absent in LiteLLM.
+						// Treat as success on the deletion path, same as if the
+						// direct-ID path had hit a 404 on DELETE. Pre-fix, a
+						// raw 404 from GET /model/info propagated as
+						// *RejectedError and stranded the CR in Terminating
+						// with controller-runtime exponential backoff.
+						if err := onAckMissing("name-resolve returned not-found; entry already absent"); err != nil {
+							return ctrl.Result{}, err
+						}
+					case err != nil:
 						var auth401 *litellm.Auth401Error
 						if errors.As(err, &auth401) {
 							r.Cache.InvalidateOn401()
@@ -208,10 +220,11 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 							if err := onAckMissing("401 on GetModelInfoByName"); err != nil {
 								return ctrl.Result{}, err
 							}
-						} else {
-							return ctrl.Result{}, err
+							break
 						}
-					} else if resolved != nil {
+						return ctrl.Result{}, err
+					default:
+						// resolved != nil — issue the DELETE on the resolved modelID.
 						if err := snap.Client.DeleteModel(ctx, resolved.ModelInfo.ID); err != nil {
 							var auth401 *litellm.Auth401Error
 							if errors.As(err, &auth401) {
@@ -229,10 +242,6 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 							metrics.DeletionBlocked.Forget(modelKind, model.Namespace, model.Name)
 							logger.Info("finalizer removed; LiteLLM model deleted (via name-resolve)", "modelID", resolved.ModelInfo.ID)
 						}
-					} else {
-						// resolved == nil → entry already absent.
-						metrics.DeletionBlocked.Forget(modelKind, model.Namespace, model.Name)
-						logger.Info("finalizer removed; LiteLLM entry already absent", "name", model.Name)
 					}
 				}
 			} else {

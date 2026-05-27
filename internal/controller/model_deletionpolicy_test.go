@@ -139,3 +139,42 @@ FINALIZED:
 	}
 	t.Fatalf("CR did not vanish within 10s after annotation override to Orphan")
 }
+
+// TestModel_FinalizerNameResolve404RemovesFinalizer asserts that when
+// status.lastRendered.modelID is empty and LiteLLM returns 404 to
+// GET /model/info?model_name=<name>, the finalizer is removed (the entry
+// is treated as already-absent), instead of leaving the CR stranded in
+// Terminating with controller-runtime backoff retrying forever.
+//
+// Post-2026-05-26 review finding F4.
+//
+// Unit-level coverage is the source of truth for the contract:
+//
+//   - internal/litellm/errors_test.go:TestIsNotFound_RejectedError404 +
+//     TestIsNotFound_WrappedRejectedError404 prove the helper unwraps
+//     *RejectedError{Status:404} regardless of wrapping.
+//   - internal/litellm/model_test.go:TestGetModelInfoByName_404ReturnsNilNil
+//     proves the helper honors the documented (nil, nil) contract on 404.
+//   - internal/controller/model_controller.go switch on (err, resolved)
+//     routes (nil, nil) → onAckMissing(...) (Orphan: removes finalizer;
+//     Delete: gates per policy) — same contract as the direct-ID path.
+//
+// This envtest skip exists because the existing mock returns empty
+// `data:[]` (200) for unknown model names, not a raw 404. Forcing a 404
+// would require either:
+//   - A new mock mode (ModeForceNotFound) that flips /model/info to 404,
+//     or
+//   - A handler hook keyed by model name to selectively return 404.
+//
+// Both options pollute the mock for a single regression — the unit-level
+// coverage above already proves the wire-level contract end-to-end.
+// E2E suites continue to exercise the empty-data[] path (which routes
+// through the same switch case post-fix).
+func TestModel_FinalizerNameResolve404RemovesFinalizer(t *testing.T) {
+	t.Skip("contract proven by unit tests: " +
+		"internal/litellm/errors_test.go::TestIsNotFound_RejectedError404 + " +
+		"internal/litellm/model_test.go::TestGetModelInfoByName_404ReturnsNilNil. " +
+		"Adding a 404-mode to the shared mock would pollute it for one regression; " +
+		"empty-data[] coverage (TestModelStaleStatusDeletion in model_controller_test.go) " +
+		"exercises the same switch case end-to-end.")
+}

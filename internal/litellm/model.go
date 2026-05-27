@@ -5,6 +5,7 @@ package litellm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 )
@@ -97,24 +98,21 @@ func (c *Client) GetModelInfoByName(ctx context.Context, name string) (*ModelInf
 	path := "/model/info?model_name=" + url.QueryEscape(name)
 	raw, err := c.makeRequest(ctx, "GET", path, nil)
 	if err != nil {
-		// makeRequest returns *Auth401Error on 401 — propagated for errors.As
-		// classification at the caller. Network / 5xx are returned as-is for
-		// controller-runtime backoff. 404 from makeRequest means the path itself
-		// returned 404 — treat as not-found (nil, nil) below because we check
-		// the raw == nil case against the 4xx branch in makeRequest. However,
-		// makeRequest on 4xx (except 401 and 404-DELETE) returns a non-nil error,
-		// so we cannot distinguish 404 vs other 4xx from the error value alone.
-		// Per §7.7 the caller tolerates NOT-FOUND as (nil, nil); other 4xx are
-		// surfaced as errors. For simplicity, return the error intact — a 404
-		// on GET /model/info is not a DELETE context, so makeRequest returns
-		// fmt.Errorf("litellm: 404 on GET.") — the caller's error-classification
-		// fallback returns ctrl.Result{}, err which re-enqueues. This is acceptable
-		// — the deletion-path caller explicitly checks (nil, nil) for the "already
-		// absent" path; a hard 404 error is indistinguishable from "absent" in
-		// practice and we relax to nil below by checking the error message.
-		// NOTE: a cleaner solution is to handle 404 as success inside makeRequest
-		// for GET, but that changes the existing GetModelInfo contract. Instead,
-		// we treat any non-401 error conservatively: return the error.
+		// 401 — propagate the typed error for the §7.7 fast-path.
+		var auth401 *Auth401Error
+		if errors.As(err, &auth401) {
+			return nil, err
+		}
+		// 404 — entry absent. The deletion-path caller treats this as
+		// "already deleted in LiteLLM" and removes the finalizer
+		// without issuing DELETE. Post-2026-05-26 review F4: pre-fix,
+		// the function returned the *RejectedError unchanged, stranding
+		// finalizers on CRs whose status.lastRendered.modelID was empty.
+		if IsNotFound(err) {
+			return nil, nil
+		}
+		// Other 4xx + 5xx + network — propagate for the caller's
+		// classification (LiteLLMRejected vs controller-runtime backoff).
 		return nil, err
 	}
 	var list ModelListResponse

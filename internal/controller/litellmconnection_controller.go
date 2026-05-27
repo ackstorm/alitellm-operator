@@ -256,6 +256,22 @@ func (r *LiteLLMConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 				// Non-fatal: the terminal-reason write below will set the final Ready condition.
 				logStatusUpdateErr(logger, err, "reason", reasonConnecting)
 			}
+			// F2 (2026-05-26 review): mirror the Connecting status write
+			// into the cache. Pre-fix the status write was solo —
+			// dependents reading r.Cache.Snapshot during the gen-change
+			// probe window still observed the PREVIOUS Ready=true
+			// snapshot with the PREVIOUS *litellm.Client and mutated the
+			// OLD LiteLLM instance after an endpoint or master-key edit.
+			// Rebuilding here with Client=nil forces Snapshot consumers
+			// onto the Ready=false branch (every consumer checks
+			// snap.Ready first — see team_controller.go and the other
+			// Pipeline A reconcilers); the terminal Rebuild later in
+			// this reconcile then publishes the final outcome.
+			r.Cache.Rebuild(connection.ConnectionSnapshot{
+				Ready:      false,
+				Reason:     reasonConnecting,
+				Generation: conn.Generation,
+			})
 		}
 	}
 
