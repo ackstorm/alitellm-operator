@@ -5,6 +5,7 @@ package controller
 import (
 	"context"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,7 +13,11 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 	"github.com/ackstorm/alitellm-operator/internal/connection"
@@ -432,5 +437,175 @@ func TestConnectionReasonAll_IncludesInvalidEndpoint(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("connectionReasonAll missing %q; metrics one-hot gauge will not reset it", reasonInvalidEndpoint)
+	}
+}
+
+// recordingConnectionCache is a thin connection.ConnectionCache fake
+// that records every Rebuild invocation in order. Used by the F2
+// regression test (TestConnection_GenChangeRebuildsCacheBeforeProbe)
+// to assert that on a generation-change reconcile the cache is
+// Rebuilt to Ready=false reason=Connecting BEFORE the terminal Rebuild
+// (SecretNotFound / BadMasterKey / Unreachable) — closing the gap
+// where dependents observed the previous Ready=true snapshot with the
+// stale client during the probe window.
+//
+// Kept local to this test file (not a package-level helper) per the
+// scope of the F2 fix; other tests use FakeConnectionCache (Snapshot
+// only) or the real *connection.Cache.
+type recordingConnectionCache struct {
+	mu       sync.Mutex
+	rebuilds []connection.ConnectionSnapshot
+}
+
+func (r *recordingConnectionCache) Snapshot() connection.ConnectionSnapshot {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.rebuilds) == 0 {
+		return connection.ConnectionSnapshot{}
+	}
+	return r.rebuilds[len(r.rebuilds)-1]
+}
+
+func (r *recordingConnectionCache) InvalidateOn401() {}
+
+func (r *recordingConnectionCache) Rebuild(snap connection.ConnectionSnapshot) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.rebuilds = append(r.rebuilds, snap)
+}
+
+func (r *recordingConnectionCache) calls() []connection.ConnectionSnapshot {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]connection.ConnectionSnapshot, len(r.rebuilds))
+	copy(out, r.rebuilds)
+	return out
+}
+
+// Compile-time assertion: *recordingConnectionCache satisfies the
+// connection.ConnectionCache interface.
+var _ connection.ConnectionCache = (*recordingConnectionCache)(nil)
+
+// TestConnection_GenChangeRebuildsCacheBeforeProbe asserts that when a
+// LiteLLMConnection's generation advances (e.g., endpoint or
+// masterKeySecretRef rotation), the cache snapshot is rebuilt to
+// Ready=false reason=Connecting BEFORE the Secret fetch + probe runs,
+// so dependent reconcilers reading r.Cache.Snapshot() during the probe
+// window do NOT observe the previous Ready=true snapshot with the OLD
+// *litellm.Client.
+//
+// Without the fix, only ONE Rebuild is recorded (the terminal one —
+// here SecretNotFound), and the cache stays at its pre-existing
+// Ready=true Synced snapshot during the probe window. With the fix,
+// TWO Rebuilds are recorded in order: first {Ready=false,
+// Reason=Connecting, Client=nil}, then {Ready=false,
+// Reason=SecretNotFound, Client=nil}.
+//
+// The Secret-not-found path is chosen deliberately because it
+// short-circuits before any HTTP probe (no mock server required) yet
+// still exercises the Step 3 generation-change guard. The fix is
+// orthogonal to which terminal reason follows.
+//
+// Post-2026-05-26 review finding F2 (cache invalidation gap).
+func TestConnection_GenChangeRebuildsCacheBeforeProbe(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := litellmv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(litellm): %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(corev1): %v", err)
+	}
+
+	const ns = "default"
+
+	// Build a Connection CR at Generation=2 with status reflecting the
+	// PREVIOUS generation's terminal Synced outcome (ObservedGeneration=1,
+	// Ready=True, Reason=Synced). Finalizer is pre-attached so the
+	// reconciler skips the Step 2b finalizer-add early return and falls
+	// through to the Step 3 Connecting-on-entry block.
+	prevReady := metav1.Condition{
+		Type:               "Ready",
+		Status:             metav1.ConditionTrue,
+		Reason:             reasonSynced,
+		Message:            "probe ok",
+		ObservedGeneration: 1,
+		LastTransitionTime: metav1.Now(),
+	}
+	cr := &litellmv1alpha1.LiteLLMConnection{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "default",
+			Namespace:  ns,
+			Generation: 2,
+			Finalizers: []string{connectionFinalizer},
+		},
+		Spec: litellmv1alpha1.LiteLLMConnectionSpec{
+			Endpoint: "http://example.invalid",
+			MasterKeySecretRef: litellmv1alpha1.SecretKeyRef{
+				Name: "missing-master-key", // intentionally absent — drives SecretNotFound
+				Key:  "masterKey",
+			},
+		},
+		Status: litellmv1alpha1.LiteLLMConnectionStatus{
+			ObservedGeneration: 1,
+			Conditions:         []metav1.Condition{prevReady},
+		},
+	}
+
+	cli := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(cr).
+		WithStatusSubresource(&litellmv1alpha1.LiteLLMConnection{}).
+		Build()
+
+	cache := &recordingConnectionCache{}
+
+	r := &LiteLLMConnectionReconciler{
+		Client:    cli,
+		Scheme:    scheme,
+		Cache:     cache,
+		Namespace: ns,
+		Log:       ctrl.Log.WithName("test"),
+	}
+
+	// Reconcile drives Step 3 (gen-change Connecting write) → Step 4
+	// (Secret GET → NotFound → terminal SecretNotFound write + Rebuild).
+	if _, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "default", Namespace: ns},
+	}); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	calls := cache.calls()
+	if len(calls) < 2 {
+		t.Fatalf(
+			"F2 FAIL: expected at least 2 Rebuild calls (Connecting then SecretNotFound), got %d: %+v\n"+
+				"pre-fix bug: only the terminal Rebuild fires, leaving the previous Ready=true snapshot with the stale client visible to dependents during the probe window",
+			len(calls), calls,
+		)
+	}
+
+	// First Rebuild must be the Connecting-on-entry invalidation:
+	// Ready=false, Reason=Connecting, Client=nil, Generation=2.
+	first := calls[0]
+	if first.Ready {
+		t.Errorf("first Rebuild Ready=true, want false (cache must invalidate before probe)")
+	}
+	if first.Reason != reasonConnecting {
+		t.Errorf("first Rebuild Reason=%q, want %q", first.Reason, reasonConnecting)
+	}
+	if first.Client != nil {
+		t.Errorf("first Rebuild Client=%p, want nil (stale client must not leak through probe window)", first.Client)
+	}
+	if first.Generation != 2 {
+		t.Errorf("first Rebuild Generation=%d, want 2 (new spec generation)", first.Generation)
+	}
+
+	// Terminal Rebuild must be SecretNotFound (Ready=false, Reason=SecretNotFound).
+	last := calls[len(calls)-1]
+	if last.Reason != reasonSecretNotFound {
+		t.Errorf("terminal Rebuild Reason=%q, want %q", last.Reason, reasonSecretNotFound)
+	}
+	if last.Ready {
+		t.Errorf("terminal Rebuild Ready=true, want false on SecretNotFound")
 	}
 }
