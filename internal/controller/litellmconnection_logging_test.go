@@ -47,7 +47,7 @@ func TestComputeLoggingHealthy_NoCallbacksReported(t *testing.T) {
 	if s != metav1.ConditionUnknown {
 		t.Fatalf("empty status: want Unknown, got %v", s)
 	}
-	if r != "NoCallbacksReported" {
+	if r != reasonNoCallbacksReported {
 		t.Fatalf("empty status: want reason NoCallbacksReported, got %q", r)
 	}
 	if m == "" || m == "logging callbacks: " {

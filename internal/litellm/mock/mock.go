@@ -154,6 +154,12 @@ type MockServer struct {
 	// without holding a mutex on every request.
 	mode atomic.Value // string
 
+	// loggingCallbacksNull, when true, makes POST /key/health return
+	// {"key":"healthy","logging_callbacks":null}, mirroring a real
+	// LiteLLM proxy with no callbacks configured. Used by UAT LOW-01
+	// regression tests. Default false (full callback list returned).
+	loggingCallbacksNull atomic.Bool
+
 	// recorder captures every request for tests that need to assert on
 	// path / method / body. Append-only; consumers should hold the mutex
 	// while iterating.
@@ -684,6 +690,15 @@ func (m *MockServer) GetModelID(name string) string {
 	return ""
 }
 
+// SetLoggingCallbacksNull controls whether POST /key/health returns
+// logging_callbacks: null (true) or the default healthy-callback list
+// (false). Used by UAT LOW-01 regression tests to assert the operator
+// surfaces a NoCallbacksReported reason instead of an empty Unknown.
+// Safe to flip concurrently with handler reads.
+func (m *MockServer) SetLoggingCallbacksNull(v bool) {
+	m.loggingCallbacksNull.Store(v)
+}
+
 // SetMode switches the mock's response mode. Valid values are ModeHappy,
 // Mode401, ModeTransient5xx, ModeSlow, Mode422, ModeNotFoundListTeams,
 // ModeNotFoundDeleteTeam, Mode401DeleteTeam. Unknown values fall back to
@@ -895,6 +910,11 @@ func (m *MockServer) statefulBody(r *http.Request) []byte {
 	// logging-callback health, which the connection reconciler surfaces
 	// as the secondary LoggingHealthy condition.
 	if method == http.MethodPost && path == "/key/health" {
+		if m.loggingCallbacksNull.Load() {
+			// UAT LOW-01: mirror real LiteLLM proxies that return
+			// logging_callbacks: null when no callbacks are configured.
+			return []byte(`{"key":"healthy","logging_callbacks":null}`)
+		}
 		return []byte(`{"key":"healthy","logging_callbacks":{"callbacks":[],"status":"healthy","details":"No logger exceptions triggered, system is healthy."}}`)
 	}
 
