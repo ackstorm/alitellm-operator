@@ -65,6 +65,13 @@ type RejectedError struct {
 	// Code is the envelope's error.code field when present; otherwise
 	// the stringified HTTP status.
 	Code string
+	// Type is the envelope's error.type field when present (e.g.
+	// "auth_error", "validation_error", "not_found_error"). Empty
+	// when the body was unparseable. LiteLLM treats this field as a
+	// closed enum, NOT a free-form echo of inbound payload, so it is
+	// safe to surface in CR condition.Message without enabling
+	// LITELLM_OPERATOR_DANGEROUSLY_INCLUDE_REJECTED_BODY (UAT LOW-02).
+	Type string
 	// Message is the envelope's error.message (already truncated to
 	// 512 bytes by processLitellmError on parse). Empty when the body
 	// was unparseable, in which case Error() falls back to the
