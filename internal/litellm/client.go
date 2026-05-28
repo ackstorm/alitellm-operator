@@ -221,6 +221,15 @@ func (c *Client) makeRequest(ctx context.Context, method, path string, body any)
 		if code == "" {
 			code = fmt.Sprintf("%d", resp.StatusCode)
 		}
+		// v0.7.3: kindUnparsed is processLitellmError's internal sentinel
+		// for "envelope did not deserialize" — it is NOT a LiteLLM
+		// closed-enum value (auth_error, validation_error, …). Drop it
+		// here so RejectedError.Type honors its documented contract and
+		// CR status.message never reads `type=unparsed` (operator state
+		// masquerading as LiteLLM state).
+		if kind == kindUnparsed {
+			kind = ""
+		}
 		return nil, &RejectedError{
 			Method:  method,
 			Path:    path,
