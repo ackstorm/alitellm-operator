@@ -74,21 +74,18 @@ const pollReadyConditionDeadline = 5 * time.Second
 // pollGuardrailCondition polls the Ready condition for up to
 // pollReadyConditionDeadline. Returns the final re-Get'd CR; callers
 // assert the condition reason on the returned object.
+//
+// Thin wrapper over pollCR. The ctx argument is preserved for caller
+// signature stability but is not threaded into the Get (pollCR uses
+// context.Background; the deadline bounds the loop).
 func pollGuardrailCondition(t *testing.T, ctx context.Context, name, wantReason string) *litellmv1alpha1.LiteLLMGuardRail {
 	t.Helper()
-	deadline := time.Now().Add(pollReadyConditionDeadline)
-	key := client.ObjectKey{Name: name, Namespace: WatchNamespace}
-	var out litellmv1alpha1.LiteLLMGuardRail
-	for time.Now().Before(deadline) {
-		if err := k8sClient.Get(ctx, key, &out); err == nil {
-			c := apimeta.FindStatusCondition(out.Status.Conditions, "Ready")
-			if c != nil && c.Reason == wantReason {
-				return &out
-			}
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	return &out
+	_ = ctx
+	return pollCR[litellmv1alpha1.LiteLLMGuardRail](t, name,
+		func(gr *litellmv1alpha1.LiteLLMGuardRail) bool {
+			c := apimeta.FindStatusCondition(gr.Status.Conditions, "Ready")
+			return c != nil && c.Reason == wantReason
+		}, pollReadyConditionDeadline)
 }
 
 // pollGuardrailGuardrailID polls until status.lastRendered.guardrailID
