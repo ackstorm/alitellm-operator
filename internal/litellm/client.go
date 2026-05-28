@@ -217,7 +217,7 @@ func (c *Client) makeRequest(ctx context.Context, method, path string, body any)
 		// actionable detail in condition.Message instead of the generic
 		// "litellm: 400 on <path>" string. Error() shape preserved for
 		// existing prefix matchers (is4xxNon401Status).
-		_, msg, code := processLitellmError(respBody)
+		kind, msg, code := processLitellmError(respBody)
 		if code == "" {
 			code = fmt.Sprintf("%d", resp.StatusCode)
 		}
@@ -226,6 +226,7 @@ func (c *Client) makeRequest(ctx context.Context, method, path string, body any)
 			Path:    path,
 			Status:  resp.StatusCode,
 			Code:    code,
+			Type:    kind,
 			Message: msg,
 		}
 	default:

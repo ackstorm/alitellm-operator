@@ -51,3 +51,36 @@ func TestIsNotFound_NilAndOther(t *testing.T) {
 		t.Fatalf("IsNotFound(non-litellm error) = true, want false")
 	}
 }
+
+// TestRejectedError_TypeFieldPropagates — LOW-02. The Type field on
+// RejectedError must round-trip the envelope's error.type so the
+// controller layer can surface it in condition.Message without
+// re-parsing the body or enabling the dangerously-include-body opt-in.
+func TestRejectedError_TypeFieldPropagates(t *testing.T) {
+	body := []byte(`{"error":{"message":"bad","type":"validation_error","param":"model","code":"422"}}`)
+	kind, msg, code := processLitellmError(body)
+	if kind != "validation_error" {
+		t.Fatalf("kind: want validation_error, got %q", kind)
+	}
+	if msg != "bad" || code != "422" {
+		t.Fatalf("unexpected msg/code: %q/%q", msg, code)
+	}
+
+	rej := &RejectedError{
+		Method:  "POST",
+		Path:    "/model/new",
+		Status:  422,
+		Code:    code,
+		Type:    kind,
+		Message: msg,
+	}
+	if rej.Type != "validation_error" {
+		t.Fatalf("RejectedError.Type: want validation_error, got %q", rej.Type)
+	}
+	// Error() string MUST stay unchanged — existing prefix matchers
+	// (is4xxNon401Status) depend on the exact format.
+	wantErr := "litellm: 422 on POST /model/new (code=422)"
+	if got := rej.Error(); got != wantErr {
+		t.Fatalf("Error() shape regressed:\n  want: %q\n  got:  %q", got, wantErr)
+	}
+}
