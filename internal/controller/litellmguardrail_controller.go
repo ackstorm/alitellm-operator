@@ -417,12 +417,19 @@ func (r *GuardRailReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if existing != nil && existing.GuardrailDefinitionLocation == litellm.GuardrailDefinitionLocationConfig {
 		msg := fmt.Sprintf("guardrail_name %q is loaded from the LiteLLM config file (definition_location=config); operator cannot mutate config-loaded rows",
 			gr.Spec.GuardrailName)
+		// Combined writer: stage LastRendered first so writeStatus's
+		// retry loop persists the Ready condition AND the discovery
+		// detail in a single status Patch. Pre-fix this used a
+		// trailing Status().Update() second-write whose Patch raced
+		// with `pollGuardrailCondition` poll loops in
+		// TestGuardRail_ConflictsWithConfigGuardrail and produced an
+		// intermittent CI flake (`definitionLocation: got "" want
+		// config`). Mirrors the LiteLLMConnection combined-writer
+		// pattern (writeReadyAndLoggingHealthy).
+		gr.Status.LastRendered.DefinitionLocation = litellm.GuardrailDefinitionLocationConfig
 		if werr := r.writeStatus(ctx, &gr, metav1.ConditionFalse, reasonConflictsWithConfigGuardrail, msg); werr != nil {
 			logStatusUpdateErr(logger, werr, "reason", reasonConflictsWithConfigGuardrail)
 		}
-		// Persist the discovery details so the user sees what was found.
-		gr.Status.LastRendered.DefinitionLocation = litellm.GuardrailDefinitionLocationConfig
-		_ = r.Status().Update(ctx, &gr)
 		metrics.ReconcileTotal.WithLabelValues(guardrailKind, "success").Inc()
 		return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
 	}
