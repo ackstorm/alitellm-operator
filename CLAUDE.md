@@ -194,7 +194,7 @@ Targets that only call `kubectl`/`docker`/`helm`/`kind`/bash run on host
 | `make e2e-full`    | kind + Helm + Ginkgo, ~6m             | final gate before commit              |
 | `make security`    | gosec + govulncheck + fuzz-short, ≤6m | in-container; before push             |
 | `make pre-commit`  | lint-changed + unit                   | host-only; runs on every `git commit` once `make hooks` installed |
-| `make pre-push`    | full publication gate (secrets, filesystem, build hygiene, SPDX, lint + unit, ...) | host-only; before push |
+| `make pre-push`    | full publication gate (secrets, filesystem, build hygiene, SPDX, lint + unit, ...) | host-only; runs on every `git push` once `make hooks` installed — manual invocation is a dry-run / verification only |
 
 Umbrella targets:
 - `make test-all` = `unit` + `envtest-run`
@@ -255,8 +255,7 @@ make release VERSION=0.1.0
 # Bundle the release intent with a real change:
 # (edit, then commit the change yourself, then:)
 git commit -am 'chore(release): v0.1.0'
-make pre-push
-git push origin main
+git push origin main   # installed pre-push hook runs the gate automatically
 ```
 
 There is no need to `make bump` locally or to create the tag yourself.
@@ -325,10 +324,15 @@ local gate strategy splits across two hook stages so the cost of
   every `git commit` once `make hooks` is installed. Bypass with
   `--no-verify` only for justified WIP commits; full lint + unit still
   fire on push as defensive gates.
-- `pre-push` (`make pre-push`) — full publication check. The
-  authoritative gate list lives in `scripts/pre-push-check.sh`; the
-  categories below are intent, not inventory, so the script can evolve
-  without doc drift.
+- `pre-push` (`make pre-push`) — full publication check. Runs on
+  every `git push` once `make hooks` is installed; do NOT invoke
+  `make pre-push` manually before `git push` as a "belt and braces"
+  step — the hook will fire it automatically and a manual call just
+  double-spends the ~6 min gate. Manual invocation is reserved for
+  dry-runs (verifying a WIP branch is push-ready without actually
+  pushing). The authoritative gate list lives in
+  `scripts/pre-push-check.sh`; the categories below are intent, not
+  inventory, so the script can evolve without doc drift.
 
 Gate categories — any failure blocks push:
 - **Secret scanners**: gitleaks + trufflehog over `origin/main..HEAD`
@@ -436,18 +440,21 @@ make cluster-keep                       # once
 WHY IT FAILS: `e2e-full` tears down and recreates the cluster every run.
 The kept-cluster loop reuses state across iterations.
 
-### ❌ Pushing without running pre-push
+### ❌ Pushing without the pre-push hook installed
 ```bash
 git push origin main --no-verify
 ```
-✅ Run the gate:
+✅ Install the hook once per clone; never use `--no-verify`:
 ```bash
-make pre-push       # or rely on the installed git hook
-git push origin main
+make hooks          # idempotent; symlinks .git/hooks/pre-push -> scripts/pre-push-check.sh
+git push origin main   # the hook runs make pre-push automatically before the push leaves the host
 ```
+Manual `make pre-push` is a dry-run / sanity-check only — `git push`
+already invokes the gate via the installed hook, so running it
+explicitly before pushing is redundant.
 WHY IT FAILS: Pushed secrets, license-header drift, govulncheck advisory
 regressions cannot be untrue-d from public history. The pre-push gate
-script is the contract.
+script is the contract; the git hook makes it unmissable.
 
 ### ❌ Kubectl from host against the kind cluster
 ```bash
