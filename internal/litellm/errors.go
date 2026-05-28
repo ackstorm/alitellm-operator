@@ -67,9 +67,13 @@ type RejectedError struct {
 	Code string
 	// Type is the envelope's error.type field when present (e.g.
 	// "auth_error", "validation_error", "not_found_error"). Empty
-	// when the body was unparseable. LiteLLM treats this field as a
-	// closed enum, NOT a free-form echo of inbound payload, so it is
-	// safe to surface in CR condition.Message without enabling
+	// when the body was unparseable OR when LiteLLM omitted error.type
+	// — processLitellmError's "unparsed" internal sentinel is
+	// filtered at the construction site (client.makeRequest, v0.7.3)
+	// so this field strictly carries LiteLLM closed-enum values.
+	// LiteLLM treats this field as a closed enum, NOT a free-form
+	// echo of inbound payload, so it is safe to surface in CR
+	// condition.Message without enabling
 	// LITELLM_OPERATOR_DANGEROUSLY_INCLUDE_REJECTED_BODY (UAT LOW-02).
 	Type string
 	// Message is the envelope's error.message (already truncated to
@@ -121,11 +125,18 @@ func IsNotFound(err error) bool {
 	return false
 }
 
+// kindUnparsed is the sentinel `kind` value processLitellmError
+// returns when the envelope cannot be deserialized OR carries empty
+// code+message. Callers that surface kind into LiteLLM-facing fields
+// (e.g. RejectedError.Type, which is documented as a LiteLLM closed
+// enum) MUST filter this sentinel — see client.makeRequest (v0.7.3).
+const kindUnparsed = "unparsed"
+
 // processLitellmError parses the {error: {message, type, param, code}}
 // envelope LiteLLM returns on every non-2xx response. On unmarshal
-// failure it returns the raw body capped at 512 bytes and kind="unparsed"
-// so the caller still has something to log without spraying possibly
-// large response bodies into error strings.
+// failure it returns the raw body capped at 512 bytes and
+// kind=kindUnparsed so the caller still has something to log without
+// spraying possibly large response bodies into error strings.
 //
 // Derivative work from bbdsoftware/litellm-operator (Apache-2.0; NOTICE).
 func processLitellmError(body []byte) (kind, message, code string) {
@@ -135,7 +146,7 @@ func processLitellmError(body []byte) (kind, message, code string) {
 		if len(cap) > 512 {
 			cap = cap[:512]
 		}
-		return "unparsed", string(cap), ""
+		return kindUnparsed, string(cap), ""
 	}
 	return env.Error.Type, env.Error.Message, env.Error.Code
 }

@@ -291,3 +291,68 @@ func TestNewClient_PreservesPathPrefix(t *testing.T) {
 		})
 	}
 }
+
+// TestRejectedError_TypeIsLiteLLMEnumOrEmpty — v0.7.3 follow-up to
+// UAT LOW-02. RejectedError.Type is documented as carrying LiteLLM's
+// closed-enum error.type field (auth_error, validation_error, …).
+// processLitellmError uses the internal sentinel "unparsed" when the
+// envelope cannot be deserialized; that sentinel must NOT leak into
+// RejectedError.Type, otherwise the CR status.message reads
+// `type=unparsed` which is operator state pretending to be LiteLLM
+// state. Verified live in production v0.7.2 (uat-model-invalid case).
+func TestRejectedError_TypeIsLiteLLMEnumOrEmpty(t *testing.T) {
+	tcs := []struct {
+		name     string
+		status   int
+		body     string
+		wantType string
+	}{
+		{
+			name:     "valid envelope with type → propagated",
+			status:   422,
+			body:     `{"error":{"message":"bad model","type":"validation_error","param":"model","code":"422"}}`,
+			wantType: "validation_error",
+		},
+		{
+			name:     "unparseable body → empty (NOT 'unparsed' sentinel)",
+			status:   422,
+			body:     `<html>500 internal server error</html>`,
+			wantType: "",
+		},
+		{
+			name:     "envelope shape with empty code+message → empty (sentinel branch)",
+			status:   422,
+			body:     `{"error":{"message":"","type":"","param":null,"code":""}}`,
+			wantType: "",
+		},
+		{
+			name:     "envelope with code but no type field → empty",
+			status:   422,
+			body:     `{"error":{"message":"bad","param":"x","code":"422"}}`,
+			wantType: "",
+		},
+	}
+
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer srv.Close()
+
+			c := newTestClient(t, srv.URL)
+			_, err := c.makeRequest(context.Background(), http.MethodPost, "/model/new", map[string]any{})
+			if err == nil {
+				t.Fatalf("expected error on %d", tc.status)
+			}
+			var rej *RejectedError
+			if !errors.As(err, &rej) {
+				t.Fatalf("expected *RejectedError, got %T: %v", err, err)
+			}
+			if rej.Type != tc.wantType {
+				t.Fatalf("RejectedError.Type = %q, want %q", rej.Type, tc.wantType)
+			}
+		})
+	}
+}
