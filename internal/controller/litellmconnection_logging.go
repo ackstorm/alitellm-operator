@@ -8,6 +8,12 @@ import (
 	"github.com/ackstorm/alitellm-operator/internal/litellm"
 )
 
+// reasonNoCallbacksReported is the LoggingHealthy condition reason
+// surfaced when LiteLLM /key/health returns logging_callbacks: null
+// (UAT LOW-01). Constant so the helper, the unit tests, and the
+// envtest regression check stay in lockstep.
+const reasonNoCallbacksReported = "NoCallbacksReported"
+
 // computeLoggingHealthy maps a successful ProbeConnection result onto
 // the secondary `LoggingHealthy` condition surfaced on LiteLLMConnection.
 //
@@ -32,7 +38,7 @@ func computeLoggingHealthy(pr litellm.ProbeResult) (metav1.ConditionStatus, stri
 		return metav1.ConditionFalse, "Unhealthy", msg
 	case "":
 		return metav1.ConditionUnknown,
-			"NoCallbacksReported",
+			reasonNoCallbacksReported,
 			"LiteLLM /key/health returned no logging callbacks (logging_callbacks: null)"
 	default:
 		return metav1.ConditionUnknown,

@@ -609,3 +609,63 @@ func TestConnection_GenChangeRebuildsCacheBeforeProbe(t *testing.T) {
 		t.Errorf("terminal Rebuild Ready=true, want false on SecretNotFound")
 	}
 }
+
+// TestConnection_LoggingHealthy_NoCallbacksReported — UAT LOW-01.
+// When LiteLLM /key/health returns logging_callbacks: null, the
+// LoggingHealthy condition must be Unknown with reason
+// NoCallbacksReported and a self-explanatory message (not the empty
+// "logging callbacks: " of pre-LOW-01).
+//
+// Mirrors TestConnectionProbeLoop_AC_C1 scaffolding (shared mockServer,
+// ensureNoConnectionDefault, ensureMasterKeySecret,
+// resetConnCacheSnapshot, connDefaultCR, pollSnapshotReason). The only
+// behavioral difference is the toggle on mockServer's /key/health
+// response shape.
+func TestConnection_LoggingHealthy_NoCallbacksReported(t *testing.T) {
+	if connCache == nil {
+		t.Fatal("suite_test.go did not initialize connCache — TestMain ordering bug")
+	}
+
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.SetLoggingCallbacksNull(true)
+	t.Cleanup(func() { mockServer.SetLoggingCallbacksNull(false) })
+	ensureNoConnectionDefault(t, ctx)
+	ensureMasterKeySecret(t, ctx)
+	resetConnCacheSnapshot()
+
+	cr := connDefaultCR()
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create LiteLLMConnection/default: %v", err)
+	}
+	t.Cleanup(func() {
+		mockServer.SetMode(mock.ModeHappy)
+		_ = k8sClient.Delete(context.Background(), cr, &client.DeleteOptions{})
+		time.Sleep(50 * time.Millisecond)
+	})
+
+	snap := pollSnapshotReason(30*time.Second, reasonSynced)
+	if snap.Reason != reasonSynced {
+		t.Fatalf("cache.Snapshot().Reason = %q, want %q within 30s", snap.Reason, reasonSynced)
+	}
+
+	// Re-Get CR; assert LoggingHealthy condition shape.
+	var got litellmv1alpha1.LiteLLMConnection
+	if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(cr), &got); err != nil {
+		t.Fatalf("re-get CR: %v", err)
+	}
+	cond := apimeta.FindStatusCondition(got.Status.Conditions, "LoggingHealthy")
+	if cond == nil {
+		t.Fatal("LoggingHealthy condition missing")
+	}
+	if cond.Status != metav1.ConditionUnknown {
+		t.Fatalf("LoggingHealthy status: want Unknown, got %v", cond.Status)
+	}
+	if cond.Reason != reasonNoCallbacksReported {
+		t.Fatalf("LoggingHealthy reason: want NoCallbacksReported, got %q", cond.Reason)
+	}
+	if cond.Message == "" || strings.HasSuffix(cond.Message, ": ") {
+		t.Fatalf("LoggingHealthy message must be non-trivial, got %q", cond.Message)
+	}
+}
