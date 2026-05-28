@@ -157,3 +157,45 @@ func TestRejectedMessage_ClipPreservesRuneBoundary(t *testing.T) {
 		t.Fatalf("clipMessage produced invalid UTF-8: %q", got)
 	}
 }
+
+// TestRejectedMessage_DefaultIncludesTypeWhenPresent — LOW-02. When
+// LiteLLM returns error.type in the envelope (e.g. validation_error),
+// the default-path condition message must surface it for easier
+// triage, without re-enabling DANGEROUSLY_INCLUDE_REJECTED_BODY.
+func TestRejectedMessage_DefaultIncludesTypeWhenPresent(t *testing.T) {
+	t.Setenv("LITELLM_OPERATOR_DANGEROUSLY_INCLUDE_REJECTED_BODY", "")
+	rej := &litellm.RejectedError{
+		Method:  "POST",
+		Path:    "/model/new",
+		Status:  422,
+		Code:    "422",
+		Type:    "validation_error",
+		Message: "Invalid api_key sk-leaked-1234567890abcdef",
+	}
+	got := rejectedMessage("model create", rej, rej.Error())
+	if !strings.Contains(got, "type=validation_error") {
+		t.Fatalf("expected type=validation_error in message, got %q", got)
+	}
+	// Status-leak fix still applies — envelope body must NOT appear.
+	if strings.Contains(got, "sk-leaked") {
+		t.Fatalf("envelope body leaked into message: %q", got)
+	}
+}
+
+// TestRejectedMessage_DefaultOmitsTypeWhenEmpty — empty Type must
+// NOT produce a "type=" suffix, otherwise pre-LOW-02 callers parsing
+// messages programmatically would break.
+func TestRejectedMessage_DefaultOmitsTypeWhenEmpty(t *testing.T) {
+	t.Setenv("LITELLM_OPERATOR_DANGEROUSLY_INCLUDE_REJECTED_BODY", "")
+	rej := &litellm.RejectedError{
+		Method: "POST",
+		Path:   "/model/new",
+		Status: 422,
+		Code:   "422",
+		// Type intentionally empty.
+	}
+	got := rejectedMessage("model create", rej, rej.Error())
+	if strings.Contains(got, "type=") {
+		t.Fatalf("expected no type= when Type is empty, got %q", got)
+	}
+}

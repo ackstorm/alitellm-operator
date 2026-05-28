@@ -76,6 +76,14 @@ func rejectedMessage(opDesc string, err error, errStr string) string {
 		"LiteLLM rejected %s: %d (code=%s)",
 		opDesc, rej.Status, rej.Code,
 	)
+	if rej.Type != "" {
+		// UAT LOW-02: error.type is a closed enum (auth_error,
+		// validation_error, …) — safe to surface without the opt-in.
+		base = fmt.Sprintf(
+			"LiteLLM rejected %s: %d (code=%s, type=%s)",
+			opDesc, rej.Status, rej.Code, rej.Type,
+		)
+	}
 
 	if strings.EqualFold(os.Getenv(dangerouslyIncludeRejectedBodyEnv), "true") && rej.Message != "" {
 		sanitized := sanitizeSecretShapedTokens(rej.Message)
