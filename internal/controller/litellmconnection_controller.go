@@ -439,23 +439,7 @@ func (r *LiteLLMConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// Compute LoggingHealthy from probeResult so the combined writer
 	// applies both conditions in a single Patch (single watch event,
 	// minimal self-loop chatter).
-	var (
-		lhStatus  metav1.ConditionStatus
-		lhReason  string
-		lhMessage string
-	)
-	switch probeResult.LoggingStatus {
-	case "healthy":
-		lhStatus, lhReason = metav1.ConditionTrue, "Healthy"
-	case "unhealthy":
-		lhStatus, lhReason = metav1.ConditionFalse, "Unhealthy"
-	default:
-		lhStatus, lhReason = metav1.ConditionUnknown, "Unknown"
-	}
-	lhMessage = probeResult.LoggingDetails
-	if lhMessage == "" {
-		lhMessage = "logging callbacks: " + probeResult.LoggingStatus
-	}
+	lhStatus, lhReason, lhMessage := computeLoggingHealthy(probeResult)
 	// WR-03: capture-and-log so apierrors.IsConflict storms are observable.
 	if werr := r.writeReadyAndLoggingHealthy(
 		ctx, &conn,
