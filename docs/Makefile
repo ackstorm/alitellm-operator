@@ -23,8 +23,15 @@ else
 	CRD_REF_DOCS ?= $(LOCALBIN)/crd-ref-docs
 endif
 
-.PHONY: api-docs
+.PHONY: api-docs gen-crd-ref-docs
+# gen-crd-ref-docs runs the crd-ref-docs Go tool, which (and its on-demand
+# `go install`) requires the Go toolchain the host lacks. Route into the
+# devtools container via the container_target macro (defined in the root
+# Makefile; this file is `include`d into it). The private _gen-crd-ref-docs
+# depends on the `crd-ref-docs` install target so the binary is present.
 gen-crd-ref-docs: ## Generate API reference documentation from Go types.
+	$(call container_target,_gen-crd-ref-docs)
+_gen-crd-ref-docs: crd-ref-docs
 	@echo "Generating API reference documentation..."
 	@mkdir -p $(OUTPUT_DIR)
 	$(CRD_REF_DOCS) \
