@@ -62,6 +62,11 @@ jobs:
     name: Run tests
     needs: parse
     runs-on: ubuntu-latest
+    # Routed make targets (test-unit/test-envtest-fast) short-circuit to
+    # NATIVE execution here via LITELLM_IN_DEVTOOLS=1, using the setup-go
+    # toolchain on the runner — no devtools-container cold build.
+    env:
+      LITELLM_IN_DEVTOOLS: '1'
     steps:
       - uses: actions/checkout@v6
         with:
@@ -84,6 +89,12 @@ jobs:
     name: Build + release
     needs: [parse, run-tests]
     runs-on: ubuntu-latest
+    # Routed make targets (helm-sync) short-circuit to NATIVE execution
+    # here via LITELLM_IN_DEVTOOLS=1, using the setup-go toolchain on the
+    # runner — no devtools-container cold build. This job is already a
+    # native-Go job (goreleaser/cosign run natively).
+    env:
+      LITELLM_IN_DEVTOOLS: '1'
     steps:
       - uses: actions/checkout@v6
         with:
