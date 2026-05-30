@@ -545,14 +545,24 @@ e2e-mock-build: ## build the litellm-mock:e2e image
 
 .PHONY: cluster-up cluster-down cluster-hydrate cluster-keep cluster-status
 cluster-up:      ## bring up canonical kind cluster + hydration
+	$(call container_target,_cluster-up)
+_cluster-up:
 	bash scripts/cluster.sh up
 cluster-down:    ## tear down canonical kind cluster
+	$(call container_target,_cluster-down)
+_cluster-down:
 	bash scripts/cluster.sh down
 cluster-hydrate: ## re-apply hydration on an already-up cluster
+	$(call container_target,_cluster-hydrate)
+_cluster-hydrate:
 	bash scripts/cluster.sh hydrate
 cluster-keep:    ## same as cluster-up (kept for naming consistency with spec §5)
+	$(call container_target,_cluster-keep)
+_cluster-keep:
 	bash scripts/cluster.sh keep
 cluster-status:  ## print kubectl get on hydration fixtures
+	$(call container_target,_cluster-status)
+_cluster-status:
 	bash scripts/cluster.sh status
 
 ##@ Waiters (use these; never write ad-hoc until/while loops)
@@ -625,21 +635,18 @@ mock-mode: ## flip a mock auth mode (usage: make mock-mode INSTANCE=openai-mock 
 
 .PHONY: e2e e2e-focus
 e2e:        ## Phase 3 — run full e2e suite against running cluster
+	$(call container_target,_e2e)
+_e2e:
 	go test -tags=e2e -v -count=1 -timeout 15m ./test/e2e/...
 
 e2e-focus:  ## Phase 3 — run a single Ginkgo It (usage: make e2e-focus FOCUS='registers via POST /model/new')
+	$(call container_target,_e2e-focus)
+_e2e-focus:
 	# `-args` is required: without it, `go test` parses the value after
 	# `-ginkgo.focus=` as a package path and reports "no Go files in /workspace".
 	go test -tags=e2e -v -count=1 -timeout 5m ./test/e2e/... -args -ginkgo.focus="$(FOCUS)"
 
-.PHONY: e2e-full e2e-keep
-e2e-full: ## Phase 3 — cluster-up → e2e → cluster-down (trap-guaranteed teardown)
-	@bash -c '\
-	  set -e; \
-	  trap "$(MAKE) cluster-down || true" EXIT; \
-	  $(MAKE) cluster-up; \
-	  $(MAKE) e2e'
-
-e2e-keep: ## Phase 3 — cluster-up (kept) → e2e (NO teardown — local iteration)
-	bash scripts/cluster.sh keep
+.PHONY: e2e-full
+e2e-full: ## Phase 3 — cluster-up (with ensure-inotify) → e2e, cluster KEPT for fast re-runs. Teardown is explicit: `make cluster-down`.
+	$(MAKE) cluster-up
 	$(MAKE) e2e
