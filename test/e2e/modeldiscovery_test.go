@@ -27,7 +27,7 @@ func newOpenAIDiscovery(name, ns, secretName string) *unstructured.Unstructured 
 	return &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "litellm.ackstorm.ai/v1alpha1",
-			"kind": "LiteLLMModelDiscovery",
+			"kind":       "LiteLLMModelDiscovery",
 			"metadata": map[string]interface{}{
 				"name":      name,
 				"namespace": ns,

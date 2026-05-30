@@ -26,7 +26,7 @@ func newOpenAIMockModel(name, ns string) *unstructured.Unstructured {
 	return &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "litellm.ackstorm.ai/v1alpha1",
-			"kind": "LiteLLMModel",
+			"kind":       "LiteLLMModel",
 			"metadata": map[string]interface{}{
 				"name":      name,
 				"namespace": ns,

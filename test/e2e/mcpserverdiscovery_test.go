@@ -59,7 +59,7 @@ func newToolhiveMCPServer(name, ns string) *unstructured.Unstructured {
 	return &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "toolhive.stacklok.dev/v1alpha1",
-			"kind": "MCPServer",
+			"kind":       "MCPServer",
 			"metadata": map[string]interface{}{
 				"name":      name,
 				"namespace": ns,
@@ -80,7 +80,7 @@ func newToolhiveMCPServerV1beta1(name, ns string) *unstructured.Unstructured {
 	return &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "toolhive.stacklok.dev/v1beta1",
-			"kind": "MCPServer",
+			"kind":       "MCPServer",
 			"metadata": map[string]interface{}{
 				"name":      name,
 				"namespace": ns,
@@ -101,7 +101,7 @@ func newToolhiveMSDiscovery(name, ns string, fromNs []string) *unstructured.Unst
 	return &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "litellm.ackstorm.ai/v1alpha1",
-			"kind": "LiteLLMMCPServerDiscovery",
+			"kind":       "LiteLLMMCPServerDiscovery",
 			"metadata": map[string]interface{}{
 				"name":      name,
 				"namespace": ns,
