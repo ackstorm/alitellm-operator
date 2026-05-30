@@ -14,15 +14,15 @@ Run with:
 
 - `make test-unit`                  → ~5s
 - `make test-envtest`           → ~7 min
-- `make e2e-full`              → cluster-up → e2e → cluster-down (CI gate)
-- `make e2e-keep` + `make e2e-run` → dev loop (cluster kept; re-run e2e)
+- `make e2e-full`              → cluster-up → e2e, cluster KEPT (CI gate; teardown is explicit `make cluster-down`)
+- `make e2e-run`                    → dev loop (re-run e2e against the kept cluster)
 
 Two equally-supported e2e workflows below.
 
 ## CI gate (PR-blocking)
 
 ```
-make e2e-full          # cluster-up → e2e → cluster-down (always teardown)
+make e2e-full          # cluster-up → e2e, cluster KEPT (teardown explicit: make cluster-down)
 ```
 
 Wall clock ≤10min target. See the `e2e` job in `.github/workflows/ci.yml`.

@@ -71,29 +71,30 @@ regenerated from kustomize via `make helm-sync` — there is a CI gate
 
 ## E2E loop (kind + Helm)
 
-`make e2e-full` is the clean-room final gate (~10m from cold). It
-brings kind up, installs the chart, runs Ginkgo, tears down. For
-iteration use the kept-cluster loop:
+`make e2e-full` is the final gate (~10m from cold). It brings kind up,
+installs the chart, runs Ginkgo, and KEEPS the cluster (teardown is
+explicit: `make cluster-down`). So the same command is also the entry
+to the kept-cluster iteration loop:
 
 ```bash
-# 1. Bring cluster up once; keep state across iterations
-./scripts/dev.sh make e2e-keep
-# = scripts/cluster.sh keep + make e2e-run (NO teardown after)
+# 1. Bring cluster up + run the suite once; cluster KEPT across iterations
+make e2e-full
+# = cluster-up (ensure-inotify) + e2e-run (NO teardown after)
 
-# 2. Diagnose live
-./scripts/dev.sh bash -c "kubectl -n default logs deploy/alitellm-operator --tail=200"
-./scripts/dev.sh bash -c "kubectl -n default describe team finance"
+# 2. Diagnose live (host kubectl via the make helpers)
+make logs-operator
+make wait-cr-ready KIND=team NAME=finance NS=default
 
 # 3. Iterate with focused tests
-./scripts/dev.sh make e2e-focus FOCUS="rateLimits composite"
+make e2e-focus FOCUS="rateLimits composite"
 
 # 4. After code edit → hot-reload → re-test (~30s)
-./scripts/dev.sh make operator-redeploy
-./scripts/dev.sh make e2e-focus FOCUS="..."
+make operator-redeploy
+make e2e-focus FOCUS="..."
 
-# 5. Final gate from clean
-make cluster-down
-./scripts/dev.sh make e2e-full
+# 5. Final gate from a fresh cluster
+make cluster-reset       # down + up
+make e2e-full
 ```
 
 Never push a change touching `internal/controller/`,
