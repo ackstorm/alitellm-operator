@@ -72,7 +72,17 @@ doctor: ## Fast local preflight: docker, devtools image, socket, cache paths, in
 	@test -S /var/run/docker.sock && echo "OK   /var/run/docker.sock present" || echo "WARN /var/run/docker.sock not a socket on host"
 	@docker image inspect litellm-devtools:latest >/dev/null 2>&1 && echo "OK   litellm-devtools:latest present" || echo "WARN litellm-devtools:latest absent (built on first ./scripts/dev.sh use)"
 	@for d in .gocache/gopath .gocache/build .gocache/envtest .gocache/kube; do test -d "$$d" && echo "OK   $$d" || echo "WARN $$d missing (created on first dev.sh run)"; done
-	@./scripts/dev.sh bash -c 'for t in go helm kind kubectl golangci-lint controller-gen setup-envtest; do command -v $$t >/dev/null 2>&1 && echo "OK   (container) $$t" || echo "FAIL (container) $$t MISSING"; done'
+	@./scripts/dev.sh bash -c '\
+	  for t in go helm kind kubectl controller-gen setup-envtest kustomize; do \
+	    command -v $$t >/dev/null 2>&1 && echo "OK   (container) $$t" || echo "FAIL (container) $$t MISSING"; \
+	  done; \
+	  for t in golangci-lint; do \
+	    if command -v $$t >/dev/null 2>&1 || test -x /workspace/bin/$$t; then \
+	      echo "OK   (container) $$t (baked or installed-on-demand)"; \
+	    else \
+	      echo "INFO (container) $$t not yet installed (go-installed on first lint into ./bin)"; \
+	    fi; \
+	  done'
 	@test -f .gocache/kube/config && echo "OK   kubeconfig present (.gocache/kube/config)" || echo "INFO no kubeconfig yet (run make cluster-up)"
 
 .PHONY: shell
