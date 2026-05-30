@@ -72,9 +72,30 @@ else
   TRUFFLEHOG_SINCE=""
 fi
 
+# --- worktree-safe scan root ---
+# The secret scanners run git inside their own containers with only the repo
+# dir mounted. A git WORKTREE has a `.git` FILE (not a dir) pointing at an
+# external gitdir those containers cannot resolve: gitleaks then scans 0
+# commits and trufflehog errors on `.git/index`. When REPO_ROOT is a worktree,
+# scan a throwaway self-contained clone (real `.git` dir, full history;
+# --no-hardlinks so every object is present in the mount). SCAN_BASE is a SHA
+# that exists in the clone, so the range / --since-commit still apply, and the
+# clone's HEAD tracks the worktree's branch tip.
+SCAN_ROOT="$REPO_ROOT"
+SCAN_TMP=""
+if [[ -f "$REPO_ROOT/.git" ]]; then
+  SCAN_TMP="$(mktemp -d)"
+  if git clone --quiet --no-hardlinks "$REPO_ROOT" "$SCAN_TMP/repo" 2>/dev/null; then
+    SCAN_ROOT="$SCAN_TMP/repo"
+  else
+    warn "worktree clone for secret scan failed; scanning worktree dir directly (may under-scan)"
+  fi
+fi
+trap '[[ -n "$SCAN_TMP" ]] && rm -rf "$SCAN_TMP"' EXIT
+
 # --- 1. gitleaks ---
 hdr "1. gitleaks ($SCAN_LABEL)"
-if docker run --rm -v "$REPO_ROOT:/repo:ro" zricethezav/gitleaks:latest \
+if docker run --rm -v "$SCAN_ROOT:/repo:ro" zricethezav/gitleaks:latest \
      detect --source=/repo --redact --no-banner \
      --config=/repo/.gitleaks.toml $GITLEAKS_LOG_OPTS; then
   ok "no leaks detected"
@@ -84,7 +105,7 @@ fi
 
 # --- 2. trufflehog ---
 hdr "2. trufflehog ($SCAN_LABEL)"
-if docker run --rm -v "$REPO_ROOT:/pwd:ro" trufflesecurity/trufflehog:latest \
+if docker run --rm -v "$SCAN_ROOT:/pwd:ro" trufflesecurity/trufflehog:latest \
      git file:///pwd --only-verified --fail --no-update $TRUFFLEHOG_SINCE; then
   ok "no verified live secrets"
 else
