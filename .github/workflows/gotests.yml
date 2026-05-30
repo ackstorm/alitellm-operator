@@ -33,4 +33,4 @@ jobs:
             if [ "${{ matrix.deps }}" = "latest" ]; then
               go get -u -t ./...
             fi
-            make test
+            make test-full
