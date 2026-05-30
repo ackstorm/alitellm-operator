@@ -231,11 +231,15 @@ _lint-changed: golangci-lint
 	fi; \
 	CHANGED=$$(git diff --name-only "$$BASE...HEAD" -- '*.go' \
 		| xargs -r -n1 dirname | sort -u | sed 's|^|./|; s|$$|/...|'); \
-	if [ -z "$$CHANGED" ]; then \
-		echo "No Go changes vs $$BASE"; \
+	BUILDABLE=""; \
+	for p in $$CHANGED; do \
+		if [ -n "$$(go list $$p 2>/dev/null)" ]; then BUILDABLE="$$BUILDABLE $$p"; fi; \
+	done; \
+	if [ -z "$$BUILDABLE" ]; then \
+		echo "No buildable Go packages changed vs $$BASE (build-tag-only dirs like test/e2e are skipped)"; \
 	else \
-		echo "Linting (vs $$BASE): $$CHANGED"; \
-		$(GOLANGCI_LINT) run $$CHANGED; \
+		echo "Linting (vs $$BASE):$$BUILDABLE"; \
+		$(GOLANGCI_LINT) run $$BUILDABLE; \
 	fi
 
 ##@ Security
