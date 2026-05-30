@@ -63,6 +63,22 @@ all: build
 help: ## Display this help.
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
+##@ Diagnostics
+
+.PHONY: doctor
+doctor: ## Fast local preflight: docker, devtools image, socket, cache paths, in-container tools, kubeconfig (if present). No network.
+	@echo "== alitellm-operator doctor (fast) =="
+	@docker info >/dev/null 2>&1 && echo "OK   docker daemon reachable" || { echo "FAIL docker daemon unreachable"; exit 1; }
+	@test -S /var/run/docker.sock && echo "OK   /var/run/docker.sock present" || echo "WARN /var/run/docker.sock not a socket on host"
+	@docker image inspect litellm-devtools:latest >/dev/null 2>&1 && echo "OK   litellm-devtools:latest present" || echo "WARN litellm-devtools:latest absent (built on first ./scripts/dev.sh use)"
+	@for d in .gocache/gopath .gocache/build .gocache/envtest .gocache/kube; do test -d "$$d" && echo "OK   $$d" || echo "WARN $$d missing (created on first dev.sh run)"; done
+	@./scripts/dev.sh bash -c 'for t in go helm kind kubectl golangci-lint controller-gen setup-envtest; do command -v $$t >/dev/null 2>&1 && echo "OK   (container) $$t" || echo "FAIL (container) $$t MISSING"; done'
+	@test -f .gocache/kube/config && echo "OK   kubeconfig present (.gocache/kube/config)" || echo "INFO no kubeconfig yet (run make cluster-up)"
+
+.PHONY: shell
+shell: ## Interactive shell inside the devtools container.
+	./scripts/dev.sh bash
+
 ##@ Development
 
 # NOTE: paths is scoped to ./api/... and ./internal/... (NOT the kubebuilder
