@@ -465,7 +465,9 @@ endef
 # --- helm / chart packaging ---
 
 .PHONY: helm-sync
-helm-sync: build-installer ## Plan 07-02: regenerate deploy/helm/alitellm-operator/templates/install.yaml from dist/install.yaml per D-01 (kustomize canonical, Helm veneer).
+helm-sync: ## Plan 07-02: regenerate deploy/helm/alitellm-operator/templates/install.yaml from dist/install.yaml per D-01 (kustomize canonical, Helm veneer).
+	$(call container_target,_helm-sync)
+_helm-sync: build-installer
 	bash scripts/kustomize-to-helm.sh dist/install.yaml deploy/helm/alitellm-operator/templates/install.yaml
 	# CRDs land in crd-sources/ (NOT the reserved crds/ dir name) so the
 	# templates/crds.yaml loop can range over them and emit each one as a
@@ -476,7 +478,9 @@ helm-sync: build-installer ## Plan 07-02: regenerate deploy/helm/alitellm-operat
 	python3 scripts/helm-inject-crd-annotation.py deploy/helm/alitellm-operator/crd-sources/*.yaml
 
 .PHONY: helm-sync-check
-helm-sync-check: helm-sync ## CI gate: fail if `make helm-sync` produced uncommitted diff (drift between kustomize and chart).
+helm-sync-check: ## CI gate: fail if `make helm-sync` produced uncommitted diff (drift between kustomize and chart).
+	$(call container_target,_helm-sync-check)
+_helm-sync-check: helm-sync
 	@if ! git diff --quiet deploy/helm/alitellm-operator/; then \
 	  echo "CHART DRIFT: deploy/helm/alitellm-operator/ is out of sync with kustomize. Run \`make helm-sync\` and commit."; \
 	  git diff deploy/helm/alitellm-operator/; \
@@ -487,16 +491,22 @@ helm-sync-check: helm-sync ## CI gate: fail if `make helm-sync` produced uncommi
 
 .PHONY: deploy-kustomize-sync
 deploy-kustomize-sync: ## Regenerate deploy/kustomize/manager-rbac.yaml from config/rbac/ (operator-runtime + metrics-auth subset).
+	$(call container_target,_deploy-kustomize-sync)
+_deploy-kustomize-sync:
 	bash scripts/render-deploy-kustomize-rbac.sh
 
 .PHONY: deploy-kustomize-sync-check
-deploy-kustomize-sync-check: deploy-kustomize-sync ## CI gate: fail if `make deploy-kustomize-sync` produced uncommitted diff (drift between config/rbac/ and the bundled snapshot).
+deploy-kustomize-sync-check: ## CI gate: fail if `make deploy-kustomize-sync` produced uncommitted diff (drift between config/rbac/ and the bundled snapshot).
+	$(call container_target,_deploy-kustomize-sync-check)
+_deploy-kustomize-sync-check: deploy-kustomize-sync
 	@if ! git diff --quiet deploy/kustomize/manager-rbac.yaml; then \
 	  echo "DEPLOY KUSTOMIZE DRIFT: deploy/kustomize/manager-rbac.yaml is out of sync with config/rbac/. Run \`make deploy-kustomize-sync\` and commit."; \
 	  git diff deploy/kustomize/manager-rbac.yaml; \
 	  exit 1; \
 	fi
 
+# ac-n3-audit and samples-audit are pure `grep` (no go/helm/kustomize): they
+# are host-safe and intentionally left UNROUTED to avoid a container spin-up.
 .PHONY: ac-n3-audit
 ac-n3-audit: ## SCOPE-03 / AC-N3 static gate: fail if any non-test .go file references /user/ or /key/ as string literals.
 	@hits=$$(grep -RnE '"/user/|"/key/' --include='*.go' --exclude='*_test.go' internal/ cmd/ 2>/dev/null \
