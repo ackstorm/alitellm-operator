@@ -5,7 +5,7 @@
 # Invoked from CI on test failure (.github/workflows/ci.yml e2e job's
 # `if: failure()` step) and collectable manually with
 #   ./scripts/dev.sh bash scripts/collect-forensics.sh
-# after a local make e2e / make e2e-full red run.
+# after a local make e2e-run / make e2e-full red run.
 #
 # Best-effort — never fails the surrounding step. Designed to run BEFORE
 # cluster-down so kubectl logs still resolves; the workflow runs

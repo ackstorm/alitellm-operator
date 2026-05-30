@@ -121,7 +121,7 @@ install_litellm() {
 
 install_mocks() {
   echo "[cluster.sh] building + loading litellm-mock:e2e..."
-  make e2e-mock-build
+  make build-image-mock
   kind load docker-image litellm-mock:e2e --name "${CLUSTER_NAME}"
 
   echo "[cluster.sh] installing openai-mock + kubeai-mock..."
@@ -135,7 +135,7 @@ install_mocks() {
 
 install_operator() {
   echo "[cluster.sh] building alitellm-operator:e2e..."
-  make docker-build IMG=alitellm-operator:e2e
+  make build-image IMG=alitellm-operator:e2e
   kind load docker-image alitellm-operator:e2e --name "${CLUSTER_NAME}"
 
   echo "[cluster.sh] helm install alitellm-operator..."

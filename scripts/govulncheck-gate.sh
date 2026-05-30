@@ -5,7 +5,7 @@
 # Exits 0 iff the reachable advisory set EXACTLY matches the acknowledged
 # list (no missing, no extra). Any deviation = block.
 #
-# Used by `make security` (Phase 13 HRD-04). Invoked inside the devtools
+# Used by `make qa-security` (Phase 13 HRD-04). Invoked inside the devtools
 # container — relies on the bare `govulncheck` binary being on PATH.
 
 set -euo pipefail

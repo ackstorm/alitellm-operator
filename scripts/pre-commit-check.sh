@@ -7,10 +7,10 @@
 # enough not to feel intrusive.
 #
 # Gates:
-#  1. make lint-changed  — golangci-lint scoped to the packages touched
+#  1. make qa-lint-changed — golangci-lint scoped to the packages touched
 #                          vs origin/main (or `main` if origin is absent).
 #                          Fast on a warm cache (~5-15s typical).
-#  2. make unit          — pure-logic unit tests, no envtest, no cluster.
+#  2. make test-unit       — pure-logic unit tests, no envtest, no cluster.
 #                          ~5-10s warm; ~30s cold.
 #
 # Bypass: `git commit --no-verify` skips the hook. Use only when you have
@@ -44,17 +44,17 @@ if [[ ! -x scripts/dev.sh ]]; then
   exit 2
 fi
 
-# ── 1. lint-changed ────────────────────────────────────────────────────
+# ── 1. qa-lint-changed ─────────────────────────────────────────────────
 hdr "1. golangci-lint (changed packages)"
-if ./scripts/dev.sh make lint-changed; then
-  ok "lint-changed clean"
+if ./scripts/dev.sh make qa-lint-changed; then
+  ok "qa-lint-changed clean"
 else
-  fail "lint-changed reported issues — fix or 'git commit --no-verify' (you will still hit pre-push)"
+  fail "qa-lint-changed reported issues — fix or 'git commit --no-verify' (you will still hit pre-push)"
 fi
 
-# ── 2. unit ────────────────────────────────────────────────────────────
-hdr "2. make unit"
-if ./scripts/dev.sh make unit; then
+# ── 2. test-unit ───────────────────────────────────────────────────────
+hdr "2. make test-unit"
+if ./scripts/dev.sh make test-unit; then
   ok "unit tests passed"
 else
   fail "unit tests failed"
