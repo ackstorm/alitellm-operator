@@ -127,6 +127,14 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
+.PHONY: fmt-check
+fmt-check: ## Fail if any Go file is not gofmt-clean (no mutation).
+	$(call container_target,_fmt-check)
+_fmt-check:
+	@out=$$(gofmt -l $$(git ls-files '*.go' | grep -v -E 'zz_generated|/vendor/')); \
+	if [ -n "$$out" ]; then echo "Not gofmt-clean:"; echo "$$out"; exit 1; fi; \
+	echo "OK gofmt-clean"
+
 .PHONY: test
 test: test-all ## Backward-compat alias for `make test-all` (unit + envtest-run). New code should use the explicit phase target.
 
