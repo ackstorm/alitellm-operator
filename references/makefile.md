@@ -94,8 +94,9 @@ or `e2e-focus` would see empty values inside the container.
 
 ## Cluster lifecycle
 
-`scripts/cluster.sh` refuses to run outside the devtools container (it
-needs helm/kind/kubectl), so always drive it through `make cluster-*` —
+`scripts/cluster.sh` cannot run on the Go-less host (it needs
+helm/kind/kubectl, which live only in the devtools container), so always
+drive it through `make cluster-*` —
 the `cluster-*` targets are context A (they route into the container and
 drive kind/helm via the mounted docker socket).
 
