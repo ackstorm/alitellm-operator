@@ -294,11 +294,15 @@ release: ## Cut a release: empty `chore(release): vX.Y.Z` commit, run pre-push, 
 ##@ Build
 
 .PHONY: build
-build: manifests generate fmt vet ## Build alitellm-operator binary.
+build: ## Build alitellm-operator binary.
+	$(call container_target,_build)
+_build: manifests generate fmt vet
 	go build -o bin/alitellm-operator cmd/main.go
 
 .PHONY: run
-run: manifests generate fmt vet ## Run a controller from your host.
+run: ## Run a controller from your host.
+	$(call container_target,_run)
+_run: manifests generate fmt vet
 	go run ./cmd/main.go
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
@@ -334,7 +338,9 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 	rm Dockerfile.cross
 
 .PHONY: build-installer
-build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
+build-installer: ## Generate a consolidated YAML with CRDs and deployment.
+	$(call container_target,_build-installer)
+_build-installer: manifests generate kustomize
 	mkdir -p dist
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default > dist/install.yaml
@@ -346,20 +352,28 @@ ifndef ignore-not-found
 endif
 
 .PHONY: install
-install: manifests kustomize ## Install CRDs into the K8s cluster specified in ~/.kube/config.
+install: ## Install CRDs into the K8s cluster specified in ~/.kube/config.
+	$(call container_target,_install)
+_install: manifests kustomize
 	$(KUSTOMIZE) build config/crd | $(KUBECTL) apply -f -
 
 .PHONY: uninstall
-uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
+uninstall: ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
+	$(call container_target,_uninstall)
+_uninstall: manifests kustomize
 	$(KUSTOMIZE) build config/crd | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
 
 .PHONY: deploy
-deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
+deploy: ## Deploy controller to the K8s cluster specified in ~/.kube/config.
+	$(call container_target,_deploy)
+_deploy: manifests kustomize
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default | $(KUBECTL) apply -f -
 
 .PHONY: undeploy
-undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
+undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
+	$(call container_target,_undeploy)
+_undeploy: kustomize
 	$(KUSTOMIZE) build config/default | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
 
 ##@ Dependencies
