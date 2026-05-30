@@ -12,10 +12,10 @@ This file documents **Phase 3 (e2e)**. The full taxonomy:
 
 Run with:
 
-- `make unit`                  → ~5s
-- `make envtest-run`           → ~7 min
+- `make test-unit`                  → ~5s
+- `make test-envtest`           → ~7 min
 - `make e2e-full`              → cluster-up → e2e → cluster-down (CI gate)
-- `make e2e-keep` + `make e2e` → dev loop (cluster kept; re-run e2e)
+- `make e2e-keep` + `make e2e-run` → dev loop (cluster kept; re-run e2e)
 
 Two equally-supported e2e workflows below.
 

@@ -111,7 +111,7 @@ Pre-releases (e.g., `v1.0.0-rc.1`, `v1.0.0-beta.1`, `v1.0.0-alpha.1`) skip manif
 ## Release Workflow Jobs
 
 ### 1. Run Tests (`run-tests`)
-- Runs unit tests with `make test`
+- Runs unit tests with `make test-full`
 - Performs linting with golangci-lint
 - Ensures code quality before release
 - Uses Ubuntu latest runner
@@ -211,7 +211,7 @@ kubectl apply -k https://github.com/ackstorm/alitellm-operator/config/default
 **Problem**: Release workflow fails during the test phase.
 
 **Solutions**:
-1. Run `make test` locally to reproduce the issue
+1. Run `make test-full` locally to reproduce the issue
 2. Check for linting errors with golangci-lint
 3. Ensure all dependencies are properly installed
 4. Verify Go version compatibility (workflow uses Go 1.21)

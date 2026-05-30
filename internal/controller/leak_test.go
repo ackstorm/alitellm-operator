@@ -5,8 +5,8 @@
 
 // Package controller — REL-03 1000-reconcile FD + goroutine leak harness.
 //
-// Build tag: longidempotency (not part of `make test`; runs via `make
-// leak-soak` on nightly CI cadence).
+// Build tag: longidempotency (not part of `make test-full`; runs via `make
+// test-leak-soak` on nightly CI cadence).
 //
 // Procedure per 07-CONTEXT.md Claude's Discretion §AC-R3:
 // 1. Create 1 Model CR; wait for 10 successful reconciles + 60s settle.

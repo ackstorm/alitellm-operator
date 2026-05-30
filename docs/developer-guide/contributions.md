@@ -23,7 +23,7 @@ through the devtools container:
 ```bash
 ./scripts/dev.sh go build ./...
 ./scripts/dev.sh go test ./internal/controller/...
-./scripts/dev.sh make manifests
+./scripts/dev.sh make gen-manifests
 ./scripts/dev.sh bash                # interactive shell
 ```
 
@@ -44,26 +44,26 @@ directly on the host.
 
 | Phase                | Command                              | Use when                                  |
 |----------------------|--------------------------------------|-------------------------------------------|
-| Unit                 | `./scripts/dev.sh make unit`         | Every inner-loop iteration (~5s warm).    |
-| Envtest (race)       | `./scripts/dev.sh make envtest-run`  | Before commit on controller changes (~7m).|
-| Envtest (no race)    | `./scripts/dev.sh make envtest-fast` | Dev inner loop (~3m).                     |
+| Unit                 | `./scripts/dev.sh make test-unit`         | Every inner-loop iteration (~5s warm).    |
+| Envtest (race)       | `./scripts/dev.sh make test-envtest`  | Before commit on controller changes (~7m).|
+| Envtest (no race)    | `./scripts/dev.sh make test-envtest-fast` | Dev inner loop (~3m).                     |
 | E2E (kind + Helm)    | `make e2e-full`                      | Final gate before commit (~10m clean).    |
 | E2E focused          | `./scripts/dev.sh make e2e-focus FOCUS="..."` | Iterate after `make cluster-keep`. |
-| Security             | `./scripts/dev.sh make security`     | Before commit (~6m).                      |
+| Security             | `./scripts/dev.sh make qa-security`     | Before commit (~6m).                      |
 | Pre-push gate        | `make pre-push`                      | Before every push (host-only).            |
 
 Umbrella targets:
 
-- `make test-all` = `unit` + `envtest-run`
-- `make verify` = `./scripts/dev.sh make security` + `make pre-push`
+- `make test-full` = `unit` + `envtest-run`
+- `make verify` = `./scripts/dev.sh make qa-security` + `make pre-push`
 - `make hooks` installs `.git/hooks/pre-push -> scripts/pre-push-check.sh`
 
 Inner-loop helpers when iterating on a single package:
 
 ```bash
-./scripts/dev.sh make unit-pkg PKG=./internal/litellm/...
-./scripts/dev.sh make envtest-pkg PKG=./internal/controller/... [FOCUS=TestX] [TIMEOUT=10m]
-./scripts/dev.sh make lint-changed [BASE_REF=...]    # lint only packages touched vs origin/main
+./scripts/dev.sh make test-unit-pkg PKG=./internal/litellm/...
+./scripts/dev.sh make test-envtest-pkg PKG=./internal/controller/... [FOCUS=TestX] [TIMEOUT=10m]
+./scripts/dev.sh make qa-lint-changed [BASE_REF=...]    # lint only packages touched vs origin/main
 ```
 
 ## E2E debug loop (kept cluster)
@@ -128,8 +128,8 @@ Release commits use `chore(release): v<MAJOR>.<MINOR>.<PATCH>` on
 ## PR flow
 
 1. Branch off `main`.
-2. Iterate; run `./scripts/dev.sh make unit` per change.
-3. Before push: `./scripts/dev.sh make envtest-run` if touching
+2. Iterate; run `./scripts/dev.sh make test-unit` per change.
+3. Before push: `./scripts/dev.sh make test-envtest` if touching
    controllers; `make pre-push`.
 4. Open PR — CI runs `lint`, `unit`, `envtest`, `security`, `e2e`.
    All five must be green.

@@ -11,7 +11,7 @@ This file lists reachable advisories that have been reviewed and
 explicitly acknowledged as accepted residual risk. The gate script
 `scripts/govulncheck-gate.sh` enforces a 1:1 match between actual
 reachable advisories and the rows below — any deviation (new advisory
-appearing or an acknowledged advisory clearing) blocks `make security`
+appearing or an acknowledged advisory clearing) blocks `make qa-security`
 and `make pre-push`.
 
 An empty list means the gate expects ZERO reachable advisories. Any

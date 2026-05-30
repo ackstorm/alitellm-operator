@@ -36,7 +36,7 @@ Rationale:
   net-new — they exercise the same code with the same dependencies.
 - **Release commit (`chore(release): v*`)**: `ci.yml` not triggered
   (no push trigger). `release.yml` fires on push main and runs its
-  own `make unit && make envtest-fast` sanity gate before goreleaser.
+  own `make test-unit && make test-envtest-fast` sanity gate before goreleaser.
 - **Drift paranoia** (new CVE published overnight, infra rot, etc.):
   not covered by `ci.yml`. If/when needed, add an envtest/security
   drift job to `nightly.yml` (currently soak/leak/fuzz only).
@@ -138,12 +138,12 @@ correctly, just slower.
 ```
 parse (job-level `if`) ─ extract X.Y.Z from commit msg via regex
    │
-   └─► run-tests ─ make unit && make envtest-fast
+   └─► run-tests ─ make test-unit && make test-envtest-fast
           │
           └─► build-and-release
                  ├─ checkout main with fetch-depth: 0
                  ├─ git-config github-actions[bot] identity
-                 ├─ make bump VERSION=X.Y.Z (idempotent — no-op if already bumped)
+                 ├─ make release-bump VERSION=X.Y.Z (idempotent — no-op if already bumped)
                  ├─ commit + push manifest bumps to main with `[skip ci]`
                  ├─ pick goreleaser config: .yml (stable) | .prerelease.yml (alpha/beta/rc)
                  ├─ install cosign + cyclonedx-gomod + goreleaser
@@ -195,7 +195,7 @@ Categories covered:
   1:1.
 - **Code provenance** — per-file SPDX license header
   (`// SPDX-License-Identifier: Apache-2.0`).
-- **Defense in depth** — full `make lint` + `make unit` re-run
+- **Defense in depth** — full `make qa-lint` + `make test-unit` re-run
   inside the devtools container, even though `pre-commit` (`make
   pre-commit`) already covered the touched packages.
 
@@ -207,11 +207,11 @@ Bypass is banned. If a gate fails, fix the root cause, never
 
 | Symptom                                                                | What to do                                                                                                                                                  |
 | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Release tests failed → no tag, no release                              | Fix the code, push another `chore(release): vX.Y.Z` commit. `make bump` is idempotent — re-runs are safe.                                                   |
+| Release tests failed → no tag, no release                              | Fix the code, push another `chore(release): vX.Y.Z` commit. `make release-bump` is idempotent — re-runs are safe.                                                   |
 | goreleaser succeeded but chart push failed                             | Re-run the `Push Helm chart to OCI registry` step from the Actions UI. Or push a follow-up `chore(release): vX.Y.Z+1` commit.                                |
 | Tag pushed but release marked Draft                                    | GH UI: open the draft release, click Publish. Inspect goreleaser log for the cause.                                                                          |
 | `docs.yml` mike deploy failed                                          | Re-run the `Deploy docs` job from the Actions UI. Verify `extra.version.provider: mike` is still in `mkdocs.yml`.                                            |
-| Manifest bump commit landed but pipeline died mid-run                  | The bot bump is on `main`. Re-push `chore(release): vX.Y.Z` again (or a clean revert + new commit). `make bump` detects a clean tree and skips.              |
+| Manifest bump commit landed but pipeline died mid-run                  | The bot bump is on `main`. Re-push `chore(release): vX.Y.Z` again (or a clean revert + new commit). `make release-bump` detects a clean tree and skips.              |
 | Stale draft release in GH UI                                           | Manual cleanup: `gh release delete vX.Y.Z --cleanup-tag --yes`. Then re-push the release commit.                                                              |
 | Post-upgrade `CR apply` errors with `field not declared in schema`     | Pre-v0.3.2 install only. Helm `crds/` was install-only — `helm upgrade` did NOT re-apply CRDs. Fixed in v0.3.2: CRDs moved to `templates/`, so `helm upgrade` upgrades them with everything else. Stuck on v0.3.0/v0.3.1: `kubectl apply -f deploy/helm/alitellm-operator/crd-sources/` once, then bump to v0.3.2+. |
 
@@ -229,12 +229,12 @@ gh pr merge --merge --delete-branch   # squash if preferred
 
 # RELEASE (stable, e.g. v0.2.0)
 git checkout main && git pull --ff-only
-make release VERSION=0.2.0            # empty chore commit + pre-push + push
+make release-cut VERSION=0.2.0            # empty chore commit + pre-push + push
                                        # → triggers release.yml
                                        # (preconditions: on main, clean tree, in-sync with origin)
 
 # RELEASE (prerelease, e.g. v0.3.0-rc.1)
-make release VERSION=0.3.0-rc.1       # same wrapper; semver suffix supported
+make release-cut VERSION=0.3.0-rc.1       # same wrapper; semver suffix supported
 ```
 
 ## Authoritative sources
