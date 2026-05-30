@@ -162,14 +162,17 @@ jobs:
       - name: Set up devtools (pull or build)
         uses: ./.github/actions/setup-devtools
 
-      # `make e2e-full` wraps cluster-up + make e2e-run + cluster-down in
-      # one bash with trap-guaranteed teardown. GH Actions cannot share
-      # a bash trap across steps, so the same semantics are expressed
-      # as three steps:
+      # CI does cluster lifecycle as explicit steps (GH Actions cannot
+      # share a bash trap across steps): cluster-up → make e2e-run →
+      # forensics → cluster-down.
       #   cluster-up       → 'needs: success' (default)
       #   make e2e-run     → 'needs: cluster-up succeeded'
       #   forensics        → 'if: failure()' before cluster-down
       #   cluster-down     → 'if: always()' (trap equivalent)
+      # NOTE: `make e2e-full` is the LOCAL convenience target and
+      # intentionally KEEPS the cluster (no teardown) for fast re-runs;
+      # CI does NOT use it and owns teardown via the `if: always()`
+      # cluster-down step below.
       - name: Cluster up + hydrate (same as make cluster-up)
         run: ./scripts/dev.sh make cluster-up
 
