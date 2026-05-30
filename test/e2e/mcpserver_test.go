@@ -46,7 +46,7 @@ var _ = Describe("LiteLLMMCPServer", Ordered, ContinueOnFailure, func() {
 		cr := &unstructured.Unstructured{
 			Object: map[string]interface{}{
 				"apiVersion": "litellm.ackstorm.ai/v1alpha1",
-				"kind": "LiteLLMMCPServer",
+				"kind":       "LiteLLMMCPServer",
 				"metadata": map[string]interface{}{
 					"name":      name,
 					"namespace": ns,

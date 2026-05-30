@@ -28,7 +28,7 @@ func newA2AAgent(name, ns string) *unstructured.Unstructured {
 	return &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "litellm.ackstorm.ai/v1alpha1",
-			"kind": "LiteLLMA2AAgent",
+			"kind":       "LiteLLMA2AAgent",
 			"metadata": map[string]interface{}{
 				"name":      name,
 				"namespace": ns,
