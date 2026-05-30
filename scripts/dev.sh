@@ -77,6 +77,7 @@ exec docker run --rm "${TTY_ARGS[@]}" \
     -v "${WORKSPACE}:/workspace" \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -e LITELLM_IN_DEVTOOLS=1 \
+    -e DELETE_ON_FAILURE="${DELETE_ON_FAILURE:-0}" \
     -e HOME=/workspace/.gocache \
     -e GOPATH=/workspace/.gocache/gopath \
     -e GOCACHE=/workspace/.gocache/build \
