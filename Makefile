@@ -135,6 +135,8 @@ _qa-fmt-check:
 	if [ -n "$$out" ]; then echo "Not gofmt-clean:"; echo "$$out"; exit 1; fi; \
 	echo "OK gofmt-clean"
 
+##@ Test
+
 .PHONY: test-unit
 test-unit: ## Phase 1 — pure-logic tests, no envtest, no cluster. ~10s warm.
 	$(call container_target,_test-unit)
@@ -205,6 +207,8 @@ test-leak-soak: ## REL-03: run the 1000-reconcile leak harness (nightly cadence;
 	$(call container_target,_test-leak-soak)
 _test-leak-soak: gen-manifests gen-code fmt vet setup-envtest
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test -count=1 -timeout 5m -tags=longidempotency -run TestLeakHarness_1000Reconciles ./internal/controller/...
+
+##@ QA
 
 .PHONY: qa-lint
 qa-lint: ## Run golangci-lint linter
@@ -485,7 +489,7 @@ crd-ref-docs: $(CRD_REF_DOCS) ## Download crd-ref-docs locally if necessary (ren
 $(CRD_REF_DOCS): $(LOCALBIN)
 	$(call go-install-tool,$(CRD_REF_DOCS),github.com/elastic/crd-ref-docs,$(CRD_REF_DOCS_VERSION))
 
-##@ Documentation
+##@ Packaging & Sync
 include docs/Makefile
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
@@ -572,7 +576,7 @@ samples-audit: ## DEPLOY-02: fail the build if any sample manifest contains a TO
 	fi; \
 	echo "samples-audit: PASS (zero TODO(user) placeholders in config/samples/)"
 
-##@ E2E (cluster + mocks)
+##@ Cluster (e2e infra)
 
 .PHONY: build-image-mock
 build-image-mock: ## build the litellm-mock:e2e image
@@ -678,6 +682,8 @@ operator-redeploy: ## rebuild operator image, kind-load, restart deploy (~20s in
 	kubectl -n default rollout restart deploy/alitellm-operator
 	kubectl -n default rollout status  deploy/alitellm-operator --timeout=60s
 
+##@ Logs & Debug
+
 .PHONY: logs-operator logs-litellm logs-mocks
 logs-operator: ## tail operator logs with timestamps
 	kubectl -n default logs -f --timestamps deploy/alitellm-operator
@@ -708,6 +714,8 @@ pf-kubeai-mock: ## port-forward kubeai-mock to localhost:8082
 .PHONY: mock-mode
 mock-mode: ## flip a mock auth mode (usage: make mock-mode INSTANCE=openai-mock MODE=reject-401)
 	bash scripts/mock-set-mode.sh $(INSTANCE) $(MODE)
+
+##@ E2E
 
 .PHONY: e2e-run e2e-focus
 e2e-run:    ## Phase 3 — run full e2e suite against running cluster
