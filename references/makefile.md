@@ -52,6 +52,17 @@ work happens when you debug it.
 | **B** Host + docker | directly on the host (needs only the docker CLI/daemon) | docker, kind | `build-image`, `build-image-mock`, `docker-push`/`docker-load`/`docker-buildx`, `doctor`, `ensure-inotify`, gate orchestrators `pre-commit`/`pre-push`/`verify`, `release-bump`/`release-cut`, `operator-redeploy`, `e2e-full` (orchestrates context-A children) |
 | **C** Kubernetes infra | host `kubectl` against the kind cluster (kubeconfig at `./.gocache/kube/config`) | kubectl | `wait-*`, `logs-*`, `watch-crs`, `pf-*`, `mock-mode` |
 
+> **Context C caveat — these targets are NOT auto-routed.** `wait-*`,
+> `logs-*`, `watch-crs`, `pf-*`, and `mock-mode` are bare-`kubectl`
+> targets that run on whatever host invokes them. The kind kubeconfig
+> lives at `./.gocache/kube/config` (wired into the devtools container by
+> `scripts/dev.sh`, NOT the host's default `~/.kube/config`), so on the
+> canonical Go-less dev host — which has no `kubectl` and no kind
+> context — `make wait-operator` / `make logs-operator` will fail. On
+> such a host, invoke them as `./scripts/dev.sh make <target>` (the
+> devtools container has `kubectl` and `KUBECONFIG=.gocache/kube/config`
+> pre-wired).
+
 > **Why the split is explicit.** Context-A targets opt in to container
 > routing by calling the `container_target` macro (see below). There is
 > NO magic-by-prefix — a target is only wrapped if it asks to be. That
