@@ -3,14 +3,14 @@
 #
 # Installs:
 #   pre-commit -> scripts/pre-commit-check.sh
-#     Runs `make lint-changed` + `make unit` on every commit. Fast
+#     Runs `make qa-lint-changed` + `make test-unit` on every commit. Fast
 #     (~5-30s warm); fail blocks the commit. Bypass with --no-verify
 #     when you have a justified reason — pre-push still enforces the
 #     full lint sweep.
 #   pre-push   -> scripts/pre-push-check.sh
 #     Runs the full 17-gate pre-publication check before every `git push`.
 #     Includes gitleaks/trufflehog/SPDX/govulncheck plus the defensive
-#     full-sweep golangci-lint + make unit.
+#     full-sweep golangci-lint + make test-unit.
 #
 # Idempotent — safe to re-run.
 set -euo pipefail

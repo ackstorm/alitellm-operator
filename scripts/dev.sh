@@ -17,7 +17,7 @@
 # Usage:
 #   ./scripts/dev.sh go build ./...
 #   ./scripts/dev.sh kubebuilder init --domain ackstorm.ai --multigroup
-#   ./scripts/dev.sh make manifests
+#   ./scripts/dev.sh make gen-manifests
 #   ./scripts/dev.sh bash         # interactive shell inside the container
 
 set -euo pipefail

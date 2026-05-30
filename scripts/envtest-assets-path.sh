@@ -5,7 +5,7 @@
 #     export KUBEBUILDER_ASSETS="$(./scripts/envtest-assets-path.sh)"
 #
 # Then `go test ./internal/controller/...` runs without going through
-# `make envtest-run`, skipping the per-invocation `setup-envtest use`
+# `make test-envtest`, skipping the per-invocation `setup-envtest use`
 # call (saves ~1s per invocation). Re-export after upgrading
 # controller-runtime — the asset version may change.
 set -euo pipefail

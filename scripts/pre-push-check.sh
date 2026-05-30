@@ -13,8 +13,8 @@
 #  14. go mod tidy   (go.mod / go.sum drift blocks push)
 #  14b. helm-sync     (config/crd → deploy/helm/.../crd-sources drift blocks push)
 #  15. license-header SPDX gate (every in-scope *.go starts with SPDX line)
-#  16. golangci-lint full sweep (defensive — pre-commit runs lint-changed)
-#  17. make unit     (pure-logic regression — ~5-10s warm)
+#  16. golangci-lint full sweep (defensive — pre-commit runs qa-lint-changed)
+#  17. make test-unit (pure-logic regression — ~5-10s warm)
 #
 # Soft checks (warnings only):
 #   7. internal hostnames / private IPv4 in tracked files
@@ -334,13 +334,13 @@ else
 fi
 
 # --- 16. golangci-lint full sweep ---
-# Defensive gate: pre-commit runs `make lint-changed` (scoped to touched
+# Defensive gate: pre-commit runs `make qa-lint-changed` (scoped to touched
 # packages) on every commit; this is the FULL sweep, catching anything
 # a `--no-verify` commit or a stale BASE_REF would have masked. Runs in
 # the devtools container.
 hdr "16. golangci-lint full sweep"
 if [[ -x scripts/dev.sh ]]; then
-  if ./scripts/dev.sh make lint >/tmp/pre-push-lint.log 2>&1; then
+  if ./scripts/dev.sh make qa-lint >/tmp/pre-push-lint.log 2>&1; then
     ok "golangci-lint clean"
   else
     fail "golangci-lint reported issues — see /tmp/pre-push-lint.log"
@@ -354,10 +354,10 @@ fi
 # Runs via devtools container; ~5-10s warm.
 hdr "17. unit tests"
 if [[ -x scripts/dev.sh ]]; then
-  if ./scripts/dev.sh make unit >/tmp/pre-push-unit.log 2>&1; then
-    ok "make unit clean"
+  if ./scripts/dev.sh make test-unit >/tmp/pre-push-unit.log 2>&1; then
+    ok "make test-unit clean"
   else
-    fail "make unit failed — see /tmp/pre-push-unit.log"
+    fail "make test-unit failed — see /tmp/pre-push-unit.log"
   fi
 else
   warn "scripts/dev.sh missing — skipping unit gate (rebuild devtools image)"
