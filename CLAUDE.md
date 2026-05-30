@@ -107,6 +107,7 @@ alitellm-operator/
 
 | Working on...                          | MUST read first                          |
 |----------------------------------------|------------------------------------------|
+| `make` interface / target routing / contexts | `references/makefile.md` (command list + 3-context model + `container_target`) |
 | E2E tests (kind cluster + Helm)        | `test/e2e/README.md`                     |
 | CI workflows (ci, docs, release, ...)  | `references/docs/workflow.md` (matrix + rationale); `.github/workflows/*.yml` is authoritative |
 | Release tooling (goreleaser, signing)  | `.goreleaser.yml` + `release.yml` workflow |
@@ -148,14 +149,18 @@ Detail and tradeoffs: `references/docs/workflow.md`.
 ## Toolchain — host has NO Go (always Docker)
 
 The host has no `go`, `kubebuilder`, `controller-gen`, `kustomize`,
-`setup-envtest`, or `golangci-lint` binary on PATH. Every toolchain
-invocation goes through the devtools container via `./scripts/dev.sh`.
+`setup-envtest`, or `golangci-lint` binary on PATH. **Every toolchain
+target self-routes — the host needs only docker.** Run a bare
+`make <target>` on the host; if the target needs the Go/helm toolchain it
+re-invokes itself inside the devtools container via the `container_target`
+macro (`LITELLM_IN_DEVTOOLS=1` short-circuits the nesting). See
+`references/makefile.md` for the 3-context model.
 
 ```bash
-./scripts/dev.sh go build ./...
-./scripts/dev.sh go test ./internal/controller/...
-./scripts/dev.sh make gen-manifests
-./scripts/dev.sh bash            # interactive shell
+make build-operator              # auto-routes into devtools
+make gen-manifests               # auto-routes into devtools
+make shell                       # interactive shell in the devtools container
+./scripts/dev.sh go build ./...  # raw go, when no make target fits
 ```
 
 - Wrapper mounts repo at `/workspace`, mounts `/var/run/docker.sock`,
@@ -178,9 +183,20 @@ invocation goes through the devtools container via `./scripts/dev.sh`.
   CI and release run the same toolchain (issue #43 close); any future
   bump MUST update all four surfaces in the same change.
 
-`make` targets shelling out to `go` MUST be prefixed `./scripts/dev.sh`.
-Targets that only call `kubectl`/`docker`/`helm`/`kind`/bash run on host
-(e.g. `make cluster-up`, `make operator-redeploy`, `make logs-*`).
+Every toolchain target self-routes via the `container_target` macro — run
+bare `make <target>` on the host; it re-invokes itself inside the devtools
+container, and `LITELLM_IN_DEVTOOLS=1` short-circuits the nesting (so
+`./scripts/dev.sh make <target>` from the host still runs ONE container,
+not two). Never prefix a routed target with `./scripts/dev.sh` out of
+habit — the prefix is redundant.
+
+Only context-B/C targets run directly on the host: `docker-*` (host
+docker), `wait-*` / `logs-*` / `watch-crs` / `pf-*` / `mock-mode` /
+`operator-redeploy` (host kubectl against the kind kubeconfig), the gate
+orchestrators (`pre-commit`, `pre-push`, `verify`), `release-*`, and
+`ensure-inotify`. The `cluster-*` targets are NO LONGER host-direct: they
+now route THROUGH the devtools container (they drive kind/helm via the
+mounted docker socket), so run them bare too (`make cluster-up`).
 
 ## Test phases
 
@@ -197,8 +213,8 @@ Targets that only call `kubectl`/`docker`/`helm`/`kind`/bash run on host
 | `make pre-push`    | full publication gate (secrets, filesystem, build hygiene, SPDX, lint + unit, ...) | host-only; runs on every `git push` once `make hooks` installed — manual invocation is a dry-run / verification only |
 
 Umbrella targets:
-- `make test-full` = `unit` + `envtest-run`
-- `make verify` = `./scripts/dev.sh make qa-lint` + `./scripts/dev.sh make test-unit` + `./scripts/dev.sh make qa-security` + `make pre-push`
+- `make test-full` = `test-unit` + `test-envtest`
+- `make verify` = `make qa-lint` + `make test-unit` + `make qa-security` + `make pre-push` (each self-routes; the gates stay host-only)
 - `make hooks` installs `.git/hooks/pre-commit -> scripts/pre-commit-check.sh`
   AND `.git/hooks/pre-push -> scripts/pre-push-check.sh`
 
@@ -216,9 +232,9 @@ Inner-loop iteration helpers:
 The public docs site at `docs/` is mkdocs-material based.
 
 ```bash
-./scripts/dev.sh make gen-crd-ref-docs   # regenerate docs/api-reference/ from CRDs
-make docs-build                          # build site/ via docker (host)
-make docs-serve                          # local preview at :8000
+make gen-crd-ref-docs   # regenerate docs/api-reference/ from CRDs (auto-routes into devtools)
+make docs-build         # build site/ via docker (host)
+make docs-serve         # local preview at :8000
 ```
 
 `docs/.crd-ref-docs.yaml` is the config for the `crd-ref-docs` tool
@@ -278,7 +294,7 @@ Per-release flow (after the `chore(release): v0.1.0` push):
    - Picks the goreleaser config:
      - `vX.Y.Z`                  → `.goreleaser.yml`            (stable)
      - `vX.Y.Z-{alpha,beta,rc}*` → `.goreleaser.prerelease.yml`
-   - `make gen-code manifests` regenerates CRDs (sanity).
+   - `make gen-code gen-manifests` regenerates CRDs (sanity).
    - cosign + cyclonedx-gomod installed on PATH (HRD-09).
    - goreleaser runs with `GORELEASER_CURRENT_TAG=v<X.Y.Z>` (no git
      tag at HEAD yet). The GitHub release-create API call auto-creates
@@ -386,16 +402,20 @@ are the contract; ad-hoc loops aren't.
 
 ## Common failure modes
 
-### ❌ Running `make X` directly on host
-```bash
-make test-unit
-# command not found: go
-```
-✅ Prefix with `./scripts/dev.sh`:
+### ❌ Prefixing a `make` target with `./scripts/dev.sh` out of habit
 ```bash
 ./scripts/dev.sh make test-unit
 ```
-WHY IT FAILS: Host has no Go binary. The devtools container does.
+✅ Run the target bare — it auto-routes:
+```bash
+make test-unit          # routes itself into devtools via container_target
+```
+The prefix is redundant: every toolchain target wraps itself with the
+`container_target` macro, and the `LITELLM_IN_DEVTOOLS=1` guard in
+`scripts/dev.sh` prevents a nested container, so the prefixed form still
+runs ONE container and succeeds — it just adds noise. If docker is down
+you get a clear preflight error from `scripts/dev.sh`, not a cryptic
+missing-`go`-binary failure.
 
 ### ❌ Naked polling loop
 ```bash
@@ -427,18 +447,20 @@ spec:
 WHY IT FAILS: LiteLLM 1.83.10 OSS rejects `tags:` on `POST /team/new`.
 Same for any `*-enterprise-*` Helm value.
 
-### ❌ Re-running full E2E for every code change
+### ❌ Re-running the full E2E suite from scratch for every code change
 ```bash
-make e2e-full       # ~10 min from clean each time
+make e2e-full       # full cluster-up + suite each time
 ```
-✅ Use the dev loop:
+✅ Use the dev loop against the kept cluster:
 ```bash
-make cluster-keep                       # once
-./scripts/dev.sh make e2e-focus FOCUS="rateLimits"   # ~30s-2min per iter
-./scripts/dev.sh make operator-redeploy # hot-reload after code edit
+make cluster-up                # once (cluster KEPT)
+make e2e-focus FOCUS="rateLimits"   # ~30s-2min per iter
+make operator-redeploy         # hot-reload after a code edit
 ```
-WHY IT FAILS: `e2e-full` tears down and recreates the cluster every run.
-The kept-cluster loop reuses state across iterations.
+WHY: `e2e-full` runs `cluster-up` (slow) before the suite. After the
+first run the cluster is KEPT (no teardown), so re-run only the focused
+test or hot-reload the operator instead of paying cluster-up again.
+Teardown is explicit: `make cluster-down`.
 
 ### ❌ Pushing without the pre-push hook installed
 ```bash
@@ -562,29 +584,30 @@ operator logs (transport-layer-redacted).
 
 ## E2E debug loop
 
-`make e2e-full` is the clean-room final gate (~10 min). For iteration
-use the kept-cluster loop:
+`make e2e-full` is the final gate (~10 min). It runs `cluster-up` then
+the suite and KEEPS the cluster (teardown is explicit `make cluster-down`),
+so the same command doubles as the entry point to the kept-cluster loop:
 
 ```bash
-# 1. Bring cluster up once (kept after run)
-./scripts/dev.sh make e2e-keep
-# = scripts/cluster.sh keep + make e2e-run (NO teardown after)
+# 1. Bring cluster up + run the suite once; cluster is KEPT after the run.
+make e2e-full
+# = cluster-up (with ensure-inotify) + e2e-run (NO teardown after)
 
 # 2. Diagnose live (cluster is up)
-./scripts/dev.sh bash -c "kubectl -n default logs deploy/alitellm-operator --tail=200"
-./scripts/dev.sh bash -c "kubectl -n default describe team <name>"
+make logs-operator                       # tail operator logs (host kubectl)
+make wait-cr-ready KIND=team NAME=<name> NS=default
 
 # 3. Iterate with focused tests
-./scripts/dev.sh make e2e-focus FOCUS="rateLimits composite"
-./scripts/dev.sh make test-envtest-pkg PKG=./internal/controller/... FOCUS=TestTeamReconciler_AC_T4
+make e2e-focus FOCUS="rateLimits composite"
+make test-envtest-pkg PKG=./internal/controller/... FOCUS=TestTeamReconciler_AC_T4
 
 # 4. Code change → hot-reload → re-test (~30s)
-./scripts/dev.sh make operator-redeploy
-./scripts/dev.sh make e2e-focus FOCUS="..."
+make operator-redeploy
+make e2e-focus FOCUS="..."
 
-# 5. Final gate before commit (full suite from clean)
-make cluster-down
-./scripts/dev.sh make e2e-full
+# 5. Final gate before commit (full suite from a fresh cluster)
+make cluster-reset       # down + up
+make e2e-full
 ```
 
 Never push a change touching `internal/controller/`, `internal/litellm/`,

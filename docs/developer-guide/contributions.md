@@ -68,16 +68,17 @@ Inner-loop helpers when iterating on a single package:
 
 ## E2E debug loop (kept cluster)
 
-`make e2e-full` tears down and recreates the kind cluster every run.
-For iteration, keep the cluster up:
+`make e2e-full` runs `cluster-up` then the suite and KEEPS the cluster
+(teardown is explicit). After the first run, iterate against the kept
+cluster:
 
 ```bash
-./scripts/dev.sh make e2e-keep                                  # bring up + run e2e, keep cluster
-./scripts/dev.sh make e2e-focus FOCUS="rateLimits composite"    # ~30s-2m per iter
-./scripts/dev.sh make operator-redeploy                         # hot-reload after code edit
+make e2e-full                                   # bring up + run e2e, cluster KEPT
+make e2e-focus FOCUS="rateLimits composite"     # ~30s-2m per iter
+make operator-redeploy                          # hot-reload after code edit
 ```
 
-When done, `make cluster-down` then the final-gate run.
+When done, `make cluster-down`; for a clean final gate, `make cluster-reset` then `make e2e-full`.
 
 ## Pre-push gate (15 gates)
 
