@@ -72,7 +72,9 @@ help: ## Display this help.
 # Go module cache. ./internal/... was added in plan 01-04 so the
 # NoOpReconciler's RBAC markers (+kubebuilder:rbac:...) are picked up.
 .PHONY: manifests
-manifests: controller-gen ## Generate WebhookConfiguration, Role and CustomResourceDefinition objects.
+manifests: ## Generate WebhookConfiguration, Role and CustomResourceDefinition objects.
+	$(call container_target,_manifests)
+_manifests: controller-gen
 	# crd:allowDangerousTypes=true is required because Team.spec.budget.limit
 	# is *float64 (per spec §6.7 "Float64 precision is adopted for v1alpha1").
 	# controller-gen rejects float types by default; the spec explicitly chose
@@ -86,7 +88,9 @@ manifests: controller-gen ## Generate WebhookConfiguration, Role and CustomResou
 	@scripts/normalize-manager-role.sh
 
 .PHONY: generate
-generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
+generate: ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
+	$(call container_target,_generate)
+_generate: controller-gen
 	$(CONTROLLER_GEN) object:headerFile=hack/boilerplate.go.txt paths="./api/..."
 
 .PHONY: fmt
@@ -101,7 +105,9 @@ vet: ## Run go vet against code.
 test: test-all ## Backward-compat alias for `make test-all` (unit + envtest-run). New code should use the explicit phase target.
 
 .PHONY: unit
-unit: fmt vet ## Phase 1 — pure-logic tests, no envtest, no cluster. ~10s warm.
+unit: ## Phase 1 — pure-logic tests, no envtest, no cluster. ~10s warm.
+	$(call container_target,_unit)
+_unit: fmt vet
 	# `go test` defaults to -p=GOMAXPROCS across packages (speedup-ideas §5 confirmed).
 	# Exclusions: internal/controller (envtest), internal/toolhive (envtest),
 	# test/e2e (cluster). Anything else is pure-logic.
@@ -113,7 +119,9 @@ unit: fmt vet ## Phase 1 — pure-logic tests, no envtest, no cluster. ~10s warm
 envtest-run: envtest-race ## Phase 2 — controller envtest (race-enabled). Alias for envtest-race; CI gate.
 
 .PHONY: envtest-race
-envtest-race: manifests generate fmt vet setup-envtest ## Phase 2 — controller envtest with -race. Slower (~7m) but catches data races. CI gate.
+envtest-race: ## Phase 2 — controller envtest with -race. Slower (~7m) but catches data races. CI gate.
+	$(call container_target,_envtest-race)
+_envtest-race: manifests generate fmt vet setup-envtest
 	@# Runs envtest packages concurrently. Green runs show package status
 	@# plus slow tests; failed packages dump their captured logs.
 	@KUBEBUILDER_ASSETS="$$($(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)"; \
@@ -121,7 +129,9 @@ envtest-race: manifests generate fmt vet setup-envtest ## Phase 2 — controller
 	scripts/run-envtest-packages.sh --race --timeout 15m --coverprofile cover-envtest.out -- ./internal/controller/... ./internal/toolhive/...
 
 .PHONY: envtest-fast
-envtest-fast: setup-envtest ## Phase 2 — controller envtest WITHOUT -race. Dev inner loop (~3m, ~3x faster than envtest-race). Not a CI gate.
+envtest-fast: ## Phase 2 — controller envtest WITHOUT -race. Dev inner loop (~3m, ~3x faster than envtest-race). Not a CI gate.
+	$(call container_target,_envtest-fast)
+_envtest-fast: setup-envtest
 	@# Runs envtest packages concurrently. Green runs show package status
 	@# plus slow tests; failed packages dump their captured logs.
 	@KUBEBUILDER_ASSETS="$$($(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)"; \
@@ -133,42 +143,60 @@ test-all: unit envtest-run ## All non-cluster tests (unit + envtest-run).
 
 .PHONY: unit-pkg
 unit-pkg: ## Phase 1 — run unit tests for one package. Usage: make unit-pkg PKG=./internal/litellm/...
+	$(call container_target,_unit-pkg)
+_unit-pkg:
 	@test -n "$(PKG)" || (echo "ERROR: PKG=... required" >&2; exit 1)
 	go test -v -race -count=1 $(PKG)
 
 .PHONY: envtest-pkg
-envtest-pkg: setup-envtest ## Phase 2 — run envtest for one package. Usage: make envtest-pkg PKG=./internal/controller/... [FOCUS=TestName] [TIMEOUT=10m]
+envtest-pkg: ## Phase 2 — run envtest for one package. Usage: make envtest-pkg PKG=./internal/controller/... [FOCUS=TestName] [TIMEOUT=10m]
+	$(call container_target,_envtest-pkg)
+_envtest-pkg: setup-envtest
 	@test -n "$(PKG)" || (echo "ERROR: PKG=... required" >&2; exit 1)
 	# `script -q /dev/null -c "..."` fakes a TTY so -v output streams.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" \
 		script -q /dev/null -c "go test -v -count=1 -timeout $(or $(TIMEOUT),10m) $(if $(FOCUS),-run $(FOCUS),) $(PKG)"
 
 .PHONY: smoke-idempotency
-smoke-idempotency: manifests generate fmt vet setup-envtest ## Run the accelerated AC-R1 idempotency smoke (10s window, 1s safety re-list).
+smoke-idempotency: ## Run the accelerated AC-R1 idempotency smoke (10s window, 1s safety re-list).
+	$(call container_target,_smoke-idempotency)
+_smoke-idempotency: manifests generate fmt vet setup-envtest
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test -count=1 -timeout 60s -run TestIdempotencyNoMutationSteadyState ./internal/controller/...
 
 .PHONY: smoke-idempotency-long
-smoke-idempotency-long: manifests generate fmt vet setup-envtest ## Run the real 35-min AC-R1 idempotency test (nightly cadence; longidempotency build tag).
+smoke-idempotency-long: ## Run the real 35-min AC-R1 idempotency test (nightly cadence; longidempotency build tag).
+	$(call container_target,_smoke-idempotency-long)
+_smoke-idempotency-long: manifests generate fmt vet setup-envtest
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test -count=1 -timeout 40m -tags=longidempotency -run TestIdempotency35MinReal ./internal/controller/...
 
 .PHONY: leak-soak
-leak-soak: manifests generate fmt vet setup-envtest ## REL-03: run the 1000-reconcile leak harness (nightly cadence; longidempotency build tag).
+leak-soak: ## REL-03: run the 1000-reconcile leak harness (nightly cadence; longidempotency build tag).
+	$(call container_target,_leak-soak)
+_leak-soak: manifests generate fmt vet setup-envtest
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test -count=1 -timeout 5m -tags=longidempotency -run TestLeakHarness_1000Reconciles ./internal/controller/...
 
 .PHONY: lint
-lint: golangci-lint ## Run golangci-lint linter
+lint: ## Run golangci-lint linter
+	$(call container_target,_lint)
+_lint: golangci-lint
 	$(GOLANGCI_LINT) run
 
 .PHONY: lint-fix
-lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
+lint-fix: ## Run golangci-lint linter and perform fixes
+	$(call container_target,_lint-fix)
+_lint-fix: golangci-lint
 	$(GOLANGCI_LINT) run --fix
 
 .PHONY: lint-config
-lint-config: golangci-lint ## Verify golangci-lint linter configuration
+lint-config: ## Verify golangci-lint linter configuration
+	$(call container_target,_lint-config)
+_lint-config: golangci-lint
 	$(GOLANGCI_LINT) config verify
 
 .PHONY: lint-changed
-lint-changed: golangci-lint ## Lint only packages touched vs BASE_REF (default origin/main, fallback main). Inner-loop fast path (speedup-ideas §10).
+lint-changed: ## Lint only packages touched vs BASE_REF (default origin/main, fallback main). Inner-loop fast path (speedup-ideas §10).
+	$(call container_target,_lint-changed)
+_lint-changed: golangci-lint
 	@BASE=$${BASE_REF:-origin/main}; \
 	if ! git rev-parse --verify "$$BASE" >/dev/null 2>&1; then \
 		BASE=main; \
@@ -191,16 +219,22 @@ FUZZ_TIME_LONG  ?= 10m
 
 .PHONY: fuzz-short
 fuzz-short: ## Phase 4 — Go fuzz targets with 60s budget per target (CI cadence).
+	$(call container_target,_fuzz-short)
+_fuzz-short:
 	go test -run='^$$' -fuzz=FuzzSubstitute -fuzztime=$(FUZZ_TIME_SHORT) ./internal/substitution/...
 	go test -run='^$$' -fuzz=FuzzNormalize  -fuzztime=$(FUZZ_TIME_SHORT) ./internal/normalize/...
 
 .PHONY: fuzz-long
 fuzz-long: ## Go fuzz targets with 10-minute budget per target (nightly cadence).
+	$(call container_target,_fuzz-long)
+_fuzz-long:
 	go test -run='^$$' -fuzz=FuzzSubstitute -fuzztime=$(FUZZ_TIME_LONG) ./internal/substitution/...
 	go test -run='^$$' -fuzz=FuzzNormalize  -fuzztime=$(FUZZ_TIME_LONG) ./internal/normalize/...
 
 .PHONY: security
-security: lint ## Phase 4 — in-container security umbrella: gosec (via lint) + govulncheck (acknowledged-list aware) + fuzz-short. Target <=6min warm. Runs inside devtools (./scripts/dev.sh make security).
+security: ## Phase 4 — in-container security umbrella: gosec (via lint) + govulncheck (acknowledged-list aware) + fuzz-short. Target <=6min warm. Runs inside devtools (./scripts/dev.sh make security).
+	$(call container_target,_security)
+_security: lint
 	bash scripts/govulncheck-gate.sh
 	$(MAKE) fuzz-short
 
