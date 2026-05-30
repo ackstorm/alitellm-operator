@@ -378,6 +378,13 @@ _undeploy: kustomize
 
 ##@ Dependencies
 
+# Tool-installer targets (kustomize, controller-gen, setup-envtest, envtest,
+# golangci-lint, crd-ref-docs) run `go install` via the go-install-tool macro.
+# They are NOT wrapped in container_target: they are reached only as
+# prerequisites of already-routed `_`-targets, so they execute in-container
+# where `go` exists. Invoking one standalone on the host (e.g. `make
+# setup-envtest`) is an unsupported path — go is absent on the host PATH.
+
 ## Location to install dependencies to
 LOCALBIN ?= $(shell pwd)/bin
 $(LOCALBIN):
