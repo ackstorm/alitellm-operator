@@ -188,7 +188,7 @@ classic-HTTP-repo fallback.
 
 | Change | What to update |
 |---|---|
-| Add/rename CRD field, type, validation marker | (a) regenerate manifests: `./scripts/dev.sh make manifests` (b) regenerate API ref: `./scripts/dev.sh make gen-crd-ref-docs` (c) commit `docs/api-reference/litellm.ackstorm.ai.md` (d) update relevant `docs/user-guide/<kind>.md` example if the field shows there |
+| Add/rename CRD field, type, validation marker | (a) regenerate manifests: `./scripts/dev.sh make gen-manifests` (b) regenerate API ref: `./scripts/dev.sh make gen-crd-ref-docs` (c) commit `docs/api-reference/litellm.ackstorm.ai.md` (d) update relevant `docs/user-guide/<kind>.md` example if the field shows there |
 | Add new CRD kind | Steps above PLUS add `mkdocs.yml` nav entry under `User Guide:` PLUS create `docs/user-guide/<kind>.md` PLUS add row to root `CLAUDE.md` "Quick context" CRD list |
 | Add new doc page | (a) create `docs/<section>/<file>.md` (b) add entry to `mkdocs.yml` `nav:` (omit ⇒ `--strict` warns) (c) run `make docs-build-strict` locally |
 | Change API group | Update `docs/.crd-ref-docs.yaml` `processing.onlyGroups:` AND `mkdocs.yml` nav under `API Reference:` AND `docs/.crd-ref-docs.yaml` template literal `eq .Group "litellm.ackstorm.ai"` |

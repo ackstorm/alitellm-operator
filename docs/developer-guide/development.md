@@ -42,24 +42,24 @@ The wrapper:
 ## Inner loop — code → unit → envtest
 
 ```bash
-./scripts/dev.sh make unit                # ~5s warm, every iteration
-./scripts/dev.sh make unit-pkg PKG=./internal/litellm/...
-./scripts/dev.sh make envtest-fast        # ~3m, no -race, dev loop
-./scripts/dev.sh make envtest-run         # ~7m, -race, before commit
-./scripts/dev.sh make envtest-pkg PKG=./internal/controller/... \
+./scripts/dev.sh make test-unit                # ~5s warm, every iteration
+./scripts/dev.sh make test-unit-pkg PKG=./internal/litellm/...
+./scripts/dev.sh make test-envtest-fast        # ~3m, no -race, dev loop
+./scripts/dev.sh make test-envtest         # ~7m, -race, before commit
+./scripts/dev.sh make test-envtest-pkg PKG=./internal/controller/... \
                                   FOCUS=TestTeamReconciler_AC_T4 \
                                   TIMEOUT=10m
-./scripts/dev.sh make lint                # full repo
-./scripts/dev.sh make lint-changed        # only packages touched vs origin/main
+./scripts/dev.sh make qa-lint                # full repo
+./scripts/dev.sh make qa-lint-changed        # only packages touched vs origin/main
 ```
 
-`make test-all` = `unit` + `envtest-run`.
+`make test-full` = `unit` + `envtest-run`.
 
 ## Codegen + manifests
 
 ```bash
-./scripts/dev.sh make manifests           # regenerate CRDs + RBAC + webhooks
-./scripts/dev.sh make generate            # regenerate zz_generated_deepcopy.go
+./scripts/dev.sh make gen-manifests           # regenerate CRDs + RBAC + webhooks
+./scripts/dev.sh make gen-code            # regenerate zz_generated_deepcopy.go
 ./scripts/dev.sh make gen-crd-ref-docs    # regenerate docs/api-reference/
 ./scripts/dev.sh make fmt                 # go fmt
 ```
@@ -78,7 +78,7 @@ iteration use the kept-cluster loop:
 ```bash
 # 1. Bring cluster up once; keep state across iterations
 ./scripts/dev.sh make e2e-keep
-# = scripts/cluster.sh keep + make e2e (NO teardown after)
+# = scripts/cluster.sh keep + make e2e-run (NO teardown after)
 
 # 2. Diagnose live
 ./scripts/dev.sh bash -c "kubectl -n default logs deploy/alitellm-operator --tail=200"
@@ -124,7 +124,7 @@ target if the need isn't covered.
 ## Security + pre-push gates
 
 ```bash
-./scripts/dev.sh make security    # gosec + govulncheck + fuzz-short (~6m)
+./scripts/dev.sh make qa-security    # gosec + govulncheck + fuzz-short (~6m)
 make pre-push                     # host-only; 15 publication gates
 ```
 

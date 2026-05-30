@@ -5,8 +5,8 @@
 
 // Package controller — AC-R1 real 35-minute cross-kind idempotency soak.
 //
-// Build tag: longidempotency (not part of `make test`; runs via `make
-// smoke-idempotency-long` on nightly CI cadence).
+// Build tag: longidempotency (not part of `make test-full`; runs via `make
+// test-smoke-idempotency-long` on nightly CI cadence).
 //
 // This test replaces the Phase 1 stub (which only verified the build tag
 // compiled). The real soak:

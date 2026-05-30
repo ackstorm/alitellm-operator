@@ -1,7 +1,7 @@
 # Tier 2 operator config — exercises deploy/helm/alitellm-operator/ (production path).
 #
 # Used by:  scripts/cluster.sh up (step 7 — helm upgrade --install alitellm-operator)
-# Image:    built fresh from worktree HEAD via `make docker-build IMG=alitellm-operator:e2e`,
+# Image:    built fresh from worktree HEAD via `make build-image IMG=alitellm-operator:e2e`,
 #           then kind-loaded so pullPolicy=Never resolves.
 
 image:

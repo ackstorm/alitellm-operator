@@ -154,7 +154,7 @@ invocation goes through the devtools container via `./scripts/dev.sh`.
 ```bash
 ./scripts/dev.sh go build ./...
 ./scripts/dev.sh go test ./internal/controller/...
-./scripts/dev.sh make manifests
+./scripts/dev.sh make gen-manifests
 ./scripts/dev.sh bash            # interactive shell
 ```
 
@@ -186,19 +186,19 @@ Targets that only call `kubectl`/`docker`/`helm`/`kind`/bash run on host
 
 | Phase              | Command                                | When                                  |
 |--------------------|----------------------------------------|---------------------------------------|
-| `make unit`        | pure-logic, ~5s warm                   | every iteration                       |
-| `make lint-changed`| golangci-lint scoped to touched pkgs   | every iteration                       |
-| `make lint`        | golangci-lint full sweep               | before commit (pre-commit hook)       |
-| `make envtest-run` | controller-runtime envtest (race), ~7m | before commit on controller changes   |
-| `make envtest-fast`| envtest without -race, ~3m            | dev inner loop                        |
+| `make test-unit`        | pure-logic, ~5s warm                   | every iteration                       |
+| `make qa-lint-changed`| golangci-lint scoped to touched pkgs   | every iteration                       |
+| `make qa-lint`        | golangci-lint full sweep               | before commit (pre-commit hook)       |
+| `make test-envtest` | controller-runtime envtest (race), ~7m | before commit on controller changes   |
+| `make test-envtest-fast`| envtest without -race, ~3m            | dev inner loop                        |
 | `make e2e-full`    | kind + Helm + Ginkgo, ~6m             | final gate before commit              |
-| `make security`    | gosec + govulncheck + fuzz-short, ≤6m | in-container; before push             |
+| `make qa-security`    | gosec + govulncheck + fuzz-short, ≤6m | in-container; before push             |
 | `make pre-commit`  | lint-changed + unit                   | host-only; runs on every `git commit` once `make hooks` installed |
 | `make pre-push`    | full publication gate (secrets, filesystem, build hygiene, SPDX, lint + unit, ...) | host-only; runs on every `git push` once `make hooks` installed — manual invocation is a dry-run / verification only |
 
 Umbrella targets:
-- `make test-all` = `unit` + `envtest-run`
-- `make verify` = `./scripts/dev.sh make lint` + `./scripts/dev.sh make unit` + `./scripts/dev.sh make security` + `make pre-push`
+- `make test-full` = `unit` + `envtest-run`
+- `make verify` = `./scripts/dev.sh make qa-lint` + `./scripts/dev.sh make test-unit` + `./scripts/dev.sh make qa-security` + `make pre-push`
 - `make hooks` installs `.git/hooks/pre-commit -> scripts/pre-commit-check.sh`
   AND `.git/hooks/pre-push -> scripts/pre-push-check.sh`
 
@@ -207,9 +207,9 @@ on host docker. Do NOT call it via `./scripts/dev.sh` (would nest docker
 mounts that don't resolve). The same applies to `make pre-commit`.
 
 Inner-loop iteration helpers:
-- `make unit-pkg PKG=./internal/litellm/...`
-- `make envtest-pkg PKG=./internal/controller/... [FOCUS=TestX] [TIMEOUT=10m]`
-- `make lint-changed [BASE_REF=...]` (lints only packages touched vs `origin/main`)
+- `make test-unit-pkg PKG=./internal/litellm/...`
+- `make test-envtest-pkg PKG=./internal/controller/... [FOCUS=TestX] [TIMEOUT=10m]`
+- `make qa-lint-changed [BASE_REF=...]` (lints only packages touched vs `origin/main`)
 
 ## Documentation site (mkdocs)
 
@@ -247,10 +247,10 @@ Cutting a release (stable example, `v0.1.0`):
 
 ```bash
 # Most common — empty release commit (no manifest pre-bump).
-# `make release` runs preconditions (on main, clean tree, in-sync
+# `make release-cut` runs preconditions (on main, clean tree, in-sync
 # with origin/main), creates `chore(release): v0.1.0` as an empty
 # commit, runs the pre-push gate, and pushes to main.
-make release VERSION=0.1.0
+make release-cut VERSION=0.1.0
 
 # Bundle the release intent with a real change:
 # (edit, then commit the change yourself, then:)
@@ -258,8 +258,8 @@ git commit -am 'chore(release): v0.1.0'
 git push origin main   # installed pre-push hook runs the gate automatically
 ```
 
-There is no need to `make bump` locally or to create the tag yourself.
-`make bump VERSION=X.Y.Z` is still available as the internal target
+There is no need to `make release-bump` locally or to create the tag yourself.
+`make release-bump VERSION=X.Y.Z` is still available as the internal target
 release.yml invokes; it can also be run by hand if you want to pre-bump
 manifests in the same commit (the workflow detects the clean tree and
 skips its own bump step), but it is not the expected workflow.
@@ -268,17 +268,17 @@ Per-release flow (after the `chore(release): v0.1.0` push):
 
 1. **parse** job (job-level `if` skips non-release pushes): pulls
    `X.Y.Z` from the head commit message via regex.
-2. **run-tests** job: `make test` (`unit` + `envtest-run` = race-enabled).
+2. **run-tests** job: `make test-full` (`test-unit` + `test-envtest` = race-enabled).
    Failures stop the pipeline here — no manifest mutation, no tag.
 3. **build-and-release** job:
    - Configures the github-actions[bot] identity.
-   - Runs `make bump VERSION=X.Y.Z`, commits the four bumped manifests
+   - Runs `make release-bump VERSION=X.Y.Z`, commits the four bumped manifests
      to `main` with a `[skip ci]` marker, and pushes the bot commit.
      If the tree is already clean (user pre-bumped), this is a no-op.
    - Picks the goreleaser config:
      - `vX.Y.Z`                  → `.goreleaser.yml`            (stable)
      - `vX.Y.Z-{alpha,beta,rc}*` → `.goreleaser.prerelease.yml`
-   - `make generate manifests` regenerates CRDs (sanity).
+   - `make gen-code manifests` regenerates CRDs (sanity).
    - cosign + cyclonedx-gomod installed on PATH (HRD-09).
    - goreleaser runs with `GORELEASER_CURRENT_TAG=v<X.Y.Z>` (no git
      tag at HEAD yet). The GitHub release-create API call auto-creates
@@ -301,7 +301,7 @@ Orphan-tag posture: tag-creation is the LAST step. A failure in tests
 or bump or goreleaser leaves no tag on origin and no GH release
 attached to one. The bot bump commit may be on `main` if the failure
 happened in goreleaser — that is reversible by reverting the bot
-commit or by simply running the next release attempt, since `make bump`
+commit or by simply running the next release attempt, since `make release-bump`
 inside the workflow is idempotent.
 
 Snapshot builds (`.goreleaser.snapshot.yml`) are intentionally NOT
@@ -319,8 +319,8 @@ Public remote: `git@github.com:ackstorm/alitellm-operator.git`. The
 local gate strategy splits across two hook stages so the cost of
 "oops, CI failed lint" is paid locally before the commit even lands:
 
-- `pre-commit` (`make pre-commit`) — fast: `make lint-changed`
-  (golangci-lint scoped to touched packages) + `make unit`. Runs on
+- `pre-commit` (`make pre-commit`) — fast: `make qa-lint-changed`
+  (golangci-lint scoped to touched packages) + `make test-unit`. Runs on
   every `git commit` once `make hooks` is installed. Bypass with
   `--no-verify` only for justified WIP commits; full lint + unit still
   fire on push as defensive gates.
@@ -346,7 +346,7 @@ Gate categories — any failure blocks push:
   `references/security/govulncheck-acknowledged.md`).
 - **Code provenance**: per-file SPDX header
   (`// SPDX-License-Identifier: Apache-2.0`).
-- **Defense in depth**: full `make lint` + `make unit` re-run inside
+- **Defense in depth**: full `make qa-lint` + `make test-unit` re-run inside
   the devtools container, even when `pre-commit` already covered the
   touched packages.
 - **Informational warns** (do not block): commit-author summary,
@@ -388,12 +388,12 @@ are the contract; ad-hoc loops aren't.
 
 ### ❌ Running `make X` directly on host
 ```bash
-make unit
+make test-unit
 # command not found: go
 ```
 ✅ Prefix with `./scripts/dev.sh`:
 ```bash
-./scripts/dev.sh make unit
+./scripts/dev.sh make test-unit
 ```
 WHY IT FAILS: Host has no Go binary. The devtools container does.
 
@@ -544,7 +544,7 @@ operator logs (transport-layer-redacted).
   `zz_generated*.go`, `mock_*.go` starts with
   `// SPDX-License-Identifier: Apache-2.0`. Pre-push gate 15 enforces.
   `hack/boilerplate.go.txt` provides the header for controller-gen
-  output; `make generate` wires it in via `object:headerFile=`.
+  output; `make gen-code` wires it in via `object:headerFile=`.
 
 - **govulncheck ack-list**: stdlib HIGH advisories awaiting Go 1.25.x
   fixes live in `references/security/govulncheck-acknowledged.md` (note:
@@ -568,7 +568,7 @@ use the kept-cluster loop:
 ```bash
 # 1. Bring cluster up once (kept after run)
 ./scripts/dev.sh make e2e-keep
-# = scripts/cluster.sh keep + make e2e (NO teardown after)
+# = scripts/cluster.sh keep + make e2e-run (NO teardown after)
 
 # 2. Diagnose live (cluster is up)
 ./scripts/dev.sh bash -c "kubectl -n default logs deploy/alitellm-operator --tail=200"
@@ -576,7 +576,7 @@ use the kept-cluster loop:
 
 # 3. Iterate with focused tests
 ./scripts/dev.sh make e2e-focus FOCUS="rateLimits composite"
-./scripts/dev.sh make envtest-pkg PKG=./internal/controller/... FOCUS=TestTeamReconciler_AC_T4
+./scripts/dev.sh make test-envtest-pkg PKG=./internal/controller/... FOCUS=TestTeamReconciler_AC_T4
 
 # 4. Code change → hot-reload → re-test (~30s)
 ./scripts/dev.sh make operator-redeploy

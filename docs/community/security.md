@@ -15,7 +15,7 @@ or email the maintainers (contacts are listed in
 
 ## Operator-specific hardening tips
 
-- **RBAC** — review the role rendered by `make manifests` and grant only the
+- **RBAC** — review the role rendered by `make gen-manifests` and grant only the
   namespaces/resources you actually reconcile.
 - **Master key Secret** — the Secret referenced by `LiteLLMConnection.spec.masterKeySecretRef`
   is the LiteLLM proxy's privileged credential. Restrict who can `get` it.

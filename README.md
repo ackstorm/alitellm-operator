@@ -144,7 +144,7 @@ Pre-releases use the `-alpha`/`-beta`/`-rc` suffix
 (e.g. `0.2.0-rc1`) which routes through `.goreleaser.prerelease.yml`.
 
 If you prefer to bundle the release intent with real edits, do so —
-`make bump VERSION=X.Y.Z` is available locally and the workflow will
+`make release-bump VERSION=X.Y.Z` is available locally and the workflow will
 detect a clean tree and skip its own bump step.
 
 A failed pipeline does NOT leave a tag on origin. The bot bump commit

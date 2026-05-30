@@ -17,7 +17,7 @@ import (
 // remain.
 //
 // This is a structural assertion against the generated bundle. It
-// runs in `make unit` (no apiserver needed) and gates regressions if
+// runs in `make test-unit` (no apiserver needed) and gates regressions if
 // `make deploy-kustomize-sync` or the config/rbac/ source files are
 // ever reverted to ClusterRole.
 func TestRBAC_ManagerRoleIsNamespaced(t *testing.T) {
