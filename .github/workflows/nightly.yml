@@ -35,7 +35,7 @@ jobs:
           restore-keys: ${{ runner.os }}-go-
 
       - name: Run 35-min AC-R1 cross-kind soak
-        run: make smoke-idempotency-long
+        run: make test-smoke-idempotency-long
 
   leak-soak:
     name: 1000-reconcile FD+goroutine leak harness
@@ -58,7 +58,7 @@ jobs:
           restore-keys: ${{ runner.os }}-go-
 
       - name: Run 1000-reconcile leak harness
-        run: make leak-soak
+        run: make test-leak-soak
 
   fuzz-long:
     name: Go fuzz (10min per target)
@@ -82,7 +82,7 @@ jobs:
         run: ./scripts/dev.sh true
 
       - name: Run 10-min fuzz on FuzzSubstitute + FuzzNormalize
-        run: ./scripts/dev.sh make fuzz-long
+        run: ./scripts/dev.sh make qa-fuzz-long
 
       # On a crash, the fuzzer writes new corpus files under
       # internal/<pkg>/testdata/fuzz/<TargetName>/ for triage.

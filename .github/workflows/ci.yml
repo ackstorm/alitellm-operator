@@ -39,7 +39,7 @@ jobs:
         uses: ./.github/actions/setup-devtools
 
       - name: Run linter
-        run: ./scripts/dev.sh make lint
+        run: ./scripts/dev.sh make qa-lint
 
       # Chart/CRD drift gate. `make helm-sync` regenerates CRDs from
       # api/ via controller-gen, rebuilds dist/install.yaml, and copies
@@ -80,7 +80,7 @@ jobs:
         uses: ./.github/actions/setup-devtools
 
       - name: Run unit tests
-        run: ./scripts/dev.sh make unit
+        run: ./scripts/dev.sh make test-unit
 
       - name: Upload unit coverage
         if: always()
@@ -102,7 +102,7 @@ jobs:
         uses: ./.github/actions/setup-devtools
 
       - name: Run controller + toolhive envtest
-        run: ./scripts/dev.sh make envtest-fast
+        run: ./scripts/dev.sh make test-envtest-fast
 
       - name: Upload envtest coverage
         if: always()
@@ -132,7 +132,7 @@ jobs:
         uses: ./.github/actions/setup-devtools
 
       - name: Run security gate
-        run: ./scripts/dev.sh make security
+        run: ./scripts/dev.sh make qa-security
 
       # gosec SARIF emitted out-of-band for the Security tab; `make
       # security` already gated HIGH findings, so SARIF upload is
@@ -162,19 +162,19 @@ jobs:
       - name: Set up devtools (pull or build)
         uses: ./.github/actions/setup-devtools
 
-      # `make e2e-full` wraps cluster-up + make e2e + cluster-down in
+      # `make e2e-full` wraps cluster-up + make e2e-run + cluster-down in
       # one bash with trap-guaranteed teardown. GH Actions cannot share
       # a bash trap across steps, so the same semantics are expressed
       # as three steps:
       #   cluster-up       → 'needs: success' (default)
-      #   make e2e         → 'needs: cluster-up succeeded'
+      #   make e2e-run     → 'needs: cluster-up succeeded'
       #   forensics        → 'if: failure()' before cluster-down
       #   cluster-down     → 'if: always()' (trap equivalent)
       - name: Cluster up + hydrate (same as make cluster-up)
         run: ./scripts/dev.sh make cluster-up
 
-      - name: Run E2E suite (same as make e2e)
-        run: ./scripts/dev.sh make e2e
+      - name: Run E2E suite (same as make e2e-run)
+        run: ./scripts/dev.sh make e2e-run
 
       - name: Collect failure forensics
         if: failure()

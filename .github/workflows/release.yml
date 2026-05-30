@@ -8,8 +8,8 @@ run-name: Release ${{ github.event.head_commit.message }}
 # triggers the release pipeline. The commit itself does NOT need to
 # carry the manifest bumps — this workflow:
 #   1. parses the version from the commit message,
-#   2. runs the full test gate (make test),
-#   3. runs `make bump VERSION=<X.Y.Z>` and commits the bumps back to
+#   2. runs the full test gate (make test-full),
+#   3. runs `make release-bump VERSION=<X.Y.Z>` and commits the bumps back to
 #      main as github-actions[bot] with a [skip ci] marker,
 #   4. runs goreleaser (image cross-build, sign, SBOM) using
 #      GORELEASER_CURRENT_TAG so no git tag is required at this point,
@@ -72,13 +72,13 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
 
       - name: Run tests
-        # ci.yml uses envtest-fast (no -race) because the race detector
+        # ci.yml uses test-envtest-fast (no -race) because the race detector
         # adds 2-5x overhead and inflates AC_CF2b adoption-recognition's
         # reconciler-converge time past the in-test poll budget. release.yml
         # mirrors ci.yml here to avoid CI/release skew on the same commit.
         run: |
-          make unit
-          make envtest-fast
+          make test-unit
+          make test-envtest-fast
 
   build-and-release:
     name: Build + release
@@ -98,17 +98,17 @@ jobs:
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
 
-      - name: Bump manifests via make bump
+      - name: Bump manifests via make release-bump
         env:
           VERSION: ${{ needs.parse.outputs.version }}
-        run: make bump VERSION=$VERSION
+        run: make release-bump VERSION=$VERSION
 
       - name: Commit + push manifest bumps to main
         id: bump_push
         env:
           VERSION: ${{ needs.parse.outputs.version }}
         run: |
-          # If the user happened to bump locally already, `make bump`
+          # If the user happened to bump locally already, `make release-bump`
           # was a no-op and the working tree is clean. Skip the commit.
           if git diff --quiet; then
             echo "no manifest changes — already at v$VERSION"
