@@ -583,8 +583,8 @@ INOTIFY_MIN_WATCHES   ?= 524288
 .PHONY: ensure-inotify
 ensure-inotify: ## Host-only: raise fs.inotify limits if below kind's needs (best-effort, non-fatal).
 	@if [ "$(LITELLM_IN_DEVTOOLS)" = "1" ]; then exit 0; fi; \
-	cur_i=$$(sysctl -n fs.inotify.max_user_instances 2>/dev/null || echo 0); \
-	cur_w=$$(sysctl -n fs.inotify.max_user_watches 2>/dev/null || echo 0); \
+	cur_i=$$(cat /proc/sys/fs/inotify/max_user_instances 2>/dev/null || echo 0); \
+	cur_w=$$(cat /proc/sys/fs/inotify/max_user_watches 2>/dev/null || echo 0); \
 	if [ "$$cur_i" -ge "$(INOTIFY_MIN_INSTANCES)" ] && [ "$$cur_w" -ge "$(INOTIFY_MIN_WATCHES)" ]; then \
 	  echo "OK   inotify limits sufficient (instances=$$cur_i watches=$$cur_w)"; \
 	else \
