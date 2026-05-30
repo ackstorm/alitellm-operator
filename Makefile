@@ -559,8 +559,37 @@ samples-audit: ## DEPLOY-02: fail the build if any sample manifest contains a TO
 e2e-mock-build: ## build the litellm-mock:e2e image
 	$(CONTAINER_TOOL) build -t litellm-mock:e2e -f test/e2e/mock/Dockerfile test/e2e/mock/
 
+# --- inotify preflight (host-only) -----------------------------------------
+# kind runs each Kubernetes node as a docker container; kubelet, containerd,
+# and the API server each consume fs.inotify instances. The common distro
+# default (max_user_instances=128) gets exhausted partway through hydration
+# and the API server crashes with "connection refused" mid-bringup. These are
+# HOST kernel knobs (not namespaced), so they must be raised on the host
+# BEFORE cluster-up routes into the devtools container — hence a plain
+# prerequisite, not a container_target.
+INOTIFY_MIN_INSTANCES ?= 512
+INOTIFY_MIN_WATCHES   ?= 524288
+
+.PHONY: ensure-inotify
+ensure-inotify: ## Host-only: raise fs.inotify limits if below kind's needs (best-effort, non-fatal).
+	@if [ "$(LITELLM_IN_DEVTOOLS)" = "1" ]; then exit 0; fi; \
+	cur_i=$$(sysctl -n fs.inotify.max_user_instances 2>/dev/null || echo 0); \
+	cur_w=$$(sysctl -n fs.inotify.max_user_watches 2>/dev/null || echo 0); \
+	if [ "$$cur_i" -ge "$(INOTIFY_MIN_INSTANCES)" ] && [ "$$cur_w" -ge "$(INOTIFY_MIN_WATCHES)" ]; then \
+	  echo "OK   inotify limits sufficient (instances=$$cur_i watches=$$cur_w)"; \
+	else \
+	  echo "INFO raising inotify limits for kind (instances=$$cur_i->$(INOTIFY_MIN_INSTANCES), watches=$$cur_w->$(INOTIFY_MIN_WATCHES))"; \
+	  if sudo -n sysctl -w fs.inotify.max_user_instances=$(INOTIFY_MIN_INSTANCES) fs.inotify.max_user_watches=$(INOTIFY_MIN_WATCHES) >/dev/null 2>&1; then \
+	    echo "OK   inotify limits raised (live only; add an /etc/sysctl.d drop-in to persist across reboots)"; \
+	  else \
+	    echo "WARN could not raise inotify limits (no passwordless sudo). kind may die mid-bringup with 'connection refused'."; \
+	    echo "WARN raise them manually, then re-run:"; \
+	    echo "       sudo sysctl -w fs.inotify.max_user_instances=$(INOTIFY_MIN_INSTANCES) fs.inotify.max_user_watches=$(INOTIFY_MIN_WATCHES)"; \
+	  fi; \
+	fi
+
 .PHONY: cluster-up cluster-down cluster-hydrate cluster-keep cluster-status
-cluster-up:      ## bring up canonical kind cluster + hydration
+cluster-up: ensure-inotify ## bring up canonical kind cluster + hydration
 	$(call container_target,_cluster-up)
 _cluster-up:
 	bash scripts/cluster.sh up
