@@ -248,9 +248,9 @@ pre-push: ## Host-only — 17-gate pre-publication check (gitleaks + trufflehog 
 
 .PHONY: verify
 verify: ## Host-only — full pre-publication gate bundle: lint + unit + in-container security + host pre-push. Single command for all gates.
-	./scripts/dev.sh make lint
-	./scripts/dev.sh make unit
-	./scripts/dev.sh make security
+	$(MAKE) lint
+	$(MAKE) unit
+	$(MAKE) security
 	$(MAKE) pre-push
 
 .PHONY: hooks
