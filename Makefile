@@ -610,6 +610,18 @@ cluster-status:  ## print kubectl get on hydration fixtures
 _cluster-status:
 	bash scripts/cluster.sh status
 
+.PHONY: cluster-reset
+cluster-reset: ## tear down then bring up a clean cluster
+	$(MAKE) cluster-down
+	$(MAKE) cluster-up
+
+.PHONY: cluster-image-load
+cluster-image-load: ## Build + kind-load the operator image. Usage: make cluster-image-load IMG=alitellm-operator:e2e
+	$(call container_target,_cluster-image-load)
+_cluster-image-load:
+	$(MAKE) docker-build IMG=$(IMG)
+	kind load docker-image $(IMG) --name $${KIND_CLUSTER:-alitellm-operator-test}
+
 ##@ Waiters (use these; never write ad-hoc until/while loops)
 
 WAIT_TIMEOUT ?= 300s
