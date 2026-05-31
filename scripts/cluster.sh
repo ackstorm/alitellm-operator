@@ -44,10 +44,9 @@ create_cluster() {
 }
 
 create_namespaces() {
-  local ns
-  for ns in default litellm-system toolhive-system mocks dev prod; do
-    kubectl get ns "${ns}" >/dev/null 2>&1 || kubectl create ns "${ns}"
-  done
+  # default always pre-exists; the other five are declared in the
+  # 00-namespaces kustomize phase (e2e=true labelled for `kubectl delete -l`).
+  kubectl apply -k test/e2e/cluster/00-namespaces
 }
 install_toolhive() {
   local crds_version operator_version
