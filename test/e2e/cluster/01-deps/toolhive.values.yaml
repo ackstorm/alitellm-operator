@@ -9,7 +9,7 @@
 # test/e2e/CHART_PINS.md. Install order is always CRDs first (Established=True
 # is a prereq for the operator chart).
 #
-# Apply changes:  make cluster-hydrate
+# Apply changes:  make cluster-sync
 
 crdsChartVersion:     0.0.55      # see test/e2e/CHART_PINS.md
 operatorChartVersion: 0.5.5       # independent of crdsChartVersion
