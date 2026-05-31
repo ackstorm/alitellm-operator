@@ -35,7 +35,7 @@ make cluster-keep       # ~3min once per session
 make operator-redeploy  # ~20s; hot-reloads our operator only
 make e2e-focus FOCUS='registers via POST /model/new'   # re-run one It
 # ── edit values ──
-make cluster-hydrate    # ~30-60s; re-applies all Helm releases (peer operators incl.)
+make cluster-sync       # ~30-60s; re-applies all cluster/ phases + Helm releases (peer operators incl.)
 make cluster-status     # one-screen view
 # ── done ──
 make cluster-down
@@ -67,7 +67,11 @@ invocation; re-export after upgrading controller-runtime.
 
 ## Config surface
 
-All tunables live in `test/e2e/values/*.values.yaml`. Edit + `make cluster-hydrate`.
+Standing hydration + helm values live under `test/e2e/cluster/` as numbered
+kustomize phases (`00-namespaces`, `01-deps`, `02-operator`, `03-mocks`,
+`04-hydration`). Helm value tunables are `test/e2e/cluster/01-deps/*.values.yaml`
+and `test/e2e/cluster/02-operator/operator.values.yaml`. Edit + `make cluster-sync`.
+Adding standing state = drop a manifest + wire one `kustomization.yaml` line.
 Chart version pins are in `test/e2e/CHART_PINS.md`.
 
 ## Forensics
@@ -82,12 +86,12 @@ Phase 9 (Task 09-08) added v1beta1 coverage to the MCPServerDiscovery suite.
 
 The published `toolhive-operator-crds` OCI chart (pinned in `CHART_PINS.md`) ships
 `v1alpha1` only. The `v1beta1` CRD version is hydrated from
-`test/e2e/fixtures/toolhive-v1beta1-crds.yaml`, which is vendored from
+`test/e2e/cluster/01-deps/toolhive-v1beta1-crds.yaml`, which is vendored from
 `stacklok/toolhive v0.28.0` (commit `748a64228710ce241a225f5530022ce2c96cc23e`).
 
-`scripts/cluster.sh hydrate` installs the fixture via `kubectl apply` immediately
+`scripts/cluster.sh sync` installs the fixture via `kubectl apply` immediately
 after the ToolHive OCI chart finishes. The apply is idempotent — re-running
-`make cluster-hydrate` is safe. After hydration, both CRD versions are served:
+`make cluster-sync` is safe. After hydration, both CRD versions are served:
 
 ```
 kubectl get crd mcpservers.toolhive.stacklok.dev \
