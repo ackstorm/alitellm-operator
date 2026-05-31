@@ -7,7 +7,7 @@
 # This fixture supplements the OCI chart install so Tier 2 can exercise both
 # vintages of the operator's MCPServerDiscovery code path.
 #
-# Usage: kubectl apply -f test/e2e/fixtures/toolhive-v1beta1-crds.yaml
+# Usage: kubectl apply -f test/e2e/cluster/01-deps/toolhive-v1beta1-crds.yaml
 # (run after toolhive-operator-crds Helm chart install; idempotent)
 #
 # The OCI chart installs mcpservers.toolhive.stacklok.dev with v1alpha1 only

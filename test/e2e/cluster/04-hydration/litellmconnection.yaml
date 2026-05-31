@@ -11,7 +11,7 @@ spec:
     name: litellm-master-key
     key: master-key
   # The e2e LiteLLM Helm values set MCP_TOOL_PREFIX_SEPARATOR="." (see
-  # test/e2e/values/litellm.values.yaml), so '.' is forbidden inside
+  # test/e2e/cluster/01-deps/litellm.values.yaml), so '.' is forbidden inside
   # server_name and '-' is allowed. Tell the operator's wire-side
   # sanitizer (FIX.txt H-1) to match by rewriting '.' → '-'.
   mcpToolPrefixSeparator: "."

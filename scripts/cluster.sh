@@ -9,7 +9,9 @@ set -euo pipefail
 
 CLUSTER_NAME="${CLUSTER_NAME:-alitellm-operator-test}"
 KIND_CONFIG="${KIND_CONFIG:-scripts/kind-config.yaml}"
-VALUES_DIR="${VALUES_DIR:-test/e2e/values}"
+DEPS_DIR="${DEPS_DIR:-test/e2e/cluster/01-deps}"
+OPERATOR_DIR="${OPERATOR_DIR:-test/e2e/cluster/02-operator}"
+VALUES_DIR="${VALUES_DIR:-test/e2e/values}"   # mocks still live here until Task 6
 
 usage() {
   cat <<'USAGE' >&2
@@ -53,8 +55,8 @@ create_namespaces() {
 }
 install_toolhive() {
   local crds_version operator_version
-  crds_version="$(awk '/^crdsChartVersion:/ {print $2}' "${VALUES_DIR}/toolhive.values.yaml")"
-  operator_version="$(awk '/^operatorChartVersion:/ {print $2}' "${VALUES_DIR}/toolhive.values.yaml")"
+  crds_version="$(awk '/^crdsChartVersion:/ {print $2}' "${DEPS_DIR}/toolhive.values.yaml")"
+  operator_version="$(awk '/^operatorChartVersion:/ {print $2}' "${DEPS_DIR}/toolhive.values.yaml")"
 
   echo "[cluster.sh] installing toolhive-operator-crds @ ${crds_version}..."
   helm upgrade --install toolhive-operator-crds \
@@ -67,7 +69,7 @@ install_toolhive() {
     oci://ghcr.io/stacklok/toolhive/toolhive-operator \
     --version "${operator_version}" \
     -n toolhive-system \
-    -f "${VALUES_DIR}/toolhive.values.yaml" \
+    -f "${DEPS_DIR}/toolhive.values.yaml" \
     --wait --timeout 90s
 
   # Step 2.5 — add v1beta1 versions to ToolHive CRDs (not yet in published charts).
@@ -79,14 +81,14 @@ install_toolhive() {
   # (storage: false, new). kubectl apply replaces the OCI chart's CRD with the
   # multi-version fixture; safe in an ephemeral kind cluster. Idempotent.
   echo "[cluster.sh] adding v1beta1 CRD versions (toolhive dual-vintage fixture)..."
-  kubectl apply --server-side --force-conflicts --field-manager=alitellm-cluster-bootstrap -f test/e2e/fixtures/toolhive-v1beta1-crds.yaml
+  kubectl apply --server-side --force-conflicts --field-manager=alitellm-cluster-bootstrap -f "${DEPS_DIR}/toolhive-v1beta1-crds.yaml"
   echo "[cluster.sh] toolhive CRD versions after fixture: $(kubectl get crd mcpservers.toolhive.stacklok.dev -o jsonpath='{.spec.versions[*].name}' 2>/dev/null || echo 'crd-not-found')"
 }
 
 install_litellm() {
   local version image_tag image
-  version="$(awk '/^chartVersion:/ {print $2}' "${VALUES_DIR}/litellm.values.yaml")"
-  image_tag="$(awk '/^[[:space:]]*tag:/ {print $2; exit}' "${VALUES_DIR}/litellm.values.yaml")"
+  version="$(awk '/^chartVersion:/ {print $2}' "${DEPS_DIR}/litellm.values.yaml")"
+  image_tag="$(awk '/^[[:space:]]*tag:/ {print $2; exit}' "${DEPS_DIR}/litellm.values.yaml")"
   image="ghcr.io/berriai/litellm-database:${image_tag}"
 
   # β: pre-pull + kind load the LiteLLM image so the migrations Job (and
@@ -106,7 +108,7 @@ install_litellm() {
   echo "[cluster.sh] installing litellm @ ${version}..."
   helm upgrade --install litellm "${tmpdir}/litellm-helm" \
     -n litellm-system \
-    -f "${VALUES_DIR}/litellm.values.yaml" \
+    -f "${DEPS_DIR}/litellm.values.yaml" \
     --wait --timeout 240s
 
   # α: helm --wait covers Deployment readiness + PreSync hook completion,
@@ -142,7 +144,7 @@ install_operator() {
 
   echo "[cluster.sh] helm install alitellm-operator..."
   helm upgrade --install alitellm-operator ./deploy/helm/alitellm-operator/ \
-    -n default -f "${VALUES_DIR}/operator.values.yaml" \
+    -n default -f "${OPERATOR_DIR}/operator.values.yaml" \
     --wait --timeout 90s
 }
 
