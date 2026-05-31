@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # scripts/cluster.sh — e2e cluster lifecycle.
 #
-# All Helm chart installs are pinned via test/e2e/CHART_PINS.md; all tunables
-# live in test/e2e/values/*.values.yaml. See test/e2e/README.md for the
-# CI gate vs dev iteration workflows.
+# All Helm chart installs are pinned via test/e2e/CHART_PINS.md; standing
+# hydration + helm values live under test/e2e/cluster/ (numbered phases).
+# See test/e2e/README.md for the CI gate vs dev iteration workflows.
 
 set -euo pipefail
 
@@ -11,7 +11,6 @@ CLUSTER_NAME="${CLUSTER_NAME:-alitellm-operator-test}"
 KIND_CONFIG="${KIND_CONFIG:-scripts/kind-config.yaml}"
 DEPS_DIR="${DEPS_DIR:-test/e2e/cluster/01-deps}"
 OPERATOR_DIR="${OPERATOR_DIR:-test/e2e/cluster/02-operator}"
-VALUES_DIR="${VALUES_DIR:-test/e2e/values}"   # mocks still live here until Task 6
 
 usage() {
   cat <<'USAGE' >&2
@@ -128,13 +127,9 @@ install_mocks() {
   make build-image-mock
   kind load docker-image litellm-mock:e2e --name "${CLUSTER_NAME}"
 
-  echo "[cluster.sh] installing openai-mock + kubeai-mock..."
-  helm upgrade --install openai-mock test/e2e/charts/mocks/ \
-    -n mocks -f "${VALUES_DIR}/openai-mock.values.yaml" \
-    --wait --timeout 60s
-  helm upgrade --install kubeai-mock test/e2e/charts/mocks/ \
-    -n mocks -f "${VALUES_DIR}/kubeai-mock.values.yaml" \
-    --wait --timeout 60s
+  echo "[cluster.sh] applying openai-mock + kubeai-mock (03-mocks phase)..."
+  kubectl apply -k test/e2e/cluster/03-mocks
+  kubectl -n mocks wait --for=condition=Ready pod --all --timeout=60s
 }
 
 install_operator() {

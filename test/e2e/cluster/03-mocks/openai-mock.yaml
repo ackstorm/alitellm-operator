@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openai-mock
+  namespace: mocks
+  labels:
+    app: openai-mock
+    provider: openai
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: openai-mock
+  template:
+    metadata:
+      labels:
+        app: openai-mock
+        provider: openai
+    spec:
+      containers:
+        - name: mock
+          image: litellm-mock:e2e
+          imagePullPolicy: Never
+          env:
+            - name: MOCK_PROVIDER
+              value: "openai"
+            - name: MOCK_AUTH_MODE
+              value: "accept"
+            - name: MOCK_LISTEN_ADDR
+              value: ":8080"
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openai-mock
+  namespace: mocks
+spec:
+  type: ClusterIP
+  selector:
+    app: openai-mock
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
