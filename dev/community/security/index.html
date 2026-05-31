@@ -1561,7 +1561,7 @@ or email the maintainers (contacts are listed in
 <a href="https://github.com/ackstorm/alitellm-operator/blob/main/MAINTAINERS.md"><code>MAINTAINERS.md</code></a>).</p>
 <h2 id="operator-specific-hardening-tips">Operator-specific hardening tips<a class="headerlink" href="#operator-specific-hardening-tips" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>RBAC</strong> — review the role rendered by <code>make manifests</code> and grant only the
+<li><strong>RBAC</strong> — review the role rendered by <code>make gen-manifests</code> and grant only the
   namespaces/resources you actually reconcile.</li>
 <li><strong>Master key Secret</strong> — the Secret referenced by <code>LiteLLMConnection.spec.masterKeySecretRef</code>
   is the LiteLLM proxy's privileged credential. Restrict who can <code>get</code> it.</li>

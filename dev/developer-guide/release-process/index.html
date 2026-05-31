@@ -2543,7 +2543,7 @@
 <h2 id="release-workflow-jobs">Release Workflow Jobs<a class="headerlink" href="#release-workflow-jobs" title="Permanent link">&para;</a></h2>
 <h3 id="1-run-tests-run-tests">1. Run Tests (<code>run-tests</code>)<a class="headerlink" href="#1-run-tests-run-tests" title="Permanent link">&para;</a></h3>
 <ul>
-<li>Runs unit tests with <code>make test</code></li>
+<li>Runs unit tests with <code>make test-full</code></li>
 <li>Performs linting with golangci-lint</li>
 <li>Ensures code quality before release</li>
 <li>Uses Ubuntu latest runner</li>
@@ -2623,7 +2623,7 @@
 <h4 id="tests-fail">Tests Fail<a class="headerlink" href="#tests-fail" title="Permanent link">&para;</a></h4>
 <p><strong>Problem</strong>: Release workflow fails during the test phase.</p>
 <p><strong>Solutions</strong>:
-1. Run <code>make test</code> locally to reproduce the issue
+1. Run <code>make test-full</code> locally to reproduce the issue
 2. Check for linting errors with golangci-lint
 3. Ensure all dependencies are properly installed
 4. Verify Go version compatibility (workflow uses Go 1.21)</p>

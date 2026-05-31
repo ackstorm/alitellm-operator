@@ -1257,10 +1257,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#pre-push-gate-15-gates" class="md-nav__link">
+  <a href="#pre-push-gate-17-gates" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Pre-push gate (15 gates)
+        Pre-push gate (17 gates)
       
     </span>
   </a>
@@ -1631,10 +1631,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#pre-push-gate-15-gates" class="md-nav__link">
+  <a href="#pre-push-gate-17-gates" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Pre-push gate (15 gates)
+        Pre-push gate (17 gates)
       
     </span>
   </a>
@@ -1725,7 +1725,7 @@ files live in the repo root (<code>CONTRIBUTING.md</code>, <code>CLAUDE.md</code
 through the devtools container:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>./scripts/dev.sh<span class="w"> </span>go<span class="w"> </span>build<span class="w"> </span>./...
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>./scripts/dev.sh<span class="w"> </span>go<span class="w"> </span><span class="nb">test</span><span class="w"> </span>./internal/controller/...
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>./scripts/dev.sh<span class="w"> </span>make<span class="w"> </span>manifests
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>./scripts/dev.sh<span class="w"> </span>make<span class="w"> </span>gen-manifests
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>./scripts/dev.sh<span class="w"> </span>bash<span class="w">                </span><span class="c1"># interactive shell</span>
 </code></pre></div>
 <p>The wrapper mounts the repo at <code>/workspace</code>, preserves host UID:GID,
@@ -1750,17 +1750,17 @@ directly on the host.</p>
 <tbody>
 <tr>
 <td>Unit</td>
-<td><code>./scripts/dev.sh make unit</code></td>
+<td><code>./scripts/dev.sh make test-unit</code></td>
 <td>Every inner-loop iteration (~5s warm).</td>
 </tr>
 <tr>
 <td>Envtest (race)</td>
-<td><code>./scripts/dev.sh make envtest-run</code></td>
+<td><code>./scripts/dev.sh make test-envtest</code></td>
 <td>Before commit on controller changes (~7m).</td>
 </tr>
 <tr>
 <td>Envtest (no race)</td>
-<td><code>./scripts/dev.sh make envtest-fast</code></td>
+<td><code>./scripts/dev.sh make test-envtest-fast</code></td>
 <td>Dev inner loop (~3m).</td>
 </tr>
 <tr>
@@ -1775,7 +1775,7 @@ directly on the host.</p>
 </tr>
 <tr>
 <td>Security</td>
-<td><code>./scripts/dev.sh make security</code></td>
+<td><code>./scripts/dev.sh make qa-security</code></td>
 <td>Before commit (~6m).</td>
 </tr>
 <tr>
@@ -1787,24 +1787,25 @@ directly on the host.</p>
 </table>
 <p>Umbrella targets:</p>
 <ul>
-<li><code>make test-all</code> = <code>unit</code> + <code>envtest-run</code></li>
-<li><code>make verify</code> = <code>./scripts/dev.sh make security</code> + <code>make pre-push</code></li>
+<li><code>make test-full</code> = <code>unit</code> + <code>envtest-run</code></li>
+<li><code>make verify</code> = <code>./scripts/dev.sh make qa-security</code> + <code>make pre-push</code></li>
 <li><code>make hooks</code> installs <code>.git/hooks/pre-push -&gt; scripts/pre-push-check.sh</code></li>
 </ul>
 <p>Inner-loop helpers when iterating on a single package:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>./scripts/dev.sh<span class="w"> </span>make<span class="w"> </span>unit-pkg<span class="w"> </span><span class="nv">PKG</span><span class="o">=</span>./internal/litellm/...
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>./scripts/dev.sh<span class="w"> </span>make<span class="w"> </span>envtest-pkg<span class="w"> </span><span class="nv">PKG</span><span class="o">=</span>./internal/controller/...<span class="w"> </span><span class="o">[</span><span class="nv">FOCUS</span><span class="o">=</span>TestX<span class="o">]</span><span class="w"> </span><span class="o">[</span><span class="nv">TIMEOUT</span><span class="o">=</span>10m<span class="o">]</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>./scripts/dev.sh<span class="w"> </span>make<span class="w"> </span>lint-changed<span class="w"> </span><span class="o">[</span><span class="nv">BASE_REF</span><span class="o">=</span>...<span class="o">]</span><span class="w">    </span><span class="c1"># lint only packages touched vs origin/main</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>./scripts/dev.sh<span class="w"> </span>make<span class="w"> </span>test-unit-pkg<span class="w"> </span><span class="nv">PKG</span><span class="o">=</span>./internal/litellm/...
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>./scripts/dev.sh<span class="w"> </span>make<span class="w"> </span>test-envtest-pkg<span class="w"> </span><span class="nv">PKG</span><span class="o">=</span>./internal/controller/...<span class="w"> </span><span class="o">[</span><span class="nv">FOCUS</span><span class="o">=</span>TestX<span class="o">]</span><span class="w"> </span><span class="o">[</span><span class="nv">TIMEOUT</span><span class="o">=</span>10m<span class="o">]</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>./scripts/dev.sh<span class="w"> </span>make<span class="w"> </span>qa-lint-changed<span class="w"> </span><span class="o">[</span><span class="nv">BASE_REF</span><span class="o">=</span>...<span class="o">]</span><span class="w">    </span><span class="c1"># lint only packages touched vs origin/main</span>
 </code></pre></div>
 <h2 id="e2e-debug-loop-kept-cluster">E2E debug loop (kept cluster)<a class="headerlink" href="#e2e-debug-loop-kept-cluster" title="Permanent link">&para;</a></h2>
-<p><code>make e2e-full</code> tears down and recreates the kind cluster every run.
-For iteration, keep the cluster up:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>./scripts/dev.sh<span class="w"> </span>make<span class="w"> </span>e2e-keep<span class="w">                                  </span><span class="c1"># bring up + run e2e, keep cluster</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>./scripts/dev.sh<span class="w"> </span>make<span class="w"> </span>e2e-focus<span class="w"> </span><span class="nv">FOCUS</span><span class="o">=</span><span class="s2">&quot;rateLimits composite&quot;</span><span class="w">    </span><span class="c1"># ~30s-2m per iter</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>./scripts/dev.sh<span class="w"> </span>make<span class="w"> </span>operator-redeploy<span class="w">                         </span><span class="c1"># hot-reload after code edit</span>
+<p><code>make e2e-full</code> runs <code>cluster-up</code> then the suite and KEEPS the cluster
+(teardown is explicit). After the first run, iterate against the kept
+cluster:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>make<span class="w"> </span>e2e-full<span class="w">                                   </span><span class="c1"># bring up + run e2e, cluster KEPT</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>make<span class="w"> </span>e2e-focus<span class="w"> </span><span class="nv">FOCUS</span><span class="o">=</span><span class="s2">&quot;rateLimits composite&quot;</span><span class="w">     </span><span class="c1"># ~30s-2m per iter</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>make<span class="w"> </span>operator-redeploy<span class="w">                          </span><span class="c1"># hot-reload after code edit</span>
 </code></pre></div>
-<p>When done, <code>make cluster-down</code> then the final-gate run.</p>
-<h2 id="pre-push-gate-15-gates">Pre-push gate (15 gates)<a class="headerlink" href="#pre-push-gate-15-gates" title="Permanent link">&para;</a></h2>
+<p>When done, <code>make cluster-down</code>; for a clean final gate, <code>make cluster-reset</code> then <code>make e2e-full</code>.</p>
+<h2 id="pre-push-gate-17-gates">Pre-push gate (17 gates)<a class="headerlink" href="#pre-push-gate-17-gates" title="Permanent link">&para;</a></h2>
 <p><code>make pre-push</code> is HOST-ONLY (it spawns gitleaks/trufflehog
 containers on host docker — never via <code>./scripts/dev.sh</code>). Hard
 failures block push; do NOT bypass with <code>--no-verify</code>.</p>
@@ -1843,8 +1844,8 @@ failures block push; do NOT bypass with <code>--no-verify</code>.</p>
 <h2 id="pr-flow">PR flow<a class="headerlink" href="#pr-flow" title="Permanent link">&para;</a></h2>
 <ol>
 <li>Branch off <code>main</code>.</li>
-<li>Iterate; run <code>./scripts/dev.sh make unit</code> per change.</li>
-<li>Before push: <code>./scripts/dev.sh make envtest-run</code> if touching
+<li>Iterate; run <code>./scripts/dev.sh make test-unit</code> per change.</li>
+<li>Before push: <code>./scripts/dev.sh make test-envtest</code> if touching
    controllers; <code>make pre-push</code>.</li>
 <li>Open PR — CI runs <code>lint</code>, <code>unit</code>, <code>envtest</code>, <code>security</code>, <code>e2e</code>.
    All five must be green.</li>
