@@ -5,10 +5,7 @@
 package e2e_test
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
-	"os/exec"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -106,22 +103,13 @@ var _ = Describe("LiteLLMA2AAgent", Ordered, ContinueOnFailure, func() {
 		// Cross-check: GET /v1/agents?health_check=false (the same
 		// query LiteLLM exposes; the operator uses this too) returns
 		// quickly and our agent is in the list.
-		podName := fmt.Sprintf("a2a-list-poke-%d", time.Now().UnixNano())
-		out, err := exec.Command("kubectl", "-n", "litellm-system", "run", podName,
-			"--rm", "-i", "--restart=Never", "--quiet",
-			"--image=curlimages/curl:8.10.1", "--",
+		// curlPodJSON retries past the kubectl-run attach race that can drop
+		// the response body to empty before we read it.
+		body := curlPodJSON("litellm-system", "a2a-list-poke", '[',
 			"curl", "-sS", "--max-time", "10",
 			"-H", "Authorization: Bearer sk-test-master-key",
 			"http://litellm.litellm-system.svc.cluster.local:4000/v1/agents?health_check=false",
-		).CombinedOutput()
-		Expect(err).NotTo(HaveOccurred(), "out=%s", string(out))
-
-		// kubectl run --rm may prepend "warning: couldn't attach to pod ."
-		// lines on stderr/stdout merge. Strip everything before the first
-		// JSON array byte.
-		idx := bytes.IndexByte(out, '[')
-		Expect(idx).To(BeNumerically(">=", 0), "no JSON array in: %s", string(out))
-		body := out[idx:]
+		)
 		var entries []map[string]interface{}
 		Expect(json.Unmarshal(body, &entries)).To(Succeed(), "raw=%s", string(body))
 		var hit bool

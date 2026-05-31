@@ -5,7 +5,6 @@
 package e2e_test
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"os/exec"
@@ -63,24 +62,18 @@ var _ = Describe("Scope AC-N4 non-watched namespace", Ordered, ContinueOnFailure
 			"AC-N4 violation: operator wrote modelID into Model in non-watched ns")
 
 		// Cross-check: LiteLLM has no model registered under this name.
-		podName := fmt.Sprintf("ac-n4-probe-%d", time.Now().UnixNano())
-		out, err := exec.Command("kubectl", "-n", "litellm-system", "run", podName,
-			"--rm", "-i", "--restart=Never", "--quiet",
-			"--image=curlimages/curl:8.10.1", "--",
+		// curlPodJSON retries past the kubectl-run attach race that can drop
+		// the response body to empty.
+		out := curlPodJSON("litellm-system", "ac-n4-probe", '{',
 			"curl", "-sS", "--max-time", "10",
 			"-H", "Authorization: Bearer sk-test-master-key",
 			"http://litellm.litellm-system.svc.cluster.local:4000/model/info",
-		).CombinedOutput()
-		Expect(err).NotTo(HaveOccurred(), "out=%s", string(out))
-
-		// Strip "warning: couldn't attach." prefix.
-		idx := bytes.IndexByte(out, '{')
-		Expect(idx).To(BeNumerically(">=", 0), "no JSON in: %s", string(out))
+		)
 		var resp struct {
 			Data []map[string]interface{} `json:"data"`
 		}
-		Expect(json.Unmarshal(out[idx:], &resp)).
-			To(Succeed(), "raw=%s", string(out[idx:]))
+		Expect(json.Unmarshal(out, &resp)).
+			To(Succeed(), "raw=%s", string(out))
 		for _, m := range resp.Data {
 			name, _ := m["model_name"].(string)
 			Expect(strings.Contains(name, modelName)).To(BeFalse(),

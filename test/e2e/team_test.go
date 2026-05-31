@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/url"
 	"os/exec"
 	"time"
@@ -50,24 +49,19 @@ func teamID(obj *unstructured.Unstructured) string {
 // GET /v2/team/list?team_alias=<alias>&page_size=100 and returns the
 // decoded `teams` array. Strips kubectl-run warning prefix lines.
 func litellmTeamsByAlias(alias string) []map[string]interface{} {
-	podName := fmt.Sprintf("team-list-poke-%d", time.Now().UnixNano())
 	path := "/v2/team/list?team_alias=" + url.QueryEscape(alias) + "&page_size=100"
-	out, err := exec.Command("kubectl", "-n", "litellm-system", "run", podName,
-		"--rm", "-i", "--restart=Never", "--quiet",
-		"--image=curlimages/curl:8.10.1", "--",
+	// curlPodJSON retries past the kubectl-run attach race that can drop the
+	// response body to empty.
+	body := curlPodJSON("litellm-system", "team-list-poke", '{',
 		"curl", "-sS", "--max-time", "10",
 		"-H", "Authorization: Bearer sk-test-master-key",
 		"http://litellm.litellm-system.svc.cluster.local:4000"+path,
-	).CombinedOutput()
-	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "out=%s", string(out))
-
-	idx := bytes.IndexByte(out, '{')
-	ExpectWithOffset(1, idx).To(BeNumerically(">=", 0), "no JSON object in: %s", string(out))
+	)
 	var resp struct {
 		Teams []map[string]interface{} `json:"teams"`
 	}
-	ExpectWithOffset(1, json.Unmarshal(out[idx:], &resp)).
-		To(Succeed(), "raw=%s", string(out[idx:]))
+	ExpectWithOffset(1, json.Unmarshal(body, &resp)).
+		To(Succeed(), "raw=%s", string(body))
 	// Server-side filter is partial — apply exact match client-side.
 	var matched []map[string]interface{}
 	for _, t := range resp.Teams {

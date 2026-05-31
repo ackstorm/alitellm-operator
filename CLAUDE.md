@@ -544,6 +544,30 @@ cannot know in general which fields carry provider secrets, so the
 envelope body never lands in CR status. The actionable detail is in
 operator logs (transport-layer-redacted).
 
+### ❌ E2E cross-check via a one-shot `kubectl run --rm -i` curl pod
+```go
+out, err := exec.Command("kubectl", "-n", ns, "run", podName,
+    "--rm", "-i", "--restart=Never", "--quiet",
+    "--image=curlimages/curl:8.10.1", "--", "curl", "-sS", url,
+).CombinedOutput()
+Expect(err).NotTo(HaveOccurred())      // passes — exit 0
+idx := bytes.IndexByte(out, '{')       // -1: body is empty
+```
+✅ Probe through the retrying helpers in `test/e2e/curl_helpers_test.go`:
+```go
+body := curlPodJSON(ns, "probe", '{', "curl", "-sS", url)   // retries until marker
+// non-JSON payloads (Prometheus text): curlPodBody(ns, "probe", accept, ...)
+```
+WHY IT FAILS: `kubectl run --rm -i` attaches via an HTTP connection upgrade
+that can lose the short-lived curl container — `unable to upgrade
+connection: container <p> not found in pod <p>` — and the log-streaming
+fallback then captures nothing, yielding EMPTY stdout with exit code 0. The
+curl process still ran (POST side effects land), but a body the spec needs
+to PARSE is gone. Different specs flake each run under cluster load.
+`curlPodJSON` / `curlPodBody` retry until the expected payload appears.
+POST-only sites (no body parse) don't need the helper — the side effect
+lands regardless of attach.
+
 ## Repository-specific patterns
 
 - **Reconciler shape**: each controller in `internal/controller/<kind>_controller.go`

@@ -5,11 +5,8 @@
 package e2e_test
 
 import (
-	"fmt"
-	"os/exec"
 	"regexp"
 	"strings"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -41,19 +38,16 @@ var expectedMetricNames = []string{
 var _ = Describe("Metrics AC-O1", func() {
 
 	It("/metrics exposes all 12 spec §10 metric names", func() {
-		podName := fmt.Sprintf("metrics-poke-%d", time.Now().UnixNano())
-		out, err := exec.Command("kubectl", "-n", "default", "run", podName,
-			"--rm", "-i", "--restart=Never", "--quiet",
-			"--image=curlimages/curl:8.10.1", "--",
+		helpRE := regexp.MustCompile(`(?m)^# HELP (\S+)`)
+		// curlPodBody retries past the kubectl-run attach race (which can
+		// drop the body to empty); accept once the exposition carries at
+		// least one HELP line, then assert the §10 surface below.
+		out := curlPodBody("default", "metrics-poke",
+			func(b []byte) bool { return helpRE.Match(b) },
 			"curl", "-sS", "--max-time", "10",
 			"http://alitellm-operator-metrics.default.svc.cluster.local:8080/metrics",
-		).CombinedOutput()
-		Expect(err).NotTo(HaveOccurred(), "out=%s", string(out))
-
+		)
 		body := string(out)
-		// Build a set of HELP-declared metric names (filters out the
-		// kubectl warning prefix + any tail garbage).
-		helpRE := regexp.MustCompile(`(?m)^# HELP (\S+)`)
 		got := map[string]bool{}
 		for _, m := range helpRE.FindAllStringSubmatch(body, -1) {
 			got[m[1]] = true
