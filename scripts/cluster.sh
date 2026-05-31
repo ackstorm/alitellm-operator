@@ -18,6 +18,8 @@ scripts/cluster.sh — e2e cluster lifecycle.
 Usage:
   scripts/cluster.sh up        # create kind + install all charts + wait Ready
   scripts/cluster.sh hydrate   # re-apply hydration on an already-up cluster
+  scripts/cluster.sh sync      # alias of hydrate (parity with ../ach)
+  scripts/cluster.sh verify    # health-gate standing state (no mutation)
   scripts/cluster.sh down      # delete kind cluster
   scripts/cluster.sh keep      # same as up but no EXIT trap (local iteration)
   scripts/cluster.sh status    # print kubectl get on hydration fixtures
@@ -25,8 +27,9 @@ USAGE
   exit 1
 }
 
-cmd_up()      { create_cluster; create_namespaces; install_all; apply_fixtures; }
-cmd_hydrate() { create_namespaces; install_all; apply_fixtures; }
+cmd_up()      { create_cluster; create_namespaces; install_all; apply_fixtures; cmd_verify; }
+cmd_hydrate() { create_namespaces; install_all; apply_fixtures; cmd_verify; }
+cmd_sync()    { cmd_hydrate; }
 cmd_down()    { kind delete cluster --name "${CLUSTER_NAME}" || true; }
 cmd_keep()    { cmd_up; }
 cmd_status()  { print_status; }
@@ -194,7 +197,27 @@ print_status() (
     2>/dev/null
 )
 
+cmd_verify() {
+  # Consolidated health gate over the STANDING state — the parity equivalent
+  # of ach's verify_all. Everything below was already gated by helm --wait /
+  # the apply_fixtures wait during up, so on a healthy cluster this returns
+  # near-instantly; it exists so a regression fails loud HERE instead of as
+  # opaque 500s inside the e2e suite minutes later. VERIFY_TIMEOUT overridable.
+  local t="${VERIFY_TIMEOUT:-300s}"
+  echo "[cluster.sh] verify: toolhive-operator..."
+  kubectl -n toolhive-system rollout status deploy/toolhive-operator --timeout="${t}"
+  echo "[cluster.sh] verify: litellm..."
+  kubectl -n litellm-system  rollout status deploy/litellm           --timeout="${t}"
+  echo "[cluster.sh] verify: mocks..."
+  kubectl -n mocks wait --for=condition=Ready pod --all              --timeout="${t}"
+  echo "[cluster.sh] verify: operator..."
+  kubectl -n default rollout status deploy/alitellm-operator          --timeout="${t}"
+  echo "[cluster.sh] verify: connection seam..."
+  kubectl -n default wait --for=condition=Ready litellmconnection/default --timeout="${t}"
+  echo "[cluster.sh] verify: OK — standing state healthy"
+}
+
 case "${1:-}" in
-  up|hydrate|down|keep|status) "cmd_${1}" ;;
+  up|hydrate|sync|down|keep|status|verify) "cmd_${1}" ;;
   *) usage ;;
 esac
