@@ -611,7 +611,7 @@ ensure-inotify: ## Host-only: raise fs.inotify limits if below kind's needs (bes
 	  fi; \
 	fi
 
-.PHONY: cluster-up cluster-down cluster-hydrate cluster-keep cluster-status
+.PHONY: cluster-up cluster-down cluster-hydrate cluster-sync cluster-keep cluster-status cluster-verify
 cluster-up: ensure-inotify ## bring up canonical kind cluster + hydration
 	$(call container_target,_cluster-up)
 _cluster-up:
@@ -632,6 +632,14 @@ cluster-status:  ## print kubectl get on hydration fixtures
 	$(call container_target,_cluster-status)
 _cluster-status:
 	bash scripts/cluster.sh status
+cluster-sync:    ## re-apply phases on a running cluster (alias of cluster-hydrate; parity with ../ach)
+	$(call container_target,_cluster-sync)
+_cluster-sync:
+	bash scripts/cluster.sh sync
+cluster-verify:  ## health-gate the standing state on a running cluster (no mutation)
+	$(call container_target,_cluster-verify)
+_cluster-verify:
+	bash scripts/cluster.sh verify
 
 .PHONY: cluster-reset
 cluster-reset: ## tear down then bring up a clean cluster
