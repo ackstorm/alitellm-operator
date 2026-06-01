@@ -536,6 +536,21 @@ service DNS, so a blanket internal-deny would break the supported use case.
 RESIDUAL RISK: a namespaced user can still aim the operator's HTTP client at
 other internal/private services. A host-allowlist is intentionally deferred.
 
+### ❌ Master key over plaintext `http://` to a remote LiteLLM (M-SEC2)
+`spec.endpoint: http://api.example.com` sends the master key
+(`Authorization: Bearer`) in cleartext. By default the connection reconciler
+only WARNS (log marker `MasterKeyOverPlaintextHTTP`) — it does NOT flip
+Ready to False, because in-cluster `http://litellm.<ns>.svc` is the common,
+acceptable deployment and is classified secure-enough (loopback + `*.svc` +
+bare service names are exempt). To hard-reject plaintext-http remotes:
+```bash
+kubectl set env -n litellm-system deploy/alitellm-operator \
+  LITELLM_OPERATOR_REQUIRE_HTTPS_REMOTE=true
+```
+With the flag set, a remote `http://` endpoint yields
+`Ready=False, reason=InsecureEndpoint` (terminal; edit spec.endpoint to
+retrigger). Classification logic: `litellm.ClassifyEndpointTransport`.
+
 ### ❌ Expecting LiteLLM error detail in CR condition.Message
 ```yaml
 status:

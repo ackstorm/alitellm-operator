@@ -5,6 +5,7 @@ package litellm
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"strconv"
 	"strings"
@@ -80,4 +81,59 @@ func ValidateEndpoint(raw string) error {
 		}
 	}
 	return nil
+}
+
+// ClassifyEndpointTransport reports whether sending the master key to raw
+// would traverse plaintext HTTP to a host OUTSIDE the cluster/loopback —
+// i.e. a remote that could observe the Bearer token in cleartext (M-SEC2).
+//
+// It does NOT change ValidateEndpoint's accept set: in-cluster http://*.svc
+// and http://localhost remain valid (the common LiteLLM-in-cluster
+// deployment). The boolean is advisory; callers decide whether to warn or
+// (under LITELLM_OPERATOR_REQUIRE_HTTPS_REMOTE) hard-reject.
+//
+// insecureRemote == (scheme=="http" && host is neither loopback nor
+// cluster-local). https:// is always secure; http:// to loopback or a
+// cluster-local name is acceptable.
+func ClassifyEndpointTransport(raw string) (insecureRemote bool, err error) {
+	if verr := ValidateEndpoint(raw); verr != nil {
+		return false, verr
+	}
+	u, perr := url.Parse(raw)
+	if perr != nil {
+		return false, fmt.Errorf("parse endpoint: %w", perr)
+	}
+	if u.Scheme != "http" {
+		return false, nil // https — secure regardless of host
+	}
+	host := u.Hostname()
+	if isLoopbackHost(host) || isClusterLocalHost(host) {
+		return false, nil
+	}
+	return true, nil
+}
+
+// isLoopbackHost matches "localhost" and loopback IP literals.
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
+}
+
+// isClusterLocalHost matches Kubernetes in-cluster service DNS: a bare
+// single-label service name (no dot), or a name ending in ".svc" /
+// ".svc.cluster.local". IP literals are never cluster-local here.
+func isClusterLocalHost(host string) bool {
+	if net.ParseIP(host) != nil {
+		return false
+	}
+	if !strings.Contains(host, ".") {
+		return true // bare service name, e.g. "litellm"
+	}
+	h := strings.TrimSuffix(host, ".")
+	return strings.HasSuffix(h, ".svc") || strings.HasSuffix(h, ".svc.cluster.local")
 }

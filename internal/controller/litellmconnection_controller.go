@@ -5,6 +5,8 @@ package controller
 import (
 	"context"
 	"errors"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -56,7 +58,18 @@ const (
 	// Pattern, or admission unavailable). Operator-action-required:
 	// no requeue, Spec edit retriggers via the Connection watch.
 	reasonInvalidEndpoint = "InvalidEndpoint"
+	// reasonInsecureEndpoint — M-SEC2: spec.endpoint is plaintext http to a
+	// remote (non-loopback, non-cluster-local) host, so the master key would
+	// traverse the network in cleartext. Only terminal when
+	// LITELLM_OPERATOR_REQUIRE_HTTPS_REMOTE=true; otherwise it is a warning
+	// log and the probe proceeds.
+	reasonInsecureEndpoint = "InsecureEndpoint"
 )
+
+// EnvRequireHTTPSRemote, when "true", upgrades the M-SEC2 plaintext-http
+// remote-endpoint warning into a hard Ready=False reason=InsecureEndpoint
+// for strict installs. Default (unset/false): warn-only, no behavior change.
+const EnvRequireHTTPSRemote = "LITELLM_OPERATOR_REQUIRE_HTTPS_REMOTE"
 
 // Event reason constants — recorded via record.EventRecorder.Eventf.
 // Single source of truth so goconst stays quiet across reconcilers.
@@ -76,7 +89,7 @@ const connNotReadyUnreachableMsg = "LiteLLMConnection/default not Ready (reason:
 // SecretNotFound}; "Absent" is reserved for finalizer path
 // and is NEVER set by writeStatus in this plan.
 var connectionReasonAll = []string{
-	reasonSynced, reasonConnecting, reasonAbsent, reasonUnreachable, reasonBadMasterKey, reasonSecretNotFound, reasonInvalidEndpoint,
+	reasonSynced, reasonConnecting, reasonAbsent, reasonUnreachable, reasonBadMasterKey, reasonSecretNotFound, reasonInvalidEndpoint, reasonInsecureEndpoint,
 }
 
 // +kubebuilder:rbac:groups=litellm.ackstorm.ai,resources=litellmconnections,verbs=get;list;watch;create;update;patch;delete
@@ -342,6 +355,31 @@ func (r *LiteLLMConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		})
 		metrics.ReconcileTotal.WithLabelValues("LiteLLMConnection", "success").Inc()
 		return ctrl.Result{}, nil
+	}
+
+	// ─── Step 4c: M-SEC2 — master key over plaintext http to a remote host ──
+	// ValidateEndpoint deliberately accepts http://*.svc and http://localhost
+	// (the in-cluster LiteLLM deployment). But http:// to a REMOTE host sends
+	// the master key (Authorization: Bearer) in cleartext. Warn by default;
+	// hard-reject only when LITELLM_OPERATOR_REQUIRE_HTTPS_REMOTE=true.
+	if insecureRemote, _ := litellm.ClassifyEndpointTransport(conn.Spec.Endpoint); insecureRemote {
+		if strings.EqualFold(os.Getenv(EnvRequireHTTPSRemote), "true") {
+			msg := "spec.endpoint: master key would traverse plaintext http to a remote host; use https (or unset " + EnvRequireHTTPSRemote + ")"
+			if werr := r.writeStatus(ctx, &conn, reasonInsecureEndpoint, msg); werr != nil {
+				logStatusUpdateErr(logger, werr, "reason", reasonInsecureEndpoint)
+			}
+			r.Cache.Rebuild(connection.ConnectionSnapshot{
+				Ready:      false,
+				Reason:     reasonInsecureEndpoint,
+				Generation: conn.Generation,
+			})
+			metrics.ReconcileTotal.WithLabelValues("LiteLLMConnection", "success").Inc()
+			return ctrl.Result{}, nil
+		}
+		logger.Info("WARNING: master key will be sent over plaintext http to a remote host "+
+			"(MasterKeyOverPlaintextHTTP); use https or an in-cluster endpoint, "+
+			"or set "+EnvRequireHTTPSRemote+"=true to hard-reject",
+			"endpoint", conn.Spec.Endpoint)
 	}
 
 	// ─── Step 5: Build fresh *litellm.Client (D-03) ────────────────

@@ -7,6 +7,50 @@ import (
 	"testing"
 )
 
+// TestClassifyEndpointTransport — M-SEC2: only plaintext http to a remote
+// host is flagged insecure. https, loopback http, and in-cluster (*.svc /
+// bare service name) http are all secure-enough.
+func TestClassifyEndpointTransport(t *testing.T) {
+	t.Parallel()
+	secure := []string{
+		"https://api.example.com",                       // https
+		"https://litellm.litellm-system.svc",            // https svc
+		"http://litellm.litellm-system.svc",             // in-cluster svc
+		"http://litellm.litellm-system.svc.cluster.local", // fqdn svc
+		"http://litellm",                                 // bare service name
+		"http://localhost:4000",                          // loopback name
+		"http://127.0.0.1:4000",                          // loopback IP
+		"http://[::1]:4000",                              // IPv6 loopback
+	}
+	for _, e := range secure {
+		insecure, err := ClassifyEndpointTransport(e)
+		if err != nil {
+			t.Errorf("ClassifyEndpointTransport(%q) err: %v", e, err)
+		}
+		if insecure {
+			t.Errorf("ClassifyEndpointTransport(%q): want secure, got insecureRemote=true", e)
+		}
+	}
+	insecureRemotes := []string{
+		"http://api.example.com",
+		"http://api.example.com/litellm/v1",
+		"http://203.0.113.10:4000",
+	}
+	for _, e := range insecureRemotes {
+		insecure, err := ClassifyEndpointTransport(e)
+		if err != nil {
+			t.Errorf("ClassifyEndpointTransport(%q) err: %v", e, err)
+		}
+		if !insecure {
+			t.Errorf("ClassifyEndpointTransport(%q): want insecureRemote=true", e)
+		}
+	}
+	// Invalid endpoints propagate the ValidateEndpoint error.
+	if _, err := ClassifyEndpointTransport("ftp://x"); err == nil {
+		t.Error("expected error for invalid endpoint")
+	}
+}
+
 func TestValidateEndpoint(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
