@@ -1366,21 +1366,7 @@ func ownedByDiscovery(child *litellmv1alpha1.LiteLLMModel, mdUID types.UID) bool
 // registered in cmd/main.go / suite_test.go. Mirrors `secretToModels`
 // at model_controller.go:596-612 modulo the CRD list type.
 func (r *ModelDiscoveryReconciler) secretToModelDiscoveries(ctx context.Context, obj client.Object) []reconcile.Request {
-	var mdList litellmv1alpha1.LiteLLMModelDiscoveryList
-	if err := r.List(ctx, &mdList,
-		client.InNamespace(obj.GetNamespace()),
-		client.MatchingFields{CredentialsSecretRefField: obj.GetName()},
-	); err != nil {
-		r.Log.V(1).Info("secretToModelDiscoveries: list failed; skipping", "error", err)
-		return nil
-	}
-	out := make([]reconcile.Request, 0, len(mdList.Items))
-	for i := range mdList.Items {
-		out = append(out, reconcile.Request{
-			NamespacedName: client.ObjectKeyFromObject(&mdList.Items[i]),
-		})
-	}
-	return out
+	return secretToRequests(ctx, r.Client, r.Log, &litellmv1alpha1.LiteLLMModelDiscoveryList{}, obj.GetNamespace(), obj.GetName(), CredentialsSecretRefField, "secretToModelDiscoveries")
 }
 
 // SetupWithManager registers the ModelDiscoveryReconciler with

@@ -845,21 +845,7 @@ func (r *MCPServerReconciler) writeStatus(
 // rotation-propagation pattern). Uses the field indexer registered in
 // cmd/main.go.
 func (r *MCPServerReconciler) secretToMCPServers(ctx context.Context, obj client.Object) []reconcile.Request {
-	var mcpList litellmv1alpha1.LiteLLMMCPServerList
-	if err := r.List(ctx, &mcpList,
-		client.InNamespace(obj.GetNamespace()),
-		client.MatchingFields{MCPServerSecretRefIndexField: obj.GetName()},
-	); err != nil {
-		r.Log.V(1).Info("secretToMCPServers: list failed; skipping", "error", err)
-		return nil
-	}
-	out := make([]reconcile.Request, 0, len(mcpList.Items))
-	for i := range mcpList.Items {
-		out = append(out, reconcile.Request{
-			NamespacedName: client.ObjectKeyFromObject(&mcpList.Items[i]),
-		})
-	}
-	return out
+	return secretToRequests(ctx, r.Client, r.Log, &litellmv1alpha1.LiteLLMMCPServerList{}, obj.GetNamespace(), obj.GetName(), MCPServerSecretRefIndexField, "secretToMCPServers")
 }
 
 // SetupWithManager registers the MCPServerReconciler with controller-runtime.

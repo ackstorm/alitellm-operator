@@ -779,21 +779,7 @@ func (r *A2AAgentReconciler) writeStatus(
 // rotation-propagation pattern). Uses the field indexer registered in
 // cmd/main.go.
 func (r *A2AAgentReconciler) secretToA2AAgents(ctx context.Context, obj client.Object) []reconcile.Request {
-	var a2aList litellmv1alpha1.LiteLLMA2AAgentList
-	if err := r.List(ctx, &a2aList,
-		client.InNamespace(obj.GetNamespace()),
-		client.MatchingFields{A2AAgentSecretRefIndexField: obj.GetName()},
-	); err != nil {
-		r.Log.V(1).Info("secretToA2AAgents: list failed; skipping", "error", err)
-		return nil
-	}
-	out := make([]reconcile.Request, 0, len(a2aList.Items))
-	for i := range a2aList.Items {
-		out = append(out, reconcile.Request{
-			NamespacedName: client.ObjectKeyFromObject(&a2aList.Items[i]),
-		})
-	}
-	return out
+	return secretToRequests(ctx, r.Client, r.Log, &litellmv1alpha1.LiteLLMA2AAgentList{}, obj.GetNamespace(), obj.GetName(), A2AAgentSecretRefIndexField, "secretToA2AAgents")
 }
 
 // SetupWithManager registers the A2AAgentReconciler with controller-runtime.

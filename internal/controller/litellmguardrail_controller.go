@@ -768,21 +768,7 @@ func (r *GuardRailReconciler) writeStatus(
 // secretToGuardrails maps a Secret update event to the set of
 // LiteLLMGuardRail CRs that reference it.
 func (r *GuardRailReconciler) secretToGuardrails(ctx context.Context, obj client.Object) []reconcile.Request {
-	var list litellmv1alpha1.LiteLLMGuardRailList
-	if err := r.List(ctx, &list,
-		client.InNamespace(obj.GetNamespace()),
-		client.MatchingFields{GuardrailSecretRefIndexField: obj.GetName()},
-	); err != nil {
-		r.Log.V(1).Info("secretToGuardrails: list failed; skipping", "error", err)
-		return nil
-	}
-	out := make([]reconcile.Request, 0, len(list.Items))
-	for i := range list.Items {
-		out = append(out, reconcile.Request{
-			NamespacedName: client.ObjectKeyFromObject(&list.Items[i]),
-		})
-	}
-	return out
+	return secretToRequests(ctx, r.Client, r.Log, &litellmv1alpha1.LiteLLMGuardRailList{}, obj.GetNamespace(), obj.GetName(), GuardrailSecretRefIndexField, "secretToGuardrails")
 }
 
 // connectionToGuardrails enqueues every guardrail when the

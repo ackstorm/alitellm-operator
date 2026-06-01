@@ -817,21 +817,7 @@ func (r *ModelReconciler) writeStatus(
 // reference it via spec.secrets[].secretRef.name (D-06 — SEC-09 rotation
 // propagation). Uses the field indexer registered in cmd/main.go.
 func (r *ModelReconciler) secretToModels(ctx context.Context, obj client.Object) []reconcile.Request {
-	var modelList litellmv1alpha1.LiteLLMModelList
-	if err := r.List(ctx, &modelList,
-		client.InNamespace(obj.GetNamespace()),
-		client.MatchingFields{SecretRefIndexField: obj.GetName()},
-	); err != nil {
-		r.Log.V(1).Info("secretToModels: list failed; skipping", "error", err)
-		return nil
-	}
-	out := make([]reconcile.Request, 0, len(modelList.Items))
-	for i := range modelList.Items {
-		out = append(out, reconcile.Request{
-			NamespacedName: client.ObjectKeyFromObject(&modelList.Items[i]),
-		})
-	}
-	return out
+	return secretToRequests(ctx, r.Client, r.Log, &litellmv1alpha1.LiteLLMModelList{}, obj.GetNamespace(), obj.GetName(), SecretRefIndexField, "secretToModels")
 }
 
 // SetupWithManager registers the ModelReconciler with controller-runtime.

@@ -1287,21 +1287,7 @@ func (r *TeamReconciler) writeStatus(
 // rotation-propagation pattern). Uses the field indexer registered in
 // cmd/main.go.
 func (r *TeamReconciler) secretToTeams(ctx context.Context, obj client.Object) []reconcile.Request {
-	var teamList litellmv1alpha1.LiteLLMTeamList
-	if err := r.List(ctx, &teamList,
-		client.InNamespace(obj.GetNamespace()),
-		client.MatchingFields{TeamSecretRefIndexField: obj.GetName()},
-	); err != nil {
-		r.Log.V(1).Info("secretToTeams: list failed; skipping", "error", err)
-		return nil
-	}
-	out := make([]reconcile.Request, 0, len(teamList.Items))
-	for i := range teamList.Items {
-		out = append(out, reconcile.Request{
-			NamespacedName: client.ObjectKeyFromObject(&teamList.Items[i]),
-		})
-	}
-	return out
+	return secretToRequests(ctx, r.Client, r.Log, &litellmv1alpha1.LiteLLMTeamList{}, obj.GetNamespace(), obj.GetName(), TeamSecretRefIndexField, "secretToTeams")
 }
 
 // SetupWithManager registers the TeamReconciler with controller-runtime.
