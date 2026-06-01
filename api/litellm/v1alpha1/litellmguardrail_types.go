@@ -68,9 +68,15 @@ type GuardRailSpec struct {
 	// the only element (enforced in the reconciler — invalid combos
 	// surface as Ready=False, reason=InvalidMode).
 	//
+	// MaxItems=6 admits all six non-realtime hook slots (pre_call,
+	// post_call, during_call, logging_only, pre_mcp_call, during_mcp_call)
+	// in a single guardrail. realtime_input_transcription is the
+	// mutually-exclusive 7th enum value, rejected here by count and
+	// enforced as single-element in the reconciler.
+	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
-	// +kubebuilder:validation:MaxItems=4
+	// +kubebuilder:validation:MaxItems=6
 	Mode []GuardRailMode `json:"mode"`
 
 	// DefaultOn renders as litellm_params.default_on. When true the
