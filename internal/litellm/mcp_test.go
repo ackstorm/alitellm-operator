@@ -16,6 +16,30 @@ import (
 // asserted across this test file's CreateMCPServer / UpdateMCPServer cases.
 const pathV1MCPServer = "/v1/mcp/server"
 
+// TestDeleteMCPServer_EmptyIDGuard — M-SEC3: empty server_id must error
+// without issuing a request (would otherwise hit the collection route).
+func TestDeleteMCPServer_EmptyIDGuard(t *testing.T) {
+	c := newTestClient(t, "http://unused")
+	if err := c.DeleteMCPServer(context.Background(), ""); err == nil {
+		t.Fatal("expected empty-id error, no request issued")
+	}
+}
+
+// TestDeleteMCPServer_EscapesID — M-SEC3: a `/` or `?` in the ID must reach
+// the server as a single escaped path segment.
+func TestDeleteMCPServer_EscapesID(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.EscapedPath()
+	}))
+	defer srv.Close()
+	c := newTestClient(t, srv.URL)
+	_ = c.DeleteMCPServer(context.Background(), "a/b?c")
+	if gotPath != "/v1/mcp/server/a%2Fb%3Fc" {
+		t.Fatalf("id not escaped: %q", gotPath)
+	}
+}
+
 // TestCreateMCPServerBodyShape1_83_10 — CR-10 / D-7.1-10 regression test.
 //
 // Asserts that CreateMCPServer produces a body whose top-level field names

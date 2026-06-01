@@ -60,6 +60,74 @@ func TestListTeamsByAliasExactMatchFilter(t *testing.T) {
 	}
 }
 
+// TestListTeamsByAlias_Paginates — H2 regression. The exact-alias owner
+// row lives on page 2 behind 100 substring-but-not-exact matches; reading
+// only page 1 missed it and caused a duplicate-team CREATE. Assert the
+// loop follows total_pages and returns the page-2 owner.
+func TestListTeamsByAlias_Paginates(t *testing.T) {
+	const alias = "team-alpha"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		page := r.URL.Query().Get("page")
+		if page == "" {
+			page = "1"
+		}
+		w.WriteHeader(200)
+		switch page {
+		case "1":
+			// A full page (100 rows) of substring-but-not-exact matches.
+			var b strings.Builder
+			b.WriteString(`{"teams":[`)
+			for i := 0; i < 100; i++ {
+				if i > 0 {
+					b.WriteByte(',')
+				}
+				b.WriteString(`{"team_id":"x","team_alias":"team-alpha-other"}`)
+			}
+			b.WriteString(`],"total":101,"page":1,"page_size":100,"total_pages":2}`)
+			_, _ = w.Write([]byte(b.String()))
+		default:
+			// The exact-alias owner row on page 2.
+			_, _ = w.Write([]byte(`{"teams":[{"team_id":"owner","team_alias":"team-alpha"}],"total":101,"page":2,"page_size":100,"total_pages":2}`))
+		}
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv.URL)
+	got, err := c.ListTeamsByAlias(context.Background(), alias)
+	if err != nil {
+		t.Fatalf("ListTeamsByAlias: %v", err)
+	}
+	if len(got) != 1 || got[0].TeamID != "owner" {
+		t.Fatalf("expected exact-match owner from page 2; got %+v", got)
+	}
+}
+
+// TestListTeamsByAlias_CapExhaustionErrors — a server that always advertises
+// one more page must yield an explicit error at the page cap, NOT a
+// truncated result (no silent-truncation-with-Ready=Synced).
+func TestListTeamsByAlias_CapExhaustionErrors(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		// Always a full page that claims there is always one more.
+		var b strings.Builder
+		b.WriteString(`{"teams":[`)
+		for i := 0; i < 100; i++ {
+			if i > 0 {
+				b.WriteByte(',')
+			}
+			b.WriteString(`{"team_id":"x","team_alias":"never-matches"}`)
+		}
+		b.WriteString(`],"page":1,"page_size":100,"total_pages":100000}`)
+		_, _ = w.Write([]byte(b.String()))
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv.URL)
+	if _, err := c.ListTeamsByAlias(context.Background(), "anything"); err == nil {
+		t.Fatal("expected explicit error at page cap, not truncated result")
+	}
+}
+
 // TestListTeamsByAliasEmptyOK — empty list is NOT ErrNotFound for the
 // team helper; callers decide whether absence is an error (per §6.7).
 func TestListTeamsByAliasEmptyOK(t *testing.T) {

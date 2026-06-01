@@ -17,7 +17,6 @@ import (
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
@@ -332,34 +331,16 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 	// ─── Step 4: Resolve Secrets referenced by spec.secrets[] ─────────────
 	// Per-reconcile cache in a local variable (CONTEXT.md Claude's Discretion item 2).
-	secretMap := make(map[string]string)
-	for _, entry := range model.Spec.Secrets {
-		var secret corev1.Secret
-		secretKey := types.NamespacedName{
-			Namespace: model.Namespace,
-			Name:      entry.SecretRef.Name,
+	secretMap, missMsg, err := resolveSecretMap(ctx, r.Client, model.Namespace, model.Spec.Secrets)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if missMsg != "" {
+		if werr := r.writeStatus(ctx, &model, metav1.ConditionFalse, reasonSecretNotFound, missMsg); werr != nil {
+			logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
 		}
-		if err := r.Get(ctx, secretKey, &secret); err != nil {
-			if apierrors.IsNotFound(err) {
-				msg := model.Namespace + "/" + entry.SecretRef.Name + ":" + entry.SecretRef.Key + " not found"
-				if werr := r.writeStatus(ctx, &model, metav1.ConditionFalse, reasonSecretNotFound, msg); werr != nil {
-					logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
-				}
-				metrics.ReconcileTotal.WithLabelValues(modelKind, "success").Inc()
-				return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
-			}
-			return ctrl.Result{}, err
-		}
-		val, ok := secret.Data[entry.SecretRef.Key]
-		if !ok {
-			msg := model.Namespace + "/" + entry.SecretRef.Name + ":" + entry.SecretRef.Key + " not found"
-			if werr := r.writeStatus(ctx, &model, metav1.ConditionFalse, reasonSecretNotFound, msg); werr != nil {
-				logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
-			}
-			metrics.ReconcileTotal.WithLabelValues(modelKind, "success").Inc()
-			return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
-		}
-		secretMap[entry.As] = string(val)
+		metrics.ReconcileTotal.WithLabelValues(modelKind, "success").Inc()
+		return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
 	}
 
 	// ─── Step 5: Decode spec.params + spec.info into map[string]any ────────
@@ -504,7 +485,7 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		// untouched on a successful upstream probe and never re-enters the
 		// CREATE/UPDATE branch where Step 11 writes Ready=True. Heal here
 		// when the current condition is missing or not True/Synced.
-		if ready := apimeta.FindStatusCondition(model.Status.Conditions, "Ready"); ready == nil ||
+		if ready := apimeta.FindStatusCondition(model.Status.Conditions, conditionTypeReady); ready == nil ||
 			ready.Status != metav1.ConditionTrue || ready.Reason != reasonSynced {
 			if err := r.writeStatus(ctx, &model, metav1.ConditionTrue, reasonSynced, "model registered"); err != nil {
 				if apierrors.IsConflict(err) {
@@ -782,14 +763,7 @@ func (r *ModelReconciler) writeStatus(
 	status metav1.ConditionStatus,
 	reason, message string,
 ) error {
-	cond := metav1.Condition{
-		Type:               "Ready",
-		Status:             status,
-		Reason:             reason,
-		Message:            message,
-		ObservedGeneration: model.Generation,
-		LastTransitionTime: metav1.Now(),
-	}
+	cond := buildReadyCondition(model.Generation, status, reason, message)
 
 	// Retry on optimistic-lock conflict ("the object has been modified").
 	// Without this, a 409 leaks to controller-runtime which re-enters
@@ -826,9 +800,7 @@ func (r *ModelReconciler) writeStatus(
 		model.ResourceVersion = fresh.ResourceVersion
 		return nil
 	})
-	metrics.LitellmOperatorReconcileTotal.WithLabelValues(
-		modelKind, model.Namespace, metrics.ReasonToReconcileResult(reason),
-	).Inc()
+	recordReconcileMetric(modelKind, model.Namespace, reason)
 	return err
 }
 
@@ -836,21 +808,7 @@ func (r *ModelReconciler) writeStatus(
 // reference it via spec.secrets[].secretRef.name (D-06 — SEC-09 rotation
 // propagation). Uses the field indexer registered in cmd/main.go.
 func (r *ModelReconciler) secretToModels(ctx context.Context, obj client.Object) []reconcile.Request {
-	var modelList litellmv1alpha1.LiteLLMModelList
-	if err := r.List(ctx, &modelList,
-		client.InNamespace(obj.GetNamespace()),
-		client.MatchingFields{SecretRefIndexField: obj.GetName()},
-	); err != nil {
-		r.Log.V(1).Info("secretToModels: list failed; skipping", "error", err)
-		return nil
-	}
-	out := make([]reconcile.Request, 0, len(modelList.Items))
-	for i := range modelList.Items {
-		out = append(out, reconcile.Request{
-			NamespacedName: client.ObjectKeyFromObject(&modelList.Items[i]),
-		})
-	}
-	return out
+	return secretToRequests(ctx, r.Client, r.Log, &litellmv1alpha1.LiteLLMModelList{}, obj.GetNamespace(), obj.GetName(), SecretRefIndexField, "secretToModels")
 }
 
 // SetupWithManager registers the ModelReconciler with controller-runtime.

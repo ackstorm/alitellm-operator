@@ -194,10 +194,12 @@ not two). Never prefix a routed target with `./scripts/dev.sh` out of
 habit — the prefix is redundant.
 
 Only context-B/C targets run directly on the host: `docker-*` (host
-docker), `wait-*` / `logs-*` / `watch-crs` / `pf-*` / `mock-mode` /
-`operator-redeploy` (host kubectl against the kind kubeconfig), the gate
+docker), `wait-*` / `logs-*` / `watch-crs` / `pf-*` / `mock-mode`, the gate
 orchestrators (`pre-commit`, `pre-push`, `verify`), `release-*`, and
-`ensure-inotify`. The `cluster-*` targets are NO LONGER host-direct: they
+`ensure-inotify`. `operator-redeploy` builds + `kind load`s on the host but
+runs its `kubectl rollout restart/status` THROUGH the devtools container
+(`./scripts/dev.sh kubectl`) — host kubectl has no context for the kind
+cluster (kubeconfig lives at `/workspace/.gocache/kube/config`). The `cluster-*` targets are NO LONGER host-direct: they
 now route THROUGH the devtools container (they drive kind/helm via the
 mounted docker socket), so run them bare too (`make cluster-up`).
 
@@ -523,6 +525,38 @@ controller forwarded only `mcp_info`, `extra_headers` (map form),
 WHY IT FAILED PRE-v0.3.1: `mcpserver_controller.go` extracted only four
 typed fields and dropped everything else, even though the request struct
 already modeled the full set.
+
+### ❌ Assuming `ModelDiscovery.spec.baseUrl` is fully SSRF-guarded
+```yaml
+spec:
+  type: kubeai
+  baseUrl: http://169.254.169.254/   # DENIED (cloud metadata) → Ready=False InvalidConfig
+  # baseUrl: http://10.0.0.5:8000/v1 # ALLOWED by design (private RFC1918)
+  # baseUrl: http://svc.ns.svc/v1    # ALLOWED by design (in-cluster)
+```
+✅ `providers.ValidateBaseURL` (M-SEC1) is a **denylist**, not full SSRF
+prevention. It rejects only cloud-metadata (`169.254.169.254`,
+`fd00:ec2::254`), loopback, and link-local hosts plus structural problems
+(non-http(s) scheme, userinfo, query, fragment). Private RFC1918 and `*.svc`
+hosts remain reachable BY DESIGN — KubeAI points `baseUrl` at in-cluster
+service DNS, so a blanket internal-deny would break the supported use case.
+RESIDUAL RISK: a namespaced user can still aim the operator's HTTP client at
+other internal/private services. A host-allowlist is intentionally deferred.
+
+### ❌ Master key over plaintext `http://` to a remote LiteLLM (M-SEC2)
+`spec.endpoint: http://api.example.com` sends the master key
+(`Authorization: Bearer`) in cleartext. By default the connection reconciler
+only WARNS (log marker `MasterKeyOverPlaintextHTTP`) — it does NOT flip
+Ready to False, because in-cluster `http://litellm.<ns>.svc` is the common,
+acceptable deployment and is classified secure-enough (loopback + `*.svc` +
+bare service names are exempt). To hard-reject plaintext-http remotes:
+```bash
+kubectl set env -n litellm-system deploy/alitellm-operator \
+  LITELLM_OPERATOR_REQUIRE_HTTPS_REMOTE=true
+```
+With the flag set, a remote `http://` endpoint yields
+`Ready=False, reason=InsecureEndpoint` (terminal; edit spec.endpoint to
+retrigger). Classification logic: `litellm.ClassifyEndpointTransport`.
 
 ### ❌ Expecting LiteLLM error detail in CR condition.Message
 ```yaml

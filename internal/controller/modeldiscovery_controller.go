@@ -246,7 +246,7 @@ const modelDiscoveryCascadeDrainDeadline = 5 * time.Minute
 // has exceeded modelDiscoveryCascadeDrainDeadline (then WARN). All
 // other reconciles log at V(2). Per-CR state lives in
 // r.cascadeDrainLog.
-func (r *ModelDiscoveryReconciler) logCascadeDrain(_ context.Context, logger logr.Logger, name string, remaining int) {
+func (r *ModelDiscoveryReconciler) logCascadeDrain(_ context.Context, logger logr.Logger, name string, remaining int) (overdue bool) {
 	r.cascadeDrainLogMu.Lock()
 	defer r.cascadeDrainLogMu.Unlock()
 	if r.cascadeDrainLog == nil {
@@ -258,7 +258,7 @@ func (r *ModelDiscoveryReconciler) logCascadeDrain(_ context.Context, logger log
 		prev = modelDiscoveryCascadeDrainState{lastRemaining: -1, startedAt: now}
 	}
 	changed := prev.lastRemaining != remaining
-	overdue := now.Sub(prev.startedAt) >= modelDiscoveryCascadeDrainDeadline &&
+	overdue = now.Sub(prev.startedAt) >= modelDiscoveryCascadeDrainDeadline &&
 		now.Sub(prev.lastWarnAt) >= modelDiscoveryCascadeDrainDeadline
 	switch {
 	case overdue:
@@ -266,6 +266,7 @@ func (r *ModelDiscoveryReconciler) logCascadeDrain(_ context.Context, logger log
 			"remaining", remaining,
 			"elapsed", now.Sub(prev.startedAt).Round(time.Second).String())
 		prev.lastWarnAt = now
+		metrics.CascadeDrainOverdueTotal.WithLabelValues(modelDiscoveryKind).Inc()
 	case changed:
 		logger.Info("cascade-delete: waiting for children to drain", "remaining", remaining)
 	default:
@@ -273,6 +274,7 @@ func (r *ModelDiscoveryReconciler) logCascadeDrain(_ context.Context, logger log
 	}
 	prev.lastRemaining = remaining
 	r.cascadeDrainLog[name] = prev
+	return overdue
 }
 
 // forgetCascadeDrain clears the per-CR drain-log throttle state after
@@ -339,7 +341,11 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 						return ctrl.Result{}, err
 					}
 				}
-				r.logCascadeDrain(ctx, logger, md.Name, len(owned.Items))
+				if r.logCascadeDrain(ctx, logger, md.Name, len(owned.Items)) && r.Recorder != nil {
+					r.Recorder.Eventf(&md, corev1.EventTypeWarning, "CascadeDrainOverdue",
+						"cascade-delete still draining %d child Model(s) past deadline; check finalizer state on the children",
+						len(owned.Items))
+				}
 				return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 			}
 			// All children drained. Discovery's finalizer issues NO
@@ -374,6 +380,17 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	// per-type Secret keys (ANTHROPIC_API_KEY, AWS_ACCESS_KEY_ID, .) are
 	// fixed by spec §6.3 line 721-737 normative and force a small switch
 	// HERE. The actual provider dispatch below uses providers.Registry.
+	// M-SEC1: deny cloud-metadata / loopback / link-local baseUrl before any
+	// outbound call. Terminal config error — no backoff storm; a CR edit
+	// re-enqueues. Denylist only (private + *.svc still reachable by design;
+	// see providers.ValidateBaseURL).
+	if md.Spec.BaseURL != "" {
+		if err := providers.ValidateBaseURL(md.Spec.BaseURL); err != nil {
+			metrics.DiscoveryRefreshTotal.WithLabelValues(modelDiscoveryKind, md.Spec.Type, "error").Inc()
+			return r.writeReady(ctx, &md, metav1.ConditionFalse, "InvalidConfig", err.Error()), nil
+		}
+	}
+
 	cfg := providers.ProviderConfig{
 		Type:       md.Spec.Type,
 		BaseURL:    md.Spec.BaseURL,
@@ -1089,7 +1106,7 @@ func (r *ModelDiscoveryReconciler) writeReady(
 	status metav1.ConditionStatus, reason, message string,
 ) ctrl.Result {
 	apimeta.SetStatusCondition(&md.Status.Conditions, metav1.Condition{
-		Type:               "Ready",
+		Type:               conditionTypeReady,
 		Status:             status,
 		Reason:             reason,
 		Message:            message,
@@ -1120,7 +1137,7 @@ func (r *ModelDiscoveryReconciler) writeBothConditions(
 	// here would already include the mutation and the patch body would
 	// drop those fields.
 	apimeta.SetStatusCondition(&md.Status.Conditions, metav1.Condition{
-		Type:               "Ready",
+		Type:               conditionTypeReady,
 		Status:             readyStatus,
 		Reason:             readyReason,
 		Message:            readyMessage,
@@ -1152,7 +1169,7 @@ func (r *ModelDiscoveryReconciler) writeBothConditionsObj(
 	// Also fixes the pre-existing parity gap with the MCP equivalent by setting
 	// ObservedGeneration here.
 	apimeta.SetStatusCondition(&md.Status.Conditions, metav1.Condition{
-		Type:               "Ready",
+		Type:               conditionTypeReady,
 		Status:             readyStatus,
 		Reason:             readyReason,
 		Message:            readyMessage,
@@ -1349,21 +1366,7 @@ func ownedByDiscovery(child *litellmv1alpha1.LiteLLMModel, mdUID types.UID) bool
 // registered in cmd/main.go / suite_test.go. Mirrors `secretToModels`
 // at model_controller.go:596-612 modulo the CRD list type.
 func (r *ModelDiscoveryReconciler) secretToModelDiscoveries(ctx context.Context, obj client.Object) []reconcile.Request {
-	var mdList litellmv1alpha1.LiteLLMModelDiscoveryList
-	if err := r.List(ctx, &mdList,
-		client.InNamespace(obj.GetNamespace()),
-		client.MatchingFields{CredentialsSecretRefField: obj.GetName()},
-	); err != nil {
-		r.Log.V(1).Info("secretToModelDiscoveries: list failed; skipping", "error", err)
-		return nil
-	}
-	out := make([]reconcile.Request, 0, len(mdList.Items))
-	for i := range mdList.Items {
-		out = append(out, reconcile.Request{
-			NamespacedName: client.ObjectKeyFromObject(&mdList.Items[i]),
-		})
-	}
-	return out
+	return secretToRequests(ctx, r.Client, r.Log, &litellmv1alpha1.LiteLLMModelDiscoveryList{}, obj.GetNamespace(), obj.GetName(), CredentialsSecretRefField, "secretToModelDiscoveries")
 }
 
 // SetupWithManager registers the ModelDiscoveryReconciler with

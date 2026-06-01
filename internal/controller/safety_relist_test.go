@@ -7,6 +7,26 @@ import (
 	"time"
 )
 
+// TestResolvedSafetyRelistInterval — H5: the single resolver main.go calls
+// for BOTH the package vars and all three runnables. Unset → canonical
+// default; sub-floor → error; valid override → parsed value.
+func TestResolvedSafetyRelistInterval(t *testing.T) {
+	d, err := ResolvedSafetyRelistInterval("") // unset → canonical default
+	if err != nil || d != DefaultSafetyRelistInterval {
+		t.Fatalf("unset: got %v, %v; want %v", d, err, DefaultSafetyRelistInterval)
+	}
+	if _, err := ResolvedSafetyRelistInterval("3s"); err == nil {
+		t.Fatal("sub-floor must error")
+	}
+	if _, err := ResolvedSafetyRelistInterval("notaduration"); err == nil {
+		t.Fatal("malformed must error")
+	}
+	d, _ = ResolvedSafetyRelistInterval("45m")
+	if d != 45*time.Minute {
+		t.Fatalf("override: got %v, want 45m", d)
+	}
+}
+
 // TestParseSafetyRelistInterval_EmptyReturnsZero — empty input keeps
 // the package defaults (zero signals "no override").
 func TestParseSafetyRelistInterval_EmptyReturnsZero(t *testing.T) {

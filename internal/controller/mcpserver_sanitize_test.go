@@ -60,7 +60,7 @@ func TestMCPServerReconciler_FIX_H1_DotSeparator(t *testing.T) {
 	}
 
 	m := pollMCPServerCondition(t, ctx, dottedName, reasonSynced, 30*time.Second)
-	c := apimeta.FindStatusCondition(m.Status.Conditions, "Ready")
+	c := apimeta.FindStatusCondition(m.Status.Conditions, conditionTypeReady)
 	if c == nil || c.Status != metav1.ConditionTrue || c.Reason != reasonSynced {
 		t.Fatalf("Ready not Synced; condition=%+v", c)
 	}
@@ -132,7 +132,7 @@ func TestMCPServerReconciler_FIX_H1_DashSeparator(t *testing.T) {
 	}
 
 	m := pollMCPServerCondition(t, ctx, hyphenName, reasonSynced, 30*time.Second)
-	c := apimeta.FindStatusCondition(m.Status.Conditions, "Ready")
+	c := apimeta.FindStatusCondition(m.Status.Conditions, conditionTypeReady)
 	if c == nil || c.Status != metav1.ConditionTrue || c.Reason != reasonSynced {
 		t.Fatalf("Ready not Synced; condition=%+v", c)
 	}

@@ -200,7 +200,26 @@ func (c *Client) makeRequest(ctx context.Context, method, path string, body any)
 	}
 	defer drainAndClose(resp.Body) // REL-04: every code path.
 
-	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 1 MB cap
+	// H4: cap the read with explicit truncation + preserved read error.
+	// Error/non-2xx envelopes are small, but success bodies are LIST
+	// payloads the operator parses for drift (ListMCPServers, ListAgents,
+	// ListGuardrails, ListTeamsByAlias, GetModelInfo) and can legitimately
+	// exceed 1 MB. A silent 1 MB truncation produced an invalid-JSON decode
+	// error that looped forever. Use a small cap for envelopes, a larger cap
+	// for success bodies, and surface ErrResponseTooLarge distinctly.
+	const (
+		errEnvelopeCap = 1 << 20  // 1 MB — error / non-2xx envelopes
+		listBodyCap    = 16 << 20 // 16 MB — success bodies parsed for drift
+	)
+	readCap := errEnvelopeCap
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		readCap = listBodyCap
+	}
+	respBody, readErr := readCappedBody(resp.Body, readCap)
+	if readErr != nil {
+		// Distinct, actionable error — not a silent decode failure.
+		return nil, fmt.Errorf("litellm: %s %s: %w", method, path, readErr)
+	}
 
 	switch {
 	case resp.StatusCode >= 200 && resp.StatusCode < 300:

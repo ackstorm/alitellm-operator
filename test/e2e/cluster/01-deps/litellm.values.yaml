@@ -37,19 +37,22 @@ db:
   username: litellm
   password: litellm
 
-# Bitnami postgresql subchart override (Tier 2 workaround for Bitnami yanking
-# semver tags from Docker Hub free tier in 2025). Redirect to public.ecr.aws
-# mirror, which still serves the version-pinned Bitnami images. The Tier 2
-# install path mirrors the user's prod Flux HelmRelease (see PR thread).
+# Bitnami postgresql subchart override (Tier 2 workaround for Bitnami moving
+# its free-tier images to the `bitnamilegacy/` Docker Hub namespace in 2025).
+# Point at docker.io/bitnamilegacy/postgresql, which still serves the
+# version-pinned Bitnami images. The Tier 2 install path mirrors the user's
+# prod Flux HelmRelease (see PR thread).
 #
-# `allowInsecureImages: true` is required because the ECR mirror does not
-# carry the Bitnami signature chain that the official Bitnami chart verifies
-# by default. Tier 2 is a test environment — acceptable.
+# `allowInsecureImages: true` is required because the bitnamilegacy images do
+# not carry the Bitnami signature chain that the official Bitnami chart
+# verifies by default. Tier 2 is a test environment — acceptable.
 postgresql:
   global:
-    imageRegistry: public.ecr.aws
+    imageRegistry: docker.io
     security:
       allowInsecureImages: true
+  image:
+    repository: bitnamilegacy/postgresql
   auth:
     username: litellm
     password: litellm

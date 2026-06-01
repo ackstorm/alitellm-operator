@@ -76,7 +76,7 @@ func pollA2AAgentCondition(t *testing.T, ctx context.Context, name, wantReason s
 	var a litellmv1alpha1.LiteLLMA2AAgent
 	for time.Now().Before(deadline) {
 		if err := k8sClient.Get(ctx, key, &a); err == nil {
-			c := apimeta.FindStatusCondition(a.Status.Conditions, "Ready")
+			c := apimeta.FindStatusCondition(a.Status.Conditions, conditionTypeReady)
 			if c != nil && c.Reason == wantReason {
 				return &a
 			}
@@ -160,7 +160,7 @@ func TestA2AAgentReconciler_CreateOnFirstReconcile(t *testing.T) {
 	}
 
 	a := pollA2AAgentCondition(t, ctx, "a2a-create-test", reasonSynced, 30*time.Second)
-	c := apimeta.FindStatusCondition(a.Status.Conditions, "Ready")
+	c := apimeta.FindStatusCondition(a.Status.Conditions, conditionTypeReady)
 	if c == nil {
 		t.Fatalf("Ready condition not set")
 	}
@@ -461,7 +461,7 @@ func TestA2AAgentReconciler_ConnectionGate(t *testing.T) {
 	})
 
 	a := pollA2AAgentCondition(t, ctx, "a2a-gate-test", "LiteLLMUnavailable", 30*time.Second)
-	c := apimeta.FindStatusCondition(a.Status.Conditions, "Ready")
+	c := apimeta.FindStatusCondition(a.Status.Conditions, conditionTypeReady)
 	if c == nil {
 		t.Fatalf("Ready condition not set; conditions=%+v", a.Status.Conditions)
 	}
@@ -522,7 +522,7 @@ func TestA2AAgentReconciler_401FastPath(t *testing.T) {
 	}
 
 	a := pollA2AAgentCondition(t, ctx, "a2a-401-test", reasonLiteLLMUnavailable, 10*time.Second)
-	c := apimeta.FindStatusCondition(a.Status.Conditions, "Ready")
+	c := apimeta.FindStatusCondition(a.Status.Conditions, conditionTypeReady)
 	if c == nil {
 		t.Fatalf("Ready condition not set after 401")
 	}
@@ -1235,7 +1235,7 @@ func TestA2AAgentReconciler_AC_S1_NoSecretInStatusOrEvents(t *testing.T) {
 
 		a := pollA2AAgentCondition(t, ctx, agentName, reasonSynced, 30*time.Second)
 		statusMsg := ""
-		if c := apimeta.FindStatusCondition(a.Status.Conditions, "Ready"); c != nil {
+		if c := apimeta.FindStatusCondition(a.Status.Conditions, conditionTypeReady); c != nil {
 			statusMsg = c.Message
 		}
 		events := listA2AAgentEvents(ctx, t, agentName)
@@ -1267,7 +1267,7 @@ func TestA2AAgentReconciler_AC_S1_NoSecretInStatusOrEvents(t *testing.T) {
 
 		a := pollA2AAgentCondition(t, ctx, agentName, "LiteLLMUnavailable", 30*time.Second)
 		statusMsg := ""
-		if c := apimeta.FindStatusCondition(a.Status.Conditions, "Ready"); c != nil {
+		if c := apimeta.FindStatusCondition(a.Status.Conditions, conditionTypeReady); c != nil {
 			statusMsg = c.Message
 		}
 		events := listA2AAgentEvents(ctx, t, agentName)
@@ -1305,7 +1305,7 @@ func TestA2AAgentReconciler_AC_S1_NoSecretInStatusOrEvents(t *testing.T) {
 
 		a := pollA2AAgentCondition(t, ctx, agentName, "SecretNotFound", 30*time.Second)
 		statusMsg := ""
-		if c := apimeta.FindStatusCondition(a.Status.Conditions, "Ready"); c != nil {
+		if c := apimeta.FindStatusCondition(a.Status.Conditions, conditionTypeReady); c != nil {
 			statusMsg = c.Message
 		}
 		events := listA2AAgentEvents(ctx, t, agentName)

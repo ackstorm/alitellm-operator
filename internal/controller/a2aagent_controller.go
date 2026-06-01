@@ -16,8 +16,8 @@ import (
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -296,34 +296,16 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// from BOTH bags is fetched from the Kubernetes API exactly once per
 	// reconcile (load-bearing optimization called out in CONTEXT.md D-04 and
 	// asserted by TestA2AAgentReconciler_TwoPassSubstitution).
-	secretMap := make(map[string]string)
-	for _, entry := range a2a.Spec.Secrets {
-		var secret corev1.Secret
-		secretKey := types.NamespacedName{
-			Namespace: a2a.Namespace,
-			Name:      entry.SecretRef.Name,
+	secretMap, missMsg, err := resolveSecretMap(ctx, r.Client, a2a.Namespace, a2a.Spec.Secrets)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if missMsg != "" {
+		if werr := r.writeStatus(ctx, &a2a, metav1.ConditionFalse, reasonSecretNotFound, missMsg); werr != nil {
+			logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
 		}
-		if err := r.Get(ctx, secretKey, &secret); err != nil {
-			if apierrors.IsNotFound(err) {
-				msg := a2a.Namespace + "/" + entry.SecretRef.Name + ":" + entry.SecretRef.Key + " not found"
-				if werr := r.writeStatus(ctx, &a2a, metav1.ConditionFalse, reasonSecretNotFound, msg); werr != nil {
-					logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
-				}
-				metrics.ReconcileTotal.WithLabelValues(a2aAgentKind, "success").Inc()
-				return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
-			}
-			return ctrl.Result{}, err
-		}
-		val, ok := secret.Data[entry.SecretRef.Key]
-		if !ok {
-			msg := a2a.Namespace + "/" + entry.SecretRef.Name + ":" + entry.SecretRef.Key + " not found"
-			if werr := r.writeStatus(ctx, &a2a, metav1.ConditionFalse, reasonSecretNotFound, msg); werr != nil {
-				logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
-			}
-			metrics.ReconcileTotal.WithLabelValues(a2aAgentKind, "success").Inc()
-			return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
-		}
-		secretMap[entry.As] = string(val)
+		metrics.ReconcileTotal.WithLabelValues(a2aAgentKind, "success").Inc()
+		return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
 	}
 
 	// ─── Step 5: Decode spec.params + spec.agentCard into separate maps ──
@@ -439,6 +421,10 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		mergedBody[k] = v
 	}
 	mergedBody["agent_name"] = a2a.Name
+	// M-B10: snapshot the USER-declared agentCard keys BEFORE the structural
+	// url overlay, so status.lastRendered.agentCardKeys reflects what the user
+	// set — not the operator-injected "url" the user never declared.
+	userAgentCardKeys := sortedKeys(agentCardMap)
 	// Apply the agent_card_params.url overlay to the agentCardMap before
 	// projecting it into mergedBody.
 	agentCardMap["url"] = a2a.Spec.Endpoint
@@ -492,7 +478,7 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		a2a.Status.ObservedGeneration == a2a.Generation {
 		// Stale-status heal — see model_controller.go Step 8 for the
 		// connection-flap rationale. Same shape.
-		if ready := apimeta.FindStatusCondition(a2a.Status.Conditions, "Ready"); ready == nil ||
+		if ready := apimeta.FindStatusCondition(a2a.Status.Conditions, conditionTypeReady); ready == nil ||
 			ready.Status != metav1.ConditionTrue || ready.Reason != reasonSynced {
 			if err := r.writeStatus(ctx, &a2a, metav1.ConditionTrue, reasonSynced, "a2a agent registered"); err != nil {
 				if apierrors.IsConflict(err) {
@@ -565,7 +551,7 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	a2a.Status.LastRendered = litellmv1alpha1.A2ALastRenderedStatus{
 		Hash:          currentRenderedHash,
 		ParamsKeys:    sortedKeys(paramsMap),
-		AgentCardKeys: sortedKeys(agentCardMap),
+		AgentCardKeys: userAgentCardKeys, // M-B10: pre-url-overlay snapshot
 		AgentID:       newAgentID,
 		At:            &now,
 	}
@@ -746,27 +732,37 @@ func (r *A2AAgentReconciler) writeStatus(
 	status metav1.ConditionStatus,
 	reason, message string,
 ) error {
-	// Uses Update (not Patch + MergeFrom) because callers mutate
-	// a2a.Status.LastRendered before this call; a MergeFrom orig captured
-	// here would already carry the mutation and the resulting patch would
-	// omit AgentID, leaving the server with an empty value and causing a
-	// duplicate POST on the next reconcile. 409 conflict noise on this
-	// Update path is demoted to V(1) by logStatusUpdateErr at each call
-	// site.
-	cond := metav1.Condition{
-		Type:               "Ready",
-		Status:             status,
-		Reason:             reason,
-		Message:            message,
-		ObservedGeneration: a2a.Generation,
-		LastTransitionTime: metav1.Now(),
-	}
-	apimeta.SetStatusCondition(&a2a.Status.Conditions, cond)
-	a2a.Status.ObservedGeneration = a2a.Generation
-	metrics.LitellmOperatorReconcileTotal.WithLabelValues(
-		a2aAgentKind, a2a.Namespace, metrics.ReasonToReconcileResult(reason),
-	).Inc()
-	return r.Status().Update(ctx, a2a)
+	// Uses Update-on-fresh (NOT Patch + MergeFrom) wrapped in
+	// RetryOnConflict. Callers mutate a2a.Status.LastRendered (notably
+	// AgentID) before this call; a MergeFrom orig captured here would
+	// already carry the mutation, so the patch body would omit AgentID and
+	// leave the server with an empty value — the next reconcile then sees
+	// no AgentID and fires a duplicate POST /agent. Re-Getting `fresh` each
+	// attempt and re-applying the captured intent prevents the conflict
+	// from silently dropping the write (H3): a swallowed 409 at the call
+	// site used to lose the AgentID assignment entirely.
+	cond := buildReadyCondition(a2a.Generation, status, reason, message)
+	desiredLastRendered := a2a.Status.LastRendered
+	desiredObservedGen := a2a.Generation
+
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var fresh litellmv1alpha1.LiteLLMA2AAgent
+		if err := r.Get(ctx, client.ObjectKeyFromObject(a2a), &fresh); err != nil {
+			return err
+		}
+		apimeta.SetStatusCondition(&fresh.Status.Conditions, cond)
+		fresh.Status.ObservedGeneration = desiredObservedGen
+		fresh.Status.LastRendered = desiredLastRendered
+		if updErr := r.Status().Update(ctx, &fresh); updErr != nil {
+			return updErr
+		}
+		// Propagate persisted state back so callers (logger, metrics) see it.
+		a2a.Status = fresh.Status
+		a2a.ResourceVersion = fresh.ResourceVersion
+		return nil
+	})
+	recordReconcileMetric(a2aAgentKind, a2a.Namespace, reason)
+	return err
 }
 
 // secretToA2AAgents maps a Secret update event to the set of LiteLLMA2AAgent
@@ -774,21 +770,7 @@ func (r *A2AAgentReconciler) writeStatus(
 // rotation-propagation pattern). Uses the field indexer registered in
 // cmd/main.go.
 func (r *A2AAgentReconciler) secretToA2AAgents(ctx context.Context, obj client.Object) []reconcile.Request {
-	var a2aList litellmv1alpha1.LiteLLMA2AAgentList
-	if err := r.List(ctx, &a2aList,
-		client.InNamespace(obj.GetNamespace()),
-		client.MatchingFields{A2AAgentSecretRefIndexField: obj.GetName()},
-	); err != nil {
-		r.Log.V(1).Info("secretToA2AAgents: list failed; skipping", "error", err)
-		return nil
-	}
-	out := make([]reconcile.Request, 0, len(a2aList.Items))
-	for i := range a2aList.Items {
-		out = append(out, reconcile.Request{
-			NamespacedName: client.ObjectKeyFromObject(&a2aList.Items[i]),
-		})
-	}
-	return out
+	return secretToRequests(ctx, r.Client, r.Log, &litellmv1alpha1.LiteLLMA2AAgentList{}, obj.GetNamespace(), obj.GetName(), A2AAgentSecretRefIndexField, "secretToA2AAgents")
 }
 
 // SetupWithManager registers the A2AAgentReconciler with controller-runtime.

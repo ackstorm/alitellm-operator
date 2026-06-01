@@ -15,7 +15,7 @@ func newConn(condStatus metav1.ConditionStatus) *litellmv1alpha1.LiteLLMConnecti
 	return &litellmv1alpha1.LiteLLMConnection{
 		Status: litellmv1alpha1.LiteLLMConnectionStatus{
 			Conditions: []metav1.Condition{
-				{Type: "Ready", Status: condStatus, Reason: "Synced"},
+				{Type: conditionTypeReady, Status: condStatus, Reason: "Synced"},
 			},
 		},
 	}

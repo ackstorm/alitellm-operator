@@ -18,7 +18,6 @@ import (
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -300,34 +299,16 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	}
 
 	// ─── Step 3: Resolve Secrets referenced by spec.secrets[] ─────────────
-	secretMap := make(map[string]string)
-	for _, entry := range team.Spec.Secrets {
-		var secret corev1.Secret
-		secretKey := types.NamespacedName{
-			Namespace: team.Namespace,
-			Name:      entry.SecretRef.Name,
+	secretMap, missMsg, err := resolveSecretMap(ctx, r.Client, team.Namespace, team.Spec.Secrets)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if missMsg != "" {
+		if werr := r.writeStatus(ctx, &team, metav1.ConditionFalse, reasonSecretNotFound, missMsg); werr != nil {
+			logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
 		}
-		if err := r.Get(ctx, secretKey, &secret); err != nil {
-			if apierrors.IsNotFound(err) {
-				msg := team.Namespace + "/" + entry.SecretRef.Name + ":" + entry.SecretRef.Key + " not found"
-				if werr := r.writeStatus(ctx, &team, metav1.ConditionFalse, reasonSecretNotFound, msg); werr != nil {
-					logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
-				}
-				metrics.ReconcileTotal.WithLabelValues(teamKind, "success").Inc()
-				return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
-			}
-			return ctrl.Result{}, err
-		}
-		val, ok := secret.Data[entry.SecretRef.Key]
-		if !ok {
-			msg := team.Namespace + "/" + entry.SecretRef.Name + ":" + entry.SecretRef.Key + " not found"
-			if werr := r.writeStatus(ctx, &team, metav1.ConditionFalse, reasonSecretNotFound, msg); werr != nil {
-				logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
-			}
-			metrics.ReconcileTotal.WithLabelValues(teamKind, "success").Inc()
-			return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
-		}
-		secretMap[entry.As] = string(val)
+		metrics.ReconcileTotal.WithLabelValues(teamKind, "success").Inc()
+		return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
 	}
 
 	// ─── Step 4: Decode spec.params + single-pass substitution ────────────
@@ -556,7 +537,7 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		team.Status.ObservedGeneration == team.Generation {
 		// Stale-status heal — see model_controller.go Step 8 for the
 		// connection-flap rationale. Same shape.
-		if ready := apimeta.FindStatusCondition(team.Status.Conditions, "Ready"); ready == nil ||
+		if ready := apimeta.FindStatusCondition(team.Status.Conditions, conditionTypeReady); ready == nil ||
 			ready.Status != metav1.ConditionTrue || ready.Reason != reasonSynced {
 			if err := r.writeStatus(ctx, &team, metav1.ConditionTrue, reasonSynced, "team registered"); err != nil {
 				if apierrors.IsConflict(err) {
@@ -960,18 +941,27 @@ func (r *TeamReconciler) reconcileDeletion(ctx context.Context, team *litellmv1a
 				// observe steady state (the rendered body did not
 				// actually change between this UPDATE and the synthetic
 				// reconcile's implicit body).
-				canonicalBytes, _ := canonicalJSON(map[string]any{
+				canonicalBytes, cerr := canonicalJSON(map[string]any{
 					"team_alias":      teamAliasDefault,
 					"max_budget":      nil,
 					"budget_duration": nil,
 					"rpm_limit":       nil, // CR-01 — must mirror reconcileImplicitDefault CREATE-arm body (line 639) so hash cache aligns
 					"tpm_limit":       nil,
 				})
-				sum := sha256.Sum256(canonicalBytes)
-				r.implicitDefaultMu.Lock()
-				r.implicitDefaultHash = fmt.Sprintf("%x", sum)
-				r.implicitDefaultTeamID = resolvedTeamID
-				r.implicitDefaultMu.Unlock()
+				// M-B3: skip seeding the cache on a marshal error rather than
+				// caching a hash over empty bytes (which would cause false drift
+				// + an extra UPDATE next reconcile). The static nil/string body
+				// cannot fail to marshal today, so there is no red test — this
+				// is defense-in-depth against a future mutation of the body map.
+				if cerr != nil {
+					logger.Error(cerr, "Team/default: canonicalJSON failed; skipping implicit-default hash seed")
+				} else {
+					sum := sha256.Sum256(canonicalBytes)
+					r.implicitDefaultMu.Lock()
+					r.implicitDefaultHash = fmt.Sprintf("%x", sum)
+					r.implicitDefaultTeamID = resolvedTeamID
+					r.implicitDefaultMu.Unlock()
+				}
 			}
 		} else {
 			// No team_id resolvable — LiteLLM has no `default`-aliased
@@ -1276,19 +1266,10 @@ func (r *TeamReconciler) writeStatus(
 	// and the AC_T3/T6/RateLimitsClearing/ProjectionOverride suite).
 	// The 409 conflict noise this Update path can emit is demoted to
 	// V(1) by logStatusUpdateErr at each call site.
-	cond := metav1.Condition{
-		Type:               "Ready",
-		Status:             status,
-		Reason:             reason,
-		Message:            message,
-		ObservedGeneration: team.Generation,
-		LastTransitionTime: metav1.Now(),
-	}
+	cond := buildReadyCondition(team.Generation, status, reason, message)
 	apimeta.SetStatusCondition(&team.Status.Conditions, cond)
 	team.Status.ObservedGeneration = team.Generation
-	metrics.LitellmOperatorReconcileTotal.WithLabelValues(
-		teamKind, team.Namespace, metrics.ReasonToReconcileResult(reason),
-	).Inc()
+	recordReconcileMetric(teamKind, team.Namespace, reason)
 	return r.Status().Update(ctx, team)
 }
 
@@ -1297,21 +1278,7 @@ func (r *TeamReconciler) writeStatus(
 // rotation-propagation pattern). Uses the field indexer registered in
 // cmd/main.go.
 func (r *TeamReconciler) secretToTeams(ctx context.Context, obj client.Object) []reconcile.Request {
-	var teamList litellmv1alpha1.LiteLLMTeamList
-	if err := r.List(ctx, &teamList,
-		client.InNamespace(obj.GetNamespace()),
-		client.MatchingFields{TeamSecretRefIndexField: obj.GetName()},
-	); err != nil {
-		r.Log.V(1).Info("secretToTeams: list failed; skipping", "error", err)
-		return nil
-	}
-	out := make([]reconcile.Request, 0, len(teamList.Items))
-	for i := range teamList.Items {
-		out = append(out, reconcile.Request{
-			NamespacedName: client.ObjectKeyFromObject(&teamList.Items[i]),
-		})
-	}
-	return out
+	return secretToRequests(ctx, r.Client, r.Log, &litellmv1alpha1.LiteLLMTeamList{}, obj.GetNamespace(), obj.GetName(), TeamSecretRefIndexField, "secretToTeams")
 }
 
 // SetupWithManager registers the TeamReconciler with controller-runtime.

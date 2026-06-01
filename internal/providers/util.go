@@ -4,6 +4,7 @@ package providers
 
 import (
 	"io"
+	"strings"
 	"sync"
 )
 
@@ -69,14 +70,21 @@ var (
 // cfg.BaseURL — the caller's constructor MUST validate baseURL before
 // this is called; an empty string would cause a malformed request URL).
 func baseURLFor(providerType, cfgBaseURL string) string {
-	if cfgBaseURL != "" {
-		return cfgBaseURL
+	var raw string
+	switch {
+	case cfgBaseURL != "":
+		raw = cfgBaseURL
+	default:
+		testBaseURLOverridesMu.RLock()
+		v, ok := testBaseURLOverrides[providerType]
+		testBaseURLOverridesMu.RUnlock()
+		if ok {
+			raw = v
+		} else {
+			raw = defaultBaseURLs[providerType]
+		}
 	}
-	testBaseURLOverridesMu.RLock()
-	v, ok := testBaseURLOverrides[providerType]
-	testBaseURLOverridesMu.RUnlock()
-	if ok {
-		return v
-	}
-	return defaultBaseURLs[providerType]
+	// Strip trailing slashes so callers' "<base>/models" never yields
+	// "<base>//models" when a user-supplied spec.baseUrl ends in "/".
+	return strings.TrimRight(raw, "/")
 }

@@ -56,7 +56,7 @@ func TestLiteLLMConnection_InvalidEndpoint_NoRequeue(t *testing.T) {
 	if err := k8sClient.Get(ctx, client.ObjectKey{Name: "default", Namespace: WatchNamespace}, &got); err != nil {
 		t.Fatalf("get connection: %v", err)
 	}
-	cond := apimeta.FindStatusCondition(got.Status.Conditions, "Ready")
+	cond := apimeta.FindStatusCondition(got.Status.Conditions, conditionTypeReady)
 	if cond == nil {
 		t.Fatalf("Ready condition missing; conditions: %#v", got.Status.Conditions)
 	}

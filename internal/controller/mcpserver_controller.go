@@ -16,7 +16,6 @@ import (
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -302,7 +301,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 	}
 	priorReason := ""
-	if c := apimeta.FindStatusCondition(mcp.Status.Conditions, "Ready"); c != nil {
+	if c := apimeta.FindStatusCondition(mcp.Status.Conditions, conditionTypeReady); c != nil {
 		priorReason = c.Reason
 	}
 	winner := conflict.ResolveWinner(candidates)
@@ -368,34 +367,16 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	// ─── Step 4: Resolve Secrets referenced by spec.secrets[] ─────────────
-	secretMap := make(map[string]string)
-	for _, entry := range mcp.Spec.Secrets {
-		var secret corev1.Secret
-		secretKey := types.NamespacedName{
-			Namespace: mcp.Namespace,
-			Name:      entry.SecretRef.Name,
+	secretMap, missMsg, err := resolveSecretMap(ctx, r.Client, mcp.Namespace, mcp.Spec.Secrets)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if missMsg != "" {
+		if werr := r.writeStatus(ctx, &mcp, metav1.ConditionFalse, reasonSecretNotFound, missMsg); werr != nil {
+			logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
 		}
-		if err := r.Get(ctx, secretKey, &secret); err != nil {
-			if apierrors.IsNotFound(err) {
-				msg := mcp.Namespace + "/" + entry.SecretRef.Name + ":" + entry.SecretRef.Key + " not found"
-				if werr := r.writeStatus(ctx, &mcp, metav1.ConditionFalse, reasonSecretNotFound, msg); werr != nil {
-					logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
-				}
-				metrics.ReconcileTotal.WithLabelValues(mcpServerKind, "success").Inc()
-				return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
-			}
-			return ctrl.Result{}, err
-		}
-		val, ok := secret.Data[entry.SecretRef.Key]
-		if !ok {
-			msg := mcp.Namespace + "/" + entry.SecretRef.Name + ":" + entry.SecretRef.Key + " not found"
-			if werr := r.writeStatus(ctx, &mcp, metav1.ConditionFalse, reasonSecretNotFound, msg); werr != nil {
-				logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
-			}
-			metrics.ReconcileTotal.WithLabelValues(mcpServerKind, "success").Inc()
-			return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
-		}
-		secretMap[entry.As] = string(val)
+		metrics.ReconcileTotal.WithLabelValues(mcpServerKind, "success").Inc()
+		return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
 	}
 
 	// ─── Step 5: Decode spec.params + single-pass substitution ────────────
@@ -551,7 +532,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		mcp.Status.ObservedGeneration == mcp.Generation {
 		// Stale-status heal — see model_controller.go Step 8 for the
 		// connection-flap rationale. Same shape.
-		if ready := apimeta.FindStatusCondition(mcp.Status.Conditions, "Ready"); ready == nil ||
+		if ready := apimeta.FindStatusCondition(mcp.Status.Conditions, conditionTypeReady); ready == nil ||
 			ready.Status != metav1.ConditionTrue || ready.Reason != reasonSynced {
 			if err := r.writeStatus(ctx, &mcp, metav1.ConditionTrue, reasonSynced, "mcp server registered"); err != nil {
 				if apierrors.IsConflict(err) {
@@ -840,22 +821,13 @@ func (r *MCPServerReconciler) writeStatus(
 	// duplicate POST /mcp/server/add on the next reconcile. 409 conflict
 	// noise on this Update path is demoted to V(1) by logStatusUpdateErr
 	// at each call site.
-	cond := metav1.Condition{
-		Type:               "Ready",
-		Status:             status,
-		Reason:             reason,
-		Message:            message,
-		ObservedGeneration: mcp.Generation,
-		LastTransitionTime: metav1.Now(),
-	}
+	cond := buildReadyCondition(mcp.Generation, status, reason, message)
 	apimeta.SetStatusCondition(&mcp.Status.Conditions, cond)
 	mcp.Status.ObservedGeneration = mcp.Generation
 	// FIX2.txt LOW-6: per-CR reconcile-outcome counter labeled by
 	// kind/namespace/result. Fired here so every status-write also
 	// surfaces on the prometheus dashboard without an extra call site.
-	metrics.LitellmOperatorReconcileTotal.WithLabelValues(
-		mcpServerKind, mcp.Namespace, metrics.ReasonToReconcileResult(reason),
-	).Inc()
+	recordReconcileMetric(mcpServerKind, mcp.Namespace, reason)
 	return r.Status().Update(ctx, mcp)
 }
 
@@ -864,21 +836,7 @@ func (r *MCPServerReconciler) writeStatus(
 // rotation-propagation pattern). Uses the field indexer registered in
 // cmd/main.go.
 func (r *MCPServerReconciler) secretToMCPServers(ctx context.Context, obj client.Object) []reconcile.Request {
-	var mcpList litellmv1alpha1.LiteLLMMCPServerList
-	if err := r.List(ctx, &mcpList,
-		client.InNamespace(obj.GetNamespace()),
-		client.MatchingFields{MCPServerSecretRefIndexField: obj.GetName()},
-	); err != nil {
-		r.Log.V(1).Info("secretToMCPServers: list failed; skipping", "error", err)
-		return nil
-	}
-	out := make([]reconcile.Request, 0, len(mcpList.Items))
-	for i := range mcpList.Items {
-		out = append(out, reconcile.Request{
-			NamespacedName: client.ObjectKeyFromObject(&mcpList.Items[i]),
-		})
-	}
-	return out
+	return secretToRequests(ctx, r.Client, r.Log, &litellmv1alpha1.LiteLLMMCPServerList{}, obj.GetNamespace(), obj.GetName(), MCPServerSecretRefIndexField, "secretToMCPServers")
 }
 
 // SetupWithManager registers the MCPServerReconciler with controller-runtime.

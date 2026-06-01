@@ -26,6 +26,29 @@ func newTestClient(t *testing.T, url string) *Client {
 	return NewClient(url, testMasterKey, logr.Discard())
 }
 
+// TestMakeRequest_LargeSuccessBodyNotCappedAt1MB is the H4 regression at
+// the makeRequest layer: a 2xx LIST body larger than the 1 MB error-envelope
+// cap (but under the 16 MB list-body cap) must be returned in full, not
+// truncated into an invalid-JSON decode loop. The exact-cap and
+// over-cap-errors mechanics are covered by readbody_test.go.
+func TestMakeRequest_LargeSuccessBodyNotCappedAt1MB(t *testing.T) {
+	const size = 2 << 20 // 2 MB — over errEnvelopeCap, under listBodyCap
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		_, _ = w.Write(make([]byte, size))
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv.URL)
+	body, err := c.makeRequest(context.Background(), "GET", "/v2/model/info", nil)
+	if err != nil {
+		t.Fatalf("2 MB success body must not be capped: %v", err)
+	}
+	if len(body) != size {
+		t.Fatalf("want %d bytes, got %d", size, len(body))
+	}
+}
+
 // Test401IsTypedError — REL-06. Mock returns 401 with the literal
 // LiteLLM 1.83.10 body shape recorded// returned error satisfies errors.As(*Auth401Error).
 func Test401IsTypedError(t *testing.T) {

@@ -146,6 +146,12 @@ spec:
                   and an array otherwise. realtime_input_transcription must be
                   the only element (enforced in the reconciler — invalid combos
                   surface as Ready=False, reason=InvalidMode).
+
+                  MaxItems=6 admits all six non-realtime hook slots (pre_call,
+                  post_call, during_call, logging_only, pre_mcp_call, during_mcp_call)
+                  in a single guardrail. realtime_input_transcription is the
+                  mutually-exclusive 7th enum value, rejected here by count and
+                  enforced as single-element in the reconciler.
                 items:
                   description: |-
                     GuardRailMode is one execution lifecycle slot recognized by LiteLLM's
@@ -167,7 +173,7 @@ spec:
                   - during_mcp_call
                   - realtime_input_transcription
                   type: string
-                maxItems: 4
+                maxItems: 6
                 minItems: 1
                 type: array
               params:

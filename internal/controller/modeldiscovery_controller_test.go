@@ -397,7 +397,7 @@ func pollDiscoveryStatusReady(t *testing.T, ctx context.Context, name, wantReaso
 	var md litellmv1alpha1.LiteLLMModelDiscovery
 	for time.Now().Before(deadline) {
 		if err := k8sClient.Get(ctx, key, &md); err == nil {
-			c := apimeta.FindStatusCondition(md.Status.Conditions, "Ready")
+			c := apimeta.FindStatusCondition(md.Status.Conditions, conditionTypeReady)
 			if c != nil && c.Reason == wantReason {
 				return &md
 			}

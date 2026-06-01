@@ -11,6 +11,38 @@ import (
 	"testing"
 )
 
+// TestUpdateAgent_EmptyIDGuard — M-SEC3: empty agent_id must error without
+// issuing a request (would otherwise hit the collection route).
+func TestUpdateAgent_EmptyIDGuard(t *testing.T) {
+	c := newTestClient(t, "http://unused")
+	if _, err := c.UpdateAgent(context.Background(), "", &AgentConfig{}); err == nil {
+		t.Fatal("expected empty-id error, no request issued")
+	}
+}
+
+// TestDeleteAgent_EmptyIDGuard — M-SEC3.
+func TestDeleteAgent_EmptyIDGuard(t *testing.T) {
+	c := newTestClient(t, "http://unused")
+	if err := c.DeleteAgent(context.Background(), ""); err == nil {
+		t.Fatal("expected empty-id error, no request issued")
+	}
+}
+
+// TestDeleteAgent_EscapesID — M-SEC3: a `/` or `?` in the ID must reach the
+// server as a single escaped path segment.
+func TestDeleteAgent_EscapesID(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.EscapedPath()
+	}))
+	defer srv.Close()
+	c := newTestClient(t, srv.URL)
+	_ = c.DeleteAgent(context.Background(), "a/b?c")
+	if gotPath != "/v1/agents/a%2Fb%3Fc" {
+		t.Fatalf("id not escaped: %q", gotPath)
+	}
+}
+
 // TestCreateAgentPath — POST /v1/agents.
 func TestCreateAgentPath(t *testing.T) {
 	var captured []capturedRequest

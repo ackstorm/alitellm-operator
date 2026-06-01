@@ -10,7 +10,7 @@ import (
 
 func TestStatusReadyUnchanged(t *testing.T) {
 	readyTrue := []metav1.Condition{{
-		Type:    "Ready",
+		Type:    conditionTypeReady,
 		Status:  metav1.ConditionTrue,
 		Reason:  "Synced",
 		Message: "ok",

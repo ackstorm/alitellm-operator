@@ -205,7 +205,7 @@ func isStuckReadyFalse(obj client.Object) bool {
 	if !obj.GetDeletionTimestamp().IsZero() {
 		return false
 	}
-	ready := apimeta.FindStatusCondition(conds, "Ready")
+	ready := apimeta.FindStatusCondition(conds, conditionTypeReady)
 	if ready == nil {
 		return true
 	}

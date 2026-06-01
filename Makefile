@@ -32,11 +32,15 @@ CONTAINER_TOOL ?= docker
 LITELLM_IN_DEVTOOLS ?= 0
 define container_target
 	@if [ "$(LITELLM_IN_DEVTOOLS)" = "1" ]; then \
-		$(MAKE) --no-print-directory $(1) $(MAKEOVERRIDES); \
+		$(MAKE) --no-print-directory $(1) $(foreach o,$(MAKEOVERRIDES),'$o'); \
 	else \
-		./scripts/dev.sh $(MAKE) --no-print-directory $(1) $(MAKEOVERRIDES); \
+		./scripts/dev.sh $(MAKE) --no-print-directory $(1) $(foreach o,$(MAKEOVERRIDES),'$o'); \
 	fi
 endef
+# Each command-line override is single-quoted ($(foreach …,'$o')) so a value
+# containing shell metacharacters — notably FOCUS='TestA|TestB' (regex
+# alternation) — survives the dev.sh / sub-make hop as ONE argument instead
+# of being split into a shell pipe.
 
 # Setting SHELL to bash allows bash commands to be executed by recipes.
 # Options are set to exit when a recipe line exits non-zero or a piped command fails.
@@ -187,8 +191,11 @@ test-envtest-pkg: ## Phase 2 — run envtest for one package. Usage: make test-e
 _test-envtest-pkg: setup-envtest
 	@test -n "$(PKG)" || (echo "ERROR: PKG=... required" >&2; exit 1)
 	# `script -q /dev/null -c "..."` fakes a TTY so -v output streams.
+	# FOCUS is single-quoted so a `-run` regex containing `|` (alternation,
+	# e.g. FOCUS='TestA|TestB') is passed as ONE argument instead of being
+	# split into a shell pipe by the inner `-c` shell.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" \
-		script -q /dev/null -c "go test -v -count=1 -timeout $(or $(TIMEOUT),10m) $(if $(FOCUS),-run $(FOCUS),) $(PKG)"
+		script -q /dev/null -c "go test -v -count=1 -timeout $(or $(TIMEOUT),10m) $(if $(FOCUS),-run '$(FOCUS)',) $(PKG)"
 
 .PHONY: test-smoke-idempotency
 test-smoke-idempotency: ## Run the accelerated AC-R1 idempotency smoke (10s window, 1s safety re-list).
@@ -687,8 +694,11 @@ wait-container: ## Wait for named container exit + PASS/FAIL marker. Usage: make
 operator-redeploy: ## rebuild operator image, kind-load, restart deploy (~20s inner loop)
 	$(MAKE) build-image IMG=alitellm-operator:e2e
 	kind load docker-image alitellm-operator:e2e --name alitellm-operator-test
-	kubectl -n default rollout restart deploy/alitellm-operator
-	kubectl -n default rollout status  deploy/alitellm-operator --timeout=60s
+	# kubectl runs THROUGH the devtools container: the kind kubeconfig lives at
+	# /workspace/.gocache/kube/config (set by scripts/dev.sh), so host kubectl
+	# has no context for the kind cluster (would fail "deployments not found").
+	./scripts/dev.sh kubectl -n default rollout restart deploy/alitellm-operator
+	./scripts/dev.sh kubectl -n default rollout status deploy/alitellm-operator --timeout=60s
 
 ##@ Logs & Debug
 

@@ -174,8 +174,25 @@ func TestGuardRailAdmission_InvalidMode_Rejected(t *testing.T) {
 	}
 }
 
-// TestGuardRailAdmission_TooManyModes_Rejected — MaxItems=4 (five
-// elements should be rejected).
+// TestGuardRailAdmission_SixModes_Accepted — H8: all six non-realtime
+// hook slots in a single guardrail are now admitted (MaxItems=6).
+func TestGuardRailAdmission_SixModes_Accepted(t *testing.T) {
+	ctx := context.Background()
+	name := "gr-six-modes"
+	ensureNoGuardrail(t, ctx, name)
+	t.Cleanup(func() { ensureNoGuardrail(t, context.Background(), name) })
+
+	cr := guardrailSampleCR(name)
+	cr.Spec.Mode = []litellmv1alpha1.GuardRailMode{
+		"pre_call", "post_call", "during_call", "logging_only", "pre_mcp_call", "during_mcp_call",
+	}
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("expected 6-mode guardrail to be admitted; got %v", err)
+	}
+}
+
+// TestGuardRailAdmission_TooManyModes_Rejected — MaxItems=6 (seven
+// elements, the full enum vocabulary, should be rejected on count).
 func TestGuardRailAdmission_TooManyModes_Rejected(t *testing.T) {
 	ctx := context.Background()
 	name := "gr-too-many-modes"
@@ -183,18 +200,20 @@ func TestGuardRailAdmission_TooManyModes_Rejected(t *testing.T) {
 	t.Cleanup(func() { ensureNoGuardrail(t, context.Background(), name) })
 
 	cr := guardrailSampleCR(name)
-	// Five valid enum values — exceeds MaxItems=4.
+	// Seven valid enum values (all six hooks + realtime) — exceeds MaxItems=6.
 	cr.Spec.Mode = []litellmv1alpha1.GuardRailMode{
 		"pre_call",
 		"post_call",
 		"during_call",
 		"logging_only",
 		"pre_mcp_call",
+		"during_mcp_call",
+		"realtime_input_transcription",
 	}
 
 	err := k8sClient.Create(ctx, cr)
 	if err == nil {
-		t.Fatalf("expected admission rejection with 5 mode elements, but Create succeeded")
+		t.Fatalf("expected admission rejection with 7 mode elements, but Create succeeded")
 	}
 	if !apierrors.IsInvalid(err) {
 		t.Errorf("expected apierrors.IsInvalid for too many modes; got %T: %v", err, err)

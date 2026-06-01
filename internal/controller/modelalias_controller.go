@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -118,7 +119,7 @@ func (r *ModelAliasReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	snap := r.Cache.Snapshot()
 	if !snap.Ready {
 		msg := fmt.Sprintf("LiteLLMConnection/default not Ready (reason: %s)", snap.Reason)
-		return r.broadcastNotReady(ctx, list.Items, reasonLiteLLMUnavailable, msg, logger)
+		return r.broadcastNotReady(ctx, list.Items, reasonLiteLLMUnavailable, msg, snap.NormalizedRequeueOnRejectedAfter(), logger)
 	}
 
 	agg := AggregateModelAliases(filterAliveAliases(list.Items))
@@ -127,12 +128,12 @@ func (r *ModelAliasReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	current, err := cli.GetRouterSettings(ctx)
 	if err != nil {
 		msg := fmt.Sprintf("GET /get/config/callbacks: %v", err)
-		return r.broadcastNotReady(ctx, list.Items, reasonModelAliasRejected, msg, logger)
+		return r.broadcastNotReady(ctx, list.Items, reasonModelAliasRejected, msg, snap.NormalizedRequeueOnRejectedAfter(), logger)
 	}
 	current.ModelGroupAlias = agg.Desired
 	if err := cli.UpdateRouterSettings(ctx, current); err != nil {
 		msg := fmt.Sprintf("POST /config/update: %v", err)
-		return r.broadcastNotReady(ctx, list.Items, reasonModelAliasRejected, msg, logger)
+		return r.broadcastNotReady(ctx, list.Items, reasonModelAliasRejected, msg, snap.NormalizedRequeueOnRejectedAfter(), logger)
 	}
 
 	if err := r.writePerCRStatuses(ctx, list.Items, agg, logger); err != nil {
@@ -164,6 +165,7 @@ func (r *ModelAliasReconciler) broadcastNotReady(
 	ctx context.Context,
 	items []litellmv1alpha1.LiteLLMModelAlias,
 	reason, message string,
+	requeueAfter time.Duration,
 	logger logr.Logger,
 ) (ctrl.Result, error) {
 	for _, item := range items {
@@ -171,7 +173,7 @@ func (r *ModelAliasReconciler) broadcastNotReady(
 			continue
 		}
 		cond := metav1.Condition{
-			Type:               "Ready",
+			Type:               conditionTypeReady,
 			Status:             metav1.ConditionFalse,
 			Reason:             reason,
 			Message:            message,
@@ -183,7 +185,11 @@ func (r *ModelAliasReconciler) broadcastNotReady(
 			return ctrl.Result{}, err
 		}
 	}
-	return ctrl.Result{}, nil
+	// M-B2: a transient rejection (5xx on /config/update, connection not
+	// ready) must requeue so recovery does not stall until the 15m resync
+	// when no later watch event fires. Bounded by the connection snapshot's
+	// normalized requeue interval.
+	return ctrl.Result{RequeueAfter: requeueAfter}, nil
 }
 
 // writePerCRStatuses computes per-entry statuses for every alive CR after
@@ -214,7 +220,7 @@ func (r *ModelAliasReconciler) writePerCRStatuses(
 		var cond metav1.Condition
 		if allApplied {
 			cond = metav1.Condition{
-				Type:               "Ready",
+				Type:               conditionTypeReady,
 				Status:             metav1.ConditionTrue,
 				Reason:             reasonSynced,
 				Message:            fmt.Sprintf("%d alias entries applied to LiteLLM", len(rows)),
@@ -223,7 +229,7 @@ func (r *ModelAliasReconciler) writePerCRStatuses(
 			}
 		} else {
 			cond = metav1.Condition{
-				Type:               "Ready",
+				Type:               conditionTypeReady,
 				Status:             metav1.ConditionFalse,
 				Reason:             reasonAliasPartialConflict,
 				Message:            fmt.Sprintf("%d of %d alias entries lost slot: %v", len(conflicting), len(rows), conflicting),
@@ -249,25 +255,28 @@ func (r *ModelAliasReconciler) applyStatus(
 	cond metav1.Condition,
 	rows []litellmv1alpha1.AliasEntryStatus,
 ) error {
-	var fresh litellmv1alpha1.LiteLLMModelAlias
-	if err := r.Get(ctx, types.NamespacedName{Name: item.Name, Namespace: item.Namespace}, &fresh); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
+	// #59: wrap in RetryOnConflict + re-Get so a lost optimistic-lock write
+	// does not leave a stale AliasStatuses surface until the next reconcile.
+	// Previously the IsConflict error was swallowed (return nil); now each
+	// attempt re-reads `fresh` and re-applies the intent onto the latest
+	// resourceVersion, matching every other controller's writeStatus.
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var fresh litellmv1alpha1.LiteLLMModelAlias
+		if err := r.Get(ctx, types.NamespacedName{Name: item.Name, Namespace: item.Namespace}, &fresh); err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil // CR deleted — nothing to write.
+			}
+			return err
 		}
-		return err
-	}
-	meta.SetStatusCondition(&fresh.Status.Conditions, cond)
-	fresh.Status.ObservedGeneration = item.Generation
-	if rows != nil {
-		fresh.Status.AliasStatuses = rows
-	}
-	if err := r.Status().Update(ctx, &fresh); err != nil {
-		if apierrors.IsConflict(err) {
-			return nil
+		meta.SetStatusCondition(&fresh.Status.Conditions, cond)
+		// M-B1: report the generation of the object we actually re-read
+		// (fresh), not the stale list-snapshot copy (item).
+		fresh.Status.ObservedGeneration = fresh.Generation
+		if rows != nil {
+			fresh.Status.AliasStatuses = rows
 		}
-		return err
-	}
-	return nil
+		return r.Status().Update(ctx, &fresh)
+	})
 }
 
 // stripDeletingFinalizers removes the finalizer from CRs whose

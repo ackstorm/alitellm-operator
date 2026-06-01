@@ -11,6 +11,23 @@ import (
 	"github.com/go-logr/logr"
 )
 
+// TestBaseURLFor_TrimsTrailingSlash is the Low-severity provider-URL fix:
+// "<base>/models" must not become "<base>//models" when a user-supplied
+// spec.baseUrl ends in "/".
+func TestBaseURLFor_TrimsTrailingSlash(t *testing.T) {
+	cases := map[string]string{
+		"http://host/":    "http://host",
+		"http://host/v1/": "http://host/v1",
+		"http://host/v1":  "http://host/v1",
+		"http://host//":   "http://host",
+	}
+	for in, want := range cases {
+		if got := baseURLFor("openai", in); got != want {
+			t.Errorf("baseURLFor(%q)=%q; want %q", in, got, want)
+		}
+	}
+}
+
 // bufferSink is a tiny logr.LogSink that captures every Info / Error
 // call into an in-memory buffer. Provider tests use this to assert
 // that canaryAPIKey NEVER leaks into log output under any code path

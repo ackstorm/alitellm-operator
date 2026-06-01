@@ -78,12 +78,19 @@ func (r *redactingRoundTripper) RoundTrip(req *http.Request) (*http.Response, er
 		// bytes downstream.
 		respBodyForLog, readErr := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
+		// #53: ALWAYS substitute a fresh ReadCloser over whatever bytes were
+		// read — even on read error — otherwise the caller receives a
+		// response whose Body is already closed, turning into a silent
+		// downstream read failure. On a read error the caller sees the
+		// partial bytes (then EOF) instead of a "read on closed body" panic.
+		resp.Body = io.NopCloser(bytes.NewReader(respBodyForLog))
 		if readErr == nil {
-			resp.Body = io.NopCloser(bytes.NewReader(respBodyForLog))
 			fields = append(fields,
 				"request_body", string(reqBodyForLog),
 				"response_body", string(respBodyForLog),
 			)
+		} else {
+			fields = append(fields, "response_body_read_error", readErr.Error())
 		}
 	}
 

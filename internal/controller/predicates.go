@@ -75,7 +75,10 @@ func mapsEqual(a, b map[string]string) bool {
 // Non-cryptographic randomness is sufficient — this is load
 // spreading, not security.
 func withJitter(base time.Duration) time.Duration {
-	if base <= 0 {
+	// M-B5: rand.Int63n panics when its argument is <= 0. For 0 < base < 10ns,
+	// int64(base/10) truncates to 0, so guard on base < 10 (folds the old
+	// base <= 0 case) and return base unchanged — there is nothing to jitter.
+	if base < 10 {
 		return base
 	}
 	jitter := time.Duration(rand.Int63n(int64(base / 10))) //nolint:gosec // load-spreading, not security
@@ -179,7 +182,7 @@ func isConnReady(c *litellmv1alpha1.LiteLLMConnection) bool {
 		return false
 	}
 	for _, cond := range c.Status.Conditions {
-		if cond.Type == "Ready" {
+		if cond.Type == conditionTypeReady {
 			return cond.Status == metav1.ConditionTrue
 		}
 	}

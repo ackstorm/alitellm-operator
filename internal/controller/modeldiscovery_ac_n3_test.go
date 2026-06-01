@@ -62,7 +62,7 @@ func TestModelDiscovery_AC_N3_NoUserOrKeyCalls(t *testing.T) {
 
 	// Wait for Ready/Synced — confirms full reconcile path ran.
 	result := pollDiscoveryStatusReady(t, ctx, mdName, reasonSynced, 30*time.Second)
-	c := apimeta.FindStatusCondition(result.Status.Conditions, "Ready")
+	c := apimeta.FindStatusCondition(result.Status.Conditions, conditionTypeReady)
 	if c == nil || c.Reason != reasonSynced {
 		t.Fatalf("ModelDiscovery/ac-n3-modeldiscovery not Synced within 30s; conditions=%+v",
 			result.Status.Conditions)

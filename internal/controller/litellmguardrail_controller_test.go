@@ -83,7 +83,7 @@ func pollGuardrailCondition(t *testing.T, ctx context.Context, name, wantReason 
 	_ = ctx
 	return pollCR[litellmv1alpha1.LiteLLMGuardRail](t, name,
 		func(gr *litellmv1alpha1.LiteLLMGuardRail) bool {
-			c := apimeta.FindStatusCondition(gr.Status.Conditions, "Ready")
+			c := apimeta.FindStatusCondition(gr.Status.Conditions, conditionTypeReady)
 			return c != nil && c.Reason == wantReason
 		}, pollReadyConditionDeadline)
 }
@@ -172,7 +172,7 @@ func TestGuardRail_HappyCreate(t *testing.T) {
 	}
 
 	got := pollGuardrailCondition(t, ctx, name, "Synced")
-	if c := apimeta.FindStatusCondition(got.Status.Conditions, "Ready"); c == nil || c.Status != metav1.ConditionTrue {
+	if c := apimeta.FindStatusCondition(got.Status.Conditions, conditionTypeReady); c == nil || c.Status != metav1.ConditionTrue {
 		t.Fatalf("Ready condition: got %#v want True/Synced", c)
 	}
 	if got.Status.LastRendered.GuardrailID == "" {
@@ -310,7 +310,7 @@ func TestGuardRail_SecretNotFound(t *testing.T) {
 	}
 
 	got := pollGuardrailCondition(t, ctx, name, "SecretNotFound")
-	c := apimeta.FindStatusCondition(got.Status.Conditions, "Ready")
+	c := apimeta.FindStatusCondition(got.Status.Conditions, conditionTypeReady)
 	if c == nil || c.Status != metav1.ConditionFalse {
 		t.Fatalf("Ready: got %#v want False/SecretNotFound", c)
 	}
@@ -405,7 +405,7 @@ func TestGuardRail_DriftCorrection_OnSpecEdit(t *testing.T) {
 
 // TestGuardRail_InvalidMode_RealtimeNotAlone surfaces
 // Ready=False reason=InvalidMode when realtime_input_transcription is
-// combined with another slot. NOTE: admission permits MaxItems=4 but
+// combined with another slot. NOTE: admission permits MaxItems=6 but
 // the reconciler enforces the realtime-exclusivity rule.
 func TestGuardRail_InvalidMode_RealtimeNotAlone(t *testing.T) {
 	ctx := context.Background()
@@ -422,7 +422,7 @@ func TestGuardRail_InvalidMode_RealtimeNotAlone(t *testing.T) {
 		t.Fatalf("Create CR: %v", err)
 	}
 	got := pollGuardrailCondition(t, ctx, name, "InvalidMode")
-	c := apimeta.FindStatusCondition(got.Status.Conditions, "Ready")
+	c := apimeta.FindStatusCondition(got.Status.Conditions, conditionTypeReady)
 	if c == nil || c.Status != metav1.ConditionFalse {
 		t.Fatalf("Ready: got %#v want False/InvalidMode", c)
 	}
@@ -453,7 +453,7 @@ func TestGuardRail_ConflictsWithConfigGuardrail(t *testing.T) {
 		t.Fatalf("Create CR: %v", err)
 	}
 	got := pollGuardrailCondition(t, ctx, name, "ConflictsWithConfigGuardrail")
-	c := apimeta.FindStatusCondition(got.Status.Conditions, "Ready")
+	c := apimeta.FindStatusCondition(got.Status.Conditions, conditionTypeReady)
 	if c == nil || c.Status != metav1.ConditionFalse {
 		t.Fatalf("Ready: got %#v want False/ConflictsWithConfigGuardrail", c)
 	}
@@ -634,7 +634,7 @@ func TestGuardRail_PoolProviderMismatch(t *testing.T) {
 		for _, name := range []string{primary, secondary} {
 			var gr litellmv1alpha1.LiteLLMGuardRail
 			if err := k8sClient.Get(ctx, client.ObjectKey{Name: name, Namespace: WatchNamespace}, &gr); err == nil {
-				if c := apimeta.FindStatusCondition(gr.Status.Conditions, "Ready"); c != nil && c.Reason == "PoolProviderMismatch" {
+				if c := apimeta.FindStatusCondition(gr.Status.Conditions, conditionTypeReady); c != nil && c.Reason == "PoolProviderMismatch" {
 					matched = true
 					break
 				}

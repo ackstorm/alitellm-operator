@@ -5,6 +5,8 @@ package controller
 import (
 	"context"
 	"errors"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -56,7 +58,22 @@ const (
 	// Pattern, or admission unavailable). Operator-action-required:
 	// no requeue, Spec edit retriggers via the Connection watch.
 	reasonInvalidEndpoint = "InvalidEndpoint"
+	// reasonInsecureEndpoint — M-SEC2: spec.endpoint is plaintext http to a
+	// remote (non-loopback, non-cluster-local) host, so the master key would
+	// traverse the network in cleartext. Only terminal when
+	// LITELLM_OPERATOR_REQUIRE_HTTPS_REMOTE=true; otherwise it is a warning
+	// log and the probe proceeds.
+	reasonInsecureEndpoint = "InsecureEndpoint"
 )
+
+// EnvRequireHTTPSRemote, when "true", upgrades the M-SEC2 plaintext-http
+// remote-endpoint warning into a hard Ready=False reason=InsecureEndpoint
+// for strict installs. Default (unset/false): warn-only, no behavior change.
+const EnvRequireHTTPSRemote = "LITELLM_OPERATOR_REQUIRE_HTTPS_REMOTE"
+
+// conditionTypeLoggingHealthy is the secondary condition type set alongside
+// Ready by the probe-success path. Centralized so goconst stays quiet.
+const conditionTypeLoggingHealthy = "LoggingHealthy"
 
 // Event reason constants — recorded via record.EventRecorder.Eventf.
 // Single source of truth so goconst stays quiet across reconcilers.
@@ -76,7 +93,7 @@ const connNotReadyUnreachableMsg = "LiteLLMConnection/default not Ready (reason:
 // SecretNotFound}; "Absent" is reserved for finalizer path
 // and is NEVER set by writeStatus in this plan.
 var connectionReasonAll = []string{
-	reasonSynced, reasonConnecting, reasonAbsent, reasonUnreachable, reasonBadMasterKey, reasonSecretNotFound, reasonInvalidEndpoint,
+	reasonSynced, reasonConnecting, reasonAbsent, reasonUnreachable, reasonBadMasterKey, reasonSecretNotFound, reasonInvalidEndpoint, reasonInsecureEndpoint,
 }
 
 // +kubebuilder:rbac:groups=litellm.ackstorm.ai,resources=litellmconnections,verbs=get;list;watch;create;update;patch;delete
@@ -244,7 +261,7 @@ func (r *LiteLLMConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// no-op-patch optimization for repeated Connecting writes — avoids
 	// resourceVersion churn that would trigger another reconcile and
 	// loop the watch chain.
-	curReady := apimeta.FindStatusCondition(conn.Status.Conditions, "Ready")
+	curReady := apimeta.FindStatusCondition(conn.Status.Conditions, conditionTypeReady)
 	if curReady == nil || conn.Status.ObservedGeneration != conn.Generation {
 		if curReady == nil || curReady.Reason != reasonConnecting {
 			// WR-03: status-write errors are captured and logged at error
@@ -342,6 +359,31 @@ func (r *LiteLLMConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		})
 		metrics.ReconcileTotal.WithLabelValues("LiteLLMConnection", "success").Inc()
 		return ctrl.Result{}, nil
+	}
+
+	// ─── Step 4c: M-SEC2 — master key over plaintext http to a remote host ──
+	// ValidateEndpoint deliberately accepts http://*.svc and http://localhost
+	// (the in-cluster LiteLLM deployment). But http:// to a REMOTE host sends
+	// the master key (Authorization: Bearer) in cleartext. Warn by default;
+	// hard-reject only when LITELLM_OPERATOR_REQUIRE_HTTPS_REMOTE=true.
+	if insecureRemote, _ := litellm.ClassifyEndpointTransport(conn.Spec.Endpoint); insecureRemote {
+		if strings.EqualFold(os.Getenv(EnvRequireHTTPSRemote), "true") {
+			msg := "spec.endpoint: master key would traverse plaintext http to a remote host; use https (or unset " + EnvRequireHTTPSRemote + ")"
+			if werr := r.writeStatus(ctx, &conn, reasonInsecureEndpoint, msg); werr != nil {
+				logStatusUpdateErr(logger, werr, "reason", reasonInsecureEndpoint)
+			}
+			r.Cache.Rebuild(connection.ConnectionSnapshot{
+				Ready:      false,
+				Reason:     reasonInsecureEndpoint,
+				Generation: conn.Generation,
+			})
+			metrics.ReconcileTotal.WithLabelValues("LiteLLMConnection", "success").Inc()
+			return ctrl.Result{}, nil
+		}
+		logger.Info("WARNING: master key will be sent over plaintext http to a remote host "+
+			"(MasterKeyOverPlaintextHTTP); use https or an in-cluster endpoint, "+
+			"or set "+EnvRequireHTTPSRemote+"=true to hard-reject",
+			"endpoint", conn.Spec.Endpoint)
 	}
 
 	// ─── Step 5: Build fresh *litellm.Client (D-03) ────────────────
@@ -524,7 +566,7 @@ func (r *LiteLLMConnectionReconciler) writeStatus(
 
 	orig := conn.DeepCopy()
 	cond := metav1.Condition{
-		Type:               "Ready",
+		Type:               conditionTypeReady,
 		Status:             metav1.ConditionFalse,
 		Reason:             reason,
 		Message:            message,
@@ -533,6 +575,24 @@ func (r *LiteLLMConnectionReconciler) writeStatus(
 	}
 	apimeta.SetStatusCondition(&conn.Status.Conditions, cond)
 	conn.Status.ObservedGeneration = conn.Generation
+
+	// #63: once Ready leaves Synced, the previous probe's LoggingHealthy no
+	// longer reflects reality. Downgrade an EXISTING LoggingHealthy to Unknown
+	// so it does not advertise "Healthy" while the connection is not Ready.
+	// (writeReadyAndLoggingHealthy resets it on probe-outcome paths; this
+	// covers the writeStatus-only paths — Connecting, SecretNotFound,
+	// BadMasterKey, Invalid/InsecureEndpoint.) Never fabricate one on first
+	// reconcile.
+	if apimeta.FindStatusCondition(conn.Status.Conditions, conditionTypeLoggingHealthy) != nil {
+		apimeta.SetStatusCondition(&conn.Status.Conditions, metav1.Condition{
+			Type:               conditionTypeLoggingHealthy,
+			Status:             metav1.ConditionUnknown,
+			Reason:             reason,
+			Message:            "logging health is unknown while the connection is not Ready",
+			ObservedGeneration: conn.Generation,
+			LastTransitionTime: metav1.Now(),
+		})
+	}
 
 	// Patch (MergeFrom) instead of Update: status subresource merge patches
 	// do not embed resourceVersion so concurrent reconciles do not collide
@@ -569,7 +629,7 @@ func (r *LiteLLMConnectionReconciler) writeReadyAndLoggingHealthy(
 	readyEqual := statusReadyUnchanged(conn.Status.Conditions, conn.Status.ObservedGeneration, conn.Generation, readyStatus, readyReason, readyMessage)
 	lhEqual := false
 	for _, c := range conn.Status.Conditions {
-		if c.Type != "LoggingHealthy" {
+		if c.Type != conditionTypeLoggingHealthy {
 			continue
 		}
 		if c.Status == lhStatus &&
@@ -594,7 +654,7 @@ func (r *LiteLLMConnectionReconciler) writeReadyAndLoggingHealthy(
 	orig := conn.DeepCopy()
 	now := metav1.Now()
 	apimeta.SetStatusCondition(&conn.Status.Conditions, metav1.Condition{
-		Type:               "Ready",
+		Type:               conditionTypeReady,
 		Status:             readyStatus,
 		Reason:             readyReason,
 		Message:            readyMessage,
@@ -602,7 +662,7 @@ func (r *LiteLLMConnectionReconciler) writeReadyAndLoggingHealthy(
 		LastTransitionTime: now,
 	})
 	apimeta.SetStatusCondition(&conn.Status.Conditions, metav1.Condition{
-		Type:               "LoggingHealthy",
+		Type:               conditionTypeLoggingHealthy,
 		Status:             lhStatus,
 		Reason:             lhReason,
 		Message:            lhMessage,

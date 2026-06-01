@@ -56,8 +56,12 @@ func probeVanishedResourceID(
 				"kind", resourceKind, "path", auth401.Path)
 			return false, nil
 		}
-		if errors.Is(probeErr, litellm.ErrNotFound) {
-			logger.Info("vanish-probe: LiteLLM returned ErrNotFound; clearing ID",
+		// #56: use litellm.IsNotFound so a typed *RejectedError{Status:404}
+		// (e.g. a fronting proxy or LiteLLM upgrade returning HTTP 404 on the
+		// list/get endpoint) is recognized as "vanished" — not just the
+		// sentinel ErrNotFound from the 200-empty-body path.
+		if litellm.IsNotFound(probeErr) {
+			logger.Info("vanish-probe: LiteLLM reported not-found; clearing ID",
 				"kind", resourceKind, "lastID", lastID)
 			return true, nil
 		}

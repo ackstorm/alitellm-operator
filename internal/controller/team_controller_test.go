@@ -68,7 +68,7 @@ func pollTeamCondition(t *testing.T, ctx context.Context, name, wantReason strin
 	var tm litellmv1alpha1.LiteLLMTeam
 	for time.Now().Before(deadline) {
 		if err := k8sClient.Get(ctx, key, &tm); err == nil {
-			c := apimeta.FindStatusCondition(tm.Status.Conditions, "Ready")
+			c := apimeta.FindStatusCondition(tm.Status.Conditions, conditionTypeReady)
 			if c != nil && c.Reason == wantReason {
 				return &tm
 			}
@@ -164,7 +164,7 @@ func TestTeamReconciler_CreateOnFirstReconcile_NoBudget(t *testing.T) {
 	}
 
 	tm := pollTeamCondition(t, ctx, "team-create-nobudget", reasonSynced, 30*time.Second)
-	c := apimeta.FindStatusCondition(tm.Status.Conditions, "Ready")
+	c := apimeta.FindStatusCondition(tm.Status.Conditions, conditionTypeReady)
 	if c == nil || c.Status != metav1.ConditionTrue || c.Reason != reasonSynced {
 		t.Fatalf("Ready condition not Synced; condition=%+v", c)
 	}
@@ -1126,7 +1126,7 @@ func TestTeamReconciler_ConnectionGate(t *testing.T) {
 	})
 
 	tm := pollTeamCondition(t, ctx, "team-gate-test", "LiteLLMUnavailable", 30*time.Second)
-	c := apimeta.FindStatusCondition(tm.Status.Conditions, "Ready")
+	c := apimeta.FindStatusCondition(tm.Status.Conditions, conditionTypeReady)
 	if c == nil {
 		t.Fatalf("Ready condition not set; conditions=%+v", tm.Status.Conditions)
 	}
@@ -1192,7 +1192,7 @@ func TestTeamReconciler_401FastPath(t *testing.T) {
 	}
 
 	tm := pollTeamCondition(t, ctx, "team-401-test", "LiteLLMUnavailable", 10*time.Second)
-	c := apimeta.FindStatusCondition(tm.Status.Conditions, "Ready")
+	c := apimeta.FindStatusCondition(tm.Status.Conditions, conditionTypeReady)
 	if c == nil {
 		t.Fatalf("Ready condition not set after 401")
 	}
@@ -1279,7 +1279,7 @@ func TestTeamReconciler_SecretSubstitution(t *testing.T) {
 	// AC-S1 carry-forward: secret value must NOT appear in
 	// status.conditions[].message (narrow check; redaction canary
 	// suite covers the broader log+events surface).
-	c := apimeta.FindStatusCondition(tm.Status.Conditions, "Ready")
+	c := apimeta.FindStatusCondition(tm.Status.Conditions, conditionTypeReady)
 	if c != nil && strings.Contains(c.Message, "resolved-value") {
 		t.Errorf("§9.1 FAIL: secret value leaked into status.conditions[Ready].message=%q", c.Message)
 	}
@@ -1315,7 +1315,7 @@ func TestTeamReconciler_SecretNotFound(t *testing.T) {
 	}
 
 	tm := pollTeamCondition(t, ctx, "team-secret-missing", "SecretNotFound", 30*time.Second)
-	c := apimeta.FindStatusCondition(tm.Status.Conditions, "Ready")
+	c := apimeta.FindStatusCondition(tm.Status.Conditions, conditionTypeReady)
 	if c == nil || c.Reason != "SecretNotFound" {
 		t.Fatalf("Ready.Reason: want SecretNotFound, got %+v", c)
 	}
@@ -2333,7 +2333,7 @@ func TestTeamReconciler_AC_T3_DeleteListReturns404(t *testing.T) {
 	for time.Now().Before(deadline) {
 		var probe litellmv1alpha1.LiteLLMTeam
 		if err := k8sClient.Get(ctx, client.ObjectKey{Name: "team-act3-list404", Namespace: WatchNamespace}, &probe); err == nil {
-			c := apimeta.FindStatusCondition(probe.Status.Conditions, "Ready")
+			c := apimeta.FindStatusCondition(probe.Status.Conditions, conditionTypeReady)
 			if c != nil && c.Reason == "LiteLLMRejected" {
 				final = &probe
 				break
@@ -2344,7 +2344,7 @@ func TestTeamReconciler_AC_T3_DeleteListReturns404(t *testing.T) {
 	if final == nil {
 		t.Fatalf("Ready.Reason=LiteLLMRejected never observed within 15s after delete-with-404-list")
 	}
-	c := apimeta.FindStatusCondition(final.Status.Conditions, "Ready")
+	c := apimeta.FindStatusCondition(final.Status.Conditions, conditionTypeReady)
 	if c == nil {
 		t.Fatalf("Ready condition missing on rejected delete")
 	}

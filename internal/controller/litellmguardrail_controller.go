@@ -18,7 +18,6 @@ import (
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
@@ -278,31 +277,16 @@ func (r *GuardRailReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	// ─── Step 6: Resolve spec.secrets[] ────────────────────────────────────
-	secretMap := make(map[string]string)
-	for _, entry := range gr.Spec.Secrets {
-		var secret corev1.Secret
-		key := types.NamespacedName{Namespace: gr.Namespace, Name: entry.SecretRef.Name}
-		if err := r.Get(ctx, key, &secret); err != nil {
-			if apierrors.IsNotFound(err) {
-				msg := gr.Namespace + "/" + entry.SecretRef.Name + ":" + entry.SecretRef.Key + " not found"
-				if werr := r.writeStatus(ctx, &gr, metav1.ConditionFalse, reasonSecretNotFound, msg); werr != nil {
-					logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
-				}
-				metrics.ReconcileTotal.WithLabelValues(guardrailKind, "success").Inc()
-				return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
-			}
-			return ctrl.Result{}, err
+	secretMap, missMsg, err := resolveSecretMap(ctx, r.Client, gr.Namespace, gr.Spec.Secrets)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if missMsg != "" {
+		if werr := r.writeStatus(ctx, &gr, metav1.ConditionFalse, reasonSecretNotFound, missMsg); werr != nil {
+			logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
 		}
-		val, ok := secret.Data[entry.SecretRef.Key]
-		if !ok {
-			msg := gr.Namespace + "/" + entry.SecretRef.Name + ":" + entry.SecretRef.Key + " not found"
-			if werr := r.writeStatus(ctx, &gr, metav1.ConditionFalse, reasonSecretNotFound, msg); werr != nil {
-				logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
-			}
-			metrics.ReconcileTotal.WithLabelValues(guardrailKind, "success").Inc()
-			return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
-		}
-		secretMap[entry.As] = string(val)
+		metrics.ReconcileTotal.WithLabelValues(guardrailKind, "success").Inc()
+		return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
 	}
 
 	// ─── Step 7: Decode + substitute spec.params and spec.info ─────────────
@@ -472,9 +456,21 @@ func (r *GuardRailReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		metrics.CRStatusAgeTracker.RecordSuccess(guardrailKind, gr.Name)
 		// Refresh PoolSize on steady-state too — sibling membership may
 		// have changed without a spec edit (a sibling CR was added).
+		// M-B4: route through RetryOnConflict + re-Get and capture the error
+		// (the previous plain Status().Update with a discarded error silently
+		// lost the refresh under a conflict).
 		if poolSize != gr.Status.LastRendered.PoolSize {
 			gr.Status.LastRendered.PoolSize = poolSize
-			_ = r.Status().Update(ctx, &gr)
+			if uerr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+				var fresh litellmv1alpha1.LiteLLMGuardRail
+				if err := r.Get(ctx, client.ObjectKeyFromObject(&gr), &fresh); err != nil {
+					return err
+				}
+				fresh.Status.LastRendered.PoolSize = poolSize
+				return r.Status().Update(ctx, &fresh)
+			}); uerr != nil {
+				logStatusUpdateErr(logger, uerr, "reason", "PoolSizeRefresh")
+			}
 		}
 		return ctrl.Result{}, nil
 	}
@@ -737,14 +733,7 @@ func (r *GuardRailReconciler) writeStatus(
 	status metav1.ConditionStatus,
 	reason, message string,
 ) error {
-	cond := metav1.Condition{
-		Type:               "Ready",
-		Status:             status,
-		Reason:             reason,
-		Message:            message,
-		ObservedGeneration: gr.Generation,
-		LastTransitionTime: metav1.Now(),
-	}
+	cond := buildReadyCondition(gr.Generation, status, reason, message)
 	desiredLR := gr.Status.LastRendered
 	desiredObs := gr.Generation
 
@@ -763,54 +752,23 @@ func (r *GuardRailReconciler) writeStatus(
 		gr.ResourceVersion = fresh.ResourceVersion
 		return nil
 	})
-	metrics.LitellmOperatorReconcileTotal.WithLabelValues(
-		guardrailKind, gr.Namespace, metrics.ReasonToReconcileResult(reason),
-	).Inc()
+	recordReconcileMetric(guardrailKind, gr.Namespace, reason)
 	return err
 }
 
 // secretToGuardrails maps a Secret update event to the set of
 // LiteLLMGuardRail CRs that reference it.
 func (r *GuardRailReconciler) secretToGuardrails(ctx context.Context, obj client.Object) []reconcile.Request {
-	var list litellmv1alpha1.LiteLLMGuardRailList
-	if err := r.List(ctx, &list,
-		client.InNamespace(obj.GetNamespace()),
-		client.MatchingFields{GuardrailSecretRefIndexField: obj.GetName()},
-	); err != nil {
-		r.Log.V(1).Info("secretToGuardrails: list failed; skipping", "error", err)
-		return nil
-	}
-	out := make([]reconcile.Request, 0, len(list.Items))
-	for i := range list.Items {
-		out = append(out, reconcile.Request{
-			NamespacedName: client.ObjectKeyFromObject(&list.Items[i]),
-		})
-	}
-	return out
+	return secretToRequests(ctx, r.Client, r.Log, &litellmv1alpha1.LiteLLMGuardRailList{}, obj.GetNamespace(), obj.GetName(), GuardrailSecretRefIndexField, "secretToGuardrails")
 }
 
 // connectionToGuardrails enqueues every guardrail when the
 // LiteLLMConnection transitions to Ready=True (mirrors the Model fan-in).
 func (r *GuardRailReconciler) connectionToGuardrails(ctx context.Context, obj client.Object) []reconcile.Request {
-	// IN-03: route through fanInNamespace so all six connection fan-in
+	// IN-03: route through connectionFanIn so all five connection fan-in
 	// mappers share the same trigger-namespace contract — informer path
 	// uses conn.Namespace, raw-source path falls back to r.Namespace.
-	ns := fanInNamespace(obj, r.Namespace)
-	if ns == "" {
-		logEmptyFanInNamespace(ctx, "LiteLLMGuardRail")
-		return nil
-	}
-	var list litellmv1alpha1.LiteLLMGuardRailList
-	if err := r.List(ctx, &list, client.InNamespace(ns)); err != nil {
-		return nil
-	}
-	out := make([]reconcile.Request, 0, len(list.Items))
-	for i := range list.Items {
-		out = append(out, reconcile.Request{
-			NamespacedName: client.ObjectKeyFromObject(&list.Items[i]),
-		})
-	}
-	return out
+	return connectionFanIn(ctx, r.Client, obj, &litellmv1alpha1.LiteLLMGuardRailList{}, r.Namespace, "LiteLLMGuardRail")
 }
 
 // SetupWithManager registers the GuardRailReconciler with the manager.
