@@ -191,10 +191,12 @@ not two). Never prefix a routed target with `./scripts/dev.sh` out of
 habit — the prefix is redundant.
 
 Only context-B/C targets run directly on the host: `docker-*` (host
-docker), `wait-*` / `logs-*` / `watch-crs` / `pf-*` / `mock-mode` /
-`operator-redeploy` (host kubectl against the kind kubeconfig), the gate
+docker), `wait-*` / `logs-*` / `watch-crs` / `pf-*` / `mock-mode`, the gate
 orchestrators (`pre-commit`, `pre-push`, `verify`), `release-*`, and
-`ensure-inotify`. The `cluster-*` targets are NO LONGER host-direct: they
+`ensure-inotify`. `operator-redeploy` builds + `kind load`s on the host but
+runs its `kubectl rollout restart/status` THROUGH the devtools container
+(`./scripts/dev.sh kubectl`) — host kubectl has no context for the kind
+cluster (kubeconfig lives at `/workspace/.gocache/kube/config`). The `cluster-*` targets are NO LONGER host-direct: they
 now route THROUGH the devtools container (they drive kind/helm via the
 mounted docker socket), so run them bare too (`make cluster-up`).
 
