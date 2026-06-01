@@ -472,9 +472,21 @@ func (r *GuardRailReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		metrics.CRStatusAgeTracker.RecordSuccess(guardrailKind, gr.Name)
 		// Refresh PoolSize on steady-state too — sibling membership may
 		// have changed without a spec edit (a sibling CR was added).
+		// M-B4: route through RetryOnConflict + re-Get and capture the error
+		// (the previous plain Status().Update with a discarded error silently
+		// lost the refresh under a conflict).
 		if poolSize != gr.Status.LastRendered.PoolSize {
 			gr.Status.LastRendered.PoolSize = poolSize
-			_ = r.Status().Update(ctx, &gr)
+			if uerr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+				var fresh litellmv1alpha1.LiteLLMGuardRail
+				if err := r.Get(ctx, client.ObjectKeyFromObject(&gr), &fresh); err != nil {
+					return err
+				}
+				fresh.Status.LastRendered.PoolSize = poolSize
+				return r.Status().Update(ctx, &fresh)
+			}); uerr != nil {
+				logStatusUpdateErr(logger, uerr, "reason", "PoolSizeRefresh")
+			}
 		}
 		return ctrl.Result{}, nil
 	}
