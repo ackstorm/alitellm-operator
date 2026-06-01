@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -254,27 +255,28 @@ func (r *ModelAliasReconciler) applyStatus(
 	cond metav1.Condition,
 	rows []litellmv1alpha1.AliasEntryStatus,
 ) error {
-	var fresh litellmv1alpha1.LiteLLMModelAlias
-	if err := r.Get(ctx, types.NamespacedName{Name: item.Name, Namespace: item.Namespace}, &fresh); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
+	// #59: wrap in RetryOnConflict + re-Get so a lost optimistic-lock write
+	// does not leave a stale AliasStatuses surface until the next reconcile.
+	// Previously the IsConflict error was swallowed (return nil); now each
+	// attempt re-reads `fresh` and re-applies the intent onto the latest
+	// resourceVersion, matching every other controller's writeStatus.
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var fresh litellmv1alpha1.LiteLLMModelAlias
+		if err := r.Get(ctx, types.NamespacedName{Name: item.Name, Namespace: item.Namespace}, &fresh); err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil // CR deleted — nothing to write.
+			}
+			return err
 		}
-		return err
-	}
-	meta.SetStatusCondition(&fresh.Status.Conditions, cond)
-	// M-B1: report the generation of the object we actually re-read (fresh),
-	// not the stale list-snapshot copy (item) captured before this write.
-	fresh.Status.ObservedGeneration = fresh.Generation
-	if rows != nil {
-		fresh.Status.AliasStatuses = rows
-	}
-	if err := r.Status().Update(ctx, &fresh); err != nil {
-		if apierrors.IsConflict(err) {
-			return nil
+		meta.SetStatusCondition(&fresh.Status.Conditions, cond)
+		// M-B1: report the generation of the object we actually re-read
+		// (fresh), not the stale list-snapshot copy (item).
+		fresh.Status.ObservedGeneration = fresh.Generation
+		if rows != nil {
+			fresh.Status.AliasStatuses = rows
 		}
-		return err
-	}
-	return nil
+		return r.Status().Update(ctx, &fresh)
+	})
 }
 
 // stripDeletingFinalizers removes the finalizer from CRs whose
