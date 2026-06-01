@@ -8,3 +8,7 @@ bin/
 # build context to the daemon — slow, expensive, and pointless (the
 # Dockerfile multi-stage builder re-fetches modules inside the image).
 .gocache/
+# Claude Code session/memory/config dir — never belongs in image context.
+.claude/
+# GSD planning artifacts — agent-facing, not build input.
+.planning/
