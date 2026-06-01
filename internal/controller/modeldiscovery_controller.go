@@ -374,6 +374,17 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	// per-type Secret keys (ANTHROPIC_API_KEY, AWS_ACCESS_KEY_ID, .) are
 	// fixed by spec §6.3 line 721-737 normative and force a small switch
 	// HERE. The actual provider dispatch below uses providers.Registry.
+	// M-SEC1: deny cloud-metadata / loopback / link-local baseUrl before any
+	// outbound call. Terminal config error — no backoff storm; a CR edit
+	// re-enqueues. Denylist only (private + *.svc still reachable by design;
+	// see providers.ValidateBaseURL).
+	if md.Spec.BaseURL != "" {
+		if err := providers.ValidateBaseURL(md.Spec.BaseURL); err != nil {
+			metrics.DiscoveryRefreshTotal.WithLabelValues(modelDiscoveryKind, md.Spec.Type, "error").Inc()
+			return r.writeReady(ctx, &md, metav1.ConditionFalse, "InvalidConfig", err.Error()), nil
+		}
+	}
+
 	cfg := providers.ProviderConfig{
 		Type:       md.Spec.Type,
 		BaseURL:    md.Spec.BaseURL,

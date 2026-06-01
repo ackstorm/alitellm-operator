@@ -519,6 +519,23 @@ WHY IT FAILED PRE-v0.3.1: `mcpserver_controller.go` extracted only four
 typed fields and dropped everything else, even though the request struct
 already modeled the full set.
 
+### ❌ Assuming `ModelDiscovery.spec.baseUrl` is fully SSRF-guarded
+```yaml
+spec:
+  type: kubeai
+  baseUrl: http://169.254.169.254/   # DENIED (cloud metadata) → Ready=False InvalidConfig
+  # baseUrl: http://10.0.0.5:8000/v1 # ALLOWED by design (private RFC1918)
+  # baseUrl: http://svc.ns.svc/v1    # ALLOWED by design (in-cluster)
+```
+✅ `providers.ValidateBaseURL` (M-SEC1) is a **denylist**, not full SSRF
+prevention. It rejects only cloud-metadata (`169.254.169.254`,
+`fd00:ec2::254`), loopback, and link-local hosts plus structural problems
+(non-http(s) scheme, userinfo, query, fragment). Private RFC1918 and `*.svc`
+hosts remain reachable BY DESIGN — KubeAI points `baseUrl` at in-cluster
+service DNS, so a blanket internal-deny would break the supported use case.
+RESIDUAL RISK: a namespaced user can still aim the operator's HTTP client at
+other internal/private services. A host-allowlist is intentionally deferred.
+
 ### ❌ Expecting LiteLLM error detail in CR condition.Message
 ```yaml
 status:
