@@ -960,18 +960,27 @@ func (r *TeamReconciler) reconcileDeletion(ctx context.Context, team *litellmv1a
 				// observe steady state (the rendered body did not
 				// actually change between this UPDATE and the synthetic
 				// reconcile's implicit body).
-				canonicalBytes, _ := canonicalJSON(map[string]any{
+				canonicalBytes, cerr := canonicalJSON(map[string]any{
 					"team_alias":      teamAliasDefault,
 					"max_budget":      nil,
 					"budget_duration": nil,
 					"rpm_limit":       nil, // CR-01 — must mirror reconcileImplicitDefault CREATE-arm body (line 639) so hash cache aligns
 					"tpm_limit":       nil,
 				})
-				sum := sha256.Sum256(canonicalBytes)
-				r.implicitDefaultMu.Lock()
-				r.implicitDefaultHash = fmt.Sprintf("%x", sum)
-				r.implicitDefaultTeamID = resolvedTeamID
-				r.implicitDefaultMu.Unlock()
+				// M-B3: skip seeding the cache on a marshal error rather than
+				// caching a hash over empty bytes (which would cause false drift
+				// + an extra UPDATE next reconcile). The static nil/string body
+				// cannot fail to marshal today, so there is no red test — this
+				// is defense-in-depth against a future mutation of the body map.
+				if cerr != nil {
+					logger.Error(cerr, "Team/default: canonicalJSON failed; skipping implicit-default hash seed")
+				} else {
+					sum := sha256.Sum256(canonicalBytes)
+					r.implicitDefaultMu.Lock()
+					r.implicitDefaultHash = fmt.Sprintf("%x", sum)
+					r.implicitDefaultTeamID = resolvedTeamID
+					r.implicitDefaultMu.Unlock()
+				}
 			}
 		} else {
 			// No team_id resolvable — LiteLLM has no `default`-aliased
