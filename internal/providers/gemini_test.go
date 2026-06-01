@@ -119,6 +119,54 @@ func TestGemini_TransportError_NoKeyLeak(t *testing.T) {
 	}
 }
 
+// TestGemini_FollowsNextPageToken is the H6 regression: model discovery
+// must accumulate models across all pages, following nextPageToken.
+func TestGemini_FollowsNextPageToken(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("pageToken") == "" {
+			_, _ = w.Write([]byte(`{"models":[{"name":"models/a","displayName":"A"}],"nextPageToken":"tok2"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"models":[{"name":"models/b","displayName":"B"}]}`))
+	}))
+	defer srv.Close()
+	SetTestBaseURL(t, "gemini", srv.URL)
+
+	p, _ := newGemini(context.Background(), ProviderConfig{
+		Type: "gemini", APIKey: canaryGeminiKey, HTTPClient: srv.Client(),
+	})
+	got, err := p.List(context.Background())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 models across pages; got %d: %+v", len(got), got)
+	}
+	if got[0].ID != "a" || got[1].ID != "b" {
+		t.Errorf("unexpected accumulated IDs: %+v", got)
+	}
+}
+
+// TestGemini_PageCapExhaustionErrors: a server that always returns a
+// nextPageToken must yield an explicit "exceeded" error, not a partial
+// slice (no silent truncation).
+func TestGemini_PageCapExhaustionErrors(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"models":[{"name":"models/x"}],"nextPageToken":"always-more"}`))
+	}))
+	defer srv.Close()
+	SetTestBaseURL(t, "gemini", srv.URL)
+
+	p, _ := newGemini(context.Background(), ProviderConfig{
+		Type: "gemini", APIKey: canaryGeminiKey, HTTPClient: srv.Client(),
+	})
+	if _, err := p.List(context.Background()); err == nil {
+		t.Fatal("expected page-cap exhaustion error, not a truncated result")
+	}
+}
+
 // TestGemini_401_ReturnsProviderAuthError verifies the 401 path
 // classifies as *ProviderAuthError.
 func TestGemini_401_ReturnsProviderAuthError(t *testing.T) {
