@@ -15,7 +15,7 @@
 # auto-memory `litellm_version_target.md`. A Tier 2 scope_test assertion
 # (Task 9.11) verifies the rendered Deployment uses this tag.
 #
-# Apply changes:  make cluster-hydrate
+# Apply changes:  make cluster-sync
 
 chartVersion: 1.84.0              # see test/e2e/CHART_PINS.md (BETA — verify suite on bumps)
 

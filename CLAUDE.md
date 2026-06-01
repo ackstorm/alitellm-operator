@@ -99,6 +99,9 @@ alitellm-operator/
 ├── scripts/                 ← dev.sh, cluster.sh, pre-push-check.sh, ...
 ├── spec/                    ← frozen LiteLLM OpenAPI + design spec
 ├── test/                    ← e2e (Ginkgo) + utils
+│   └── e2e/cluster/         standing-hydration kustomize phases (00-namespaces,
+│                            01-deps, 02-operator, 03-mocks, 04-hydration);
+│                            test CRs stay dynamic in test/e2e/*_test.go
 ├── ROADMAP.md, CHANGELOG.md, SECURITY.md, MAINTAINERS.md, CONTRIBUTING.md
 └── PROJECT, README.md, LICENSE, NOTICE, PUBLISH.md
 ```
@@ -388,6 +391,8 @@ Use these Makefile targets instead:
 | Mock pods Ready                         | `make wait-mocks`                                   |
 | Container exit + PASS/FAIL marker       | `make wait-container NAME=<container>`              |
 | Full cluster hydration                  | `make cluster-up` (synchronous; do not poll after)  |
+| Re-apply phases in place (kept cluster) | `make cluster-sync` (re-applies all phases + `verify`) |
+| Health-gate standing state (no mutation)| `make cluster-verify`                               |
 | Operator hot-reload + Ready             | `make operator-redeploy` (bounded `rollout status`) |
 
 Default `WAIT_TIMEOUT=300s` (override per call). `wait-container` takes
@@ -604,6 +609,19 @@ lands regardless of attach.
 
 ## Repository-specific patterns
 
+- **E2E standing hydration = numbered kustomize phases**: the e2e cluster's
+  *standing* state (namespaces, helm values, mock backends, master-key Secret,
+  LiteLLMConnection seam) lives under `test/e2e/cluster/` as numbered phase
+  dirs (`00-namespaces`, `01-deps`, `02-operator`, `03-mocks`, `04-hydration`),
+  applied by `scripts/cluster.sh` via `kubectl apply -k`. Each phase labels its
+  objects `e2e: "true"` (kustomize `labels` with `includeSelectors: false`, so
+  pod/Service selectors stay clean) for `kubectl delete -l e2e=true` cleanup on
+  the KEPT cluster. **Adding standing state = drop a manifest + wire one
+  `kustomization.yaml` line.** Test CRs are NOT here — they stay dynamic in
+  `test/e2e/*_test.go` (created/patched/deleted at runtime by the specs). WHY
+  hybrid: manifests give declarative standing state + label-scoped cleanup; Go
+  keeps the create→patch→delete lifecycle test CRs need.
+
 - **Reconciler shape**: each controller in `internal/controller/<kind>_controller.go`
   follows `Reconcile(ctx, req) (Result, error)`, calls `internal/litellm/<kind>_request.go`
   for HTTP construction, applies status conditions via `meta.SetStatusCondition`.
@@ -662,6 +680,11 @@ make test-envtest-pkg PKG=./internal/controller/... FOCUS=TestTeamReconciler_AC_
 # 4. Code change → hot-reload → re-test (~30s)
 make operator-redeploy
 make e2e-focus FOCUS="..."
+
+# 4b. Standing-state change (values/manifests under test/e2e/cluster/) →
+#     re-apply phases in place (no node recreate) then re-gate health
+make cluster-sync        # re-applies all phases + verify
+make cluster-verify      # standalone health gate (no mutation)
 
 # 5. Final gate before commit (full suite from a fresh cluster)
 make cluster-reset       # down + up

@@ -113,8 +113,10 @@ drive kind/helm via the mounted docker socket).
 
 | Target | Semantics |
 |--------|-----------|
-| `cluster-up` | create kind cluster + namespaces + install (litellm, mocks, operator) + apply fixtures + wait Ready. Runs `ensure-inotify` first (host). |
+| `cluster-up` | create kind cluster + apply `test/e2e/cluster/` phases (namespaces, deps, mocks, operator, hydration) + wait Ready + `verify`. Runs `ensure-inotify` first (host). |
 | `cluster-hydrate` | re-apply hydration (namespaces + install + fixtures) on an ALREADY-running cluster (never recreates the kind node). |
+| `cluster-sync` | parity alias of `cluster-hydrate` (matches `../ach`): re-apply all phases in place + `verify`. |
+| `cluster-verify` | health-gate the standing state on a running cluster (rollout/Ready checks, no mutation). |
 | `cluster-keep` | alias of `cluster-up` (kept for naming consistency with the spec). |
 | `cluster-reset` | Make compose: `cluster-down` then `cluster-up` (clean recreate). |
 | `cluster-down` | delete the kind cluster. |
@@ -123,8 +125,8 @@ drive kind/helm via the mounted docker socket).
 
 There is **no** `cluster-reset` script verb and **no** cluster-preflight
 verb — `cluster-reset` is composed from `cluster-down`+`cluster-up` in
-the Makefile, and `scripts/cluster.sh` only knows `up`, `hydrate`,
-`down`, `keep`, `status`. There is no `doctor-cluster` target.
+the Makefile, and `scripts/cluster.sh` only knows `up`, `hydrate`, `sync`,
+`down`, `keep`, `status`, `verify`. There is no `doctor-cluster` target.
 
 ## Command vocabulary
 
