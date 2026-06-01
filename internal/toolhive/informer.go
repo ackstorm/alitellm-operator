@@ -143,11 +143,18 @@ func (s *dedupStore) Upsert(obj *unstructured.Unstructured) {
 	version := obj.GroupVersionKind().Version
 
 	existing, found := s.items[key]
-	if found && existing.Version == "v1alpha1" && version == "v1beta1" {
-		// v1alpha1 already in store; incoming v1beta1 loses. Record the
-		// collision so the caller can log with appropriate throttle.
+	if found && existing.Version != version {
+		// Cross-version collision. v1alpha1 wins REGARDLESS of arrival order
+		// (M-B6): the previous code only handled existing=v1alpha1 +
+		// incoming=v1beta1, so when v1beta1 was stored first an incoming
+		// v1alpha1 overwrote it WITHOUT recording the collision. Record the
+		// collision in both directions; keep v1alpha1.
 		s.collisions = append(s.collisions, key)
-		return
+		if existing.Version == "v1alpha1" {
+			// incoming (v1beta1) loses; keep the stored v1alpha1.
+			return
+		}
+		// existing is v1beta1, incoming is v1alpha1 → v1alpha1 wins (store).
 	}
 	s.items[key] = versionedObj{Obj: obj, Version: version}
 }
