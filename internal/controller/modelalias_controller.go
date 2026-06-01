@@ -118,7 +118,7 @@ func (r *ModelAliasReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	snap := r.Cache.Snapshot()
 	if !snap.Ready {
 		msg := fmt.Sprintf("LiteLLMConnection/default not Ready (reason: %s)", snap.Reason)
-		return r.broadcastNotReady(ctx, list.Items, reasonLiteLLMUnavailable, msg, logger)
+		return r.broadcastNotReady(ctx, list.Items, reasonLiteLLMUnavailable, msg, snap.NormalizedRequeueOnRejectedAfter(), logger)
 	}
 
 	agg := AggregateModelAliases(filterAliveAliases(list.Items))
@@ -127,12 +127,12 @@ func (r *ModelAliasReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	current, err := cli.GetRouterSettings(ctx)
 	if err != nil {
 		msg := fmt.Sprintf("GET /get/config/callbacks: %v", err)
-		return r.broadcastNotReady(ctx, list.Items, reasonModelAliasRejected, msg, logger)
+		return r.broadcastNotReady(ctx, list.Items, reasonModelAliasRejected, msg, snap.NormalizedRequeueOnRejectedAfter(), logger)
 	}
 	current.ModelGroupAlias = agg.Desired
 	if err := cli.UpdateRouterSettings(ctx, current); err != nil {
 		msg := fmt.Sprintf("POST /config/update: %v", err)
-		return r.broadcastNotReady(ctx, list.Items, reasonModelAliasRejected, msg, logger)
+		return r.broadcastNotReady(ctx, list.Items, reasonModelAliasRejected, msg, snap.NormalizedRequeueOnRejectedAfter(), logger)
 	}
 
 	if err := r.writePerCRStatuses(ctx, list.Items, agg, logger); err != nil {
@@ -164,6 +164,7 @@ func (r *ModelAliasReconciler) broadcastNotReady(
 	ctx context.Context,
 	items []litellmv1alpha1.LiteLLMModelAlias,
 	reason, message string,
+	requeueAfter time.Duration,
 	logger logr.Logger,
 ) (ctrl.Result, error) {
 	for _, item := range items {
@@ -183,7 +184,11 @@ func (r *ModelAliasReconciler) broadcastNotReady(
 			return ctrl.Result{}, err
 		}
 	}
-	return ctrl.Result{}, nil
+	// M-B2: a transient rejection (5xx on /config/update, connection not
+	// ready) must requeue so recovery does not stall until the 15m resync
+	// when no later watch event fires. Bounded by the connection snapshot's
+	// normalized requeue interval.
+	return ctrl.Result{RequeueAfter: requeueAfter}, nil
 }
 
 // writePerCRStatuses computes per-entry statuses for every alive CR after
@@ -257,7 +262,9 @@ func (r *ModelAliasReconciler) applyStatus(
 		return err
 	}
 	meta.SetStatusCondition(&fresh.Status.Conditions, cond)
-	fresh.Status.ObservedGeneration = item.Generation
+	// M-B1: report the generation of the object we actually re-read (fresh),
+	// not the stale list-snapshot copy (item) captured before this write.
+	fresh.Status.ObservedGeneration = fresh.Generation
 	if rows != nil {
 		fresh.Status.AliasStatuses = rows
 	}
