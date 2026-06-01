@@ -71,6 +71,10 @@ const (
 // for strict installs. Default (unset/false): warn-only, no behavior change.
 const EnvRequireHTTPSRemote = "LITELLM_OPERATOR_REQUIRE_HTTPS_REMOTE"
 
+// conditionTypeLoggingHealthy is the secondary condition type set alongside
+// Ready by the probe-success path. Centralized so goconst stays quiet.
+const conditionTypeLoggingHealthy = "LoggingHealthy"
+
 // Event reason constants — recorded via record.EventRecorder.Eventf.
 // Single source of truth so goconst stays quiet across reconcilers.
 const (
@@ -572,6 +576,24 @@ func (r *LiteLLMConnectionReconciler) writeStatus(
 	apimeta.SetStatusCondition(&conn.Status.Conditions, cond)
 	conn.Status.ObservedGeneration = conn.Generation
 
+	// #63: once Ready leaves Synced, the previous probe's LoggingHealthy no
+	// longer reflects reality. Downgrade an EXISTING LoggingHealthy to Unknown
+	// so it does not advertise "Healthy" while the connection is not Ready.
+	// (writeReadyAndLoggingHealthy resets it on probe-outcome paths; this
+	// covers the writeStatus-only paths — Connecting, SecretNotFound,
+	// BadMasterKey, Invalid/InsecureEndpoint.) Never fabricate one on first
+	// reconcile.
+	if apimeta.FindStatusCondition(conn.Status.Conditions, conditionTypeLoggingHealthy) != nil {
+		apimeta.SetStatusCondition(&conn.Status.Conditions, metav1.Condition{
+			Type:               conditionTypeLoggingHealthy,
+			Status:             metav1.ConditionUnknown,
+			Reason:             reason,
+			Message:            "logging health is unknown while the connection is not Ready",
+			ObservedGeneration: conn.Generation,
+			LastTransitionTime: metav1.Now(),
+		})
+	}
+
 	// Patch (MergeFrom) instead of Update: status subresource merge patches
 	// do not embed resourceVersion so concurrent reconciles do not collide
 	// with HTTP 409. Conflict logs become genuinely rare instead of routine.
@@ -607,7 +629,7 @@ func (r *LiteLLMConnectionReconciler) writeReadyAndLoggingHealthy(
 	readyEqual := statusReadyUnchanged(conn.Status.Conditions, conn.Status.ObservedGeneration, conn.Generation, readyStatus, readyReason, readyMessage)
 	lhEqual := false
 	for _, c := range conn.Status.Conditions {
-		if c.Type != "LoggingHealthy" {
+		if c.Type != conditionTypeLoggingHealthy {
 			continue
 		}
 		if c.Status == lhStatus &&
@@ -640,7 +662,7 @@ func (r *LiteLLMConnectionReconciler) writeReadyAndLoggingHealthy(
 		LastTransitionTime: now,
 	})
 	apimeta.SetStatusCondition(&conn.Status.Conditions, metav1.Condition{
-		Type:               "LoggingHealthy",
+		Type:               conditionTypeLoggingHealthy,
 		Status:             lhStatus,
 		Reason:             lhReason,
 		Message:            lhMessage,
