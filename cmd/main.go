@@ -115,19 +115,21 @@ func main() {
 	watchNS := envOr("WATCH_NAMESPACE", "default")
 	setupLog.Info("watch namespace configured", "namespace", watchNS)
 
-	// v0.4.6: optional override of the per-reconciler safety-relist cadence
-	// (default 5m). LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL accepts any
-	// time.ParseDuration string; values below 30s are rejected at parse
-	// time. Reasoning + floor justification in
-	// internal/controller/safety_relist.go.
-	if intvl, err := controller.ParseSafetyRelistInterval(os.Getenv(controller.EnvSafetyRelistInterval)); err != nil {
+	// H5: parse LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL EXACTLY ONCE here and
+	// thread the resolved value to every consumer — the four reconciler
+	// package vars (via SetSafetyRelistIntervals) AND the three relist
+	// Runnables (Model, Team, GuardRail) below. Default 10m
+	// (DefaultSafetyRelistInterval); 5s floor; invalid input aborts startup.
+	// Accepts any time.ParseDuration string. Reasoning + floor justification
+	// in internal/controller/safety_relist.go.
+	relistInterval, err := controller.ResolvedSafetyRelistInterval(os.Getenv(controller.EnvSafetyRelistInterval))
+	if err != nil {
 		setupLog.Error(err, "invalid safety-relist interval override; aborting")
 		os.Exit(1)
-	} else if intvl > 0 {
-		controller.SetSafetyRelistIntervals(intvl)
-		setupLog.Info("safety-relist interval overridden",
-			"env", controller.EnvSafetyRelistInterval, "interval", intvl)
 	}
+	controller.SetSafetyRelistIntervals(relistInterval)
+	setupLog.Info("safety-relist interval resolved",
+		"env", controller.EnvSafetyRelistInterval, "interval", relistInterval)
 
 	// Plain HTTP :8080/metrics per spec §10 and Open Question #2.
 	// Kubebuilder v4 defaults to :8443 HTTPS+authn with
@@ -207,22 +209,14 @@ func main() {
 	// (D-03 existence-only scope — no UPDATE on this path, only CREATE when missing).
 	// REL-02 compliance: uses time.Ticker inside a Runnable, NOT RequeueAfter.
 	safetyRelistCh := make(chan reconcile.Request, 256)
-	// LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL: overrides the 30m production
-	// default. Tier 2 sets this to 10s so the AC-M3 drift gate fires inside
-	// the CI suite's wall-clock budget. Invalid durations log + fall back.
-	safetyInterval := 30 * time.Minute
-	if v := envOr("LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL", ""); v != "" {
-		if d, err := time.ParseDuration(v); err == nil {
-			safetyInterval = d
-			setupLog.Info("safety re-list interval overridden by env", "interval", d)
-		} else {
-			setupLog.Info("invalid LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL, using default", "value", v, "default", "30m")
-		}
-	}
+	// H5: use the single resolved interval (parsed once above). Previously a
+	// second independent time.ParseDuration here defaulted to 30m and
+	// silently fell back to 30m on invalid input — disagreeing with both the
+	// reconciler package vars and the floor enforced for them.
 	safetyRelist := &controller.ModelSafetyRelistRunnable{
 		Client:    mgr.GetClient(),
 		Namespace: watchNS,
-		Interval:  safetyInterval,
+		Interval:  relistInterval,
 		Log:       ctrl.Log.WithName("model-safety-relist"),
 		RequeueCh: safetyRelistCh,
 	}
@@ -398,7 +392,7 @@ func main() {
 	teamDefaultRunnable := &controller.TeamDefaultRunnable{
 		Cache:             connCache,
 		Namespace:         watchNS,
-		Interval:          30 * time.Minute,
+		Interval:          relistInterval, // H5: single resolved cadence (was hardcoded 30m)
 		ReadyPollInterval: 5 * time.Second,
 		Log:               ctrl.Log.WithName("runnable").WithName("TeamDefault"),
 		RequeueCh:         teamDefaultRequeueCh,
@@ -488,7 +482,7 @@ func main() {
 	if err := mgr.Add(&controller.GuardRailSafetyRelistRunnable{
 		Client:    mgr.GetClient(),
 		Namespace: watchNS,
-		Interval:  30 * time.Minute,
+		Interval:  relistInterval, // H5: single resolved cadence (was hardcoded 30m)
 		Log:       ctrl.Log.WithName("guardrail-safety-relist"),
 		RequeueCh: guardrailSafetyRelistCh,
 	}); err != nil {
