@@ -61,14 +61,14 @@ func TestGemini_HappyPath_StripsModelsPrefix(t *testing.T) {
 	}
 }
 
-// TestGemini_URLContainsKeyQueryParam verifies the auth channel is
-// the URL query parameter ?key=<api_key> (autoconfig providers.py:156),
-// NOT an Authorization header.
-func TestGemini_URLContainsKeyQueryParam(t *testing.T) {
-	var gotQuery string
-	var gotAuthHeader string
+// TestGemini_KeyInHeaderNotQuery verifies H1: the key travels in the
+// x-goog-api-key header and never enters the URL query, so a leaked
+// request URL cannot carry it.
+func TestGemini_KeyInHeaderNotQuery(t *testing.T) {
+	var gotHeader, gotRawQuery, gotAuthHeader string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotQuery = r.URL.RawQuery
+		gotHeader = r.Header.Get("x-goog-api-key")
+		gotRawQuery = r.URL.RawQuery
 		gotAuthHeader = r.Header.Get("Authorization")
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"models":[]}`))
@@ -82,14 +82,40 @@ func TestGemini_URLContainsKeyQueryParam(t *testing.T) {
 	if _, err := p.List(context.Background()); err != nil {
 		t.Fatalf("List err: %v", err)
 	}
-	// Query MUST contain key=<URL-encoded canaryGeminiKey>.
-	wantKeyParam := "key=" + url.QueryEscape(canaryGeminiKey)
-	if !strings.Contains(gotQuery, wantKeyParam) {
-		t.Errorf("URL.RawQuery = %q; want substring %q", gotQuery, wantKeyParam)
+	if gotHeader != canaryGeminiKey {
+		t.Errorf("x-goog-api-key header = %q; want %q", gotHeader, canaryGeminiKey)
 	}
-	// Authorization header MUST NOT be set (Gemini uses URL query, NOT Bearer).
+	if strings.Contains(gotRawQuery, "key=") || strings.Contains(gotRawQuery, canaryGeminiKey) ||
+		strings.Contains(gotRawQuery, url.QueryEscape(canaryGeminiKey)) {
+		t.Errorf("key leaked into URL query: %q", gotRawQuery)
+	}
+	// Authorization header MUST NOT be set (Gemini uses x-goog-api-key, NOT Bearer).
 	if gotAuthHeader != "" {
 		t.Errorf("Authorization header = %q; Gemini must not send it", gotAuthHeader)
+	}
+}
+
+// TestGemini_TransportError_NoKeyLeak is the H1 regression: a transport
+// error must not echo the key in the error string, because the reconciler
+// writes that string into CR status conditions.
+func TestGemini_TransportError_NoKeyLeak(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	SetTestBaseURL(t, "gemini", srv.URL)
+	srv.Close() // force connection-refused transport error
+
+	p, err := newGemini(context.Background(), ProviderConfig{
+		Type: "gemini", APIKey: canaryGeminiKey, HTTPClient: srv.Client(),
+	})
+	if err != nil {
+		t.Fatalf("ctor: %v", err)
+	}
+	_, listErr := p.List(context.Background())
+	if listErr == nil {
+		t.Fatal("expected transport error")
+	}
+	if strings.Contains(listErr.Error(), canaryGeminiKey) ||
+		strings.Contains(listErr.Error(), url.QueryEscape(canaryGeminiKey)) {
+		t.Errorf("transport error leaked key: %v", listErr)
 	}
 }
 

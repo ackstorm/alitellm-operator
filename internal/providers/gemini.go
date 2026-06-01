@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 )
 
@@ -46,9 +45,12 @@ func newGeminiImpl(ctx context.Context, cfg ProviderConfig) (Provider, error) {
 
 func (p *geminiProvider) Type() string { return providerTypeGemini }
 
-// List issues GET <baseURL>/models?key=<URL-encoded api_key>. The key is
-// passed via url.QueryEscape to handle reserved characters (`+`, `&`,
-// `=`). No Bearer-auth header is set — Gemini does not honor it.
+// List issues GET <baseURL>/models with the key in the x-goog-api-key
+// header (NOT the URL query). H1: a query-embedded key lands in request
+// URLs that (*url.Error).Error() echoes verbatim into CR status and logs
+// on a transport error — see internal/controller/modeldiscovery_controller.go
+// writeBothConditions. Mirrors the anthropic x-api-key header posture, so
+// no provider key ever enters a URL string.
 //
 // Error classification mirrors anthropic.List:
 // - 401/403 → *ProviderAuthError (reason=AuthFailed; permanent).
@@ -57,11 +59,13 @@ func (p *geminiProvider) Type() string { return providerTypeGemini }
 //
 // 4MB body cap (PATTERNS.md L277); REL-04 drain+close deferred.
 func (p *geminiProvider) List(ctx context.Context) ([]Candidate, error) {
-	endpoint := baseURLFor(providerTypeGemini, p.baseURL) + "/models?key=" + url.QueryEscape(p.apiKey)
+	endpoint := baseURLFor(providerTypeGemini, p.baseURL) + "/models"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("gemini: build request: %w", err)
 	}
+	// H1: key travels in the x-goog-api-key header, never the URL query.
+	req.Header.Set("x-goog-api-key", p.apiKey)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := p.httpClient.Do(req)
