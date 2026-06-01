@@ -18,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -746,13 +747,15 @@ func (r *A2AAgentReconciler) writeStatus(
 	status metav1.ConditionStatus,
 	reason, message string,
 ) error {
-	// Uses Update (not Patch + MergeFrom) because callers mutate
-	// a2a.Status.LastRendered before this call; a MergeFrom orig captured
-	// here would already carry the mutation and the resulting patch would
-	// omit AgentID, leaving the server with an empty value and causing a
-	// duplicate POST on the next reconcile. 409 conflict noise on this
-	// Update path is demoted to V(1) by logStatusUpdateErr at each call
-	// site.
+	// Uses Update-on-fresh (NOT Patch + MergeFrom) wrapped in
+	// RetryOnConflict. Callers mutate a2a.Status.LastRendered (notably
+	// AgentID) before this call; a MergeFrom orig captured here would
+	// already carry the mutation, so the patch body would omit AgentID and
+	// leave the server with an empty value — the next reconcile then sees
+	// no AgentID and fires a duplicate POST /agent. Re-Getting `fresh` each
+	// attempt and re-applying the captured intent prevents the conflict
+	// from silently dropping the write (H3): a swallowed 409 at the call
+	// site used to lose the AgentID assignment entirely.
 	cond := metav1.Condition{
 		Type:               "Ready",
 		Status:             status,
@@ -761,12 +764,29 @@ func (r *A2AAgentReconciler) writeStatus(
 		ObservedGeneration: a2a.Generation,
 		LastTransitionTime: metav1.Now(),
 	}
-	apimeta.SetStatusCondition(&a2a.Status.Conditions, cond)
-	a2a.Status.ObservedGeneration = a2a.Generation
+	desiredLastRendered := a2a.Status.LastRendered
+	desiredObservedGen := a2a.Generation
+
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var fresh litellmv1alpha1.LiteLLMA2AAgent
+		if err := r.Get(ctx, client.ObjectKeyFromObject(a2a), &fresh); err != nil {
+			return err
+		}
+		apimeta.SetStatusCondition(&fresh.Status.Conditions, cond)
+		fresh.Status.ObservedGeneration = desiredObservedGen
+		fresh.Status.LastRendered = desiredLastRendered
+		if updErr := r.Status().Update(ctx, &fresh); updErr != nil {
+			return updErr
+		}
+		// Propagate persisted state back so callers (logger, metrics) see it.
+		a2a.Status = fresh.Status
+		a2a.ResourceVersion = fresh.ResourceVersion
+		return nil
+	})
 	metrics.LitellmOperatorReconcileTotal.WithLabelValues(
 		a2aAgentKind, a2a.Namespace, metrics.ReasonToReconcileResult(reason),
 	).Inc()
-	return r.Status().Update(ctx, a2a)
+	return err
 }
 
 // secretToA2AAgents maps a Secret update event to the set of LiteLLMA2AAgent
