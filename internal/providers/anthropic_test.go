@@ -21,6 +21,50 @@ const canaryAnthropicKey = "sk-canary-XYZ-FAKE-anthropic"
 // the provider parses {"data":[{"id":".","display_name":"."}, .]}
 // and returns Candidates with ID + DisplayName populated, preserving
 // order from the upstream response.
+// TestAnthropic_FollowsPagination is the H7 regression: model discovery must
+// accumulate across pages, following has_more + last_id via ?after_id=.
+func TestAnthropic_FollowsPagination(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("after_id") == "" {
+			_, _ = w.Write([]byte(`{"data":[{"id":"m1","display_name":"M1"}],"has_more":true,"last_id":"m1"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"data":[{"id":"m2","display_name":"M2"}],"has_more":false,"last_id":"m2"}`))
+	}))
+	defer srv.Close()
+	SetTestBaseURL(t, "anthropic", srv.URL)
+
+	p, _ := newAnthropic(context.Background(), ProviderConfig{
+		Type: "anthropic", APIKey: canaryAnthropicKey, HTTPClient: srv.Client(),
+	})
+	got, err := p.List(context.Background())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(got) != 2 || got[0].ID != "m1" || got[1].ID != "m2" {
+		t.Fatalf("expected m1,m2 across pages; got %+v", got)
+	}
+}
+
+// TestAnthropic_PageCapExhaustionErrors: a server that always reports
+// has_more must yield an explicit error, not a truncated slice.
+func TestAnthropic_PageCapExhaustionErrors(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"x"}],"has_more":true,"last_id":"x"}`))
+	}))
+	defer srv.Close()
+	SetTestBaseURL(t, "anthropic", srv.URL)
+
+	p, _ := newAnthropic(context.Background(), ProviderConfig{
+		Type: "anthropic", APIKey: canaryAnthropicKey, HTTPClient: srv.Client(),
+	})
+	if _, err := p.List(context.Background()); err == nil {
+		t.Fatal("expected page-cap exhaustion error, not a truncated result")
+	}
+}
+
 func TestAnthropic_HappyPath_ReturnsTwoCandidates(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

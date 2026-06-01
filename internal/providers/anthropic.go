@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 )
 
 // anthropicProvider holds the resolved per-CR state for one
@@ -78,67 +79,83 @@ func (p *anthropicProvider) Type() string { return providerTypeAnthropic }
 // is NOT included.
 // - decode err → plain wrapped error (NOT *ProviderAuthError).
 func (p *anthropicProvider) List(ctx context.Context) ([]Candidate, error) {
-	endpoint := baseURLFor(providerTypeAnthropic, p.baseURL) + "/models"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("anthropic: build request: %w", err)
-	}
-	req.Header.Set("x-api-key", p.apiKey)
-	req.Header.Set("anthropic-version", "2023-06-01")
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		// Note: we deliberately wrap with %w but do NOT include err
-		// in a separate %v slot — net/http error strings can carry
-		// the URL with embedded credential fragments in rare DNS
-		// failure paths. The %w wrapper keeps errors.As / errors.Is
-		// working without leaking text via Error.
-		return nil, fmt.Errorf("anthropic: transport error: %w", err)
-	}
-	defer drainAndClose(resp.Body) // REL-04: every code path.
-
-	switch {
-	case resp.StatusCode == http.StatusUnauthorized,
-		resp.StatusCode == http.StatusForbidden:
-		// MDISC-19 / spec §6.3 lines 830-835: 401/403 → AuthFailed
-		// classification. Cause is a synthetic sentinel — we do NOT
-		// include resp body (the upstream may echo the key).
-		return nil, &ProviderAuthError{
-			Provider: providerTypeAnthropic,
-			Cause:    fmt.Errorf("status %d", resp.StatusCode),
+	const maxPages = 1000
+	base := baseURLFor(providerTypeAnthropic, p.baseURL) + "/models"
+	candidates := make([]Candidate, 0, 64)
+	afterID := ""
+	for page := 0; page < maxPages; page++ {
+		// H7: Anthropic's /models is paginated via has_more + last_id; read
+		// one page silently truncated the discovered Model set with
+		// Ready=Synced once the account exposes >20 models. Follow last_id
+		// until has_more=false, with a page cap that errors rather than
+		// returning a truncated set.
+		endpoint := base
+		if afterID != "" {
+			endpoint = base + "?" + url.Values{"after_id": {afterID}}.Encode()
 		}
-	case resp.StatusCode >= 400:
-		// Non-auth 4xx + 5xx → transient/Unreachable. Status code
-		// included for diagnostics; body is NOT (it may carry
-		// credential echoes per §9.1).
-		return nil, fmt.Errorf("anthropic: list models: status %d", resp.StatusCode)
-	}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+		if err != nil {
+			return nil, fmt.Errorf("anthropic: build request: %w", err)
+		}
+		req.Header.Set("x-api-key", p.apiKey)
+		req.Header.Set("anthropic-version", "2023-06-01")
+		req.Header.Set("Accept", "application/json")
 
-	// 2xx — read with 4MB cap. (4 << 20 = 4 * 1024 * 1024 bytes.)
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
-	if err != nil {
-		return nil, fmt.Errorf("anthropic: read response: %w", err)
+		resp, err := p.httpClient.Do(req)
+		if err != nil {
+			// %w wrap only — net/http error strings can carry the URL with
+			// embedded credential fragments in rare DNS failure paths.
+			return nil, fmt.Errorf("anthropic: transport error: %w", err)
+		}
+		// Classify + read inside an inline func so defer drainAndClose runs
+		// per page (REL-04) regardless of which branch returns.
+		nextAfterID, hasMore, err := func() (string, bool, error) {
+			defer drainAndClose(resp.Body)
+			switch {
+			case resp.StatusCode == http.StatusUnauthorized,
+				resp.StatusCode == http.StatusForbidden:
+				// MDISC-19: 401/403 → AuthFailed. Cause is synthetic — we do
+				// NOT include resp body (the upstream may echo the key).
+				return "", false, &ProviderAuthError{
+					Provider: providerTypeAnthropic,
+					Cause:    fmt.Errorf("status %d", resp.StatusCode),
+				}
+			case resp.StatusCode >= 400:
+				return "", false, fmt.Errorf("anthropic: list models: status %d", resp.StatusCode)
+			}
+			body, rerr := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+			if rerr != nil {
+				return "", false, fmt.Errorf("anthropic: read response: %w", rerr)
+			}
+			var decoded struct {
+				Data []struct {
+					ID          string `json:"id"`
+					DisplayName string `json:"display_name"`
+				} `json:"data"`
+				HasMore bool   `json:"has_more"`
+				LastID  string `json:"last_id"`
+			}
+			if jerr := json.Unmarshal(body, &decoded); jerr != nil {
+				// NOT *ProviderAuthError — malformed JSON is unreachable-ish.
+				return "", false, fmt.Errorf("anthropic: decode response: %w", jerr)
+			}
+			for _, m := range decoded.Data {
+				candidates = append(candidates, Candidate{
+					ID:          m.ID,
+					DisplayName: m.DisplayName,
+				})
+			}
+			return decoded.LastID, decoded.HasMore, nil
+		}()
+		if err != nil {
+			return nil, err
+		}
+		if !hasMore || nextAfterID == "" {
+			return candidates, nil
+		}
+		afterID = nextAfterID
 	}
-
-	var decoded struct {
-		Data []struct {
-			ID          string `json:"id"`
-			DisplayName string `json:"display_name"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(body, &decoded); err != nil {
-		// NOT *ProviderAuthError — malformed JSON is unreachable-ish.
-		// %w is safe here (json error messages don't carry credentials).
-		return nil, fmt.Errorf("anthropic: decode response: %w", err)
-	}
-
-	candidates := make([]Candidate, 0, len(decoded.Data))
-	for _, m := range decoded.Data {
-		candidates = append(candidates, Candidate{
-			ID:          m.ID,
-			DisplayName: m.DisplayName,
-		})
-	}
-	return candidates, nil
+	// Cap reached while Anthropic still reported has_more: refuse to return a
+	// truncated set (would re-create the H7 silent-truncation bug).
+	return nil, fmt.Errorf("anthropic: model list exceeded %d pages; refusing truncated result", maxPages)
 }
