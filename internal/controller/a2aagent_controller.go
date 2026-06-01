@@ -16,7 +16,6 @@ import (
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -297,34 +296,16 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// from BOTH bags is fetched from the Kubernetes API exactly once per
 	// reconcile (load-bearing optimization called out in CONTEXT.md D-04 and
 	// asserted by TestA2AAgentReconciler_TwoPassSubstitution).
-	secretMap := make(map[string]string)
-	for _, entry := range a2a.Spec.Secrets {
-		var secret corev1.Secret
-		secretKey := types.NamespacedName{
-			Namespace: a2a.Namespace,
-			Name:      entry.SecretRef.Name,
+	secretMap, missMsg, err := resolveSecretMap(ctx, r.Client, a2a.Namespace, a2a.Spec.Secrets)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if missMsg != "" {
+		if werr := r.writeStatus(ctx, &a2a, metav1.ConditionFalse, reasonSecretNotFound, missMsg); werr != nil {
+			logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
 		}
-		if err := r.Get(ctx, secretKey, &secret); err != nil {
-			if apierrors.IsNotFound(err) {
-				msg := a2a.Namespace + "/" + entry.SecretRef.Name + ":" + entry.SecretRef.Key + " not found"
-				if werr := r.writeStatus(ctx, &a2a, metav1.ConditionFalse, reasonSecretNotFound, msg); werr != nil {
-					logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
-				}
-				metrics.ReconcileTotal.WithLabelValues(a2aAgentKind, "success").Inc()
-				return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
-			}
-			return ctrl.Result{}, err
-		}
-		val, ok := secret.Data[entry.SecretRef.Key]
-		if !ok {
-			msg := a2a.Namespace + "/" + entry.SecretRef.Name + ":" + entry.SecretRef.Key + " not found"
-			if werr := r.writeStatus(ctx, &a2a, metav1.ConditionFalse, reasonSecretNotFound, msg); werr != nil {
-				logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
-			}
-			metrics.ReconcileTotal.WithLabelValues(a2aAgentKind, "success").Inc()
-			return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
-		}
-		secretMap[entry.As] = string(val)
+		metrics.ReconcileTotal.WithLabelValues(a2aAgentKind, "success").Inc()
+		return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
 	}
 
 	// ─── Step 5: Decode spec.params + spec.agentCard into separate maps ──

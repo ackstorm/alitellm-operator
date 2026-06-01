@@ -17,7 +17,6 @@ import (
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
@@ -332,34 +331,16 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 	// ─── Step 4: Resolve Secrets referenced by spec.secrets[] ─────────────
 	// Per-reconcile cache in a local variable (CONTEXT.md Claude's Discretion item 2).
-	secretMap := make(map[string]string)
-	for _, entry := range model.Spec.Secrets {
-		var secret corev1.Secret
-		secretKey := types.NamespacedName{
-			Namespace: model.Namespace,
-			Name:      entry.SecretRef.Name,
+	secretMap, missMsg, err := resolveSecretMap(ctx, r.Client, model.Namespace, model.Spec.Secrets)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if missMsg != "" {
+		if werr := r.writeStatus(ctx, &model, metav1.ConditionFalse, reasonSecretNotFound, missMsg); werr != nil {
+			logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
 		}
-		if err := r.Get(ctx, secretKey, &secret); err != nil {
-			if apierrors.IsNotFound(err) {
-				msg := model.Namespace + "/" + entry.SecretRef.Name + ":" + entry.SecretRef.Key + " not found"
-				if werr := r.writeStatus(ctx, &model, metav1.ConditionFalse, reasonSecretNotFound, msg); werr != nil {
-					logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
-				}
-				metrics.ReconcileTotal.WithLabelValues(modelKind, "success").Inc()
-				return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
-			}
-			return ctrl.Result{}, err
-		}
-		val, ok := secret.Data[entry.SecretRef.Key]
-		if !ok {
-			msg := model.Namespace + "/" + entry.SecretRef.Name + ":" + entry.SecretRef.Key + " not found"
-			if werr := r.writeStatus(ctx, &model, metav1.ConditionFalse, reasonSecretNotFound, msg); werr != nil {
-				logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
-			}
-			metrics.ReconcileTotal.WithLabelValues(modelKind, "success").Inc()
-			return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
-		}
-		secretMap[entry.As] = string(val)
+		metrics.ReconcileTotal.WithLabelValues(modelKind, "success").Inc()
+		return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
 	}
 
 	// ─── Step 5: Decode spec.params + spec.info into map[string]any ────────

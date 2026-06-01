@@ -18,7 +18,6 @@ import (
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
@@ -278,31 +277,16 @@ func (r *GuardRailReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	// ─── Step 6: Resolve spec.secrets[] ────────────────────────────────────
-	secretMap := make(map[string]string)
-	for _, entry := range gr.Spec.Secrets {
-		var secret corev1.Secret
-		key := types.NamespacedName{Namespace: gr.Namespace, Name: entry.SecretRef.Name}
-		if err := r.Get(ctx, key, &secret); err != nil {
-			if apierrors.IsNotFound(err) {
-				msg := gr.Namespace + "/" + entry.SecretRef.Name + ":" + entry.SecretRef.Key + " not found"
-				if werr := r.writeStatus(ctx, &gr, metav1.ConditionFalse, reasonSecretNotFound, msg); werr != nil {
-					logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
-				}
-				metrics.ReconcileTotal.WithLabelValues(guardrailKind, "success").Inc()
-				return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
-			}
-			return ctrl.Result{}, err
+	secretMap, missMsg, err := resolveSecretMap(ctx, r.Client, gr.Namespace, gr.Spec.Secrets)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if missMsg != "" {
+		if werr := r.writeStatus(ctx, &gr, metav1.ConditionFalse, reasonSecretNotFound, missMsg); werr != nil {
+			logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
 		}
-		val, ok := secret.Data[entry.SecretRef.Key]
-		if !ok {
-			msg := gr.Namespace + "/" + entry.SecretRef.Name + ":" + entry.SecretRef.Key + " not found"
-			if werr := r.writeStatus(ctx, &gr, metav1.ConditionFalse, reasonSecretNotFound, msg); werr != nil {
-				logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
-			}
-			metrics.ReconcileTotal.WithLabelValues(guardrailKind, "success").Inc()
-			return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
-		}
-		secretMap[entry.As] = string(val)
+		metrics.ReconcileTotal.WithLabelValues(guardrailKind, "success").Inc()
+		return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
 	}
 
 	// ─── Step 7: Decode + substitute spec.params and spec.info ─────────────

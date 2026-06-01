@@ -16,7 +16,6 @@ import (
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -368,34 +367,16 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	// ─── Step 4: Resolve Secrets referenced by spec.secrets[] ─────────────
-	secretMap := make(map[string]string)
-	for _, entry := range mcp.Spec.Secrets {
-		var secret corev1.Secret
-		secretKey := types.NamespacedName{
-			Namespace: mcp.Namespace,
-			Name:      entry.SecretRef.Name,
+	secretMap, missMsg, err := resolveSecretMap(ctx, r.Client, mcp.Namespace, mcp.Spec.Secrets)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if missMsg != "" {
+		if werr := r.writeStatus(ctx, &mcp, metav1.ConditionFalse, reasonSecretNotFound, missMsg); werr != nil {
+			logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
 		}
-		if err := r.Get(ctx, secretKey, &secret); err != nil {
-			if apierrors.IsNotFound(err) {
-				msg := mcp.Namespace + "/" + entry.SecretRef.Name + ":" + entry.SecretRef.Key + " not found"
-				if werr := r.writeStatus(ctx, &mcp, metav1.ConditionFalse, reasonSecretNotFound, msg); werr != nil {
-					logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
-				}
-				metrics.ReconcileTotal.WithLabelValues(mcpServerKind, "success").Inc()
-				return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
-			}
-			return ctrl.Result{}, err
-		}
-		val, ok := secret.Data[entry.SecretRef.Key]
-		if !ok {
-			msg := mcp.Namespace + "/" + entry.SecretRef.Name + ":" + entry.SecretRef.Key + " not found"
-			if werr := r.writeStatus(ctx, &mcp, metav1.ConditionFalse, reasonSecretNotFound, msg); werr != nil {
-				logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
-			}
-			metrics.ReconcileTotal.WithLabelValues(mcpServerKind, "success").Inc()
-			return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
-		}
-		secretMap[entry.As] = string(val)
+		metrics.ReconcileTotal.WithLabelValues(mcpServerKind, "success").Inc()
+		return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
 	}
 
 	// ─── Step 5: Decode spec.params + single-pass substitution ────────────

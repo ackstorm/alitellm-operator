@@ -18,7 +18,6 @@ import (
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -300,34 +299,16 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	}
 
 	// ─── Step 3: Resolve Secrets referenced by spec.secrets[] ─────────────
-	secretMap := make(map[string]string)
-	for _, entry := range team.Spec.Secrets {
-		var secret corev1.Secret
-		secretKey := types.NamespacedName{
-			Namespace: team.Namespace,
-			Name:      entry.SecretRef.Name,
+	secretMap, missMsg, err := resolveSecretMap(ctx, r.Client, team.Namespace, team.Spec.Secrets)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if missMsg != "" {
+		if werr := r.writeStatus(ctx, &team, metav1.ConditionFalse, reasonSecretNotFound, missMsg); werr != nil {
+			logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
 		}
-		if err := r.Get(ctx, secretKey, &secret); err != nil {
-			if apierrors.IsNotFound(err) {
-				msg := team.Namespace + "/" + entry.SecretRef.Name + ":" + entry.SecretRef.Key + " not found"
-				if werr := r.writeStatus(ctx, &team, metav1.ConditionFalse, reasonSecretNotFound, msg); werr != nil {
-					logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
-				}
-				metrics.ReconcileTotal.WithLabelValues(teamKind, "success").Inc()
-				return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
-			}
-			return ctrl.Result{}, err
-		}
-		val, ok := secret.Data[entry.SecretRef.Key]
-		if !ok {
-			msg := team.Namespace + "/" + entry.SecretRef.Name + ":" + entry.SecretRef.Key + " not found"
-			if werr := r.writeStatus(ctx, &team, metav1.ConditionFalse, reasonSecretNotFound, msg); werr != nil {
-				logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
-			}
-			metrics.ReconcileTotal.WithLabelValues(teamKind, "success").Inc()
-			return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
-		}
-		secretMap[entry.As] = string(val)
+		metrics.ReconcileTotal.WithLabelValues(teamKind, "success").Inc()
+		return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
 	}
 
 	// ─── Step 4: Decode spec.params + single-pass substitution ────────────
