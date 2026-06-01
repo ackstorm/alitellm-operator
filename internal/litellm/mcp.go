@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 )
 
 // CreateMCPServer issues POST /v1/mcp/server — the admin-immediate
@@ -42,9 +43,15 @@ func (c *Client) UpdateMCPServer(ctx context.Context, req *MCPServerUpdateReques
 	return &out, nil
 }
 
-// DeleteMCPServer issues DELETE /v1/mcp/server/{serverID}.
+// DeleteMCPServer issues DELETE /v1/mcp/server/{serverID}. M-SEC3: guard
+// empty IDs (an empty serverID would collapse to the collection route) and
+// url.PathEscape the ID so a `/`, `?`, or `#` cannot alter the path —
+// matching the guardrail.go safety.
 func (c *Client) DeleteMCPServer(ctx context.Context, serverID string) error {
-	_, err := c.makeRequest(ctx, "DELETE", "/v1/mcp/server/"+serverID, nil)
+	if serverID == "" {
+		return fmt.Errorf("litellm: DeleteMCPServer: empty server_id")
+	}
+	_, err := c.makeRequest(ctx, "DELETE", "/v1/mcp/server/"+url.PathEscape(serverID), nil)
 	if err == nil {
 		c.invalidateMCPCache() // v0.4.6: own write makes cached LIST stale.
 	}

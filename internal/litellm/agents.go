@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 )
 
 // CreateAgent issues POST /v1/agents.
@@ -25,7 +26,10 @@ func (c *Client) CreateAgent(ctx context.Context, req *AgentConfig) (*AgentEntry
 // UpdateAgent issues PUT /v1/agents/{agentID}. PUT here IS wholesale-
 // replace empirically verified — the only kind where §5.1 holds.
 func (c *Client) UpdateAgent(ctx context.Context, agentID string, req *AgentConfig) (*AgentEntry, error) {
-	raw, err := c.makeRequest(ctx, "PUT", "/v1/agents/"+agentID, req)
+	if agentID == "" {
+		return nil, fmt.Errorf("litellm: UpdateAgent: empty agent_id")
+	}
+	raw, err := c.makeRequest(ctx, "PUT", "/v1/agents/"+url.PathEscape(agentID), req)
 	if err != nil {
 		return nil, err
 	}
@@ -37,9 +41,13 @@ func (c *Client) UpdateAgent(ctx context.Context, agentID string, req *AgentConf
 	return &out, nil
 }
 
-// DeleteAgent issues DELETE /v1/agents/{agentID}.
+// DeleteAgent issues DELETE /v1/agents/{agentID}. M-SEC3: empty-ID guard +
+// url.PathEscape (see UpdateAgent / DeleteMCPServer).
 func (c *Client) DeleteAgent(ctx context.Context, agentID string) error {
-	_, err := c.makeRequest(ctx, "DELETE", "/v1/agents/"+agentID, nil)
+	if agentID == "" {
+		return fmt.Errorf("litellm: DeleteAgent: empty agent_id")
+	}
+	_, err := c.makeRequest(ctx, "DELETE", "/v1/agents/"+url.PathEscape(agentID), nil)
 	if err == nil {
 		c.invalidateAgentsCache() // v0.4.6: own write makes cached LIST stale.
 	}
