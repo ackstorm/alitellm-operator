@@ -1266,19 +1266,10 @@ func (r *TeamReconciler) writeStatus(
 	// and the AC_T3/T6/RateLimitsClearing/ProjectionOverride suite).
 	// The 409 conflict noise this Update path can emit is demoted to
 	// V(1) by logStatusUpdateErr at each call site.
-	cond := metav1.Condition{
-		Type:               "Ready",
-		Status:             status,
-		Reason:             reason,
-		Message:            message,
-		ObservedGeneration: team.Generation,
-		LastTransitionTime: metav1.Now(),
-	}
+	cond := buildReadyCondition(team.Generation, status, reason, message)
 	apimeta.SetStatusCondition(&team.Status.Conditions, cond)
 	team.Status.ObservedGeneration = team.Generation
-	metrics.LitellmOperatorReconcileTotal.WithLabelValues(
-		teamKind, team.Namespace, metrics.ReasonToReconcileResult(reason),
-	).Inc()
+	recordReconcileMetric(teamKind, team.Namespace, reason)
 	return r.Status().Update(ctx, team)
 }
 

@@ -741,14 +741,7 @@ func (r *A2AAgentReconciler) writeStatus(
 	// attempt and re-applying the captured intent prevents the conflict
 	// from silently dropping the write (H3): a swallowed 409 at the call
 	// site used to lose the AgentID assignment entirely.
-	cond := metav1.Condition{
-		Type:               "Ready",
-		Status:             status,
-		Reason:             reason,
-		Message:            message,
-		ObservedGeneration: a2a.Generation,
-		LastTransitionTime: metav1.Now(),
-	}
+	cond := buildReadyCondition(a2a.Generation, status, reason, message)
 	desiredLastRendered := a2a.Status.LastRendered
 	desiredObservedGen := a2a.Generation
 
@@ -768,9 +761,7 @@ func (r *A2AAgentReconciler) writeStatus(
 		a2a.ResourceVersion = fresh.ResourceVersion
 		return nil
 	})
-	metrics.LitellmOperatorReconcileTotal.WithLabelValues(
-		a2aAgentKind, a2a.Namespace, metrics.ReasonToReconcileResult(reason),
-	).Inc()
+	recordReconcileMetric(a2aAgentKind, a2a.Namespace, reason)
 	return err
 }
 

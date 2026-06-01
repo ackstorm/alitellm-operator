@@ -763,14 +763,7 @@ func (r *ModelReconciler) writeStatus(
 	status metav1.ConditionStatus,
 	reason, message string,
 ) error {
-	cond := metav1.Condition{
-		Type:               "Ready",
-		Status:             status,
-		Reason:             reason,
-		Message:            message,
-		ObservedGeneration: model.Generation,
-		LastTransitionTime: metav1.Now(),
-	}
+	cond := buildReadyCondition(model.Generation, status, reason, message)
 
 	// Retry on optimistic-lock conflict ("the object has been modified").
 	// Without this, a 409 leaks to controller-runtime which re-enters
@@ -807,9 +800,7 @@ func (r *ModelReconciler) writeStatus(
 		model.ResourceVersion = fresh.ResourceVersion
 		return nil
 	})
-	metrics.LitellmOperatorReconcileTotal.WithLabelValues(
-		modelKind, model.Namespace, metrics.ReasonToReconcileResult(reason),
-	).Inc()
+	recordReconcileMetric(modelKind, model.Namespace, reason)
 	return err
 }
 

@@ -821,22 +821,13 @@ func (r *MCPServerReconciler) writeStatus(
 	// duplicate POST /mcp/server/add on the next reconcile. 409 conflict
 	// noise on this Update path is demoted to V(1) by logStatusUpdateErr
 	// at each call site.
-	cond := metav1.Condition{
-		Type:               "Ready",
-		Status:             status,
-		Reason:             reason,
-		Message:            message,
-		ObservedGeneration: mcp.Generation,
-		LastTransitionTime: metav1.Now(),
-	}
+	cond := buildReadyCondition(mcp.Generation, status, reason, message)
 	apimeta.SetStatusCondition(&mcp.Status.Conditions, cond)
 	mcp.Status.ObservedGeneration = mcp.Generation
 	// FIX2.txt LOW-6: per-CR reconcile-outcome counter labeled by
 	// kind/namespace/result. Fired here so every status-write also
 	// surfaces on the prometheus dashboard without an extra call site.
-	metrics.LitellmOperatorReconcileTotal.WithLabelValues(
-		mcpServerKind, mcp.Namespace, metrics.ReasonToReconcileResult(reason),
-	).Inc()
+	recordReconcileMetric(mcpServerKind, mcp.Namespace, reason)
 	return r.Status().Update(ctx, mcp)
 }
 

@@ -733,14 +733,7 @@ func (r *GuardRailReconciler) writeStatus(
 	status metav1.ConditionStatus,
 	reason, message string,
 ) error {
-	cond := metav1.Condition{
-		Type:               "Ready",
-		Status:             status,
-		Reason:             reason,
-		Message:            message,
-		ObservedGeneration: gr.Generation,
-		LastTransitionTime: metav1.Now(),
-	}
+	cond := buildReadyCondition(gr.Generation, status, reason, message)
 	desiredLR := gr.Status.LastRendered
 	desiredObs := gr.Generation
 
@@ -759,9 +752,7 @@ func (r *GuardRailReconciler) writeStatus(
 		gr.ResourceVersion = fresh.ResourceVersion
 		return nil
 	})
-	metrics.LitellmOperatorReconcileTotal.WithLabelValues(
-		guardrailKind, gr.Namespace, metrics.ReasonToReconcileResult(reason),
-	).Inc()
+	recordReconcileMetric(guardrailKind, gr.Namespace, reason)
 	return err
 }
 
