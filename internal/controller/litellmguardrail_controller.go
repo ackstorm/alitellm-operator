@@ -774,25 +774,10 @@ func (r *GuardRailReconciler) secretToGuardrails(ctx context.Context, obj client
 // connectionToGuardrails enqueues every guardrail when the
 // LiteLLMConnection transitions to Ready=True (mirrors the Model fan-in).
 func (r *GuardRailReconciler) connectionToGuardrails(ctx context.Context, obj client.Object) []reconcile.Request {
-	// IN-03: route through fanInNamespace so all six connection fan-in
+	// IN-03: route through connectionFanIn so all five connection fan-in
 	// mappers share the same trigger-namespace contract — informer path
 	// uses conn.Namespace, raw-source path falls back to r.Namespace.
-	ns := fanInNamespace(obj, r.Namespace)
-	if ns == "" {
-		logEmptyFanInNamespace(ctx, "LiteLLMGuardRail")
-		return nil
-	}
-	var list litellmv1alpha1.LiteLLMGuardRailList
-	if err := r.List(ctx, &list, client.InNamespace(ns)); err != nil {
-		return nil
-	}
-	out := make([]reconcile.Request, 0, len(list.Items))
-	for i := range list.Items {
-		out = append(out, reconcile.Request{
-			NamespacedName: client.ObjectKeyFromObject(&list.Items[i]),
-		})
-	}
-	return out
+	return connectionFanIn(ctx, r.Client, obj, &litellmv1alpha1.LiteLLMGuardRailList{}, r.Namespace, "LiteLLMGuardRail")
 }
 
 // SetupWithManager registers the GuardRailReconciler with the manager.

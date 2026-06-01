@@ -5,7 +5,7 @@ package controller
 import (
 	"context"
 
-	"k8s.io/apimachinery/pkg/types"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -54,94 +54,54 @@ func logEmptyFanInNamespace(ctx context.Context, kind string) {
 	)
 }
 
-// connectionToMCPServers maps a LiteLLMConnection trigger (either the
-// Watches/connectionReadyTransition path with a *LiteLLMConnection as
-// obj, or the ConnectionRebuiltSource raw-source path with a nil obj
-// per fanInNamespace) to reconcile requests for every LiteLLMMCPServer
-// in the same namespace.
+// connectionFanIn maps a LiteLLMConnection trigger (either the
+// Watches/connectionReadyTransition path with a *LiteLLMConnection as obj,
+// or the ConnectionRebuiltSource raw-source path with a nil obj per
+// fanInNamespace) to reconcile requests for every CR of the target kind in
+// the resolved namespace (M-Q2). It is the shared core of the five
+// connectionTo<Kind> mappers, which were byte-identical modulo the *List
+// type and the kind label.
 //
 // Together with the false→true predicate AND the cache-rebuilt source,
 // this fans-in the Connection-Ready recovery signal so dependent CRs
-// re-reconcile within a single event window instead of waiting on
-// their own backoff queue (FIX.txt M-3b; issue #44 cache-population
-// race close).
+// re-reconcile within a single event window instead of waiting on their own
+// backoff queue (FIX.txt M-3b; issue #44 cache-population race close).
+func connectionFanIn(ctx context.Context, c client.Client, obj client.Object, list client.ObjectList, defaultNS, kindLabel string) []reconcile.Request {
+	ns := fanInNamespace(obj, defaultNS)
+	if ns == "" {
+		logEmptyFanInNamespace(ctx, kindLabel)
+		return nil
+	}
+	if err := c.List(ctx, list, client.InNamespace(ns)); err != nil {
+		return nil
+	}
+	objs, err := apimeta.ExtractList(list)
+	if err != nil {
+		return nil
+	}
+	out := make([]reconcile.Request, 0, len(objs))
+	for _, o := range objs {
+		if co, ok := o.(client.Object); ok {
+			out = append(out, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(co)})
+		}
+	}
+	return out
+}
+
 func (r *MCPServerReconciler) connectionToMCPServers(ctx context.Context, obj client.Object) []reconcile.Request {
-	ns := fanInNamespace(obj, r.Namespace)
-	if ns == "" {
-		logEmptyFanInNamespace(ctx, "LiteLLMMCPServer")
-		return nil
-	}
-	var list litellmv1alpha1.LiteLLMMCPServerList
-	if err := r.List(ctx, &list, client.InNamespace(ns)); err != nil {
-		return nil
-	}
-	out := make([]reconcile.Request, 0, len(list.Items))
-	for i := range list.Items {
-		out = append(out, reconcile.Request{NamespacedName: types.NamespacedName{
-			Name: list.Items[i].Name, Namespace: list.Items[i].Namespace,
-		}})
-	}
-	return out
+	return connectionFanIn(ctx, r.Client, obj, &litellmv1alpha1.LiteLLMMCPServerList{}, r.Namespace, "LiteLLMMCPServer")
 }
 
-// connectionToModels — see connectionToMCPServers for the contract.
 func (r *ModelReconciler) connectionToModels(ctx context.Context, obj client.Object) []reconcile.Request {
-	ns := fanInNamespace(obj, r.Namespace)
-	if ns == "" {
-		logEmptyFanInNamespace(ctx, "LiteLLMModel")
-		return nil
-	}
-	var list litellmv1alpha1.LiteLLMModelList
-	if err := r.List(ctx, &list, client.InNamespace(ns)); err != nil {
-		return nil
-	}
-	out := make([]reconcile.Request, 0, len(list.Items))
-	for i := range list.Items {
-		out = append(out, reconcile.Request{NamespacedName: types.NamespacedName{
-			Name: list.Items[i].Name, Namespace: list.Items[i].Namespace,
-		}})
-	}
-	return out
+	return connectionFanIn(ctx, r.Client, obj, &litellmv1alpha1.LiteLLMModelList{}, r.Namespace, "LiteLLMModel")
 }
 
-// connectionToA2AAgents — see connectionToMCPServers for the contract.
 func (r *A2AAgentReconciler) connectionToA2AAgents(ctx context.Context, obj client.Object) []reconcile.Request {
-	ns := fanInNamespace(obj, r.Namespace)
-	if ns == "" {
-		logEmptyFanInNamespace(ctx, "LiteLLMA2AAgent")
-		return nil
-	}
-	var list litellmv1alpha1.LiteLLMA2AAgentList
-	if err := r.List(ctx, &list, client.InNamespace(ns)); err != nil {
-		return nil
-	}
-	out := make([]reconcile.Request, 0, len(list.Items))
-	for i := range list.Items {
-		out = append(out, reconcile.Request{NamespacedName: types.NamespacedName{
-			Name: list.Items[i].Name, Namespace: list.Items[i].Namespace,
-		}})
-	}
-	return out
+	return connectionFanIn(ctx, r.Client, obj, &litellmv1alpha1.LiteLLMA2AAgentList{}, r.Namespace, "LiteLLMA2AAgent")
 }
 
-// connectionToTeams — see connectionToMCPServers for the contract.
 func (r *TeamReconciler) connectionToTeams(ctx context.Context, obj client.Object) []reconcile.Request {
-	ns := fanInNamespace(obj, r.Namespace)
-	if ns == "" {
-		logEmptyFanInNamespace(ctx, "LiteLLMTeam")
-		return nil
-	}
-	var list litellmv1alpha1.LiteLLMTeamList
-	if err := r.List(ctx, &list, client.InNamespace(ns)); err != nil {
-		return nil
-	}
-	out := make([]reconcile.Request, 0, len(list.Items))
-	for i := range list.Items {
-		out = append(out, reconcile.Request{NamespacedName: types.NamespacedName{
-			Name: list.Items[i].Name, Namespace: list.Items[i].Namespace,
-		}})
-	}
-	return out
+	return connectionFanIn(ctx, r.Client, obj, &litellmv1alpha1.LiteLLMTeamList{}, r.Namespace, "LiteLLMTeam")
 }
 
 // ConnectionRebuiltSource returns a controller-runtime source that
