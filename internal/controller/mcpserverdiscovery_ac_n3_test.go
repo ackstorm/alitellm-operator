@@ -57,7 +57,7 @@ func TestMCPServerDiscovery_AC_N3_NoUserOrKeyCalls(t *testing.T) {
 
 	// Wait for Synced condition.
 	mdAfter := pollMCPServerDiscoveryCondition(t, ctx, mdName, reasonSynced, 10*time.Second)
-	c := apimeta.FindStatusCondition(mdAfter.Status.Conditions, "Ready")
+	c := apimeta.FindStatusCondition(mdAfter.Status.Conditions, conditionTypeReady)
 	if c == nil || c.Reason != reasonSynced {
 		t.Logf("MCPServerDiscovery not Synced within 10s (conditions=%+v) — proceeding with assertions", mdAfter.Status.Conditions)
 	}

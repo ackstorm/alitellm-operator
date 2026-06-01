@@ -182,7 +182,7 @@ func isConnReady(c *litellmv1alpha1.LiteLLMConnection) bool {
 		return false
 	}
 	for _, cond := range c.Status.Conditions {
-		if cond.Type == "Ready" {
+		if cond.Type == conditionTypeReady {
 			return cond.Status == metav1.ConditionTrue
 		}
 	}

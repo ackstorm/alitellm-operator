@@ -84,7 +84,7 @@ func TestModelAlias_ApplyStatus_UsesFreshGeneration(t *testing.T) {
 	stale := *live.DeepCopy()
 	stale.Generation = 999
 	cond := metav1.Condition{
-		Type:    "Ready",
+		Type:    conditionTypeReady,
 		Status:  metav1.ConditionTrue,
 		Reason:  "Test",
 		Message: "m",

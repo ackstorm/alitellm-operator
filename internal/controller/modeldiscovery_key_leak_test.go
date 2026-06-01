@@ -65,7 +65,7 @@ func TestModelDiscovery_GeminiListError_NoKeyLeakIntoStatus(t *testing.T) {
 
 	// The transport-error path writes Ready=False reason="SourceUnreachable".
 	got := pollDiscoveryStatusReady(t, ctx, mdName, "SourceUnreachable", 30*time.Second)
-	ready := apimeta.FindStatusCondition(got.Status.Conditions, "Ready")
+	ready := apimeta.FindStatusCondition(got.Status.Conditions, conditionTypeReady)
 	if ready == nil || ready.Reason != "SourceUnreachable" {
 		t.Fatalf("expected Ready=SourceUnreachable; got %+v", got.Status.Conditions)
 	}

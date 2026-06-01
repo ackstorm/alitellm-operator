@@ -340,8 +340,8 @@ func init() {
 		ChildCRWritesTotal,
 		LitellmOperatorReconcileTotal,
 		DeletionOrphanedTotal,
-		DeletionBlocked, // Issue #23: custom Collector — emits one sample per blocked CR
-		ConflictsTotal,  // ADR-0001: alpha-last-wins resolver counter
+		DeletionBlocked,          // Issue #23: custom Collector — emits one sample per blocked CR
+		ConflictsTotal,           // ADR-0001: alpha-last-wins resolver counter
 		CascadeDrainOverdueTotal, // M-B9: overdue cascade-drain signal
 	)
 

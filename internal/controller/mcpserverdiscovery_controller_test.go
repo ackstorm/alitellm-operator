@@ -245,7 +245,7 @@ func pollMCPServerDiscoveryCondition(t *testing.T, ctx context.Context, name, wa
 	var md litellmv1alpha1.LiteLLMMCPServerDiscovery
 	for time.Now().Before(deadline) {
 		if err := k8sClient.Get(ctx, key, &md); err == nil {
-			c := apimeta.FindStatusCondition(md.Status.Conditions, "Ready")
+			c := apimeta.FindStatusCondition(md.Status.Conditions, conditionTypeReady)
 			if c != nil && c.Reason == wantReason {
 				return &md
 			}
@@ -796,7 +796,7 @@ func TestMCPServerDiscoveryReconciler_SourceUnreachable_NoToolHiveCRDs(t *testin
 	}
 
 	mdAfter := pollMCPServerDiscoveryCondition(t, ctx, mdName, "SourceUnreachable", 30*time.Second)
-	c := apimeta.FindStatusCondition(mdAfter.Status.Conditions, "Ready")
+	c := apimeta.FindStatusCondition(mdAfter.Status.Conditions, conditionTypeReady)
 	if c == nil {
 		t.Fatalf("Ready condition not set; status: %+v", mdAfter.Status)
 	}

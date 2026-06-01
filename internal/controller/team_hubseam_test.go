@@ -164,7 +164,7 @@ func TestTeamHubSeam_AC_DC1_VirtualKeysCoexist(t *testing.T) {
 		t.Errorf("engineering team_id CHANGED across reconcile: was %q, now %q (ID pin broken)",
 			engineeringTeamID, post.Status.LastRendered.TeamID)
 	}
-	c := apimeta.FindStatusCondition(post.Status.Conditions, "Ready")
+	c := apimeta.FindStatusCondition(post.Status.Conditions, conditionTypeReady)
 	if c == nil || c.Status != metav1.ConditionTrue {
 		t.Errorf("engineering Ready condition not True after re-reconcile: %+v", c)
 	}

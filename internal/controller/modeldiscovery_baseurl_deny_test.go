@@ -30,7 +30,7 @@ func TestModelDiscovery_MetadataBaseURL_InvalidConfig(t *testing.T) {
 	}
 
 	got := pollDiscoveryStatusReady(t, ctx, mdName, "InvalidConfig", 30*time.Second)
-	ready := apimeta.FindStatusCondition(got.Status.Conditions, "Ready")
+	ready := apimeta.FindStatusCondition(got.Status.Conditions, conditionTypeReady)
 	if ready == nil || ready.Reason != "InvalidConfig" {
 		t.Fatalf("want Ready=False reason=InvalidConfig; got %+v", got.Status.Conditions)
 	}

@@ -10,7 +10,7 @@ import (
 
 func TestBuildReadyCondition(t *testing.T) {
 	c := buildReadyCondition(7, metav1.ConditionTrue, "Synced", "ok")
-	if c.Type != "Ready" {
+	if c.Type != conditionTypeReady {
 		t.Errorf("Type = %q; want Ready", c.Type)
 	}
 	if c.Status != metav1.ConditionTrue {

@@ -172,7 +172,7 @@ func (r *ModelAliasReconciler) broadcastNotReady(
 			continue
 		}
 		cond := metav1.Condition{
-			Type:               "Ready",
+			Type:               conditionTypeReady,
 			Status:             metav1.ConditionFalse,
 			Reason:             reason,
 			Message:            message,
@@ -219,7 +219,7 @@ func (r *ModelAliasReconciler) writePerCRStatuses(
 		var cond metav1.Condition
 		if allApplied {
 			cond = metav1.Condition{
-				Type:               "Ready",
+				Type:               conditionTypeReady,
 				Status:             metav1.ConditionTrue,
 				Reason:             reasonSynced,
 				Message:            fmt.Sprintf("%d alias entries applied to LiteLLM", len(rows)),
@@ -228,7 +228,7 @@ func (r *ModelAliasReconciler) writePerCRStatuses(
 			}
 		} else {
 			cond = metav1.Condition{
-				Type:               "Ready",
+				Type:               conditionTypeReady,
 				Status:             metav1.ConditionFalse,
 				Reason:             reasonAliasPartialConflict,
 				Message:            fmt.Sprintf("%d of %d alias entries lost slot: %v", len(conflicting), len(rows), conflicting),

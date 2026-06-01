@@ -257,7 +257,7 @@ func (r *LiteLLMConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// no-op-patch optimization for repeated Connecting writes — avoids
 	// resourceVersion churn that would trigger another reconcile and
 	// loop the watch chain.
-	curReady := apimeta.FindStatusCondition(conn.Status.Conditions, "Ready")
+	curReady := apimeta.FindStatusCondition(conn.Status.Conditions, conditionTypeReady)
 	if curReady == nil || conn.Status.ObservedGeneration != conn.Generation {
 		if curReady == nil || curReady.Reason != reasonConnecting {
 			// WR-03: status-write errors are captured and logged at error
@@ -562,7 +562,7 @@ func (r *LiteLLMConnectionReconciler) writeStatus(
 
 	orig := conn.DeepCopy()
 	cond := metav1.Condition{
-		Type:               "Ready",
+		Type:               conditionTypeReady,
 		Status:             metav1.ConditionFalse,
 		Reason:             reason,
 		Message:            message,
@@ -632,7 +632,7 @@ func (r *LiteLLMConnectionReconciler) writeReadyAndLoggingHealthy(
 	orig := conn.DeepCopy()
 	now := metav1.Now()
 	apimeta.SetStatusCondition(&conn.Status.Conditions, metav1.Condition{
-		Type:               "Ready",
+		Type:               conditionTypeReady,
 		Status:             readyStatus,
 		Reason:             readyReason,
 		Message:            readyMessage,

@@ -56,7 +56,7 @@ func TestResolveSecretMap(t *testing.T) {
 
 	t.Run("missing secret", func(t *testing.T) {
 		c := fake.NewClientBuilder().WithScheme(scheme).Build()
-		m, miss, err := resolveSecretMap(context.Background(), c, "ns", []litellmv1alpha1.SecretSubstitution{sub("absent", "k", "VAR")})
+		m, miss, err := resolveSecretMap(context.Background(), c, "ns", []litellmv1alpha1.SecretSubstitution{sub("absent", "k", "MISSING_SECRET")})
 		if err != nil || m != nil {
 			t.Fatalf("want soft miss; got m=%v err=%v", m, err)
 		}
@@ -67,7 +67,7 @@ func TestResolveSecretMap(t *testing.T) {
 
 	t.Run("missing key", func(t *testing.T) {
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(sec).Build()
-		m, miss, err := resolveSecretMap(context.Background(), c, "ns", []litellmv1alpha1.SecretSubstitution{sub("s", "absent", "VAR")})
+		m, miss, err := resolveSecretMap(context.Background(), c, "ns", []litellmv1alpha1.SecretSubstitution{sub("s", "absent", "MISSING_KEY")})
 		if err != nil || m != nil {
 			t.Fatalf("want soft miss; got m=%v err=%v", m, err)
 		}

@@ -90,14 +90,14 @@ func TestMCPServer_ConflictResolution_SanitizationCollapse_Loser(t *testing.T) {
 
 	// Winner reaches Ready/Synced.
 	winner := pollMCPServerCondition(t, ctx, winnerName, reasonSynced, 30*time.Second)
-	wc := apimeta.FindStatusCondition(winner.Status.Conditions, "Ready")
+	wc := apimeta.FindStatusCondition(winner.Status.Conditions, conditionTypeReady)
 	if wc == nil || wc.Status != metav1.ConditionTrue || wc.Reason != reasonSynced {
 		t.Fatalf("winner %q Ready not Synced; condition=%+v", winnerName, wc)
 	}
 
 	// Loser reaches Ready=False, Reason=Conflict, Message mentions winner.
 	loser := pollMCPServerCondition(t, ctx, loserName, conflict.ConditionReasonConflict, 30*time.Second)
-	lc := apimeta.FindStatusCondition(loser.Status.Conditions, "Ready")
+	lc := apimeta.FindStatusCondition(loser.Status.Conditions, conditionTypeReady)
 	if lc == nil {
 		t.Fatalf("loser %q has no Ready condition; conditions=%+v", loserName, loser.Status.Conditions)
 	}
@@ -188,7 +188,7 @@ func TestMCPServer_ConflictResolution_SanitizationCollapse_LoserPromoted(t *test
 
 	// Wait for the loser to land on Conflict.
 	loser := pollMCPServerCondition(t, ctx, loserName, conflict.ConditionReasonConflict, 30*time.Second)
-	if c := apimeta.FindStatusCondition(loser.Status.Conditions, "Ready"); c == nil || c.Reason != conflict.ConditionReasonConflict {
+	if c := apimeta.FindStatusCondition(loser.Status.Conditions, conditionTypeReady); c == nil || c.Reason != conflict.ConditionReasonConflict {
 		t.Fatalf("loser %q never reached Conflict; condition=%+v", loserName, c)
 	}
 
@@ -197,7 +197,7 @@ func TestMCPServer_ConflictResolution_SanitizationCollapse_LoserPromoted(t *test
 	ensureNoMCPServer(t, ctx, winnerName)
 
 	promoted := pollMCPServerCondition(t, ctx, loserName, reasonSynced, 30*time.Second)
-	pc := apimeta.FindStatusCondition(promoted.Status.Conditions, "Ready")
+	pc := apimeta.FindStatusCondition(promoted.Status.Conditions, conditionTypeReady)
 	if pc == nil {
 		t.Fatalf("promoted loser %q has no Ready condition; conditions=%+v", loserName, promoted.Status.Conditions)
 	}

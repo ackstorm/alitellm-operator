@@ -8,6 +8,10 @@ import (
 	"github.com/ackstorm/alitellm-operator/internal/metrics"
 )
 
+// conditionTypeReady is the status-condition Type string shared across the
+// reconcilers. Centralized so goconst does not flag the repeated literal.
+const conditionTypeReady = "Ready"
+
 // buildReadyCondition builds the "Ready" status condition shared by every
 // reconciler's writeStatus prologue (M-Q5). The five non-connection
 // reconcilers (Team, Model, MCPServer, A2AAgent, GuardRail) constructed a
@@ -17,7 +21,7 @@ import (
 // ConnectionReady gauge.
 func buildReadyCondition(gen int64, status metav1.ConditionStatus, reason, message string) metav1.Condition {
 	return metav1.Condition{
-		Type:               "Ready",
+		Type:               conditionTypeReady,
 		Status:             status,
 		Reason:             reason,
 		Message:            message,

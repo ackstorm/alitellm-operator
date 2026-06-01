@@ -88,7 +88,7 @@ func pollModelCondition(t *testing.T, ctx context.Context, name, wantReason stri
 	var m litellmv1alpha1.LiteLLMModel
 	for time.Now().Before(deadline) {
 		if err := k8sClient.Get(ctx, key, &m); err == nil {
-			c := apimeta.FindStatusCondition(m.Status.Conditions, "Ready")
+			c := apimeta.FindStatusCondition(m.Status.Conditions, conditionTypeReady)
 			if c != nil && c.Reason == wantReason {
 				return &m
 			}
@@ -388,7 +388,7 @@ func TestModel_FirstReconcile_CreateNew_NoDrift(t *testing.T) {
 
 	// Poll until Ready=Synced.
 	m := pollModelCondition(t, ctx, "first-reconcile-test", reasonSynced, 30*time.Second)
-	c := apimeta.FindStatusCondition(m.Status.Conditions, "Ready")
+	c := apimeta.FindStatusCondition(m.Status.Conditions, conditionTypeReady)
 	if c == nil {
 		t.Fatalf("Ready condition not set")
 	}
@@ -829,7 +829,7 @@ func TestModel_OwnerReferenceFromDiscovery_ReconciledIdentically(t *testing.T) {
 
 	// Poll for Ready=Synced — the reconciler must process it identically.
 	m := pollModelCondition(t, ctx, "owned-model-test", reasonSynced, 30*time.Second)
-	c := apimeta.FindStatusCondition(m.Status.Conditions, "Ready")
+	c := apimeta.FindStatusCondition(m.Status.Conditions, conditionTypeReady)
 	if c == nil || c.Status != metav1.ConditionTrue || c.Reason != reasonSynced {
 		t.Errorf("owned Model not Synced; condition=%+v", c)
 	}
@@ -898,7 +898,7 @@ func TestModel_LiteLLMUnavailable_NoMutationCall(t *testing.T) {
 
 	// Poll until Ready=LiteLLMUnavailable (or timeout).
 	m := pollModelCondition(t, ctx, "unavailable-test", reasonLiteLLMUnavailable, 30*time.Second)
-	c := apimeta.FindStatusCondition(m.Status.Conditions, "Ready")
+	c := apimeta.FindStatusCondition(m.Status.Conditions, conditionTypeReady)
 	if c == nil {
 		t.Fatalf("Ready condition not set; conditions=%+v", m.Status.Conditions)
 	}
@@ -953,7 +953,7 @@ func TestModel_LiteLLMUnavailable_EmptyReason_DefaultsToConnecting(t *testing.T)
 
 	// Poll until LiteLLMUnavailable.
 	m := pollModelCondition(t, ctx, "empty-reason-test", reasonLiteLLMUnavailable, 30*time.Second)
-	c := apimeta.FindStatusCondition(m.Status.Conditions, "Ready")
+	c := apimeta.FindStatusCondition(m.Status.Conditions, conditionTypeReady)
 	if c == nil {
 		t.Fatalf("Ready condition not set")
 	}
@@ -1083,7 +1083,7 @@ func TestModel_ConnectionRoundTrip_AC_C4(t *testing.T) {
 		for time.Now().Before(badKeyDeadline) {
 			var latest litellmv1alpha1.LiteLLMModel
 			if err := k8sClient.Get(ctx, key, &latest); err == nil {
-				cond := apimeta.FindStatusCondition(latest.Status.Conditions, "Ready")
+				cond := apimeta.FindStatusCondition(latest.Status.Conditions, conditionTypeReady)
 				if cond != nil && cond.Reason == reasonLiteLLMUnavailable &&
 					strings.Contains(cond.Message, wantMsg) {
 					m = &latest
@@ -1098,7 +1098,7 @@ func TestModel_ConnectionRoundTrip_AC_C4(t *testing.T) {
 		// Timeout — surface whatever is in the model's Ready condition.
 		var latest litellmv1alpha1.LiteLLMModel
 		_ = k8sClient.Get(ctx, client.ObjectKey{Name: "roundtrip-test", Namespace: WatchNamespace}, &latest)
-		cond := apimeta.FindStatusCondition(latest.Status.Conditions, "Ready")
+		cond := apimeta.FindStatusCondition(latest.Status.Conditions, conditionTypeReady)
 		if cond == nil || cond.Reason != reasonLiteLLMUnavailable {
 			t.Fatalf("AC-C4 step 2: expected LiteLLMUnavailable; condition=%+v", cond)
 		}
@@ -1131,7 +1131,7 @@ func TestModel_ConnectionRoundTrip_AC_C4(t *testing.T) {
 
 	// Step 5: Assert Model returns to Synced.
 	m = pollModelCondition(t, ctx, "roundtrip-test", reasonSynced, 20*time.Second)
-	c = apimeta.FindStatusCondition(m.Status.Conditions, "Ready")
+	c = apimeta.FindStatusCondition(m.Status.Conditions, conditionTypeReady)
 	if c == nil || c.Reason != reasonSynced || c.Status != metav1.ConditionTrue {
 		t.Errorf("AC-C4 step 3: expected Ready=True,Synced; condition=%+v", c)
 	}
@@ -1177,7 +1177,7 @@ func TestModel_LiteLLMRejected_OnHTTP422(t *testing.T) {
 
 	// Poll for Ready=False, Reason=LiteLLMRejected.
 	m := pollModelCondition(t, ctx, "rejected-test", "LiteLLMRejected", 30*time.Second)
-	c := apimeta.FindStatusCondition(m.Status.Conditions, "Ready")
+	c := apimeta.FindStatusCondition(m.Status.Conditions, conditionTypeReady)
 	if c == nil {
 		t.Fatalf("Ready condition not set; conditions=%+v", m.Status.Conditions)
 	}
@@ -1286,7 +1286,7 @@ func TestModel_401FastPath_InvalidatesCache(t *testing.T) {
 
 	// Step 5: Model status must show LiteLLMUnavailable (the 401 branch writes this).
 	m = pollModelCondition(t, ctx, "fastpath-test", reasonLiteLLMUnavailable, 10*time.Second)
-	c := apimeta.FindStatusCondition(m.Status.Conditions, "Ready")
+	c := apimeta.FindStatusCondition(m.Status.Conditions, conditionTypeReady)
 	if c == nil {
 		t.Fatalf("Ready condition not set after 401; conditions=%+v", m.Status.Conditions)
 	}
@@ -2021,7 +2021,7 @@ func TestModel_RedactionCanary_AC_S1(t *testing.T) {
 
 		m := pollModelCondition(t, ctx, modelName, reasonSynced, 30*time.Second)
 		statusMsg := ""
-		if c := apimeta.FindStatusCondition(m.Status.Conditions, "Ready"); c != nil {
+		if c := apimeta.FindStatusCondition(m.Status.Conditions, conditionTypeReady); c != nil {
 			statusMsg = c.Message
 		}
 		events := listModelEvents(ctx, t, modelName)
@@ -2061,7 +2061,7 @@ func TestModel_RedactionCanary_AC_S1(t *testing.T) {
 
 		m := pollModelCondition(t, ctx, modelName, reasonLiteLLMUnavailable, 30*time.Second)
 		statusMsg := ""
-		if c := apimeta.FindStatusCondition(m.Status.Conditions, "Ready"); c != nil {
+		if c := apimeta.FindStatusCondition(m.Status.Conditions, conditionTypeReady); c != nil {
 			statusMsg = c.Message
 		}
 		events := listModelEvents(ctx, t, modelName)
@@ -2106,7 +2106,7 @@ func TestModel_RedactionCanary_AC_S1(t *testing.T) {
 
 		m := pollModelCondition(t, ctx, modelName, "SecretNotFound", 30*time.Second)
 		statusMsg := ""
-		if c := apimeta.FindStatusCondition(m.Status.Conditions, "Ready"); c != nil {
+		if c := apimeta.FindStatusCondition(m.Status.Conditions, conditionTypeReady); c != nil {
 			statusMsg = c.Message
 		}
 		events := listModelEvents(ctx, t, modelName)
@@ -2158,7 +2158,7 @@ func TestModel_RedactionCanary_AC_S1(t *testing.T) {
 
 		m := pollModelCondition(t, ctx, modelName, "LiteLLMRejected", 30*time.Second)
 		statusMsg := ""
-		if c := apimeta.FindStatusCondition(m.Status.Conditions, "Ready"); c != nil {
+		if c := apimeta.FindStatusCondition(m.Status.Conditions, conditionTypeReady); c != nil {
 			statusMsg = c.Message
 		}
 		events := listModelEvents(ctx, t, modelName)
@@ -2221,7 +2221,7 @@ func TestModel_RedactionCanary_AC_S1(t *testing.T) {
 		key := client.ObjectKey{Name: modelName, Namespace: WatchNamespace}
 		_ = k8sClient.Get(ctx, key, m)
 		statusMsg := ""
-		if c := apimeta.FindStatusCondition(m.Status.Conditions, "Ready"); c != nil {
+		if c := apimeta.FindStatusCondition(m.Status.Conditions, conditionTypeReady); c != nil {
 			statusMsg = c.Message
 		}
 
@@ -2546,7 +2546,7 @@ func TestModel_DuplicateSecretsAs_Rejected(t *testing.T) {
 		t.Fatalf("pollModelCondition returned nil")
 	}
 
-	cond := apimeta.FindStatusCondition(m.Status.Conditions, "Ready")
+	cond := apimeta.FindStatusCondition(m.Status.Conditions, conditionTypeReady)
 	if cond == nil {
 		t.Fatalf("SEC-03: no Ready condition on Model %q", modelName)
 	}

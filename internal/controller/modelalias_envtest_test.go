@@ -74,7 +74,7 @@ func TestModelAlias_Envtest_HappyPath_MultiEntry(t *testing.T) {
 			}
 			ready := false
 			for _, c := range got.Status.Conditions {
-				if c.Type == "Ready" && c.Status == metav1.ConditionTrue && c.Reason == reasonSynced {
+				if c.Type == conditionTypeReady && c.Status == metav1.ConditionTrue && c.Reason == reasonSynced {
 					ready = true
 				}
 			}

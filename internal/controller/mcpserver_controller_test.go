@@ -91,7 +91,7 @@ func pollMCPServerCondition(t *testing.T, ctx context.Context, name, wantReason 
 	var m litellmv1alpha1.LiteLLMMCPServer
 	for time.Now().Before(deadline) {
 		if err := k8sClient.Get(ctx, key, &m); err == nil {
-			c := apimeta.FindStatusCondition(m.Status.Conditions, "Ready")
+			c := apimeta.FindStatusCondition(m.Status.Conditions, conditionTypeReady)
 			if c != nil && c.Reason == wantReason {
 				return &m
 			}
@@ -154,7 +154,7 @@ func TestMCPServerReconciler_CreateOnFirstReconcile(t *testing.T) {
 	}
 
 	m := pollMCPServerCondition(t, ctx, "mcp-create-test", reasonSynced, 30*time.Second)
-	c := apimeta.FindStatusCondition(m.Status.Conditions, "Ready")
+	c := apimeta.FindStatusCondition(m.Status.Conditions, conditionTypeReady)
 	if c == nil {
 		t.Fatalf("Ready condition not set")
 	}
@@ -455,7 +455,7 @@ func TestMCPServerReconciler_ConnectionGate(t *testing.T) {
 	})
 
 	m := pollMCPServerCondition(t, ctx, "mcp-gate-test", "LiteLLMUnavailable", 30*time.Second)
-	c := apimeta.FindStatusCondition(m.Status.Conditions, "Ready")
+	c := apimeta.FindStatusCondition(m.Status.Conditions, conditionTypeReady)
 	if c == nil {
 		t.Fatalf("Ready condition not set; conditions=%+v", m.Status.Conditions)
 	}
@@ -524,7 +524,7 @@ func TestMCPServerReconciler_401FastPath(t *testing.T) {
 
 	// Status should be LiteLLMUnavailable.
 	m := pollMCPServerCondition(t, ctx, "mcp-401-test", "LiteLLMUnavailable", 10*time.Second)
-	c := apimeta.FindStatusCondition(m.Status.Conditions, "Ready")
+	c := apimeta.FindStatusCondition(m.Status.Conditions, conditionTypeReady)
 	if c == nil {
 		t.Fatalf("Ready condition not set after 401")
 	}
@@ -594,7 +594,7 @@ func TestMCPServerReconciler_OwnerRefTolerance(t *testing.T) {
 	}
 
 	m := pollMCPServerCondition(t, ctx, "mcp-owned-test", reasonSynced, 30*time.Second)
-	c := apimeta.FindStatusCondition(m.Status.Conditions, "Ready")
+	c := apimeta.FindStatusCondition(m.Status.Conditions, conditionTypeReady)
 	if c == nil || c.Status != metav1.ConditionTrue || c.Reason != reasonSynced {
 		t.Errorf("owned MCPServer not Synced; condition=%+v", c)
 	}
@@ -899,7 +899,7 @@ func TestMCPServerReconciler_AC_S1_NoSecretInStatusOrEvents(t *testing.T) {
 
 		m := pollMCPServerCondition(t, ctx, mcpName, reasonSynced, 30*time.Second)
 		statusMsg := ""
-		if c := apimeta.FindStatusCondition(m.Status.Conditions, "Ready"); c != nil {
+		if c := apimeta.FindStatusCondition(m.Status.Conditions, conditionTypeReady); c != nil {
 			statusMsg = c.Message
 		}
 		events := listMCPServerEvents(ctx, t, mcpName)
@@ -933,7 +933,7 @@ func TestMCPServerReconciler_AC_S1_NoSecretInStatusOrEvents(t *testing.T) {
 
 		m := pollMCPServerCondition(t, ctx, mcpName, "LiteLLMUnavailable", 30*time.Second)
 		statusMsg := ""
-		if c := apimeta.FindStatusCondition(m.Status.Conditions, "Ready"); c != nil {
+		if c := apimeta.FindStatusCondition(m.Status.Conditions, conditionTypeReady); c != nil {
 			statusMsg = c.Message
 		}
 		events := listMCPServerEvents(ctx, t, mcpName)
@@ -973,7 +973,7 @@ func TestMCPServerReconciler_AC_S1_NoSecretInStatusOrEvents(t *testing.T) {
 
 		m := pollMCPServerCondition(t, ctx, mcpName, "SecretNotFound", 30*time.Second)
 		statusMsg := ""
-		if c := apimeta.FindStatusCondition(m.Status.Conditions, "Ready"); c != nil {
+		if c := apimeta.FindStatusCondition(m.Status.Conditions, conditionTypeReady); c != nil {
 			statusMsg = c.Message
 		}
 		events := listMCPServerEvents(ctx, t, mcpName)
@@ -1030,7 +1030,7 @@ func TestMCPServerReconciler_AC_S1_NoSecretInStatusOrEvents(t *testing.T) {
 		var statusMsg string
 		var cr2 litellmv1alpha1.LiteLLMMCPServer
 		_ = k8sClient.Get(ctx, client.ObjectKey{Name: mcpName, Namespace: WatchNamespace}, &cr2)
-		if c := apimeta.FindStatusCondition(cr2.Status.Conditions, "Ready"); c != nil {
+		if c := apimeta.FindStatusCondition(cr2.Status.Conditions, conditionTypeReady); c != nil {
 			statusMsg = c.Message
 		}
 		events := listMCPServerEvents(ctx, t, mcpName)

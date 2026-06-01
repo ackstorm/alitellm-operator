@@ -1076,7 +1076,7 @@ func (r *MCPServerDiscoveryReconciler) writeBothConditions(
 	// omit DiscoveredCount/GeneratedCount/GeneratedChildren and the server
 	// state would diverge from the in-memory reconciled state.
 	apimeta.SetStatusCondition(&md.Status.Conditions, metav1.Condition{
-		Type:               "Ready",
+		Type:               conditionTypeReady,
 		Status:             readyStatus,
 		Reason:             readyReason,
 		Message:            readyMessage,
@@ -1107,7 +1107,7 @@ func (r *MCPServerDiscoveryReconciler) writeBothConditionsObj(
 	// Uses Update (not Patch + MergeFrom): same rationale as writeBothConditions
 	// — callers mutate counters and child lists on md.Status before this call.
 	apimeta.SetStatusCondition(&md.Status.Conditions, metav1.Condition{
-		Type:               "Ready",
+		Type:               conditionTypeReady,
 		Status:             readyStatus,
 		Reason:             readyReason,
 		Message:            readyMessage,

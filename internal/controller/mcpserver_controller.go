@@ -301,7 +301,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 	}
 	priorReason := ""
-	if c := apimeta.FindStatusCondition(mcp.Status.Conditions, "Ready"); c != nil {
+	if c := apimeta.FindStatusCondition(mcp.Status.Conditions, conditionTypeReady); c != nil {
 		priorReason = c.Reason
 	}
 	winner := conflict.ResolveWinner(candidates)
@@ -532,7 +532,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		mcp.Status.ObservedGeneration == mcp.Generation {
 		// Stale-status heal — see model_controller.go Step 8 for the
 		// connection-flap rationale. Same shape.
-		if ready := apimeta.FindStatusCondition(mcp.Status.Conditions, "Ready"); ready == nil ||
+		if ready := apimeta.FindStatusCondition(mcp.Status.Conditions, conditionTypeReady); ready == nil ||
 			ready.Status != metav1.ConditionTrue || ready.Reason != reasonSynced {
 			if err := r.writeStatus(ctx, &mcp, metav1.ConditionTrue, reasonSynced, "mcp server registered"); err != nil {
 				if apierrors.IsConflict(err) {

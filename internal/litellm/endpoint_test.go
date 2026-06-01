@@ -13,14 +13,14 @@ import (
 func TestClassifyEndpointTransport(t *testing.T) {
 	t.Parallel()
 	secure := []string{
-		"https://api.example.com",                       // https
-		"https://litellm.litellm-system.svc",            // https svc
-		"http://litellm.litellm-system.svc",             // in-cluster svc
+		"https://api.example.com",                         // https
+		"https://litellm.litellm-system.svc",              // https svc
+		"http://litellm.litellm-system.svc",               // in-cluster svc
 		"http://litellm.litellm-system.svc.cluster.local", // fqdn svc
-		"http://litellm",                                 // bare service name
-		"http://localhost:4000",                          // loopback name
-		"http://127.0.0.1:4000",                          // loopback IP
-		"http://[::1]:4000",                              // IPv6 loopback
+		"http://litellm",                                  // bare service name
+		"http://localhost:4000",                           // loopback name
+		"http://127.0.0.1:4000",                           // loopback IP
+		"http://[::1]:4000",                               // IPv6 loopback
 	}
 	for _, e := range secure {
 		insecure, err := ClassifyEndpointTransport(e)

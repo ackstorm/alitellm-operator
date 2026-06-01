@@ -485,7 +485,7 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		// untouched on a successful upstream probe and never re-enters the
 		// CREATE/UPDATE branch where Step 11 writes Ready=True. Heal here
 		// when the current condition is missing or not True/Synced.
-		if ready := apimeta.FindStatusCondition(model.Status.Conditions, "Ready"); ready == nil ||
+		if ready := apimeta.FindStatusCondition(model.Status.Conditions, conditionTypeReady); ready == nil ||
 			ready.Status != metav1.ConditionTrue || ready.Reason != reasonSynced {
 			if err := r.writeStatus(ctx, &model, metav1.ConditionTrue, reasonSynced, "model registered"); err != nil {
 				if apierrors.IsConflict(err) {

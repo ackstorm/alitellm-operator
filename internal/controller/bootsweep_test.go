@@ -23,7 +23,7 @@ import (
 // readyCond returns a Ready condition with the given status — convenience
 // constructor for the table cases below.
 func readyCond(status metav1.ConditionStatus, reason string) metav1.Condition {
-	return metav1.Condition{Type: "Ready", Status: status, Reason: reason}
+	return metav1.Condition{Type: conditionTypeReady, Status: status, Reason: reason}
 }
 
 func TestIsStuckReadyFalse(t *testing.T) {

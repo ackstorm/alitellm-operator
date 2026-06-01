@@ -23,7 +23,7 @@ func statusReadyUnchanged(
 	if observedGen != gen {
 		return false
 	}
-	cur := apimeta.FindStatusCondition(conds, "Ready")
+	cur := apimeta.FindStatusCondition(conds, conditionTypeReady)
 	if cur == nil {
 		return false
 	}

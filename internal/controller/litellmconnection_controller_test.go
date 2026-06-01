@@ -175,10 +175,10 @@ func TestConnectionProbeLoop_AC_C1(t *testing.T) {
 	if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(cr), &got); err != nil {
 		t.Fatalf("re-get CR: %v", err)
 	}
-	if !apimeta.IsStatusConditionTrue(got.Status.Conditions, "Ready") {
+	if !apimeta.IsStatusConditionTrue(got.Status.Conditions, conditionTypeReady) {
 		t.Errorf("status.conditions[Ready].Status is not True; conditions=%+v", got.Status.Conditions)
 	}
-	if c := apimeta.FindStatusCondition(got.Status.Conditions, "Ready"); c == nil || c.Reason != reasonSynced {
+	if c := apimeta.FindStatusCondition(got.Status.Conditions, conditionTypeReady); c == nil || c.Reason != reasonSynced {
 		t.Errorf("status.conditions[Ready].Reason = %v, want Synced", c)
 	}
 	if got.Status.ObservedGeneration != got.Generation {
@@ -249,7 +249,7 @@ func TestConnectionProbeLoop_BadMasterKey(t *testing.T) {
 	if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(cr), &got); err != nil {
 		t.Fatalf("re-get CR: %v", err)
 	}
-	if c := apimeta.FindStatusCondition(got.Status.Conditions, "Ready"); c == nil || c.Reason != "BadMasterKey" {
+	if c := apimeta.FindStatusCondition(got.Status.Conditions, conditionTypeReady); c == nil || c.Reason != "BadMasterKey" {
 		t.Errorf("status.conditions[Ready].Reason = %v, want BadMasterKey", c)
 	}
 }
@@ -320,7 +320,7 @@ func TestConnectionSecretNotFound(t *testing.T) {
 	if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(cr), &got); err != nil {
 		t.Fatalf("re-get CR: %v", err)
 	}
-	c := apimeta.FindStatusCondition(got.Status.Conditions, "Ready")
+	c := apimeta.FindStatusCondition(got.Status.Conditions, conditionTypeReady)
 	if c == nil {
 		t.Fatalf("status.conditions[Ready] missing")
 	}
@@ -524,7 +524,7 @@ func TestConnection_GenChangeRebuildsCacheBeforeProbe(t *testing.T) {
 	// reconciler skips the Step 2b finalizer-add early return and falls
 	// through to the Step 3 Connecting-on-entry block.
 	prevReady := metav1.Condition{
-		Type:               "Ready",
+		Type:               conditionTypeReady,
 		Status:             metav1.ConditionTrue,
 		Reason:             reasonSynced,
 		Message:            "probe ok",

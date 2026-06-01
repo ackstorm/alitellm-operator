@@ -7,16 +7,16 @@ import "testing"
 func TestValidateBaseURL(t *testing.T) {
 	bad := []string{
 		"http://169.254.169.254/latest/meta-data/", // cloud metadata
-		"http://[fd00:ec2::254]/latest/meta-data/",  // IPv6 metadata
-		"http://127.0.0.1:8080",                      // loopback
-		"http://[::1]:8080",                          // IPv6 loopback
-		"http://169.254.0.5",                         // link-local
-		"ftp://example.com",                          // scheme
-		"http://user:pass@example.com",               // userinfo
-		"http://example.com/?x=1",                    // query
-		"http://example.com/#frag",                   // fragment
-		"not a url",                                  // unparseable / no scheme
-		"",                                           // empty
+		"http://[fd00:ec2::254]/latest/meta-data/", // IPv6 metadata
+		"http://127.0.0.1:8080",                    // loopback
+		"http://[::1]:8080",                        // IPv6 loopback
+		"http://169.254.0.5",                       // link-local
+		"ftp://example.com",                        // scheme
+		"http://user:pass@example.com",             // userinfo
+		"http://example.com/?x=1",                  // query
+		"http://example.com/#frag",                 // fragment
+		"not a url",                                // unparseable / no scheme
+		"",                                         // empty
 	}
 	for _, u := range bad {
 		if err := ValidateBaseURL(u); err == nil {

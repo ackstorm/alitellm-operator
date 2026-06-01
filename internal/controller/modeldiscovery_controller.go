@@ -1106,7 +1106,7 @@ func (r *ModelDiscoveryReconciler) writeReady(
 	status metav1.ConditionStatus, reason, message string,
 ) ctrl.Result {
 	apimeta.SetStatusCondition(&md.Status.Conditions, metav1.Condition{
-		Type:               "Ready",
+		Type:               conditionTypeReady,
 		Status:             status,
 		Reason:             reason,
 		Message:            message,
@@ -1137,7 +1137,7 @@ func (r *ModelDiscoveryReconciler) writeBothConditions(
 	// here would already include the mutation and the patch body would
 	// drop those fields.
 	apimeta.SetStatusCondition(&md.Status.Conditions, metav1.Condition{
-		Type:               "Ready",
+		Type:               conditionTypeReady,
 		Status:             readyStatus,
 		Reason:             readyReason,
 		Message:            readyMessage,
@@ -1169,7 +1169,7 @@ func (r *ModelDiscoveryReconciler) writeBothConditionsObj(
 	// Also fixes the pre-existing parity gap with the MCP equivalent by setting
 	// ObservedGeneration here.
 	apimeta.SetStatusCondition(&md.Status.Conditions, metav1.Condition{
-		Type:               "Ready",
+		Type:               conditionTypeReady,
 		Status:             readyStatus,
 		Reason:             readyReason,
 		Message:            readyMessage,

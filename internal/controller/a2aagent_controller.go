@@ -478,7 +478,7 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		a2a.Status.ObservedGeneration == a2a.Generation {
 		// Stale-status heal — see model_controller.go Step 8 for the
 		// connection-flap rationale. Same shape.
-		if ready := apimeta.FindStatusCondition(a2a.Status.Conditions, "Ready"); ready == nil ||
+		if ready := apimeta.FindStatusCondition(a2a.Status.Conditions, conditionTypeReady); ready == nil ||
 			ready.Status != metav1.ConditionTrue || ready.Reason != reasonSynced {
 			if err := r.writeStatus(ctx, &a2a, metav1.ConditionTrue, reasonSynced, "a2a agent registered"); err != nil {
 				if apierrors.IsConflict(err) {

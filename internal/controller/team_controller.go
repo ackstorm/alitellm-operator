@@ -537,7 +537,7 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		team.Status.ObservedGeneration == team.Generation {
 		// Stale-status heal — see model_controller.go Step 8 for the
 		// connection-flap rationale. Same shape.
-		if ready := apimeta.FindStatusCondition(team.Status.Conditions, "Ready"); ready == nil ||
+		if ready := apimeta.FindStatusCondition(team.Status.Conditions, conditionTypeReady); ready == nil ||
 			ready.Status != metav1.ConditionTrue || ready.Reason != reasonSynced {
 			if err := r.writeStatus(ctx, &team, metav1.ConditionTrue, reasonSynced, "team registered"); err != nil {
 				if apierrors.IsConflict(err) {
