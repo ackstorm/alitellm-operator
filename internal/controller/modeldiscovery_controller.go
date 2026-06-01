@@ -246,7 +246,7 @@ const modelDiscoveryCascadeDrainDeadline = 5 * time.Minute
 // has exceeded modelDiscoveryCascadeDrainDeadline (then WARN). All
 // other reconciles log at V(2). Per-CR state lives in
 // r.cascadeDrainLog.
-func (r *ModelDiscoveryReconciler) logCascadeDrain(_ context.Context, logger logr.Logger, name string, remaining int) {
+func (r *ModelDiscoveryReconciler) logCascadeDrain(_ context.Context, logger logr.Logger, name string, remaining int) (overdue bool) {
 	r.cascadeDrainLogMu.Lock()
 	defer r.cascadeDrainLogMu.Unlock()
 	if r.cascadeDrainLog == nil {
@@ -258,7 +258,7 @@ func (r *ModelDiscoveryReconciler) logCascadeDrain(_ context.Context, logger log
 		prev = modelDiscoveryCascadeDrainState{lastRemaining: -1, startedAt: now}
 	}
 	changed := prev.lastRemaining != remaining
-	overdue := now.Sub(prev.startedAt) >= modelDiscoveryCascadeDrainDeadline &&
+	overdue = now.Sub(prev.startedAt) >= modelDiscoveryCascadeDrainDeadline &&
 		now.Sub(prev.lastWarnAt) >= modelDiscoveryCascadeDrainDeadline
 	switch {
 	case overdue:
@@ -266,6 +266,7 @@ func (r *ModelDiscoveryReconciler) logCascadeDrain(_ context.Context, logger log
 			"remaining", remaining,
 			"elapsed", now.Sub(prev.startedAt).Round(time.Second).String())
 		prev.lastWarnAt = now
+		metrics.CascadeDrainOverdueTotal.WithLabelValues(modelDiscoveryKind).Inc()
 	case changed:
 		logger.Info("cascade-delete: waiting for children to drain", "remaining", remaining)
 	default:
@@ -273,6 +274,7 @@ func (r *ModelDiscoveryReconciler) logCascadeDrain(_ context.Context, logger log
 	}
 	prev.lastRemaining = remaining
 	r.cascadeDrainLog[name] = prev
+	return overdue
 }
 
 // forgetCascadeDrain clears the per-CR drain-log throttle state after
@@ -339,7 +341,11 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 						return ctrl.Result{}, err
 					}
 				}
-				r.logCascadeDrain(ctx, logger, md.Name, len(owned.Items))
+				if r.logCascadeDrain(ctx, logger, md.Name, len(owned.Items)) && r.Recorder != nil {
+					r.Recorder.Eventf(&md, corev1.EventTypeWarning, "CascadeDrainOverdue",
+						"cascade-delete still draining %d child Model(s) past deadline; check finalizer state on the children",
+						len(owned.Items))
+				}
 				return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 			}
 			// All children drained. Discovery's finalizer issues NO

@@ -40,9 +40,12 @@ type MCPServerDiscoverySpec struct {
 	// `NameCollision=True` status condition and the second occurrence
 	// is dropped (loud-fail, not silent-merge).
 	//
-	// MaxLength=30 leaves room for the source name inside the 63-char
-	// DNS-1123 label budget (the final K8s child name is
-	// `<prefix>-<source-name>`).
+	// MaxLength=30 caps the prefix, but the final child name is
+	// `<prefix>-<source-name>` and the source name can itself be up to 63
+	// chars, so the combined name can still exceed the 63-char DNS-1123 label
+	// budget. The reconciler enforces the 63-char limit at child-name
+	// construction (M-B7): over-budget candidates are skipped with
+	// reason=InvalidDiscoveredName rather than failing K8s admission.
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1

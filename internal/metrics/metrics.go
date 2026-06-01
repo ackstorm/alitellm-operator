@@ -177,6 +177,18 @@ var DriftCorrectedTotal = prometheus.NewCounterVec(
 	[]string{"domain", "action"},
 )
 
+// CascadeDrainOverdueTotal — M-B9: incremented (at most once per deadline
+// window per CR) when a Discovery parent's cascade-delete drain exceeds the
+// deadline — typically a child whose finalizer is wedged. Gives operators a
+// metric to alert on instead of only a louder log line. Labeled by kind.
+var CascadeDrainOverdueTotal = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "litellm_operator_cascade_drain_overdue_total",
+		Help: "Discovery cascade-delete drains that exceeded the deadline (likely a wedged child finalizer), by kind.",
+	},
+	[]string{"kind"},
+)
+
 // DeletionOrphanedTotal — Issue #23: counter incremented on every code
 // path where the operator removed a finalizer without confirming the
 // LiteLLM-side delete (deletionPolicy=Orphan + ack-missing). Labeled
@@ -330,6 +342,7 @@ func init() {
 		DeletionOrphanedTotal,
 		DeletionBlocked, // Issue #23: custom Collector — emits one sample per blocked CR
 		ConflictsTotal,  // ADR-0001: alpha-last-wins resolver counter
+		CascadeDrainOverdueTotal, // M-B9: overdue cascade-drain signal
 	)
 
 	// Pre-touch every enumerated label combination from spec §10's

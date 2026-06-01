@@ -68,6 +68,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -237,7 +238,10 @@ func (r *MCPServerDiscoveryReconciler) SetToolHive(i ToolHiveInformerReader) {
 // remaining count changes from the last observation OR when the wait
 // has exceeded cascadeDrainDeadline (then WARN with a hint). All other
 // reconciles log at V(2). Per-CR state lives in r.cascadeDrainLog.
-func (r *MCPServerDiscoveryReconciler) logCascadeDrain(_ context.Context, logger logr.Logger, name string, remaining int) {
+// Returns overdue=true (at most once per deadline window) when the drain has
+// exceeded the deadline, so the caller can emit a Warning event + metric
+// (M-B9) in addition to the WARN log.
+func (r *MCPServerDiscoveryReconciler) logCascadeDrain(_ context.Context, logger logr.Logger, name string, remaining int) (overdue bool) {
 	r.cascadeDrainLogMu.Lock()
 	defer r.cascadeDrainLogMu.Unlock()
 	if r.cascadeDrainLog == nil {
@@ -249,7 +253,7 @@ func (r *MCPServerDiscoveryReconciler) logCascadeDrain(_ context.Context, logger
 		prev = cascadeDrainState{lastRemaining: -1, startedAt: now}
 	}
 	changed := prev.lastRemaining != remaining
-	overdue := now.Sub(prev.startedAt) >= cascadeDrainDeadline &&
+	overdue = now.Sub(prev.startedAt) >= cascadeDrainDeadline &&
 		now.Sub(prev.lastWarnAt) >= cascadeDrainDeadline
 	switch {
 	case overdue:
@@ -257,6 +261,7 @@ func (r *MCPServerDiscoveryReconciler) logCascadeDrain(_ context.Context, logger
 			"remaining", remaining,
 			"elapsed", now.Sub(prev.startedAt).Round(time.Second).String())
 		prev.lastWarnAt = now
+		metrics.CascadeDrainOverdueTotal.WithLabelValues(mcpServerDiscoveryKind).Inc()
 	case changed:
 		logger.Info("cascade-delete: waiting for children to drain", "remaining", remaining)
 	default:
@@ -264,6 +269,7 @@ func (r *MCPServerDiscoveryReconciler) logCascadeDrain(_ context.Context, logger
 	}
 	prev.lastRemaining = remaining
 	r.cascadeDrainLog[name] = prev
+	return overdue
 }
 
 // forgetCascadeDrain clears the per-CR drain-log throttle state after
@@ -326,7 +332,11 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 						return ctrl.Result{}, err
 					}
 				}
-				r.logCascadeDrain(ctx, logger, md.Name, len(owned.Items))
+				if r.logCascadeDrain(ctx, logger, md.Name, len(owned.Items)) && r.Recorder != nil {
+					r.Recorder.Eventf(&md, corev1.EventTypeWarning, "CascadeDrainOverdue",
+						"cascade-delete still draining %d child MCPServer(s) past deadline; check finalizer state on the children",
+						len(owned.Items))
+				}
 				return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 			}
 			// All children drained. MSDisc finalizer issues NO LiteLLM
@@ -475,6 +485,22 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 		sourceName := obj.GetName()
 		childName := md.Spec.Prefix + "-" + sourceName
 		ownedBy := obj.GetNamespace() + "/" + sourceName
+
+		// M-B7: <prefix>-<source-name> can exceed the 63-char DNS-1123 label
+		// budget (prefix MaxLength=30 + an up-to-63-char source name), so the
+		// "MaxLength=30 leaves room" assumption does not hold. A child Model
+		// with an over-long name is rejected at K8s admission downstream;
+		// loud-fail here with InvalidDiscoveredName so the user sees why
+		// rather than hitting an opaque create error.
+		if len(childName) > 63 {
+			skipped = append(skipped, litellmv1alpha1.MCPServerSkippedCandidate{
+				Name:    childName,
+				Reason:  "InvalidDiscoveredName",
+				OwnedBy: ownedBy,
+				Message: fmt.Sprintf("child name is %d chars, exceeds the 63-char DNS-1123 label limit (prefix %q + source %q)", len(childName), md.Spec.Prefix, sourceName),
+			})
+			continue
+		}
 
 		// FIX4.txt H-2: intra-discovery name collision. Alpha-last-wins
 		// (ADR-0001): with `raw` sorted DESC, the FIRST occurrence the
