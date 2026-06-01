@@ -89,31 +89,61 @@ func (c *Client) UpdateTeamRaw(ctx context.Context, body map[string]any) (*TeamL
 	return &out, nil
 }
 
-// ListTeamsByAlias issues GET /v2/team/list?team_alias=<alias>&page_size=100
-// and returns ONLY teams whose TeamAlias exactly matches the requested
-// alias. LiteLLM's server-side filter is partial (substring) per spec
-// §6.7; the operator must apply an exact-match filter client-side to
-// preserve the "operator never touches names it did not declare" invariant.
+// ListTeamsByAlias issues GET /v2/team/list?team_alias=<alias> across ALL
+// pages and returns ONLY teams whose TeamAlias exactly matches the
+// requested alias. LiteLLM's server-side filter is partial (substring) per
+// spec §6.7, so the operator applies an exact-match filter client-side to
+// preserve the "operator never touches names it did not declare"
+// invariant.
+//
+// H2: the substring filter means the exact-alias owner row can land on
+// page 2+ when >100 substring matches exist. Reading only page 1 made the
+// operator conclude "team absent" and POST /team/new — creating a
+// duplicate team. This now follows TotalPages (authoritative when present)
+// or short-page detection (when the server omits it), with a hard page cap
+// that errors rather than silently returning a truncated set.
 //
 // Returns a (possibly empty) slice. Empty is NOT ErrNotFound — callers
 // decide whether absence is a soft success (e.g. "create a new team") or
 // an error.
 func (c *Client) ListTeamsByAlias(ctx context.Context, alias string) ([]TeamListEntry, error) {
-	path := "/v2/team/list?team_alias=" + url.QueryEscape(alias) + "&page_size=100"
-	raw, err := c.makeRequest(ctx, "GET", path, nil)
-	if err != nil {
-		return nil, err
-	}
-	var list TeamListResponse
-	if err := json.Unmarshal(raw, &list); err != nil {
-		return nil, fmt.Errorf("litellm: decode GET /v2/team/list: %w", err)
-	}
-	// Client-side exact-match filter (§6.7).
-	out := make([]TeamListEntry, 0, len(list.Teams))
-	for _, t := range list.Teams {
-		if t.TeamAlias == alias {
-			out = append(out, t)
+	const pageSize = 100
+	const maxPages = 1000 // hard stop against a misbehaving upstream
+	out := make([]TeamListEntry, 0, 8)
+	for page := 1; page <= maxPages; page++ {
+		path := fmt.Sprintf("/v2/team/list?team_alias=%s&page_size=%d&page=%d",
+			url.QueryEscape(alias), pageSize, page)
+		raw, err := c.makeRequest(ctx, "GET", path, nil)
+		if err != nil {
+			return nil, err
+		}
+		var list TeamListResponse
+		if err := json.Unmarshal(raw, &list); err != nil {
+			return nil, fmt.Errorf("litellm: decode GET /v2/team/list: %w", err)
+		}
+		// Client-side exact-match filter (§6.7).
+		for _, t := range list.Teams {
+			if t.TeamAlias == alias {
+				out = append(out, t)
+			}
+		}
+		// Termination: TotalPages is authoritative WHEN PRESENT (>0). Only
+		// fall back to short-page detection when the server OMITS it (<=0).
+		// Do NOT OR the two conditions — a deliberately under-full page (the
+		// last page, or a sparse substring-filter result) would otherwise
+		// stop the loop before TotalPages is reached and skip later pages.
+		done := false
+		if list.TotalPages > 0 {
+			done = page >= list.TotalPages
+		} else {
+			done = len(list.Teams) < pageSize
+		}
+		if done {
+			return out, nil
 		}
 	}
-	return out, nil
+	// Cap reached while the upstream still advertised more pages: refuse to
+	// return a truncated set. Partial data here would resurrect the H2
+	// silent-truncation-with-Ready=Synced failure this change eliminates.
+	return nil, fmt.Errorf("litellm: team list for alias %q exceeded %d pages; refusing truncated result", alias, maxPages)
 }
