@@ -61,12 +61,9 @@ func Lookup(providerType string) (func(ctx context.Context, cfg ProviderConfig) 
 	return ctor, ok
 }
 
-// The constructors below are TASK-1 STUBS — replaced by Tasks 2/3/4
-// in this same plan when each provider's full implementation lands.
-// They exist here only so the Registry map and TestRegistry_HasFiveProviders
-// can compile and pass at the end of Task 1 before per-provider files
-// exist. Tasks 2-4 DELETE these stubs and ADD their real constructor in
-// the corresponding {anthropic,gemini,openai}.go file.
+// The constructors below are thin aliases that keep the Registry map literal
+// stable while each provider's real implementation (new<Provider>Impl) lives
+// in its own {anthropic,gemini,openai}.go file. They are NOT stubs.
 
 // newAnthropic is implemented in anthropic.go as newAnthropicImpl; this
 // thin alias keeps the Registry map literal stable while letting the

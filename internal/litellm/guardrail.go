@@ -43,9 +43,10 @@ func (c *Client) UpdateGuardrail(ctx context.Context, guardrailID string, req *G
 
 // DeleteGuardrail issues DELETE /guardrails/{guardrail_id}.
 //
-// LiteLLM removes the row from the DB and the in-memory handler. 404 is
-// reported by makeRequest as a 4xx error; the caller (finalizer path) may
-// treat it as "already absent" via errors.As + status-code inspection.
+// LiteLLM removes the row from the DB and the in-memory handler. A DELETE
+// that 404s is treated as success by makeRequest (idempotent delete, §7.7),
+// so the finalizer path sees a nil error for an already-absent guardrail —
+// there is no 4xx to inspect on this path.
 func (c *Client) DeleteGuardrail(ctx context.Context, guardrailID string) error {
 	if guardrailID == "" {
 		return fmt.Errorf("litellm: DeleteGuardrail: empty guardrail_id")

@@ -7,7 +7,7 @@ import (
 	ctrlmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 )
 
-// §10 metric set. All 11 metrics are declared as package-level vars so
+// §10 metric set. All metrics are declared as package-level vars so
 // Phase 3+ reconcilers can increment them directly (e.g.
 // metrics.DriftCorrectedTotal.WithLabelValues("model", "create_missing").Inc).
 
@@ -322,7 +322,7 @@ var (
 )
 
 func init() {
-	// Register all 11 metrics against controller-runtime's global
+	// Register all metrics against controller-runtime's global
 	// metrics.Registry — controller-runtime's metricsserver scrapes from
 	// this registry on the /metrics endpoint.
 	ctrlmetrics.Registry.MustRegister(
