@@ -21,7 +21,8 @@ package controller
 //
 //	v1 — Initial release of the FIX9 H-1 render-version stamp (post
 //	     v0.4.1). Implicitly invalidates every pre-v0.4.2 persisted hash.
-const mcpRenderVersion = "v1"
+//	v2 — oauth2_flow now forwarded on UPDATE (review #2).
+const mcpRenderVersion = "v2"
 
 // extractedMCPParams holds the typed view of a LiteLLMMCPServer spec.params
 // map that the controller forwards to LiteLLM on CREATE/UPDATE. Every field
