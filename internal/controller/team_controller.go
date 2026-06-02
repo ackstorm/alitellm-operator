@@ -269,7 +269,7 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 
 	// ─── Step 2: Connection-gating (Phase 3 D-08) ──────────────────────────
 	snap := r.Cache.Snapshot()
-	if !snap.Ready {
+	if !snap.Usable() {
 		reason := snap.Reason
 		if reason == "" {
 			reason = reasonConnecting
@@ -695,7 +695,7 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 func (r *TeamReconciler) reconcileImplicitDefault(ctx context.Context, logger logr.Logger) (ctrl.Result, error) {
 	// ─── Connection-gate ──────────────────────────────────────────────────
 	snap := r.Cache.Snapshot()
-	if !snap.Ready {
+	if !snap.Usable() {
 		// No status subresource to write — the runnable retries on the
 		// next ticker fire / Ready transition. Suppress the log when
 		// snap.Reason is empty: that's the zero-value cache state during
@@ -876,7 +876,7 @@ func (r *TeamReconciler) reconcileDeletion(ctx context.Context, team *litellmv1a
 	if team.Name == teamAliasDefault {
 		// AC-T4 PROTECTED PATH — re-apply the implicit empty body.
 		snap := r.Cache.Snapshot()
-		if !snap.Ready {
+		if !snap.Usable() {
 			// Cannot drain right now; surface as transient and let the
 			// connection-Ready event re-enqueue.
 			logger.V(1).Info("Team/default deletion: connection not Ready; retrying",
@@ -1004,7 +1004,7 @@ func (r *TeamReconciler) reconcileDeletion(ctx context.Context, team *litellmv1a
 		// Connection-unavailable at deletion time: warn + remove finalizer
 		// anyway (anti-storm — cannot block CR GC on connection failure).
 		snap := r.Cache.Snapshot()
-		if !snap.Ready {
+		if !snap.Usable() {
 			// Issue #23: gate on resolved policy.
 			if err := onAckMissing("LiteLLM unavailable"); err != nil {
 				return ctrl.Result{}, err

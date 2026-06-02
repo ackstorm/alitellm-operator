@@ -117,7 +117,7 @@ func (r *ModelAliasReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	snap := r.Cache.Snapshot()
-	if !snap.Ready {
+	if !snap.Usable() {
 		msg := fmt.Sprintf("LiteLLMConnection/default not Ready (reason: %s)", snap.Reason)
 		return r.broadcastNotReady(ctx, list.Items, reasonLiteLLMUnavailable, msg, snap.NormalizedRequeueOnRejectedAfter(), logger)
 	}

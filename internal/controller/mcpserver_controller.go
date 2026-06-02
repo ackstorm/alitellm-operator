@@ -274,7 +274,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	snap := r.Cache.Snapshot()
 
 	// ─── Step 3: Connection-gating (Phase 3 D-08) ──────────────────────────
-	if !snap.Ready {
+	if !snap.Usable() {
 		reason := snap.Reason
 		if reason == "" {
 			reason = reasonConnecting

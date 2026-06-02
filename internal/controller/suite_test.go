@@ -79,6 +79,14 @@ var (
 	connCache      *connection.Cache
 	connReconciler *LiteLLMConnectionReconciler
 
+	// suiteLLMClient is the *litellm.Client wired against the in-process
+	// mock LiteLLM server. Promoted to a package var so test helpers
+	// (setConnCacheReady) can rebuild the shared connCache with a VALID
+	// Ready snapshot — Ready=true MUST carry a non-nil Client or it
+	// poisons the manager-level singleton and panics the next dependent
+	// reconcile (issue #74).
+	suiteLLMClient *litellm.Client
+
 	// Phase 3 — Model reconciler. Shares connCache with the
 	// Phase 2 reconciler. Model envtests run against the same envtest cluster
 	// as Phase 1 + Phase 2 tests.
@@ -274,7 +282,7 @@ func setupAndRun(m *testing.M) int {
 	defer mockServer.Close()
 
 	// *litellm.Client wired against the mock.
-	llm := litellm.NewClient(mockServer.URL(), "sk-test-master-key", logr.Discard())
+	suiteLLMClient = litellm.NewClient(mockServer.URL(), "sk-test-master-key", logr.Discard())
 
 	// Manager with WATCH_NAMESPACE-scoped cache (SCOPE-04).
 	mgr, err := manager.New(cfg, manager.Options{
@@ -301,7 +309,7 @@ func setupAndRun(m *testing.M) int {
 	reconciler = &NoOpReconciler{
 		Client:               mgr.GetClient(),
 		Scheme:               mgr.GetScheme(),
-		LiteLLM:              llm,
+		LiteLLM:              suiteLLMClient,
 		Cache:                fakeCache,
 		SafetyRelistInterval: 1 * time.Second, // Accelerated for AC-R1 smoke
 		Log:                  logr.Discard(),

@@ -260,7 +260,7 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	// ─── Step 3: Connection-gating (Phase 3 D-08) ──────────────────────────
 	snap := r.Cache.Snapshot()
-	if !snap.Ready {
+	if !snap.Usable() {
 		reason := snap.Reason
 		if reason == "" {
 			reason = reasonConnecting

@@ -238,7 +238,7 @@ func (r *GuardRailReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	// ─── Step 4: Connection-gating ─────────────────────────────────────────
 	snap := r.Cache.Snapshot()
-	if !snap.Ready {
+	if !snap.Usable() {
 		reason := snap.Reason
 		if reason == "" {
 			reason = reasonConnecting

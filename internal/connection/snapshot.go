@@ -74,8 +74,14 @@ type ConnectionSnapshot struct {
 
 	// Client is the *litellm.Client to use for mutations IFF Ready==true.
 	// On any not-ready snapshot Client is nil (and dependents MUST NOT
-	// dereference it). enforces this invariant in
-	// Cache.rebuild — every not-ready snapshot it stores has Client=nil.
+	// dereference it). The not-ready⇒Client==nil direction is a producer
+	// convention (the connection reconciler builds a fresh client only on
+	// a successful probe). The reverse direction — Ready==true⇒Client!=nil —
+	// is NOT enforced by Rebuild; dependents therefore gate every mutation
+	// on Usable(), not on Ready alone. A Ready snapshot carrying a nil
+	// Client (a contract violation; historically test code poisoning the
+	// manager-level singleton, issue #74) is treated as not-usable so the
+	// first snap.Client dereference can never panic.
 	//
 	// Shared pointer is intentional and safe: *litellm.Client is
 	// read-only after construction (D-03). Multiple Phase 3+ reconcilers
@@ -115,6 +121,20 @@ type ConnectionSnapshot struct {
 	// DefaultRequeueOnRejectedAfter via NormalizedRequeueOnRejectedAfter.
 	RequeueOnRejectedAfter time.Duration
 }
+
+// Usable reports whether this snapshot is safe to drive LiteLLM
+// mutations: the connection is Ready AND backed by a non-nil Client.
+//
+// Dependent reconcilers MUST gate every LiteLLM call on Usable() rather
+// than on Ready alone. Ready is the §6.0 status gate; Usable is the
+// dereference gate. They differ only when the Ready⇒Client!=nil invariant
+// is violated — which never happens in production (the connection
+// reconciler always pairs Ready with a fresh client) but did occur in
+// envtest when test cleanup rebuilt the shared singleton with a
+// Ready=true, Client=nil snapshot (issue #74). Gating on Usable() turns
+// that latent nil-dereference panic into the ordinary not-Ready path
+// (Ready=False, reason=LiteLLMUnavailable; no mutation).
+func (s ConnectionSnapshot) Usable() bool { return s.Ready && s.Client != nil }
 
 // DefaultRequeueOnRejectedAfter is the fallback retry cadence applied
 // when a snapshot's RequeueOnRejectedAfter is zero — i.e. the operator
