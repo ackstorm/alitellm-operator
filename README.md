@@ -109,7 +109,7 @@ validated as the PR head). Authoritative trigger reference:
 
 | Trigger | Workflow | Wall-clock budget |
 |---|---|---|
-| Push to feature branch (no PR) | none (local `make pre-commit` covers WIP) | n/a |
+| Push to feature branch (no PR) | none (local `make pre-push` hook gates the push) | n/a |
 | PR → main (non-draft) | `ci.yml` (lint + unit + envtest + security + e2e) | ≤ 12 min |
 | PR → main (draft) | `ci.yml` (lint + unit + envtest + security; e2e skipped) | ≤ 8 min |
 | PR → main (any) | `govulncheck.yml` (HIGH advisory gate vs ack-list) | ≤ 3 min |

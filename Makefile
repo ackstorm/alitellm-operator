@@ -284,10 +284,6 @@ _qa-security: qa-lint
 	bash scripts/govulncheck-gate.sh
 	$(MAKE) qa-fuzz-short
 
-.PHONY: pre-commit
-pre-commit: ## Host-only — fast local gate (qa-lint-changed + test-unit). Runs automatically on `git commit` once `make hooks` is installed.
-	./scripts/pre-commit-check.sh
-
 .PHONY: pre-push
 pre-push: ## Host-only — 17-gate pre-publication check (gitleaks + trufflehog + qa-lint + test-unit + SPDX + govulncheck + ...). Uses docker on host; do NOT call via ./scripts/dev.sh.
 	./scripts/pre-push-check.sh
@@ -300,7 +296,7 @@ verify: ## Host-only — full pre-publication gate bundle: qa-lint + test-unit +
 	$(MAKE) pre-push
 
 .PHONY: hooks
-hooks: ## Install git hooks (pre-commit + pre-push).
+hooks: ## Install git hooks (pre-push).
 	./scripts/install-hooks.sh
 
 ##@ Release

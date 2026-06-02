@@ -2,11 +2,6 @@
 # Install git hooks for alitellm-operator.
 #
 # Installs:
-#   pre-commit -> scripts/pre-commit-check.sh
-#     Runs `make qa-lint-changed` + `make test-unit` on every commit. Fast
-#     (~5-30s warm); fail blocks the commit. Bypass with --no-verify
-#     when you have a justified reason — pre-push still enforces the
-#     full lint sweep.
 #   pre-push   -> scripts/pre-push-check.sh
 #     Runs the full 17-gate pre-publication check before every `git push`.
 #     Includes gitleaks/trufflehog/SPDX/govulncheck plus the defensive
@@ -45,5 +40,11 @@ install_hook() {
   fi
 }
 
-install_hook pre-commit "../../scripts/pre-commit-check.sh"
+# Remove any stale pre-commit hook from a prior install (pre-commit gate retired).
+stale_pc="${HOOKS_DIR}/pre-commit"
+if [[ -L "$stale_pc" ]]; then
+  rm -f "$stale_pc"
+  echo "removed stale pre-commit hook: $stale_pc"
+fi
+
 install_hook pre-push   "../../scripts/pre-push-check.sh"

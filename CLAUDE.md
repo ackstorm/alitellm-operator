@@ -195,7 +195,7 @@ habit — the prefix is redundant.
 
 Only context-B/C targets run directly on the host: `docker-*` (host
 docker), `wait-*` / `logs-*` / `watch-crs` / `pf-*` / `mock-mode`, the gate
-orchestrators (`pre-commit`, `pre-push`, `verify`), `release-*`, and
+orchestrators (`pre-push`, `verify`), `release-*`, and
 `ensure-inotify`. `operator-redeploy` builds + `kind load`s on the host but
 runs its `kubectl rollout restart/status` THROUGH the devtools container
 (`./scripts/dev.sh kubectl`) — host kubectl has no context for the kind
@@ -209,23 +209,22 @@ mounted docker socket), so run them bare too (`make cluster-up`).
 |--------------------|----------------------------------------|---------------------------------------|
 | `make test-unit`        | pure-logic, ~5s warm                   | every iteration                       |
 | `make qa-lint-changed`| golangci-lint scoped to touched pkgs   | every iteration                       |
-| `make qa-lint`        | golangci-lint full sweep               | before commit (pre-commit hook)       |
+| `make qa-lint`        | golangci-lint full sweep               | before commit; re-run in pre-push gate |
 | `make test-envtest` | controller-runtime envtest (race), ~7m | before commit on controller changes   |
 | `make test-envtest-fast`| envtest without -race, ~3m            | dev inner loop                        |
 | `make e2e-full`    | kind + Helm + Ginkgo, ~6m             | final gate before commit              |
 | `make qa-security`    | gosec + govulncheck + fuzz-short, ≤6m | in-container; before push             |
-| `make pre-commit`  | lint-changed + unit                   | host-only; runs on every `git commit` once `make hooks` installed |
 | `make pre-push`    | full publication gate (secrets, filesystem, build hygiene, SPDX, lint + unit, ...) | host-only; runs on every `git push` once `make hooks` installed — manual invocation is a dry-run / verification only |
 
 Umbrella targets:
 - `make test-full` = `test-unit` + `test-envtest`
 - `make verify` = `make qa-lint` + `make test-unit` + `make qa-security` + `make pre-push` (each self-routes; the gates stay host-only)
-- `make hooks` installs `.git/hooks/pre-commit -> scripts/pre-commit-check.sh`
-  AND `.git/hooks/pre-push -> scripts/pre-push-check.sh`
+- `make hooks` installs `.git/hooks/pre-push -> scripts/pre-push-check.sh`
+  (and removes any stale pre-commit hook from a prior install)
 
 `make pre-push` is host-only — it spawns gitleaks/trufflehog containers
 on host docker. Do NOT call it via `./scripts/dev.sh` (would nest docker
-mounts that don't resolve). The same applies to `make pre-commit`.
+mounts that don't resolve).
 
 Inner-loop iteration helpers:
 - `make test-unit-pkg PKG=./internal/litellm/...`
@@ -334,17 +333,13 @@ pushed as `ghcr.io/ackstorm/alitellm-operator:main` +
 - `id-token: write` in the workflow (already set).
 - cosign on PATH (release.yml installs via `sigstore/cosign-installer`).
 
-## Publication — pre-commit and pre-push gates are non-negotiable
+## Publication — the pre-push gate is non-negotiable
 
-Public remote: `git@github.com:ackstorm/alitellm-operator.git`. The
-local gate strategy splits across two hook stages so the cost of
-"oops, CI failed lint" is paid locally before the commit even lands:
+Public remote: `git@github.com:ackstorm/alitellm-operator.git`. A single
+local hook stage pays the cost of "oops, CI failed lint" before the push
+leaves the host (the former fast `pre-commit` gate has been retired —
+lint + unit now run only in the pre-push gate and in CI):
 
-- `pre-commit` (`make pre-commit`) — fast: `make qa-lint-changed`
-  (golangci-lint scoped to touched packages) + `make test-unit`. Runs on
-  every `git commit` once `make hooks` is installed. Bypass with
-  `--no-verify` only for justified WIP commits; full lint + unit still
-  fire on push as defensive gates.
 - `pre-push` (`make pre-push`) — full publication check. Runs on
   every `git push` once `make hooks` is installed; do NOT invoke
   `make pre-push` manually before `git push` as a "belt and braces"
@@ -367,9 +362,8 @@ Gate categories — any failure blocks push:
   `references/security/govulncheck-acknowledged.md`).
 - **Code provenance**: per-file SPDX header
   (`// SPDX-License-Identifier: Apache-2.0`).
-- **Defense in depth**: full `make qa-lint` + `make test-unit` re-run inside
-  the devtools container, even when `pre-commit` already covered the
-  touched packages.
+- **Defense in depth**: full `make qa-lint` + `make test-unit` run inside
+  the devtools container on every push.
 - **Informational warns** (do not block): commit-author summary,
   urgent TODO / DO-NOT-COMMIT markers, working-tree status.
 
