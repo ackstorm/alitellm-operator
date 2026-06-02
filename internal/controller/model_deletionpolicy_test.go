@@ -92,6 +92,15 @@ FINALIZED:
 
 	// Phase 2: flip connection cache to NotReady so the deletion path
 	// hits the `!snap.Ready` ack-missing branch.
+	//
+	// First REMOVE the LiteLLMConnection. Under `-shuffle=on` a live
+	// connCR + happy mock lets the connection reconciler asynchronously
+	// re-probe and Rebuild the cache back to Ready during the 2s
+	// assertion window below — the model's direct-ID delete then succeeds
+	// and the CR vanishes, failing the "finalizer retained" assertion.
+	// With the connCR gone, nothing can flip the cache back to Ready, so
+	// the pinned NotReady snapshot sticks deterministically.
+	ensureNoConnectionDefault(t, ctx)
 	connCache.Rebuild(connection.ConnectionSnapshot{Ready: false, Reason: "Unreachable"})
 
 	// Phase 3: delete the CR.
