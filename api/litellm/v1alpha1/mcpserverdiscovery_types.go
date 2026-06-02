@@ -105,9 +105,9 @@ type MCPServerDiscoverySpec struct {
 	Secrets []SecretSubstitution `json:"secrets,omitempty"`
 
 	// Filters narrows the post-derivation candidate set via RE2
-	// include/exclude patterns matched against the POST-DERIVATION
-	// dotted three-part name (`<discovery-name>.<toolhive-namespace>.
-	// <toolhive-name>`) per spec §6.5. Empty (absent) Filters means
+	// include/exclude patterns matched against the generated child name
+	// `<spec.prefix>-<source-name>` (v0.3.0 breaking change; pre-v0.3.0
+	// used a dotted three-part name). Empty (absent) Filters means
 	// "no filtering" (every discovered ToolHive object becomes a
 	// candidate).
 	//
@@ -168,10 +168,10 @@ type MCPServerDiscoveryToolhive struct {
 }
 
 // MCPServerDiscoveryFilters carries the RE2 include/exclude pattern lists
-// applied to the POST-DERIVATION dotted three-part name (per spec §6.5).
-// The filter target is the DOTTED name, NOT the bare ToolHive object
-// name; this is the most common source of user confusion at runtime and
-// Will land a regression test exercising the dotted form.
+// applied to the generated child name `<spec.prefix>-<source-name>`
+// (v0.3.0 breaking change; pre-v0.3.0 used a dotted three-part name).
+// The filter target is the prefixed child name, NOT the bare ToolHive
+// object name — the most common source of user confusion at runtime.
 //
 // RE2 compile validity is a RUNTIME concern (CEL has no regex-compile
 // primitive). codes the compile + classification — invalid
@@ -351,9 +351,9 @@ type MCPServerDiscoveryStatus struct {
 // The MCPServer- prefix on the Go type avoids a name collision with the
 // Phase 4 ModelDiscovery `SkippedCandidate` type in the same package.
 type MCPServerSkippedCandidate struct {
-	// Name is the candidate dotted three-part name
-	// (`<discovery-name>.<toolhive-namespace>.<toolhive-name>`) that
-	// would have become the child MCPServer's metadata.name.
+	// Name is the candidate child name `<spec.prefix>-<source-name>`
+	// that would have become the child MCPServer's metadata.name
+	// (v0.3.0 breaking change; pre-v0.3.0 used a dotted three-part name).
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
