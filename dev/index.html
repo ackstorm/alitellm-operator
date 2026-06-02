@@ -1616,6 +1616,13 @@
 <p>A Kubernetes operator that reconciles
 <a href="https://github.com/BerriAI/litellm">LiteLLM</a> proxy resources declaratively.</p>
 <h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
+<p><strong>a</strong>(nother) <strong>litellm</strong>-operator — the leading <code>a</code> acknowledges the
+existing ecosystem of LiteLLM operators
+(<a href="https://github.com/bbdsoftware/litellm-operator">bbdsoftware/litellm-operator</a>,
+<a href="https://github.com/PalenaAI/litellm-operator">PalenaAI/litellm-operator</a>,
+and others). This one focuses on the GitOps-facing declarative surface and
+on coexistence with hand-managed LiteLLM entries and an external identity
+system.</p>
 <p><code>alitellm-operator</code> manages an existing LiteLLM proxy deployment from the
 Kubernetes side: connection metadata, teams, models, and discovery surfaces
 are expressed as Custom Resources and reconciled against the proxy's API.</p>
