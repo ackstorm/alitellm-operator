@@ -260,11 +260,36 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
-	// Snapshot is hoisted above the Connection gate so the conflict
-	// resolver below can run even when LiteLLM is unreachable — a loser
-	// must short-circuit unconditionally so it never issues an HTTP
-	// mutation, regardless of snap.Ready.
+	// Snapshot drives both the Connection-Ready gate below and the conflict
+	// resolver that now follows it (#61). The resolver MUST run AFTER the
+	// Ready gate: while the Connection cache is not Ready,
+	// snap.MCPToolPrefixSeparator is the zero value and the resolver would
+	// fall back to the default separator, which can mis-decide a sanitized
+	// server_name collision and flap a CR's condition between Conflict and
+	// LiteLLMUnavailable. Gating the resolver behind Ready means the
+	// winner/loser decision always uses the Connection-configured separator.
+	// The loser short-circuit invariant (a loser never issues a LiteLLM HTTP
+	// mutation) still holds: when not Ready the gate below returns before any
+	// reconciler — winner or loser — reaches a LiteLLM call.
 	snap := r.Cache.Snapshot()
+
+	// ─── Step 3: Connection-gating (Phase 3 D-08) ──────────────────────────
+	if !snap.Ready {
+		reason := snap.Reason
+		if reason == "" {
+			reason = reasonConnecting
+		}
+		msg := fmt.Sprintf("LiteLLMConnection/default not Ready (reason: %s)", reason)
+		if err := r.writeStatus(ctx, &mcp, metav1.ConditionFalse, reasonLiteLLMUnavailable, msg); err != nil {
+			logStatusUpdateErr(logger, err, "reason", reasonLiteLLMUnavailable)
+		}
+		metrics.ReconcileTotal.WithLabelValues(mcpServerKind, "success").Inc()
+		// Periodic safety relist on soft-fail path: connectionReadyTransition
+		// re-enqueues on Connection recovery, but the safety-relist cadence
+		// is the floor so a missed transition still recovers (review #1
+		// "Issue 2" + review #2 §3).
+		return ctrl.Result{RequeueAfter: withJitter(mcpSafetyRelistInterval)}, nil
+	}
 
 	// ─── Conflict resolution (alpha-last-wins, sanitization-aware) ───────
 	// Two LiteLLMMCPServer CRs in the same namespace can have distinct
@@ -273,6 +298,12 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// is "."). The CR whose <namespace>/<name> sorts LAST wins; every
 	// other candidate short-circuits with Ready=False/Reason=Conflict
 	// BEFORE any LiteLLM HTTP mutation. See docs/concepts/conflict-resolution.md.
+	//
+	// Runs only once the Connection cache is Ready (#61), so
+	// snap.MCPToolPrefixSeparator carries the Connection-configured value;
+	// the default-separator fallback below now applies only when the
+	// Connection genuinely configures no separator, never as an
+	// unknown-state placeholder.
 	//
 	// Because the operator caches ONE LiteLLMConnection at a time, every
 	// MCPServer in the namespace shares the same separator at this point
@@ -315,9 +346,16 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			metrics.ConflictsTotal.WithLabelValues("MCPServer", "loser").Inc()
 		}
 		mcp.Status.ObservedGeneration = mcp.Generation
+		// #62: this loser write deliberately bypasses r.writeStatus because
+		// writeStatus builds a Ready condition, whereas the loser needs the
+		// Conflict condition set by ApplyLoserCondition above. But it must
+		// still mirror writeStatus's per-reconcile metric increment, and it
+		// must requeue on conflict so the loser's condition converges rather
+		// than depending solely on a future sibling-watch re-enqueue.
+		recordReconcileMetric(mcpServerKind, mcp.Namespace, conflict.ConditionReasonConflict)
 		if err := r.Status().Update(ctx, &mcp); err != nil {
 			if apierrors.IsConflict(err) {
-				return ctrl.Result{}, nil
+				return ctrl.Result{Requeue: true}, nil
 			}
 			return ctrl.Result{}, fmt.Errorf("set Conflict condition: %w", err)
 		}
@@ -330,24 +368,6 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				"promoted to winner for sanitized server_name %q", sanitizedName)
 		}
 		metrics.ConflictsTotal.WithLabelValues("MCPServer", "winner").Inc()
-	}
-
-	// ─── Step 3: Connection-gating (Phase 3 D-08) ──────────────────────────
-	if !snap.Ready {
-		reason := snap.Reason
-		if reason == "" {
-			reason = reasonConnecting
-		}
-		msg := fmt.Sprintf("LiteLLMConnection/default not Ready (reason: %s)", reason)
-		if err := r.writeStatus(ctx, &mcp, metav1.ConditionFalse, reasonLiteLLMUnavailable, msg); err != nil {
-			logStatusUpdateErr(logger, err, "reason", reasonLiteLLMUnavailable)
-		}
-		metrics.ReconcileTotal.WithLabelValues(mcpServerKind, "success").Inc()
-		// Periodic safety relist on soft-fail path: connectionReadyTransition
-		// re-enqueues on Connection recovery, but the safety-relist cadence
-		// is the floor so a missed transition still recovers (review #1
-		// "Issue 2" + review #2 §3).
-		return ctrl.Result{RequeueAfter: withJitter(mcpSafetyRelistInterval)}, nil
 	}
 
 	// ─── Step 3.5: SEC-03 uniqueness of spec.secrets[].as values ──────────
