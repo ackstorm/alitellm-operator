@@ -5,6 +5,14 @@ A Kubernetes operator that reconciles
 
 ## Overview
 
+**a**(nother) **litellm**-operator — the leading `a` acknowledges the
+existing ecosystem of LiteLLM operators
+([bbdsoftware/litellm-operator](https://github.com/bbdsoftware/litellm-operator),
+[PalenaAI/litellm-operator](https://github.com/PalenaAI/litellm-operator),
+and others). This one focuses on the GitOps-facing declarative surface and
+on coexistence with hand-managed LiteLLM entries and an external identity
+system.
+
 `alitellm-operator` manages an existing LiteLLM proxy deployment from the
 Kubernetes side: connection metadata, teams, models, and discovery surfaces
 are expressed as Custom Resources and reconciled against the proxy's API.
