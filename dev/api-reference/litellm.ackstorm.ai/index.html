@@ -4703,10 +4703,10 @@ carve-out short-circuits the LiteLLM call.</p>
 </table>
 <h4 id="mcpserverdiscoveryfilters">MCPServerDiscoveryFilters<a class="headerlink" href="#mcpserverdiscoveryfilters" title="Permanent link">&para;</a></h4>
 <p>MCPServerDiscoveryFilters carries the RE2 include/exclude pattern lists
-applied to the POST-DERIVATION dotted three-part name (per spec §6.5).
-The filter target is the DOTTED name, NOT the bare ToolHive object
-name; this is the most common source of user confusion at runtime and
-Will land a regression test exercising the dotted form.</p>
+applied to the generated child name <code>&lt;spec.prefix&gt;-&lt;source-name&gt;</code>
+(v0.3.0 breaking change; pre-v0.3.0 used a dotted three-part name).
+The filter target is the prefixed child name, NOT the bare ToolHive
+object name — the most common source of user confusion at runtime.</p>
 <p>RE2 compile validity is a RUNTIME concern (CEL has no regex-compile
 primitive). codes the compile + classification — invalid
 patterns surface as Ready=False, reason=InvalidConfig with a message
@@ -4725,7 +4725,7 @@ naming the offending pattern.</p>
 <tbody>
 <tr>
 <td><code>include</code> <em>string array</em></td>
-<td>Include narrows the candidate set: a candidate dotted name is<br />admitted only if it matches at least one pattern in Include. Empty<br />(or absent) Include means "admit all". If Include is non-empty<br />and matches ZERO candidates, the reconcile surfaces Ready=False,<br />reason=UpstreamInvalid (operator-intent vs upstream-reality drift).</td>
+<td>Include narrows the candidate set: a candidate <code>&lt;spec.prefix&gt;-&lt;source-name&gt;</code><br />is admitted only if it matches at least one pattern in Include. Empty<br />(or absent) Include means "admit all". If Include is non-empty<br />and matches ZERO candidates, the reconcile surfaces Ready=False,<br />reason=UpstreamInvalid (operator-intent vs upstream-reality drift).</td>
 <td></td>
 <td></td>
 </tr>
@@ -4822,7 +4822,7 @@ namespaces) is enforced at the schema level.</p>
 </tr>
 <tr>
 <td><code>filters</code> <em><a href="#mcpserverdiscoveryfilters">MCPServerDiscoveryFilters</a></em></td>
-<td>Filters narrows the post-derivation candidate set via RE2<br />include/exclude patterns matched against the POST-DERIVATION<br />dotted three-part name (<code>&lt;discovery-name&gt;.&lt;toolhive-namespace&gt;.&lt;br /&gt;&lt;toolhive-name&gt;</code>) per spec §6.5. Empty (absent) Filters means<br />"no filtering" (every discovered ToolHive object becomes a<br />candidate).<br />Per spec §6.5: include FIRST (strict — empty match-set surfaces<br />as Ready=False, reason=UpstreamInvalid), then exclude (lenient —<br />empty match-set is fine). The reconciler in enforces<br />the order; this CRD type only carries the patterns.</td>
+<td>Filters narrows the post-derivation candidate set via RE2<br />include/exclude patterns matched against the generated child name<br /><code>&lt;spec.prefix&gt;-&lt;source-name&gt;</code> (v0.3.0 breaking change; pre-v0.3.0<br />used a dotted three-part name). Empty (absent) Filters means<br />"no filtering" (every discovered ToolHive object becomes a<br />candidate).<br />Per spec §6.5: include FIRST (strict — empty match-set surfaces<br />as Ready=False, reason=UpstreamInvalid), then exclude (lenient —<br />empty match-set is fine). The reconciler in enforces<br />the order; this CRD type only carries the patterns.</td>
 <td></td>
 <td></td>
 </tr>
@@ -4886,13 +4886,13 @@ SourceReachable — ToolHive-list reachability with reasons:
 </tr>
 <tr>
 <td><code>discoveredCount</code> <em>integer</em></td>
-<td>DiscoveredCount is the size of the post-filter candidate set on<br />the most recent successful refresh (filtered-out IDs are NOT<br />counted). Maintains the invariant noted on<br />MCPServerDiscoveryStatus's godoc above.</td>
+<td>DiscoveredCount is the size of the post-filter candidate set on<br />the most recent successful refresh (filtered-out IDs are NOT<br />counted). Maintains the invariant noted on<br />MCPServerDiscoveryStatus's godoc above.<br />Always serialized (value type, defaults to 0). The +optional marker<br />only relaxes CRD required-field validation; it is never absent.</td>
 <td>0</td>
 <td></td>
 </tr>
 <tr>
 <td><code>generatedCount</code> <em>integer</em></td>
-<td>GeneratedCount is len(GeneratedChildren) — the number of child<br />MCPServer CRs the Discovery currently owns (SSA-applied with<br />ownerReferences[controller=true, blockOwnerDeletion=true] +<br />labels[litellm.ackstorm.ai/generated-by=<this>]).</td>
+<td>GeneratedCount is len(GeneratedChildren) — the number of child<br />MCPServer CRs the Discovery currently owns (SSA-applied with<br />ownerReferences[controller=true, blockOwnerDeletion=true] +<br />labels[litellm.ackstorm.ai/generated-by=<this>]).<br />Always serialized (value type, defaults to 0). The +optional marker<br />only relaxes CRD required-field validation; it is never absent.</td>
 <td>0</td>
 <td></td>
 </tr>
@@ -4976,7 +4976,7 @@ Phase 4 ModelDiscovery <code>FailedCandidate</code> type in the same package.</p
 <tbody>
 <tr>
 <td><code>name</code> <em>string</em></td>
-<td>Name is the candidate dotted three-part name<br />(<code>&lt;discovery-name&gt;.&lt;toolhive-namespace&gt;.&lt;toolhive-name&gt;</code>).</td>
+<td>Name is the candidate child name <code>&lt;spec.prefix&gt;-&lt;source-name&gt;</code><br />that would have become the child MCPServer's metadata.name<br />(v0.3.0 breaking change; pre-v0.3.0 used a dotted three-part name).</td>
 <td></td>
 <td>MinLength: 1 <br />Required: {} <br /></td>
 </tr>
@@ -5067,7 +5067,7 @@ Phase 4 ModelDiscovery <code>SkippedCandidate</code> type in the same package.</
 <tbody>
 <tr>
 <td><code>name</code> <em>string</em></td>
-<td>Name is the candidate dotted three-part name<br />(<code>&lt;discovery-name&gt;.&lt;toolhive-namespace&gt;.&lt;toolhive-name&gt;</code>) that<br />would have become the child MCPServer's metadata.name.</td>
+<td>Name is the candidate child name <code>&lt;spec.prefix&gt;-&lt;source-name&gt;</code><br />that would have become the child MCPServer's metadata.name<br />(v0.3.0 breaking change; pre-v0.3.0 used a dotted three-part name).</td>
 <td></td>
 <td>MinLength: 1 <br />Required: {} <br /></td>
 </tr>
@@ -5122,8 +5122,8 @@ LiteLLM-side <code>server_name</code> and <code>alias</code> per the parent
 LiteLLMConnection's <code>spec.mcpToolPrefixSeparator</code> (default <code>-</code>), swapping
 the configured separator for the opposite valid character (<code>-</code> ↔ <code>.</code>)
 via <code>litellm.SanitizeMCPServerName</code>. The K8s-side <code>metadata.name</code> is
-left untouched — the dotted MCPServerDiscovery child template
-(<code>&lt;discovery&gt;.&lt;source-ns&gt;.&lt;source-name&gt;</code>) survives unchanged, and the
+left untouched — the MCPServerDiscovery child name
+(<code>&lt;spec.prefix&gt;-&lt;source-name&gt;</code>, post-v0.3.0) survives unchanged, and the
 divergence between K8s identity and LiteLLM identity is confined to
 the wire boundary (FIX.txt HIGH-1, 2026-05-22). The canonical hash
 input and the finalizer name-resolve fallback both use the sanitized
@@ -5449,13 +5449,13 @@ SourceReachable — provider-list reachability with reasons:
 </tr>
 <tr>
 <td><code>discoveredCount</code> <em>integer</em></td>
-<td>DiscoveredCount is the size of the post-filter candidate set on<br />the most recent successful refresh (filtered-out IDs are NOT<br />counted). Maintains the invariant noted on ModelDiscoveryStatus's<br />godoc above.</td>
+<td>DiscoveredCount is the size of the post-filter candidate set on<br />the most recent successful refresh (filtered-out IDs are NOT<br />counted). Maintains the invariant noted on ModelDiscoveryStatus's<br />godoc above.<br />Always serialized (value type, defaults to 0). The +optional marker<br />only relaxes CRD required-field validation; it is never absent.</td>
 <td>0</td>
 <td></td>
 </tr>
 <tr>
 <td><code>generatedCount</code> <em>integer</em></td>
-<td>GeneratedCount is len(GeneratedChildren) — the number of child<br />Model CRs the Discovery currently owns (SSA-applied with<br />ownerReferences[controller=true, blockOwnerDeletion=true] +<br />labels[litellm.ackstorm.ai/generated-by=<this>]).</td>
+<td>GeneratedCount is len(GeneratedChildren) — the number of child<br />Model CRs the Discovery currently owns (SSA-applied with<br />ownerReferences[controller=true, blockOwnerDeletion=true] +<br />labels[litellm.ackstorm.ai/generated-by=<this>]).<br />Always serialized (value type, defaults to 0). The +optional marker<br />only relaxes CRD required-field validation; it is never absent.</td>
 <td>0</td>
 <td></td>
 </tr>

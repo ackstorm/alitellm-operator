@@ -1777,7 +1777,7 @@ via the <code>LiteLLMMCPServer</code> controller (Pipeline A).</p>
 <tr>
 <td><code>spec.filters.include</code></td>
 <td>no</td>
-<td>RE2 patterns — anchored, include-FIRST, against the dotted post-derivation name.</td>
+<td>RE2 patterns — anchored, include-FIRST, against the generated child name <code>&lt;spec.prefix&gt;-&lt;source-name&gt;</code>.</td>
 </tr>
 <tr>
 <td><code>spec.filters.exclude</code></td>
@@ -1876,15 +1876,16 @@ producing the same <code>&lt;prefix&gt;-&lt;name&gt;</code> → first wins, seco
 <code>status.skippedCandidates[reason=NameCollision]</code>. Fix: split into
 prefix-distinct Discoveries.</p>
 <h2 id="filter-target">Filter target<a class="headerlink" href="#filter-target" title="Permanent link">&para;</a></h2>
-<p><code>spec.filters.{include,exclude}</code> patterns match the POST-DERIVATION
-dotted name <code>&lt;discovery-name&gt;.&lt;toolhive-namespace&gt;.&lt;toolhive-name&gt;</code>,
+<p><code>spec.filters.{include,exclude}</code> patterns match the generated child name
+<code>&lt;spec.prefix&gt;-&lt;source-name&gt;</code> (v0.3.0 breaking change; pre-v0.3.0 used the
+dotted three-part name <code>&lt;discovery-name&gt;.&lt;toolhive-namespace&gt;.&lt;toolhive-name&gt;</code>),
 NOT the bare ToolHive object name. Anchored RE2 syntax. Include-first
 (strict), exclude-second (lenient) — identical semantics to
 <code>LiteLLMModelDiscovery</code>.</p>
 <h2 id="status-what-to-read">Status — what to read<a class="headerlink" href="#status-what-to-read" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>msdisc<span class="w"> </span>toolhive<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.status}{&quot;\n&quot;}&#39;</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="c1"># {&quot;discoveredCount&quot;:3,&quot;generatedCount&quot;:2,&quot;generatedChildren&quot;:[&quot;th-ctx7&quot;,&quot;th-fetch&quot;],</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="c1">#  &quot;skippedCandidates&quot;:[{&quot;name&quot;:&quot;toolhive.default.local-stdio&quot;,&quot;reason&quot;:&quot;InvalidTransport&quot;}],</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="c1">#  &quot;skippedCandidates&quot;:[{&quot;name&quot;:&quot;th-local-stdio&quot;,&quot;reason&quot;:&quot;InvalidTransport&quot;}],</span>
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1">#  &quot;lastRefreshAt&quot;:&quot;...&quot;,&quot;conditions&quot;:[...]}</span>
 <a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>
 <a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>kubectl<span class="w"> </span>get<span class="w"> </span>msdisc<span class="w">                  </span><span class="c1"># printer cols: Type Ready Reason Discovered Generated Age</span>

@@ -1,0 +1,2418 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Kubernetes operator that reconciles LiteLLM proxy resources declaratively">
+      
+      
+      
+        <link rel="canonical" href="https://ackstorm.github.io/alitellm-operator/dev/superpowers/plans/2026-06-02-review-remediation/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Code-Review Remediation Implementation Plan - alitellm-operator</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#code-review-remediation-implementation-plan" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="alitellm-operator" class="md-header__button md-logo" aria-label="alitellm-operator" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            alitellm-operator
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Code-Review Remediation Implementation Plan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="Share" aria-label="Share" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/ackstorm/alitellm-operator" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    ackstorm/alitellm-operator
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../getting-started/installation/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../user-guide/" class="md-tabs__link">
+          
+  
+  
+  User Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../concepts/conflict-resolution/" class="md-tabs__link">
+          
+  
+  
+  Concepts
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../developer-guide/architecture/" class="md-tabs__link">
+          
+  
+  
+  Developer Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../api-reference/litellm.ackstorm.ai/" class="md-tabs__link">
+          
+  
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../metrics/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Metrics
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../community/code-of-conduct/" class="md-tabs__link">
+          
+  
+  
+  Community
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="alitellm-operator" class="md-nav__button md-logo" aria-label="alitellm-operator" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    alitellm-operator
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/ackstorm/alitellm-operator" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    ackstorm/alitellm-operator
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/connection/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMConnection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/team/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMTeam
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMModel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/a2a-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMA2AAgent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/mcp-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMMCPServer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/mcp-server-discovery/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMMCPServerDiscovery
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/model-discovery/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMModelDiscovery
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/guardrail/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMGuardRail
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../concepts/conflict-resolution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Conflict Resolution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../concepts/deletion-semantics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deletion Semantics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Developer Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../developer-guide/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../developer-guide/development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../developer-guide/release-process/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release Process
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../developer-guide/contributions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api-reference/litellm.ackstorm.ai/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Community
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Community
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../community/code-of-conduct/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code of Conduct
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../community/security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security Policy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#file-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File Structure
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#group-a-genuine-bug-fixes-tdd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Group A — Genuine bug fixes (TDD)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Group A — Genuine bug fixes (TDD)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#task-1-forward-oauth2flow-on-mcpserver-update-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 1: Forward OAuth2Flow on MCPServer UPDATE (#2)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-2-correct-the-transient-error-reason-label-on-modelalias-4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 2: Correct the transient-error reason label on ModelAlias (#4)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-3-log-dropped-errors-in-the-connection-fan-in-mapper-6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 3: Log dropped errors in the Connection fan-in mapper (#6)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-4-dry-replace-model_controllers-inline-4xx-loops-with-the-shared-helper-5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 4: DRY — replace model_controller's inline 4xx loops with the shared helper (#5)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#group-b-documentation-nit-fixes-no-behaviour-change" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Group B — Documentation / nit fixes (no behaviour change)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Group B — Documentation / nit fixes (no behaviour change)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#task-5-fix-mcpserverdiscovery-filter-target-godoc-drift-rename-stale-dotted-local-10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 5: Fix MCPServerDiscovery filter-target godoc drift + rename stale dotted local (#10)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-6-clarify-optional-on-the-discovery-int32-count-fields-13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 6: Clarify +optional on the discovery int32 count fields (#13)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-7-note-guardrails-intentional-safety-relist-exclusion-11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 7: Note GuardRail's intentional safety-relist exclusion (#11)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#task-8-note-the-claude-redaction-false-positive-trade-off-12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 8: Note the claude- redaction false-positive trade-off (#12)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#group-c-decision-tasks-record-a-decision-before-any-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Group C — Decision tasks (record a decision BEFORE any code)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Group C — Decision tasks (record a decision BEFORE any code)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#decision-d1-litellmoperatorreconciletotal-namespace-label-cardinality-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision D1: LitellmOperatorReconcileTotal namespace-label cardinality (#1)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#decision-d2-filters-exclude-compile-ordering-3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision D2: filters exclude-compile ordering (#3)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#decision-d3-isclusterlocalhost-two-label-form-7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision D3: isClusterLocalHost two-label form (#7)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#decision-d4-cachedlistmcpservers-single-flight-herd-8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision D4: CachedListMCPServers single-flight herd (#8)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#decision-d5-modeldiscovery-generatedchildren-excludes-skip-classified-names-9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision D5: ModelDiscovery GeneratedChildren excludes skip-classified names (#9)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#final-integration-step-after-all-chosen-tasks-land" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Final integration step (after all chosen tasks land)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#self-review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Self-Review
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="code-review-remediation-implementation-plan">Code-Review Remediation Implementation Plan<a class="headerlink" href="#code-review-remediation-implementation-plan" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p><strong>For agentic workers:</strong> REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</p>
+</blockquote>
+<p><strong>Goal:</strong> Resolve the remaining 🟡/🔵 findings from <code>references/reviews/2026-06-02-full-code-review.md</code> (the 6 🔴 already landed in PR #77), fixing genuine bugs with TDD and explicitly deciding the contestable ones instead of blind-patching.</p>
+<p><strong>Architecture:</strong> The alitellm-operator is a controller-runtime v0.19.4 Kubernetes operator that reconciles LiteLLM state from CRDs (<code>litellm.ackstorm.ai/v1alpha1</code>) via HTTP. Toolchain runs in the <code>litellm-devtools</code> container — every <code>make</code> target self-routes; run targets bare. No <code>go</code> on host PATH; use <code>./scripts/dev.sh go ...</code> only when no make target fits.</p>
+<p><strong>Tech Stack:</strong> Go 1.26, controller-runtime v0.19.4, k8s.io/* v0.31.0, Ginkgo/Gomega (e2e) + stdlib <code>testing</code> (unit/envtest), Prometheus client_golang, golangci-lint.</p>
+<p><strong>Honest scope note (read before starting):</strong> Of the 9 🟡 findings, only <strong>#2 (OAuth2Flow), #4 (reason mislabel), #6 (silent fan-in log)</strong> are genuine bugs. <strong>#5</strong> is code duplication (the codebase deliberately classifies 4xx by the frozen <code>RejectedError.Error()</code> string shape — <code>errors.As</code> would be a codebase-wide refactor against a documented contract, so the real fix is DRY). <strong>#1, #3, #7, #8, #9</strong> are contestable — each is documented in-code as intentional, and at least two of the reviewer's proposed "fixes" would <em>introduce</em> regressions (loosen M-SEC2 / break the discovery disjoint-partition invariant). Those are <strong>decision tasks (Group C)</strong>, not code changes — do not implement them without an explicit decision recorded in the task.</p>
+<hr />
+<h2 id="file-structure">File Structure<a class="headerlink" href="#file-structure" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Responsibility</th>
+<th>Tasks</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>internal/litellm/types.go</code></td>
+<td>LiteLLM HTTP request/response structs</td>
+<td>T1</td>
+</tr>
+<tr>
+<td><code>internal/litellm/types_test.go</code> (create)</td>
+<td>JSON round-trip tests for request structs</td>
+<td>T1</td>
+</tr>
+<tr>
+<td><code>internal/controller/mcpserver_controller.go</code></td>
+<td>MCPServer reconciler; UPDATE arm</td>
+<td>T1</td>
+</tr>
+<tr>
+<td><code>internal/controller/modelalias_controller.go</code></td>
+<td>ModelAlias reconciler; router-settings sync</td>
+<td>T2</td>
+</tr>
+<tr>
+<td><code>internal/controller/modelalias_error_test.go</code> (create)</td>
+<td>unit test for error→reason classifier</td>
+<td>T2</td>
+</tr>
+<tr>
+<td><code>internal/controller/connection_fanin.go</code></td>
+<td>shared Connection→dependent fan-in mapper</td>
+<td>T3</td>
+</tr>
+<tr>
+<td><code>internal/controller/model_controller.go</code></td>
+<td>Model reconciler; <code>classifyMutationError</code></td>
+<td>T4</td>
+</tr>
+<tr>
+<td><code>internal/controller/litellmguardrail_controller.go</code></td>
+<td>owns shared <code>is4xxError</code> helper (reused by T4)</td>
+<td>T4</td>
+</tr>
+<tr>
+<td><code>api/litellm/v1alpha1/mcpserverdiscovery_types.go</code></td>
+<td>MCPServerDiscovery CRD godoc</td>
+<td>T5, T6</td>
+</tr>
+<tr>
+<td><code>internal/controller/mcpserverdiscovery_controller.go</code></td>
+<td>rename stale <code>dotted</code> local</td>
+<td>T5</td>
+</tr>
+<tr>
+<td><code>api/litellm/v1alpha1/modeldiscovery_types.go</code></td>
+<td>ModelDiscovery CRD godoc</td>
+<td>T6</td>
+</tr>
+<tr>
+<td><code>internal/controller/safety_relist.go</code></td>
+<td>safety-relist interval setter godoc</td>
+<td>T7</td>
+</tr>
+<tr>
+<td><code>internal/controller/rejected_message.go</code></td>
+<td>redaction regex godoc</td>
+<td>T8</td>
+</tr>
+</tbody>
+</table>
+<p>Decision tasks (Group C) touch <code>internal/metrics/metrics.go</code>, <code>internal/filters/filters.go</code>, <code>internal/litellm/endpoint.go</code>, <code>internal/litellm/list_cache.go</code>, <code>internal/controller/modeldiscovery_controller.go</code> <strong>only if</strong> the recorded decision is to change code.</p>
+<hr />
+<h2 id="group-a-genuine-bug-fixes-tdd">Group A — Genuine bug fixes (TDD)<a class="headerlink" href="#group-a-genuine-bug-fixes-tdd" title="Permanent link">&para;</a></h2>
+<h3 id="task-1-forward-oauth2flow-on-mcpserver-update-2">Task 1: Forward <code>OAuth2Flow</code> on MCPServer UPDATE (#2)<a class="headerlink" href="#task-1-forward-oauth2flow-on-mcpserver-update-2" title="Permanent link">&para;</a></h3>
+<p><code>extractMCPParams</code> reads <code>oauth2_flow</code> (<code>params_mcp.go:104</code>) into <code>extractedMCPParams.OAuth2Flow</code>, and the CREATE arm forwards it (<code>mcpserver_controller.go:639</code>). But <code>MCPServerUpdateRequest</code> has no <code>OAuth2Flow</code> field and the UPDATE arm (<code>mcpserver_controller.go:663-686</code>) never sets it — so any server created with <code>oauth2_flow</code> silently loses it on the first spec-change UPDATE.</p>
+<p><strong>Files:</strong>
+- Modify: <code>internal/litellm/types.go:204-231</code> (add field to <code>MCPServerUpdateRequest</code>)
+- Modify: <code>internal/controller/mcpserver_controller.go:663-686</code> (wire <code>OAuth2Flow</code> into the update request)
+- Test: <code>internal/litellm/types_test.go</code> (create)</p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing test</strong></li>
+</ul>
+<p>Create <code>internal/litellm/types_test.go</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1">// SPDX-License-Identifier: Apache-2.0</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="kn">package</span><span class="w"> </span><span class="nx">litellm</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="kn">import</span><span class="w"> </span><span class="p">(</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="s">&quot;encoding/json&quot;</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="s">&quot;strings&quot;</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="s">&quot;testing&quot;</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="p">)</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="c1">// TestMCPServerUpdateRequest_ForwardsOAuth2Flow guards against the</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="c1">// review finding #2: oauth2_flow must survive a PUT /v1/mcp/server,</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="c1">// matching the CREATE request which already carries the field.</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="kd">func</span><span class="w"> </span><span class="nx">TestMCPServerUpdateRequest_ForwardsOAuth2Flow</span><span class="p">(</span><span class="nx">t</span><span class="w"> </span><span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">    </span><span class="nx">req</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">MCPServerUpdateRequest</span><span class="p">{</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">        </span><span class="nx">ServerID</span><span class="p">:</span><span class="w">   </span><span class="s">&quot;srv-123&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="w">        </span><span class="nx">OAuth2Flow</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;authorization_code&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="w">    </span><span class="nx">b</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">json</span><span class="p">.</span><span class="nx">Marshal</span><span class="p">(</span><span class="nx">req</span><span class="p">)</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Fatalf</span><span class="p">(</span><span class="s">&quot;marshal: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="p">)</span>
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">!</span><span class="nx">strings</span><span class="p">.</span><span class="nx">Contains</span><span class="p">(</span><span class="nb">string</span><span class="p">(</span><span class="nx">b</span><span class="p">),</span><span class="w"> </span><span class="s">`&quot;oauth2_flow&quot;:&quot;authorization_code&quot;`</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Errorf</span><span class="p">(</span><span class="s">&quot;oauth2_flow not serialized on update request: %s&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">b</span><span class="p">)</span>
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a><span class="p">}</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Run test to verify it fails</strong></li>
+</ul>
+<p>Run: <code>make test-unit-pkg PKG=./internal/litellm/...</code>
+Expected: FAIL — <code>req.OAuth2Flow</code> is an unknown field → compile error (<code>unknown field OAuth2Flow in struct literal</code>).</p>
+<ul>
+<li>[ ] <strong>Step 3: Add the field to the struct</strong></li>
+</ul>
+<p>In <code>internal/litellm/types.go</code>, inside <code>MCPServerUpdateRequest</code> (after the <code>RegistrationURL</code> line, mirroring the create struct's placement):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="w">    </span><span class="nx">RegistrationURL</span><span class="w">           </span><span class="kt">string</span><span class="w">         </span><span class="s">`json:&quot;registration_url,omitempty&quot;`</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span><span class="nx">OAuth2Flow</span><span class="w">                </span><span class="kt">string</span><span class="w">         </span><span class="s">`json:&quot;oauth2_flow,omitempty&quot;`</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="nx">AllowAllKeys</span><span class="w">              </span><span class="o">*</span><span class="kt">bool</span><span class="w">          </span><span class="s">`json:&quot;allow_all_keys,omitempty&quot;`</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 4: Run test to verify it passes</strong></li>
+</ul>
+<p>Run: <code>make test-unit-pkg PKG=./internal/litellm/...</code>
+Expected: PASS.</p>
+<ul>
+<li>[ ] <strong>Step 5: Wire the field in the UPDATE arm</strong></li>
+</ul>
+<p>In <code>internal/controller/mcpserver_controller.go</code>, the <code>updateReq := &amp;litellm.MCPServerUpdateRequest{...}</code> literal (around L663). Add <code>OAuth2Flow</code> immediately after <code>RegistrationURL</code> so the update mirrors the create arm:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="w">            </span><span class="nx">RegistrationURL</span><span class="p">:</span><span class="w">           </span><span class="nx">ext</span><span class="p">.</span><span class="nx">RegistrationURL</span><span class="p">,</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">            </span><span class="nx">OAuth2Flow</span><span class="p">:</span><span class="w">                </span><span class="nx">ext</span><span class="p">.</span><span class="nx">OAuth2Flow</span><span class="p">,</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">            </span><span class="nx">AllowAllKeys</span><span class="p">:</span><span class="w">              </span><span class="nx">ext</span><span class="p">.</span><span class="nx">AllowAllKeys</span><span class="p">,</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 6: Verify build + envtest for the mcpserver controller</strong></li>
+</ul>
+<p>Run: <code>make build-operator</code>
+Expected: clean build.
+Run: <code>make test-envtest-pkg PKG=./internal/controller/... FOCUS=TestMCPServer</code>
+Expected: PASS (no regression; existing MCPServer specs still green).</p>
+<ul>
+<li>[ ] <strong>Step 7: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>git<span class="w"> </span>add<span class="w"> </span>internal/litellm/types.go<span class="w"> </span>internal/litellm/types_test.go<span class="w"> </span>internal/controller/mcpserver_controller.go
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;fix(mcpserver): forward oauth2_flow on UPDATE (review #2)</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="s2">MCPServerUpdateRequest had no oauth2_flow field; the UPDATE arm dropped</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="s2">the extracted value, so a server created with oauth2_flow lost it on the</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="s2">first spec-change PUT. Adds the field + wires it to mirror the CREATE arm.</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="s2">Co-Authored-By: Claude Opus 4.8 (1M context) &lt;noreply@anthropic.com&gt;&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-2-correct-the-transient-error-reason-label-on-modelalias-4">Task 2: Correct the transient-error reason label on ModelAlias (#4)<a class="headerlink" href="#task-2-correct-the-transient-error-reason-label-on-modelalias-4" title="Permanent link">&para;</a></h3>
+<p><code>modelalias_controller.go:128-136</code> routes BOTH <code>GetRouterSettings</code> and <code>UpdateRouterSettings</code> errors to <code>broadcastNotReady(..., reasonModelAliasRejected, ...)</code> regardless of error class. The <code>RequeueAfter</code> (not <code>return err</code>) behaviour is <strong>intentional per the M-B2 comment</strong> (avoids stalling until the 15m resync) — do NOT change that. The real bug is the <strong>reason label</strong>: a transient 5xx / network / 401 error is mislabelled <code>LiteLLMRejected</code>, which (a) misleads <code>kubectl describe</code> and (b) poisons the <code>LitellmOperatorReconcileTotal</code> metric — <code>metrics.ReasonToReconcileResult</code> maps <code>LiteLLMRejected → "rejected"</code>, but a 5xx belongs in <code>"transient_error"</code>.</p>
+<p><strong>Files:</strong>
+- Modify: <code>internal/controller/modelalias_controller.go:128-136</code> (classify before choosing reason)
+- Test: <code>internal/controller/modelalias_error_test.go</code> (create)</p>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing test</strong></li>
+</ul>
+<p>Create <code>internal/controller/modelalias_error_test.go</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1">// SPDX-License-Identifier: Apache-2.0</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="kn">package</span><span class="w"> </span><span class="nx">controller</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="kn">import</span><span class="w"> </span><span class="p">(</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">    </span><span class="s">&quot;errors&quot;</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">    </span><span class="s">&quot;testing&quot;</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">    </span><span class="s">&quot;github.com/ackstorm/alitellm-operator/internal/litellm&quot;</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="p">)</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="c1">// TestModelAliasErrorReason verifies the error→reason classifier picks</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="c1">// reasonModelAliasRejected only for deterministic 4xx (non-401), and</span>
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="c1">// reasonLiteLLMUnavailable for transient (5xx / network / 401) errors —</span>
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="c1">// so the condition reason and the reconcile_total metric bucket agree</span>
+<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="c1">// with the actual failure class (review #4).</span>
+<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a><span class="kd">func</span><span class="w"> </span><span class="nx">TestModelAliasErrorReason</span><span class="p">(</span><span class="nx">t</span><span class="w"> </span><span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="w">    </span><span class="nx">cases</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="p">[]</span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a><span class="w">        </span><span class="nx">name</span><span class="w"> </span><span class="kt">string</span>
+<a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a><span class="w">        </span><span class="nx">err</span><span class="w">  </span><span class="kt">error</span>
+<a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a><span class="w">        </span><span class="nx">want</span><span class="w"> </span><span class="kt">string</span>
+<a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a><span class="w">    </span><span class="p">}{</span>
+<a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a><span class="w">        </span><span class="p">{</span><span class="s">&quot;4xx rejected&quot;</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">litellm</span><span class="p">.</span><span class="nx">RejectedError</span><span class="p">{</span><span class="nx">Method</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;POST&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">Path</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;/config/update&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">Status</span><span class="p">:</span><span class="w"> </span><span class="mi">400</span><span class="p">,</span><span class="w"> </span><span class="nx">Code</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;400&quot;</span><span class="p">},</span><span class="w"> </span><span class="nx">reasonModelAliasRejected</span><span class="p">},</span>
+<a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a><span class="w">        </span><span class="p">{</span><span class="s">&quot;401 transient&quot;</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">litellm</span><span class="p">.</span><span class="nx">Auth401Error</span><span class="p">{</span><span class="nx">Path</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;/get/config/callbacks&quot;</span><span class="p">},</span><span class="w"> </span><span class="nx">reasonLiteLLMUnavailable</span><span class="p">},</span>
+<a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a><span class="w">        </span><span class="p">{</span><span class="s">&quot;5xx transient&quot;</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">litellm</span><span class="p">.</span><span class="nx">RejectedError</span><span class="p">{</span><span class="nx">Method</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;GET&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">Path</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;/get/config/callbacks&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">Status</span><span class="p">:</span><span class="w"> </span><span class="mi">503</span><span class="p">,</span><span class="w"> </span><span class="nx">Code</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;503&quot;</span><span class="p">},</span><span class="w"> </span><span class="nx">reasonLiteLLMUnavailable</span><span class="p">},</span>
+<a id="__codelineno-4-26" name="__codelineno-4-26" href="#__codelineno-4-26"></a><span class="w">        </span><span class="p">{</span><span class="s">&quot;network transient&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">errors</span><span class="p">.</span><span class="nx">New</span><span class="p">(</span><span class="s">&quot;dial tcp: connection refused&quot;</span><span class="p">),</span><span class="w"> </span><span class="nx">reasonLiteLLMUnavailable</span><span class="p">},</span>
+<a id="__codelineno-4-27" name="__codelineno-4-27" href="#__codelineno-4-27"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-4-28" name="__codelineno-4-28" href="#__codelineno-4-28"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">tc</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="k">range</span><span class="w"> </span><span class="nx">cases</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-29" name="__codelineno-4-29" href="#__codelineno-4-29"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Run</span><span class="p">(</span><span class="nx">tc</span><span class="p">.</span><span class="nx">name</span><span class="p">,</span><span class="w"> </span><span class="kd">func</span><span class="p">(</span><span class="nx">t</span><span class="w"> </span><span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-30" name="__codelineno-4-30" href="#__codelineno-4-30"></a><span class="w">            </span><span class="k">if</span><span class="w"> </span><span class="nx">got</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">modelAliasErrorReason</span><span class="p">(</span><span class="nx">tc</span><span class="p">.</span><span class="nx">err</span><span class="p">);</span><span class="w"> </span><span class="nx">got</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="nx">tc</span><span class="p">.</span><span class="nx">want</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-31" name="__codelineno-4-31" href="#__codelineno-4-31"></a><span class="w">                </span><span class="nx">t</span><span class="p">.</span><span class="nx">Errorf</span><span class="p">(</span><span class="s">&quot;modelAliasErrorReason(%v) = %q, want %q&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">tc</span><span class="p">.</span><span class="nx">err</span><span class="p">,</span><span class="w"> </span><span class="nx">got</span><span class="p">,</span><span class="w"> </span><span class="nx">tc</span><span class="p">.</span><span class="nx">want</span><span class="p">)</span>
+<a id="__codelineno-4-32" name="__codelineno-4-32" href="#__codelineno-4-32"></a><span class="w">            </span><span class="p">}</span>
+<a id="__codelineno-4-33" name="__codelineno-4-33" href="#__codelineno-4-33"></a><span class="w">        </span><span class="p">})</span>
+<a id="__codelineno-4-34" name="__codelineno-4-34" href="#__codelineno-4-34"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-4-35" name="__codelineno-4-35" href="#__codelineno-4-35"></a><span class="p">}</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Run test to verify it fails</strong></li>
+</ul>
+<p>Run: <code>make test-unit-pkg PKG=./internal/controller/...</code>
+Expected: FAIL — <code>undefined: modelAliasErrorReason</code> (compile error).</p>
+<ul>
+<li>[ ] <strong>Step 3: Add the classifier helper</strong></li>
+</ul>
+<p>In <code>internal/controller/modelalias_controller.go</code>, add near the other package-level helpers (e.g. just below <code>filterAliveAliases</code>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1">// modelAliasErrorReason classifies a router-settings call error into the</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="c1">// condition reason used by broadcastNotReady. A deterministic 4xx</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="c1">// (non-401) is reasonModelAliasRejected (LiteLLMRejected); everything else</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1">// — transient 5xx, network, 401 — is reasonLiteLLMUnavailable so the</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="c1">// condition reason and the reconcile_total metric bucket (via</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="c1">// metrics.ReasonToReconcileResult) match the real failure class. The</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="c1">// RequeueAfter recovery in broadcastNotReady is unchanged (M-B2).</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="kd">func</span><span class="w"> </span><span class="nx">modelAliasErrorReason</span><span class="p">(</span><span class="nx">err</span><span class="w"> </span><span class="kt">error</span><span class="p">)</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="w">    </span><span class="kd">var</span><span class="w"> </span><span class="nx">auth401</span><span class="w"> </span><span class="o">*</span><span class="nx">litellm</span><span class="p">.</span><span class="nx">Auth401Error</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">errors</span><span class="p">.</span><span class="nx">As</span><span class="p">(</span><span class="nx">err</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">auth401</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nx">reasonLiteLLMUnavailable</span>
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">is4xxError</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nx">reasonModelAliasRejected</span>
+<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">reasonLiteLLMUnavailable</span>
+<a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a><span class="p">}</span>
+</code></pre></div>
+<p>Confirm <code>errors</code> and the <code>internal/litellm</code> package are already imported in this file; if not, add them.</p>
+<ul>
+<li>[ ] <strong>Step 4: Run test to verify it passes</strong></li>
+</ul>
+<p>Run: <code>make test-unit-pkg PKG=./internal/controller/...</code>
+Expected: PASS.</p>
+<ul>
+<li>[ ] <strong>Step 5: Use the classifier at both call sites</strong></li>
+</ul>
+<p>In <code>internal/controller/modelalias_controller.go</code>, replace the two hard-coded <code>reasonModelAliasRejected</code> arguments (the <code>GetRouterSettings</code> and <code>UpdateRouterSettings</code> error branches):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="w">    </span><span class="nx">current</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">cli</span><span class="p">.</span><span class="nx">GetRouterSettings</span><span class="p">(</span><span class="nx">ctx</span><span class="p">)</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">        </span><span class="nx">msg</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">fmt</span><span class="p">.</span><span class="nx">Sprintf</span><span class="p">(</span><span class="s">&quot;GET /get/config/callbacks: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="p">)</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nx">broadcastNotReady</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">list</span><span class="p">.</span><span class="nx">Items</span><span class="p">,</span><span class="w"> </span><span class="nx">modelAliasErrorReason</span><span class="p">(</span><span class="nx">err</span><span class="p">),</span><span class="w"> </span><span class="nx">msg</span><span class="p">,</span><span class="w"> </span><span class="nx">snap</span><span class="p">.</span><span class="nx">NormalizedRequeueOnRejectedAfter</span><span class="p">(),</span><span class="w"> </span><span class="nx">logger</span><span class="p">)</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">    </span><span class="nx">current</span><span class="p">.</span><span class="nx">ModelGroupAlias</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="nx">agg</span><span class="p">.</span><span class="nx">Desired</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">cli</span><span class="p">.</span><span class="nx">UpdateRouterSettings</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">current</span><span class="p">);</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">        </span><span class="nx">msg</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">fmt</span><span class="p">.</span><span class="nx">Sprintf</span><span class="p">(</span><span class="s">&quot;POST /config/update: %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="p">)</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nx">broadcastNotReady</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">list</span><span class="p">.</span><span class="nx">Items</span><span class="p">,</span><span class="w"> </span><span class="nx">modelAliasErrorReason</span><span class="p">(</span><span class="nx">err</span><span class="p">),</span><span class="w"> </span><span class="nx">msg</span><span class="p">,</span><span class="w"> </span><span class="nx">snap</span><span class="p">.</span><span class="nx">NormalizedRequeueOnRejectedAfter</span><span class="p">(),</span><span class="w"> </span><span class="nx">logger</span><span class="p">)</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">    </span><span class="p">}</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 6: Verify build + lint</strong></li>
+</ul>
+<p>Run: <code>make build-operator</code>
+Expected: clean.
+Run: <code>make qa-lint-changed</code>
+Expected: no new findings.</p>
+<ul>
+<li>[ ] <strong>Step 7: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>git<span class="w"> </span>add<span class="w"> </span>internal/controller/modelalias_controller.go<span class="w"> </span>internal/controller/modelalias_error_test.go
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;fix(modelalias): label transient router errors LiteLLMUnavailable (review #4)</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="s2">GetRouterSettings/UpdateRouterSettings errors were unconditionally</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="s2">labelled reasonModelAliasRejected, mislabelling transient 5xx/network/401</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="s2">and mis-bucketing the reconcile_total metric (ReasonToReconcileResult maps</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="s2">LiteLLMRejected-&gt;rejected). Classifier now picks Unavailable for transient,</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="s2">Rejected only for deterministic 4xx. RequeueAfter recovery unchanged (M-B2).</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="s2">Co-Authored-By: Claude Opus 4.8 (1M context) &lt;noreply@anthropic.com&gt;&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-3-log-dropped-errors-in-the-connection-fan-in-mapper-6">Task 3: Log dropped errors in the Connection fan-in mapper (#6)<a class="headerlink" href="#task-3-log-dropped-errors-in-the-connection-fan-in-mapper-6" title="Permanent link">&para;</a></h3>
+<p><code>connectionFanIn</code> (<code>connection_fanin.go:75-83</code>) returns <code>nil</code> on both <code>c.List</code> and <code>apimeta.ExtractList</code> errors with no log. A transient API error during the Connection-Ready recovery fan-in silently drops all dependent re-enqueues, defeating the fan-in's purpose. Mappers cannot return an error, so the correct remedy is a <code>V(1)</code> log (the same level <code>logEmptyFanInNamespace</code> uses).</p>
+<p><strong>Files:</strong>
+- Modify: <code>internal/controller/connection_fanin.go:75-83</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Inspect the existing log helper to match style</strong></li>
+</ul>
+<p>Run: <code>grep -n "func logEmptyFanInNamespace" internal/controller/connection_fanin.go</code>
+Read that function so the new log lines match its <code>logr</code> retrieval pattern (<code>log.FromContext(ctx)</code> or a passed logger).</p>
+<ul>
+<li>[ ] <strong>Step 2: Add V(1) logs on both error paths</strong></li>
+</ul>
+<p>In <code>internal/controller/connection_fanin.go</code>, replace:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">List</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">list</span><span class="p">,</span><span class="w"> </span><span class="nx">client</span><span class="p">.</span><span class="nx">InNamespace</span><span class="p">(</span><span class="nx">ns</span><span class="p">));</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="kc">nil</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">    </span><span class="nx">objs</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">apimeta</span><span class="p">.</span><span class="nx">ExtractList</span><span class="p">(</span><span class="nx">list</span><span class="p">)</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="kc">nil</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="w">    </span><span class="p">}</span>
+</code></pre></div>
+<p>with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">List</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">list</span><span class="p">,</span><span class="w"> </span><span class="nx">client</span><span class="p">.</span><span class="nx">InNamespace</span><span class="p">(</span><span class="nx">ns</span><span class="p">));</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">        </span><span class="nx">log</span><span class="p">.</span><span class="nx">FromContext</span><span class="p">(</span><span class="nx">ctx</span><span class="p">).</span><span class="nx">V</span><span class="p">(</span><span class="mi">1</span><span class="p">).</span><span class="nx">Info</span><span class="p">(</span><span class="s">&quot;connection fan-in: List failed, dropping re-enqueue&quot;</span><span class="p">,</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">            </span><span class="s">&quot;kind&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">kindLabel</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;namespace&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">ns</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;err&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="p">.</span><span class="nx">Error</span><span class="p">())</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="kc">nil</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="w">    </span><span class="nx">objs</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">apimeta</span><span class="p">.</span><span class="nx">ExtractList</span><span class="p">(</span><span class="nx">list</span><span class="p">)</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="w">        </span><span class="nx">log</span><span class="p">.</span><span class="nx">FromContext</span><span class="p">(</span><span class="nx">ctx</span><span class="p">).</span><span class="nx">V</span><span class="p">(</span><span class="mi">1</span><span class="p">).</span><span class="nx">Info</span><span class="p">(</span><span class="s">&quot;connection fan-in: ExtractList failed, dropping re-enqueue&quot;</span><span class="p">,</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="w">            </span><span class="s">&quot;kind&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">kindLabel</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;err&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="p">.</span><span class="nx">Error</span><span class="p">())</span>
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="kc">nil</span>
+<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="w">    </span><span class="p">}</span>
+</code></pre></div>
+<p>Ensure <code>sigs.k8s.io/controller-runtime/pkg/log</code> is imported (alias <code>log</code>); if <code>logEmptyFanInNamespace</code> already uses a different accessor, reuse that exact accessor instead.</p>
+<ul>
+<li>[ ] <strong>Step 3: Verify build + lint</strong></li>
+</ul>
+<p>Run: <code>make build-operator</code>
+Expected: clean.
+Run: <code>make qa-lint-changed</code>
+Expected: no new findings.</p>
+<ul>
+<li>[ ] <strong>Step 4: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>git<span class="w"> </span>add<span class="w"> </span>internal/controller/connection_fanin.go
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;fix(connection): log dropped errors in fan-in mapper (review #6)</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="s2">List/ExtractList errors were swallowed silently, dropping dependent</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="s2">re-enqueues during Connection-Ready recovery. Adds V(1) logs so the drop</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="s2">is observable; mapper still returns nil (mappers cannot return errors).</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="s2">Co-Authored-By: Claude Opus 4.8 (1M context) &lt;noreply@anthropic.com&gt;&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-4-dry-replace-model_controllers-inline-4xx-loops-with-the-shared-helper-5">Task 4: DRY — replace <code>model_controller</code>'s inline 4xx loops with the shared helper (#5)<a class="headerlink" href="#task-4-dry-replace-model_controllers-inline-4xx-loops-with-the-shared-helper-5" title="Permanent link">&para;</a></h3>
+<p><code>model_controller.go:748-765</code> hand-rolls 4xx detection with two overlapping string-prefix loops. The package already exports <code>is4xxError(err error) bool</code> (<code>litellmguardrail_controller.go:713</code>), which does the same <code>"litellm: %d on"</code> prefix match — the deliberately-frozen <code>RejectedError.Error()</code> shape (see <code>errors.go:84-97</code>). This is duplication, not a behaviour bug; the fix is to reuse the helper. (Do <strong>not</strong> migrate to <code>errors.As</code> — that would diverge from <code>is4xxError</code>/<code>is4xxNon401Status</code>/<code>isTransientLiteLLMError</code>, which all match on the string contract by design.)</p>
+<p><strong>Files:</strong>
+- Modify: <code>internal/controller/model_controller.go:746-766</code>
+- Test: <code>internal/controller/litellmguardrail_controller.go</code> helper — add a unit test if none exists</p>
+<ul>
+<li>[ ] <strong>Step 1: Check whether <code>is4xxError</code> already has a unit test</strong></li>
+</ul>
+<p>Run: <code>grep -rn "is4xxError" internal/controller/*_test.go</code>
+If a test exists, note it and skip Step 2. If not, add one in Step 2.</p>
+<ul>
+<li>[ ] <strong>Step 2: Add a unit test for <code>is4xxError</code> (only if Step 1 found none)</strong></li>
+</ul>
+<p>Create <code>internal/controller/is4xx_test.go</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1">// SPDX-License-Identifier: Apache-2.0</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="kn">package</span><span class="w"> </span><span class="nx">controller</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="kn">import</span><span class="w"> </span><span class="p">(</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="w">    </span><span class="s">&quot;errors&quot;</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="w">    </span><span class="s">&quot;testing&quot;</span>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="w">    </span><span class="s">&quot;github.com/ackstorm/alitellm-operator/internal/litellm&quot;</span>
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="p">)</span>
+<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>
+<a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a><span class="kd">func</span><span class="w"> </span><span class="nx">TestIs4xxError</span><span class="p">(</span><span class="nx">t</span><span class="w"> </span><span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a><span class="w">    </span><span class="nx">cases</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="p">[]</span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a><span class="w">        </span><span class="nx">name</span><span class="w"> </span><span class="kt">string</span>
+<a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a><span class="w">        </span><span class="nx">err</span><span class="w">  </span><span class="kt">error</span>
+<a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a><span class="w">        </span><span class="nx">want</span><span class="w"> </span><span class="kt">bool</span>
+<a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a><span class="w">    </span><span class="p">}{</span>
+<a id="__codelineno-11-18" name="__codelineno-11-18" href="#__codelineno-11-18"></a><span class="w">        </span><span class="p">{</span><span class="s">&quot;400 rejected&quot;</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">litellm</span><span class="p">.</span><span class="nx">RejectedError</span><span class="p">{</span><span class="nx">Method</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;POST&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">Path</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;/model/new&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">Status</span><span class="p">:</span><span class="w"> </span><span class="mi">400</span><span class="p">,</span><span class="w"> </span><span class="nx">Code</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;400&quot;</span><span class="p">},</span><span class="w"> </span><span class="kc">true</span><span class="p">},</span>
+<a id="__codelineno-11-19" name="__codelineno-11-19" href="#__codelineno-11-19"></a><span class="w">        </span><span class="p">{</span><span class="s">&quot;422 rejected&quot;</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">litellm</span><span class="p">.</span><span class="nx">RejectedError</span><span class="p">{</span><span class="nx">Method</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;POST&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">Path</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;/model/new&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">Status</span><span class="p">:</span><span class="w"> </span><span class="mi">422</span><span class="p">,</span><span class="w"> </span><span class="nx">Code</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;422&quot;</span><span class="p">},</span><span class="w"> </span><span class="kc">true</span><span class="p">},</span>
+<a id="__codelineno-11-20" name="__codelineno-11-20" href="#__codelineno-11-20"></a><span class="w">        </span><span class="p">{</span><span class="s">&quot;500 not 4xx&quot;</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nx">litellm</span><span class="p">.</span><span class="nx">RejectedError</span><span class="p">{</span><span class="nx">Method</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;POST&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">Path</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;/model/new&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">Status</span><span class="p">:</span><span class="w"> </span><span class="mi">500</span><span class="p">,</span><span class="w"> </span><span class="nx">Code</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;500&quot;</span><span class="p">},</span><span class="w"> </span><span class="kc">false</span><span class="p">},</span>
+<a id="__codelineno-11-21" name="__codelineno-11-21" href="#__codelineno-11-21"></a><span class="w">        </span><span class="p">{</span><span class="s">&quot;network not 4xx&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">errors</span><span class="p">.</span><span class="nx">New</span><span class="p">(</span><span class="s">&quot;dial tcp: connection refused&quot;</span><span class="p">),</span><span class="w"> </span><span class="kc">false</span><span class="p">},</span>
+<a id="__codelineno-11-22" name="__codelineno-11-22" href="#__codelineno-11-22"></a><span class="w">        </span><span class="p">{</span><span class="s">&quot;nil&quot;</span><span class="p">,</span><span class="w"> </span><span class="kc">nil</span><span class="p">,</span><span class="w"> </span><span class="kc">false</span><span class="p">},</span>
+<a id="__codelineno-11-23" name="__codelineno-11-23" href="#__codelineno-11-23"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-11-24" name="__codelineno-11-24" href="#__codelineno-11-24"></a><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="nx">_</span><span class="p">,</span><span class="w"> </span><span class="nx">tc</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="k">range</span><span class="w"> </span><span class="nx">cases</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-11-25" name="__codelineno-11-25" href="#__codelineno-11-25"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Run</span><span class="p">(</span><span class="nx">tc</span><span class="p">.</span><span class="nx">name</span><span class="p">,</span><span class="w"> </span><span class="kd">func</span><span class="p">(</span><span class="nx">t</span><span class="w"> </span><span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-11-26" name="__codelineno-11-26" href="#__codelineno-11-26"></a><span class="w">            </span><span class="k">if</span><span class="w"> </span><span class="nx">got</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">is4xxError</span><span class="p">(</span><span class="nx">tc</span><span class="p">.</span><span class="nx">err</span><span class="p">);</span><span class="w"> </span><span class="nx">got</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="nx">tc</span><span class="p">.</span><span class="nx">want</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-11-27" name="__codelineno-11-27" href="#__codelineno-11-27"></a><span class="w">                </span><span class="nx">t</span><span class="p">.</span><span class="nx">Errorf</span><span class="p">(</span><span class="s">&quot;is4xxError(%v) = %v, want %v&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">tc</span><span class="p">.</span><span class="nx">err</span><span class="p">,</span><span class="w"> </span><span class="nx">got</span><span class="p">,</span><span class="w"> </span><span class="nx">tc</span><span class="p">.</span><span class="nx">want</span><span class="p">)</span>
+<a id="__codelineno-11-28" name="__codelineno-11-28" href="#__codelineno-11-28"></a><span class="w">            </span><span class="p">}</span>
+<a id="__codelineno-11-29" name="__codelineno-11-29" href="#__codelineno-11-29"></a><span class="w">        </span><span class="p">})</span>
+<a id="__codelineno-11-30" name="__codelineno-11-30" href="#__codelineno-11-30"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-11-31" name="__codelineno-11-31" href="#__codelineno-11-31"></a><span class="p">}</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 3: Run the helper test to confirm current behaviour (baseline GREEN)</strong></li>
+</ul>
+<p>Run: <code>make test-unit-pkg PKG=./internal/controller/...</code>
+Expected: PASS — this pins <code>is4xxError</code>'s contract before the refactor.</p>
+<ul>
+<li>[ ] <strong>Step 4: Replace the inline loops in <code>classifyMutationError</code></strong></li>
+</ul>
+<p>In <code>internal/controller/model_controller.go</code>, replace the whole inline block (the <code>errStr := err.Error()</code> declaration, the <code>is4xx := false</code>, and both <code>for</code> loops, L748-765) with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="w">    </span><span class="nx">errStr</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">err</span><span class="p">.</span><span class="nx">Error</span><span class="p">()</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">    </span><span class="nx">is4xx</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">is4xxError</span><span class="p">(</span><span class="nx">err</span><span class="p">)</span>
+</code></pre></div>
+<p>Leave the subsequent <code>if is4xx { ... }</code> block (which calls <code>rejectedMessage(opDesc, err, errStr)</code>) untouched — <code>errStr</code> is still consumed there.</p>
+<ul>
+<li>[ ] <strong>Step 5: Run the helper test + verify build</strong></li>
+</ul>
+<p>Run: <code>make build-operator</code>
+Expected: clean.
+Run: <code>make test-unit-pkg PKG=./internal/controller/...</code>
+Expected: PASS.</p>
+<ul>
+<li>[ ] <strong>Step 6: Verify no model-controller regression in envtest</strong></li>
+</ul>
+<p>Run: <code>make test-envtest-pkg PKG=./internal/controller/... FOCUS=TestModel</code>
+Expected: PASS (classification behaviour is preserved — same string contract).</p>
+<ul>
+<li>[ ] <strong>Step 7: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>git<span class="w"> </span>add<span class="w"> </span>internal/controller/model_controller.go<span class="w"> </span>internal/controller/is4xx_test.go
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;refactor(model): reuse is4xxError in classifyMutationError (review #5)</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="s2">classifyMutationError duplicated 4xx detection with two inline string-</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="s2">prefix loops. Replaced with the shared is4xxError helper (same frozen</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="s2">RejectedError.Error() string contract). Behaviour-preserving DRY cleanup.</span>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="s2">Co-Authored-By: Claude Opus 4.8 (1M context) &lt;noreply@anthropic.com&gt;&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="group-b-documentation-nit-fixes-no-behaviour-change">Group B — Documentation / nit fixes (no behaviour change)<a class="headerlink" href="#group-b-documentation-nit-fixes-no-behaviour-change" title="Permanent link">&para;</a></h2>
+<h3 id="task-5-fix-mcpserverdiscovery-filter-target-godoc-drift-rename-stale-dotted-local-10">Task 5: Fix MCPServerDiscovery filter-target godoc drift + rename stale <code>dotted</code> local (#10)<a class="headerlink" href="#task-5-fix-mcpserverdiscovery-filter-target-godoc-drift-rename-stale-dotted-local-10" title="Permanent link">&para;</a></h3>
+<p>Post-v0.3.0 the reconciler computes <code>childName := md.Spec.Prefix + "-" + sourceName</code> (<code>mcpserverdiscovery_controller.go:486</code>) and filters against that (<code>filters.Apply(dotted, ...)</code> at L582, where the local <code>dotted</code> actually holds <code>&lt;prefix&gt;-&lt;source&gt;</code> names). The CRD godoc still documents the pre-v0.3.0 <code>&lt;discovery-name&gt;.&lt;toolhive-namespace&gt;.&lt;toolhive-name&gt;</code> dotted form at three sites — so a user authoring filter regexes against the documented format will never match. Doc-only correctness fix + a variable rename for clarity.</p>
+<p><strong>Files:</strong>
+- Modify: <code>api/litellm/v1alpha1/mcpserverdiscovery_types.go</code> (lines ~107, ~171, ~354)
+- Modify: <code>internal/controller/mcpserverdiscovery_controller.go:572-602</code> (rename <code>dotted</code> → <code>childNames</code>)</p>
+<ul>
+<li>[ ] <strong>Step 1: Fix <code>MCPServerDiscoverySpec.Filters</code> godoc (~L107)</strong></li>
+</ul>
+<p>Replace:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="w">    </span><span class="c1">// Filters narrows the post-derivation candidate set via RE2</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="w">    </span><span class="c1">// include/exclude patterns matched against the POST-DERIVATION</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">    </span><span class="c1">// dotted three-part name (`&lt;discovery-name&gt;.&lt;toolhive-namespace&gt;.</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="w">    </span><span class="c1">// &lt;toolhive-name&gt;`) per spec §6.5. Empty (absent) Filters means</span>
+</code></pre></div>
+<p>with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="w">    </span><span class="c1">// Filters narrows the post-derivation candidate set via RE2</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">    </span><span class="c1">// include/exclude patterns matched against the generated child name</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">    </span><span class="c1">// `&lt;spec.prefix&gt;-&lt;source-name&gt;` (v0.3.0 breaking change; pre-v0.3.0</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="w">    </span><span class="c1">// used a dotted three-part name). Empty (absent) Filters means</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Fix <code>MCPServerDiscoveryFilters</code> godoc (~L171)</strong></li>
+</ul>
+<p>Replace:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="c1">// MCPServerDiscoveryFilters carries the RE2 include/exclude pattern lists</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="c1">// applied to the POST-DERIVATION dotted three-part name (per spec §6.5).</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="c1">// The filter target is the DOTTED name, NOT the bare ToolHive object</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="c1">// name; this is the most common source of user confusion at runtime and</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="c1">// Will land a regression test exercising the dotted form.</span>
+</code></pre></div>
+<p>with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="c1">// MCPServerDiscoveryFilters carries the RE2 include/exclude pattern lists</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="c1">// applied to the generated child name `&lt;spec.prefix&gt;-&lt;source-name&gt;`</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="c1">// (v0.3.0 breaking change; pre-v0.3.0 used a dotted three-part name).</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="c1">// The filter target is the prefixed child name, NOT the bare ToolHive</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="c1">// object name — the most common source of user confusion at runtime.</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 3: Fix <code>MCPServerSkippedCandidate.Name</code> godoc (~L354)</strong></li>
+</ul>
+<p>Replace:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="w">    </span><span class="c1">// Name is the candidate dotted three-part name</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="w">    </span><span class="c1">// (`&lt;discovery-name&gt;.&lt;toolhive-namespace&gt;.&lt;toolhive-name&gt;`) that</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="w">    </span><span class="c1">// would have become the child MCPServer&#39;s metadata.name.</span>
+</code></pre></div>
+<p>with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="w">    </span><span class="c1">// Name is the candidate child name `&lt;spec.prefix&gt;-&lt;source-name&gt;`</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="w">    </span><span class="c1">// that would have become the child MCPServer&#39;s metadata.name</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="w">    </span><span class="c1">// (v0.3.0 breaking change; pre-v0.3.0 used a dotted three-part name).</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 4: Rename the stale <code>dotted</code> local in the reconciler</strong></li>
+</ul>
+<p>In <code>internal/controller/mcpserverdiscovery_controller.go</code> (~L572-602), rename the local variable <code>dotted</code> to <code>childNames</code> at every occurrence in that scope (declaration, the <code>dotted[i] = c.childName</code> assignment, the <code>filters.Apply(dotted, adapted)</code> call, and the "keeping only kept dotted names" rebuild). Update the nearby comments that say "dotted name" to "child name" where they describe the filter target (do NOT rewrite the historical "pre-v0.3.0 was the dotted" notes — those are accurate history).</p>
+<ul>
+<li>[ ] <strong>Step 5: Regenerate the CRD reference docs</strong></li>
+</ul>
+<p>Run: <code>make gen-crd-ref-docs</code>
+Expected: <code>docs/api-reference/</code> regenerated; the MCPServerDiscovery filter field description now reflects <code>&lt;spec.prefix&gt;-&lt;source-name&gt;</code>.</p>
+<ul>
+<li>[ ] <strong>Step 6: Verify build + lint</strong></li>
+</ul>
+<p>Run: <code>make build-operator</code>
+Expected: clean (rename is local; no signature change).
+Run: <code>make qa-lint-changed</code>
+Expected: no new findings.</p>
+<ul>
+<li>[ ] <strong>Step 7: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>git<span class="w"> </span>add<span class="w"> </span>api/litellm/v1alpha1/mcpserverdiscovery_types.go<span class="w"> </span>internal/controller/mcpserverdiscovery_controller.go<span class="w"> </span>docs/api-reference/
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;docs(mcpserverdiscovery): correct filter-target format to &lt;prefix&gt;-&lt;source&gt; (review #10)</span>
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="s2">CRD godoc still documented the pre-v0.3.0 dotted three-part filter target;</span>
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a><span class="s2">the reconciler filters against &lt;spec.prefix&gt;-&lt;source-name&gt;. User regexes</span>
+<a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a><span class="s2">against the documented form never matched. Also renames the stale &#39;dotted&#39;</span>
+<a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a><span class="s2">local to &#39;childNames&#39;. Regenerated api-reference.</span>
+<a id="__codelineno-20-8" name="__codelineno-20-8" href="#__codelineno-20-8"></a>
+<a id="__codelineno-20-9" name="__codelineno-20-9" href="#__codelineno-20-9"></a><span class="s2">Co-Authored-By: Claude Opus 4.8 (1M context) &lt;noreply@anthropic.com&gt;&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-6-clarify-optional-on-the-discovery-int32-count-fields-13">Task 6: Clarify <code>+optional</code> on the discovery int32 count fields (#13)<a class="headerlink" href="#task-6-clarify-optional-on-the-discovery-int32-count-fields-13" title="Permanent link">&para;</a></h3>
+<p><code>DiscoveredCount</code> / <code>GeneratedCount</code> are <code>int32</code> value fields carrying both <code>+optional</code> and <code>+kubebuilder:default=0</code>. <code>+optional</code> reads as misleading on a non-pointer value type (it is never absent in JSON). The CRD is correct; this is a comment clarity fix only.</p>
+<p><strong>Files:</strong>
+- Modify: <code>api/litellm/v1alpha1/modeldiscovery_types.go</code> (the <code>DiscoveredCount</code>/<code>GeneratedCount</code> markers, ~L334)
+- Modify: <code>api/litellm/v1alpha1/mcpserverdiscovery_types.go</code> (same fields, ~L277)</p>
+<ul>
+<li>[ ] <strong>Step 1: Replace the misleading marker comment on each count field</strong></li>
+</ul>
+<p>For each of the four fields (<code>DiscoveredCount</code>, <code>GeneratedCount</code> in both files), replace the bare <code>// +optional</code> line with an explanatory note while keeping the kubebuilder marker:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="w">    </span><span class="c1">// Always serialized (value type, defaults to 0). The +optional marker</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="w">    </span><span class="c1">// only relaxes CRD required-field validation; it is never absent.</span>
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="w">    </span><span class="c1">// +optional</span>
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="w">    </span><span class="c1">// +kubebuilder:default=0</span>
+<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a><span class="w">    </span><span class="nx">DiscoveredCount</span><span class="w"> </span><span class="kt">int32</span><span class="w"> </span><span class="s">`json:&quot;discoveredCount&quot;`</span>
+</code></pre></div>
+<p>Apply the analogous edit to <code>GeneratedCount</code>.</p>
+<ul>
+<li>[ ] <strong>Step 2: Regenerate CRD manifests + reference docs (marker change is benign but keep in sync)</strong></li>
+</ul>
+<p>Run: <code>make gen-manifests gen-crd-ref-docs</code>
+Expected: no functional CRD diff (the markers are unchanged; only the preceding comment text differs, which does not affect generated YAML). If <code>git diff</code> shows manifest changes, investigate before committing.</p>
+<ul>
+<li>[ ] <strong>Step 3: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>git<span class="w"> </span>add<span class="w"> </span>api/litellm/v1alpha1/modeldiscovery_types.go<span class="w"> </span>api/litellm/v1alpha1/mcpserverdiscovery_types.go
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;docs(api): clarify +optional on int32 discovery count fields (review #13)</span>
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a>
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a><span class="s2">Co-Authored-By: Claude Opus 4.8 (1M context) &lt;noreply@anthropic.com&gt;&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-7-note-guardrails-intentional-safety-relist-exclusion-11">Task 7: Note GuardRail's intentional safety-relist exclusion (#11)<a class="headerlink" href="#task-7-note-guardrails-intentional-safety-relist-exclusion-11" title="Permanent link">&para;</a></h3>
+<p><code>SetSafetyRelistIntervals</code> covers MCPServer/Model/Team/A2AAgent. GuardRail is swept by <code>BootSweeper</code> but has no relist interval and is intentionally excluded. The godoc gives no signal this is deliberate, risking a future maintainer "completing the set" incorrectly.</p>
+<p><strong>Files:</strong>
+- Modify: <code>internal/controller/safety_relist.go:73-89</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Append an exclusion note to the <code>SetSafetyRelistIntervals</code> godoc</strong></li>
+</ul>
+<p>After the existing godoc paragraph (before the <code>func SetSafetyRelistIntervals</code> line), add:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="c1">// NOTE: GuardRail is intentionally NOT covered here. The guardrail</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a><span class="c1">// reconciler has no RequeueAfter safety-relist path (it relies on the</span>
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="c1">// BootSweeper relist + watch events), so there is no guardrail interval</span>
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a><span class="c1">// var to set. Do not add one without also adding the reconciler-side</span>
+<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a><span class="c1">// requeue.</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Verify build</strong></li>
+</ul>
+<p>Run: <code>make build-operator</code>
+Expected: clean.</p>
+<ul>
+<li>[ ] <strong>Step 3: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>git<span class="w"> </span>add<span class="w"> </span>internal/controller/safety_relist.go
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;docs(controller): note GuardRail&#39;s intentional safety-relist exclusion (review #11)</span>
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a>
+<a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a><span class="s2">Co-Authored-By: Claude Opus 4.8 (1M context) &lt;noreply@anthropic.com&gt;&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="task-8-note-the-claude-redaction-false-positive-trade-off-12">Task 8: Note the <code>claude-</code> redaction false-positive trade-off (#12)<a class="headerlink" href="#task-8-note-the-claude-redaction-false-positive-trade-off-12" title="Permanent link">&para;</a></h3>
+<p><code>secretShapedTokenRE</code> (<code>rejected_message.go:48</code>) includes <code>claude-[A-Za-z0-9_\-]{8,}</code>, which would also redact an Anthropic model name (e.g. <code>claude-3-opus-20240229</code>) if it appeared in <code>rej.Code</code>/<code>rej.Type</code> on the default path. The existing comment says "Non-exhaustive by design" but does not call out this specific over-match. Comment-only.</p>
+<p><strong>Files:</strong>
+- Modify: <code>internal/controller/rejected_message.go:40-49</code></p>
+<ul>
+<li>[ ] <strong>Step 1: Extend the regex godoc with the over-match caveat</strong></li>
+</ul>
+<p>After the existing "Non-exhaustive by design …" sentence in the <code>secretShapedTokenRE</code> godoc block, add:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="c1">// Known over-match: the claude- alternative also matches Anthropic MODEL</span>
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a><span class="c1">// names (e.g. &quot;claude-3-opus-20240229&quot;) if one ever lands in rej.Code or</span>
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a><span class="c1">// rej.Type. Accepted: redacting a model name in a rejection message is</span>
+<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a><span class="c1">// harmless, and erring toward redaction is the intended bias.</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 2: Verify build</strong></li>
+</ul>
+<p>Run: <code>make build-operator</code>
+Expected: clean.</p>
+<ul>
+<li>[ ] <strong>Step 3: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>git<span class="w"> </span>add<span class="w"> </span>internal/controller/rejected_message.go
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;docs(controller): note claude- model-name redaction over-match (review #12)</span>
+<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a>
+<a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a><span class="s2">Co-Authored-By: Claude Opus 4.8 (1M context) &lt;noreply@anthropic.com&gt;&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="group-c-decision-tasks-record-a-decision-before-any-code">Group C — Decision tasks (record a decision BEFORE any code)<a class="headerlink" href="#group-c-decision-tasks-record-a-decision-before-any-code" title="Permanent link">&para;</a></h2>
+<blockquote>
+<p>These four findings are contestable. Each is documented in-code as intentional, and two of the reviewer's proposed fixes would introduce regressions. <strong>Do not write code for any of these until a decision is recorded.</strong> Default recommendation for each is given; if the decision is "keep behaviour", the deliverable is a one-line code comment or a CLAUDE.md <code>Common failure modes</code> entry — not a behaviour change.</p>
+</blockquote>
+<h3 id="decision-d1-litellmoperatorreconciletotal-namespace-label-cardinality-1">Decision D1: <code>LitellmOperatorReconcileTotal</code> namespace-label cardinality (#1)<a class="headerlink" href="#decision-d1-litellmoperatorreconciletotal-namespace-label-cardinality-1" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>File:</strong> <code>internal/metrics/metrics.go:40-47</code></li>
+<li><strong>Tension:</strong> the <code>namespace</code> label makes the series count <code>kinds × namespaces × results</code>, unbounded in a multi-tenant cluster. But Codex flagged it PARTIAL: the operator's typical single-watch-namespace deployment bounds it, and the label is the whole point of the metric (slice rejections by namespace).</li>
+<li><strong>Options:</strong> (a) keep + document the cardinality assumption in the metric godoc and CLAUDE.md; (b) drop the <code>namespace</code> label (loses per-namespace slicing); (c) gate the label behind a flag.</li>
+<li><strong>Recommendation:</strong> (a) keep + document — the metric exists specifically for namespace slicing, and multi-tenant cluster-wide watch is not the supported topology.</li>
+<li>[ ] Record the decision here, then implement only the chosen option.</li>
+</ul>
+<h3 id="decision-d2-filters-exclude-compile-ordering-3">Decision D2: filters exclude-compile ordering (#3)<a class="headerlink" href="#decision-d2-filters-exclude-compile-ordering-3" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>File:</strong> <code>internal/filters/filters.go:118-159</code></li>
+<li><strong>Tension:</strong> reviewer + Codex say a bad exclude regex returns <code>InvalidConfig</code> even when includes would have surfaced <code>UpstreamInvalid</code> first. But <code>filters.go:85-93</code> and <code>:120-127</code> explicitly document this ordering as intentional per spec line 824 (<code>InvalidConfig</code> is the reserved reason for compile failures, and it precedes <code>UpstreamInvalid</code>).</li>
+<li><strong>Action:</strong> read the design spec under <code>spec/</code> (search for the §6.3/§6.5 precedence table and "line 824"/"line 822" references). Confirm which ordering the spec mandates.</li>
+<li><strong>Recommendation:</strong> if the in-code contract matches the spec (likely), this is a <strong>no-op</strong> — close the finding with a one-line note. Only reorder <code>compileAnchored(f.Exclude, ...)</code> to after the include-match loop if the spec actually mandates <code>UpstreamInvalid</code>-wins.</li>
+<li>[ ] Record spec finding + decision here before any change.</li>
+</ul>
+<h3 id="decision-d3-isclusterlocalhost-two-label-form-7">Decision D3: <code>isClusterLocalHost</code> two-label form (#7)<a class="headerlink" href="#decision-d3-isclusterlocalhost-two-label-form-7" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>File:</strong> <code>internal/litellm/endpoint.go:127-139</code></li>
+<li><strong>Tension:</strong> <code>http://litellm.default:4000</code> (<code>&lt;service&gt;.&lt;namespace&gt;</code>) is a valid in-cluster address but is classified as an insecure remote (→ <code>MasterKeyOverPlaintextHTTP</code> warn, or <code>Ready=False</code> under <code>REQUIRE_HTTPS_REMOTE</code>). <strong>But</strong> a blanket "two-label short name == cluster-local" rule would also classify real public domains like <code>http://example.com</code> as cluster-local, weakening the M-SEC2 plaintext-master-key guard — <code>example.com</code> and <code>service.namespace</code> are syntactically indistinguishable.</li>
+<li><strong>Options:</strong> (a) document that in-cluster endpoints must use the <code>.svc</code> / <code>.svc.cluster.local</code> / single-label form (no code change; add a <code>Common failure modes</code> entry); (b) loosen classification and accept the M-SEC2 weakening (NOT recommended).</li>
+<li><strong>Recommendation:</strong> (a) document — preserve the conservative security posture.</li>
+<li>[ ] Record the decision here. If (a), add the CLAUDE.md entry; do not touch <code>endpoint.go</code> logic.</li>
+</ul>
+<h3 id="decision-d4-cachedlistmcpservers-single-flight-herd-8">Decision D4: <code>CachedListMCPServers</code> single-flight herd (#8)<a class="headerlink" href="#decision-d4-cachedlistmcpservers-single-flight-herd-8" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>File:</strong> <code>internal/litellm/list_cache.go:104-125</code></li>
+<li><strong>Tension:</strong> when an inflight leader skips its store (epoch advance, #60) and waiters unblock with <code>out == nil</code>, each waiter calls <code>ListMCPServers</code> directly, bypassing the dedup guard → thundering herd under mutation storms. The code comment (L116-120) documents the fallback intent but not the herd.</li>
+<li><strong>Options:</strong> (a) accept + expand the comment to acknowledge the herd is bounded by mutation rate (no code change); (b) re-enter the single-flight (start a fresh inflight chan) instead of a direct fetch on the nil-out path.</li>
+<li><strong>Recommendation:</strong> (a) unless a real production herd is observed — (b) adds re-entrancy complexity to a cold path.</li>
+<li>[ ] Record the decision here.</li>
+</ul>
+<h3 id="decision-d5-modeldiscovery-generatedchildren-excludes-skip-classified-names-9">Decision D5: ModelDiscovery <code>GeneratedChildren</code> excludes skip-classified names (#9)<a class="headerlink" href="#decision-d5-modeldiscovery-generatedchildren-excludes-skip-classified-names-9" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>File:</strong> <code>internal/controller/modeldiscovery_controller.go:618-636, 835-852</code></li>
+<li><strong>Tension:</strong> a child SSA-applied in a prior reconcile but <code>classifiedSkip</code> this reconcile drops out of <code>GeneratedChildren</code> → next reconcile re-classifies it <code>action="create"</code> (OBS-04 metric noise). <strong>But</strong> <code>generated</code>/<code>skipped</code>/<code>failed</code> are a disjoint partition enforced by the invariant <code>discoveredCount == generated + skipped + failed</code> (L848). Adding skip-names to <code>GeneratedChildren</code> would double-count and break that invariant — the reviewer's fix is wrong.</li>
+<li><strong>Options:</strong> (a) wontfix + document that <code>GeneratedChildren</code> is the per-reconcile owned set and the <code>create</code>/<code>update</code> action label is best-effort (no code change); (b) decouple the OBS-04 action label from <code>GeneratedChildren</code> via a separate "ever-written" set (new state field; larger change).</li>
+<li><strong>Recommendation:</strong> (a) wontfix + document — the metric noise is the accepted cost of the disjoint partition.</li>
+<li>[ ] Record the decision here.</li>
+</ul>
+<hr />
+<h2 id="final-integration-step-after-all-chosen-tasks-land">Final integration step (after all chosen tasks land)<a class="headerlink" href="#final-integration-step-after-all-chosen-tasks-land" title="Permanent link">&para;</a></h2>
+<ul>
+<li>[ ] <strong>Update the review report's status</strong></li>
+</ul>
+<p>In <code>references/reviews/2026-06-02-full-code-review.md</code>, append a short "Remediation status" section recording: Group A fixed (#2/#4/#5/#6), Group B fixed (#10/#11/#12/#13), Group C decisions (D1-D5 outcomes). Commit with <code>docs(review): record remediation status</code>.</p>
+<ul>
+<li>[ ] <strong>Run the full pre-push gate as a dry run before opening the PR</strong></li>
+</ul>
+<p>Run: <code>make verify</code>
+Expected: lint + unit + security + pre-push all green. (The installed pre-push hook will re-run the gate on <code>git push</code>; this is the dry run.)</p>
+<ul>
+<li>[ ] <strong>Open the PR</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>git<span class="w"> </span>push<span class="w"> </span>-u<span class="w"> </span>origin<span class="w"> </span>fix/review-remediation
+<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>gh<span class="w"> </span>pr<span class="w"> </span>create<span class="w"> </span>--base<span class="w"> </span>main<span class="w"> </span>--title<span class="w"> </span><span class="s2">&quot;fix: review remediation (Group A bugs + B docs + C decisions)&quot;</span><span class="w"> </span>--body-file<span class="w"> </span>&lt;<span class="o">(</span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;Resolves the remaining 🟡/🔵 findings from references/reviews/2026-06-02-full-code-review.md (6 🔴 landed in #77). Group A: #2/#4/#5/#6. Group B: #10/#11/#12/#13. Group C decisions recorded in the plan.&quot;</span><span class="o">)</span>
+</code></pre></div>
+<hr />
+<h2 id="self-review">Self-Review<a class="headerlink" href="#self-review" title="Permanent link">&para;</a></h2>
+<p><strong>Spec coverage (the 13 findings):</strong> #1→D1, #2→T1, #3→D2, #4→T2, #5→T4, #6→T3, #7→D3, #8→D4, #9→D5, #10→T5, #11→T7, #12→T8, #13→T6. All 13 mapped.</p>
+<p><strong>Placeholder scan:</strong> no "TBD"/"handle edge cases"/"similar to Task N". Decision tasks (Group C) intentionally carry no code — they require a recorded decision first, which is correct, not a placeholder.</p>
+<p><strong>Type consistency:</strong> <code>modelAliasErrorReason</code> (T2) reuses <code>is4xxError</code> (T4-pinned) and the existing <code>reasonModelAliasRejected</code>/<code>reasonLiteLLMUnavailable</code> constants + <code>litellm.Auth401Error</code>/<code>litellm.RejectedError</code> types. <code>OAuth2Flow</code> field name (T1) matches <code>extractedMCPParams.OAuth2Flow</code> and the create-arm usage. <code>is4xxError</code> signature <code>(err error) bool</code> matches its definition in <code>litellmguardrail_controller.go:713</code>. The <code>dotted</code>→<code>childNames</code> rename (T5) is scoped to one function.</p>
+<p><strong>Dependency note:</strong> T4 pins <code>is4xxError</code>'s contract with a unit test; T2 depends on <code>is4xxError</code> existing (it already does). Execute T4's test-add (Step 2) before relying on the helper in T2 if running out of order — but both work against the existing helper, so either order is safe.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/ackstorm/alitellm-operator" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "search.share", "content.code.copy", "content.code.annotate"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"alias": true, "default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
