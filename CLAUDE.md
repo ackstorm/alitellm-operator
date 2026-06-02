@@ -657,6 +657,37 @@ remaining `-shuffle` flakes (mockServer POST-count bleed,
 connection-reason `Absent` vs `Unreachable`) are a SEPARATE shared-mock
 isolation bug tracked under #74 — not the Ready-invariant class fixed here.
 
+### ❌ LiteLLM proxy without `STORE_MODEL_IN_DB` → every Model 500s
+```yaml
+status:
+  conditions:
+  - type: Ready
+    status: "False"
+    reason: LiteLLMRejected   # POST /model/new returned 500
+```
+LiteLLM logs:
+```
+model_management_endpoints.py:957 - add_new_model(): Exception occured - 500: {'error': "Set `'STORE_MODEL_IN_DB='True'` in your env to enable this feature."}
+```
+✅ The proxy must persist models in its DB before it will accept
+`POST /model/{new,update}`. Set ONE of these on the LiteLLM deployment
+(not the operator):
+```yaml
+# env var
+env:
+  STORE_MODEL_IN_DB: "True"
+# OR general_settings (proxy config.yaml / Helm values)
+general_settings:
+  store_model_in_db: true
+```
+WHY IT FAILS: with `STORE_MODEL_IN_DB` unset, LiteLLM's
+`add_new_model` rejects all model-create/update calls before touching
+the body — so EVERY `LiteLLMModel` (and Discovery-generated model) goes
+`Ready=False`. Operator-side config is correct; the gap is upstream
+LiteLLM. The e2e cluster already sets this
+(`test/e2e/cluster/01-deps/litellm.values.yaml`). Teams/MCP/A2A CRs are
+unaffected — only model endpoints gate on the flag.
+
 ## Repository-specific patterns
 
 - **E2E standing hydration = numbered kustomize phases**: the e2e cluster's

@@ -166,7 +166,12 @@ kubectl get mdl claude-sonnet-4-5 -o jsonpath='{.status.conditions[?(@.type=="Re
 
 - `LiteLLMUnavailable` — `LiteLLMConnection/default` not Ready.
 - `LiteLLMRejected` — LiteLLM returned 4xx/5xx on mutation. Inspect
-  `message` for the upstream payload.
+  `message` for the upstream payload. A common first-install case is a
+  500 with `Set 'STORE_MODEL_IN_DB='True'' in your env to enable this
+  feature`: the proxy needs `STORE_MODEL_IN_DB=True` (env) or
+  `general_settings.store_model_in_db: true` (config) before it accepts
+  `POST /model/{new,update}`. This is upstream LiteLLM config, not an
+  operator setting — see the [quickstart prerequisites](../getting-started/quickstart.md#prerequisites).
 
 ## See also
 

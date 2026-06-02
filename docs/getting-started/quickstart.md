@@ -16,6 +16,16 @@ End-to-end: install the operator, declare the singleton
     [BerriAI/litellm](https://github.com/BerriAI/litellm) upstream
     Helm chart first if you need a proxy.
 
+!!! warning "LiteLLM must persist models in its DB"
+    The proxy needs `STORE_MODEL_IN_DB=True` (env var) **or**
+    `general_settings.store_model_in_db: true` (config) before it will
+    accept `POST /model/{new,update}`. Without it, every `LiteLLMModel`
+    goes `Ready=False, reason=LiteLLMRejected` and LiteLLM logs
+    `Set 'STORE_MODEL_IN_DB='True'' in your env to enable this feature`.
+    This is upstream LiteLLM config, not an operator setting. Teams,
+    MCP servers, and A2A agents are unaffected — only model endpoints
+    gate on the flag.
+
 The watch namespace is whatever you set as Helm `watchNamespace`
 (default `default`). Every CR below lands there.
 
