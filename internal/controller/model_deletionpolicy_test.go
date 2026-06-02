@@ -140,41 +140,116 @@ FINALIZED:
 	t.Fatalf("CR did not vanish within 10s after annotation override to Orphan")
 }
 
-// TestModel_FinalizerNameResolve404RemovesFinalizer asserts that when
-// status.lastRendered.modelID is empty and LiteLLM returns 404 to
-// GET /model/info?model_name=<name>, the finalizer is removed (the entry
-// is treated as already-absent), instead of leaving the CR stranded in
-// Terminating with controller-runtime backoff retrying forever.
+// TestModel_DeletionPath_ConfirmedAbsent_DeletePolicyDrains is the
+// regression for a model that LiteLLM REJECTED on create (HTTP 422, e.g.
+// missing the required `model` field) and so never got a
+// status.lastRendered.modelID. With spec.deletionPolicy=Delete and the
+// connection cache Ready, deleting the CR must drain the finalizer — the
+// entry is CONFIRMED absent in LiteLLM (name-resolve returns empty
+// data[]), so the Delete goal is already satisfied.
 //
-// Post-2026-05-26 review finding F4.
+// Pre-fix, the (err==nil && resolved==nil) confirmed-absent case was
+// routed through onAckMissing, which gates on policy and therefore left
+// deletionPolicy=Delete CRs stranded in Terminating with controller-
+// runtime backoff retrying forever. onAckMissing is now reserved for
+// *cannot-confirm* conditions (LiteLLM unavailable, 401); a confirmed
+// 404/empty drains the finalizer regardless of policy, matching the
+// sibling controllers (a2aagent/mcpserver).
 //
-// Unit-level coverage is the source of truth for the contract:
-//
-//   - internal/litellm/errors_test.go:TestIsNotFound_RejectedError404 +
-//     TestIsNotFound_WrappedRejectedError404 prove the helper unwraps
-//     *RejectedError{Status:404} regardless of wrapping.
-//   - internal/litellm/model_test.go:TestGetModelInfoByName_404ReturnsNilNil
-//     proves the helper honors the documented (nil, nil) contract on 404.
-//   - internal/controller/model_controller.go switch on (err, resolved)
-//     routes (nil, nil) → onAckMissing(...) (Orphan: removes finalizer;
-//     Delete: gates per policy) — same contract as the direct-ID path.
-//
-// This envtest skip exists because the existing mock returns empty
-// `data:[]` (200) for unknown model names, not a raw 404. Forcing a 404
-// would require either:
-//   - A new mock mode (ModeForceNotFound) that flips /model/info to 404,
-//     or
-//   - A handler hook keyed by model name to selectively return 404.
-//
-// Both options pollute the mock for a single regression — the unit-level
-// coverage above already proves the wire-level contract end-to-end.
-// E2E suites continue to exercise the empty-data[] path (which routes
-// through the same switch case post-fix).
-func TestModel_FinalizerNameResolve404RemovesFinalizer(t *testing.T) {
-	t.Skip("contract proven by unit tests: " +
-		"internal/litellm/errors_test.go::TestIsNotFound_RejectedError404 + " +
-		"internal/litellm/model_test.go::TestGetModelInfoByName_404ReturnsNilNil. " +
-		"Adding a 404-mode to the shared mock would pollute it for one regression; " +
-		"empty-data[] coverage (TestModelStaleStatusDeletion in model_controller_test.go) " +
-		"exercises the same switch case end-to-end.")
+// This reproduces the exact user-reported scenario (CR
+// `uat-invalid-no-model-field` stuck Terminating) WITHOUT the annotation
+// override break-glass. Mode422 forces create rejection, so the entry is
+// genuinely absent from the mock's model store — the same empty-data[]
+// path real LiteLLM serves for an unknown model_name.
+func TestModel_DeletionPath_ConfirmedAbsent_DeletePolicyDrains(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.Mode422)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetModels()
+
+	const name = "confirmed-absent-delete-model"
+	ensureNoModel(t, ctx, name)
+	resetConnCacheSnapshot()
+
+	// Connection Ready (Mode422 serves /key/health as happy; it rejects
+	// only POST /model/new) so the deletion path enters the snap.Ready
+	// branch and reaches the name-resolve fallback rather than the
+	// !snap.Ready ack-missing gate.
+	ensureNoConnectionDefault(t, ctx)
+	connCR := connDefaultCR()
+	if err := k8sClient.Create(ctx, connCR); err != nil {
+		t.Fatalf("create LiteLLMConnection: %v", err)
+	}
+	t.Cleanup(func() {
+		mockServer.SetMode(mock.ModeHappy)
+		_ = k8sClient.Delete(context.Background(), connCR, &client.DeleteOptions{})
+		ensureNoModel(t, context.Background(), name)
+		time.Sleep(50 * time.Millisecond)
+	})
+	connSnap := pollSnapshotReason(30*time.Second, reasonSynced)
+	if connSnap.Reason != reasonSynced {
+		t.Fatalf("LiteLLMConnection not Synced within 30s; reason=%q", connSnap.Reason)
+	}
+
+	// Create a Model whose create LiteLLM rejects (Mode422). The finalizer
+	// is still added (Step 2b runs independent of the create outcome), but
+	// status.lastRendered.modelID stays empty and nothing lands in the
+	// mock's model store.
+	cr := &litellmv1alpha1.LiteLLMModel{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: WatchNamespace,
+		},
+		Spec: litellmv1alpha1.ModelSpec{
+			DeletionPolicy: string(deletionpolicy.Delete),
+			Params: runtime.RawExtension{
+				Raw: []byte(`{"model":"openai/gpt-4o-mini","rpm":100}`),
+			},
+		},
+	}
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create Model: %v", err)
+	}
+
+	// Wait until the finalizer has been added.
+	key := client.ObjectKey{Name: name, Namespace: WatchNamespace}
+	var got litellmv1alpha1.LiteLLMModel
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		if err := k8sClient.Get(ctx, key, &got); err == nil {
+			for _, f := range got.Finalizers {
+				if f == modelFinalizer {
+					goto FINALIZED
+				}
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("finalizer %q never added", modelFinalizer)
+FINALIZED:
+
+	// Sanity: ModelID must be empty (create was rejected) so the deletion
+	// path takes the name-resolve fallback, not the direct-ID DELETE.
+	if got.Status.LastRendered.ModelID != "" {
+		t.Fatalf("precondition violated: ModelID=%q, expected empty after 422 create",
+			got.Status.LastRendered.ModelID)
+	}
+
+	// Delete the CR. deletionPolicy=Delete + cache Ready + entry absent →
+	// confirmed-absent → finalizer drains WITHOUT any annotation override.
+	if err := k8sClient.Delete(ctx, &got); err != nil {
+		t.Fatalf("delete Model: %v", err)
+	}
+
+	deadline = time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		if err := k8sClient.Get(ctx, key, &got); apierrors.IsNotFound(err) {
+			return // drained — pass
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("CR stuck Terminating: finalizer not drained within 15s despite " +
+		"deletionPolicy=Delete + cache Ready + entry confirmed absent in LiteLLM " +
+		"(regression — confirmed-absent must not gate on policy)")
 }
