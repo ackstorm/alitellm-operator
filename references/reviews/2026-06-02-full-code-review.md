@@ -119,3 +119,24 @@ zero false positives, zero false negatives.**
 **Reachability of F1-F4 panic:** confirmed — `Cache.Rebuild` does not enforce
 `Ready=true ⇒ Client!=nil`, so a `{Ready:true, Client:nil}` snapshot reaches these
 branches → nil-deref panic → CR stuck `Terminating`.
+
+---
+
+## Remediation status — 2026-06-02
+
+**🔴 (6):** all landed in PR #77 (merged).
+
+**🟡/🔵 (branch `fix/review-remediation`):**
+- #2 — `oauth2_flow` forwarded on MCPServer UPDATE (+ `mcpRenderVersion` v1→v2 so steady-state CRs re-render once on upgrade). **Fixed.**
+- #4 — ModelAlias transient router errors now labelled `LiteLLMUnavailable` (correct metric bucket). **Fixed.**
+- #5 — `model_controller` 4xx detection de-duplicated onto the shared `is4xxError` helper. **Fixed (DRY, behaviour-preserving).**
+- #6 — Connection fan-in mapper logs dropped `List`/`ExtractList` errors at V(1). **Fixed.**
+- #10 — MCPServerDiscovery filter-target docs corrected `dotted three-part` → `<spec.prefix>-<source-name>` across all godoc sites, the `dotted`→`childNames` rename, the user guide, and regenerated CRD bases + api-reference. **Fixed.**
+- #11/#12/#13 — clarifying comments (GuardRail relist exclusion, `claude-` redaction over-match, `+optional` on int32 counts). **Fixed.**
+
+**Group C — assessed, intentionally NO change** (each is documented in-code as deliberate; the reviewer's proposed changes were either contestable or regressive):
+- #1 metrics `namespace` label — kept; bounded by the single-watch-namespace topology, and per-namespace slicing is the metric's purpose.
+- #3 filters exclude-compile ordering — matches the in-code spec contract (`InvalidConfig` is the reserved reason for compile failures; precedes `UpstreamInvalid`). No-op.
+- #7 `isClusterLocalHost` two-label form — left conservative; loosening would misclassify public 2-label domains (`example.com`) as cluster-local and weaken the M-SEC2 plaintext-master-key guard. Use the `.svc` / single-label form for in-cluster endpoints.
+- #8 `CachedListMCPServers` nil-out fallback — accepted; the direct re-fetch is bounded by mutation rate, and re-entrancy adds complexity to a cold path.
+- #9 `GeneratedChildren` excludes skip-classified names — wontfix; `generated`/`skipped`/`failed` are a disjoint partition enforced by the `discoveredCount` invariant, so the proposed change would double-count. The OBS-04 `create`-vs-`update` action label is best-effort.
