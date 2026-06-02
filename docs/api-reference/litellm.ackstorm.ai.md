@@ -1255,8 +1255,8 @@ LiteLLM-side `server_name` and `alias` per the parent
 LiteLLMConnection's `spec.mcpToolPrefixSeparator` (default `-`), swapping
 the configured separator for the opposite valid character (`-` ↔ `.`)
 via `litellm.SanitizeMCPServerName`. The K8s-side `metadata.name` is
-left untouched — the dotted MCPServerDiscovery child template
-(`<discovery>.<source-ns>.<source-name>`) survives unchanged, and the
+left untouched — the MCPServerDiscovery child name
+(`<spec.prefix>-<source-name>`, post-v0.3.0) survives unchanged, and the
 divergence between K8s identity and LiteLLM identity is confined to
 the wire boundary (FIX.txt HIGH-1, 2026-05-22). The canonical hash
 input and the finalizer name-resolve fallback both use the sanitized
