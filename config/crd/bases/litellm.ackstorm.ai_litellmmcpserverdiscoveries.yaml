@@ -424,6 +424,9 @@ spec:
                   the most recent successful refresh (filtered-out IDs are NOT
                   counted). Maintains the invariant noted on
                   MCPServerDiscoveryStatus's godoc above.
+
+                  Always serialized (value type, defaults to 0). The +optional marker
+                  only relaxes CRD required-field validation; it is never absent.
                 format: int32
                 type: integer
               failedCandidates:
@@ -487,6 +490,9 @@ spec:
                   MCPServer CRs the Discovery currently owns (SSA-applied with
                   ownerReferences[controller=true, blockOwnerDeletion=true] +
                   labels[litellm.ackstorm.ai/generated-by=<this>]).
+
+                  Always serialized (value type, defaults to 0). The +optional marker
+                  only relaxes CRD required-field validation; it is never absent.
                 format: int32
                 type: integer
               lastRefreshAt:

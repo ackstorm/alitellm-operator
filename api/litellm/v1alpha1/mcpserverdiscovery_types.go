@@ -273,6 +273,8 @@ type MCPServerDiscoveryStatus struct {
 	// counted). Maintains the invariant noted on
 	// MCPServerDiscoveryStatus's godoc above.
 	//
+	// Always serialized (value type, defaults to 0). The +optional marker
+	// only relaxes CRD required-field validation; it is never absent.
 	// +optional
 	// +kubebuilder:default=0
 	DiscoveredCount int32 `json:"discoveredCount"`
@@ -282,6 +284,8 @@ type MCPServerDiscoveryStatus struct {
 	// ownerReferences[controller=true, blockOwnerDeletion=true] +
 	// labels[litellm.ackstorm.ai/generated-by=<this>]).
 	//
+	// Always serialized (value type, defaults to 0). The +optional marker
+	// only relaxes CRD required-field validation; it is never absent.
 	// +optional
 	// +kubebuilder:default=0
 	GeneratedCount int32 `json:"generatedCount"`
