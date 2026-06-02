@@ -4,6 +4,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -26,6 +27,7 @@ import (
 
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 	"github.com/ackstorm/alitellm-operator/internal/connection"
+	"github.com/ackstorm/alitellm-operator/internal/litellm"
 )
 
 // ModelAlias-specific reasons. The shared reasonSynced and
@@ -128,12 +130,12 @@ func (r *ModelAliasReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	current, err := cli.GetRouterSettings(ctx)
 	if err != nil {
 		msg := fmt.Sprintf("GET /get/config/callbacks: %v", err)
-		return r.broadcastNotReady(ctx, list.Items, reasonModelAliasRejected, msg, snap.NormalizedRequeueOnRejectedAfter(), logger)
+		return r.broadcastNotReady(ctx, list.Items, modelAliasErrorReason(err), msg, snap.NormalizedRequeueOnRejectedAfter(), logger)
 	}
 	current.ModelGroupAlias = agg.Desired
 	if err := cli.UpdateRouterSettings(ctx, current); err != nil {
 		msg := fmt.Sprintf("POST /config/update: %v", err)
-		return r.broadcastNotReady(ctx, list.Items, reasonModelAliasRejected, msg, snap.NormalizedRequeueOnRejectedAfter(), logger)
+		return r.broadcastNotReady(ctx, list.Items, modelAliasErrorReason(err), msg, snap.NormalizedRequeueOnRejectedAfter(), logger)
 	}
 
 	if err := r.writePerCRStatuses(ctx, list.Items, agg, logger); err != nil {
@@ -157,6 +159,24 @@ func filterAliveAliases(items []litellmv1alpha1.LiteLLMModelAlias) []litellmv1al
 		}
 	}
 	return out
+}
+
+// modelAliasErrorReason classifies a router-settings call error into the
+// condition reason used by broadcastNotReady. A deterministic 4xx
+// (non-401) is reasonModelAliasRejected (LiteLLMRejected); everything else
+// — transient 5xx, network, 401 — is reasonLiteLLMUnavailable so the
+// condition reason and the reconcile_total metric bucket (via
+// metrics.ReasonToReconcileResult) match the real failure class. The
+// RequeueAfter recovery in broadcastNotReady is unchanged (M-B2).
+func modelAliasErrorReason(err error) string {
+	var auth401 *litellm.Auth401Error
+	if errors.As(err, &auth401) {
+		return reasonLiteLLMUnavailable
+	}
+	if is4xxError(err) {
+		return reasonModelAliasRejected
+	}
+	return reasonLiteLLMUnavailable
 }
 
 // broadcastNotReady applies a uniform Ready=False condition to every alive
