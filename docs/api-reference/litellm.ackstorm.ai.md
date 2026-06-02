@@ -1001,7 +1001,7 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `include` _string array_ | Include narrows the candidate set: a candidate dotted name is<br />admitted only if it matches at least one pattern in Include. Empty<br />(or absent) Include means "admit all". If Include is non-empty<br />and matches ZERO candidates, the reconcile surfaces Ready=False,<br />reason=UpstreamInvalid (operator-intent vs upstream-reality drift). |  |  |
+| `include` _string array_ | Include narrows the candidate set: a candidate `<spec.prefix>-<source-name>`<br />is admitted only if it matches at least one pattern in Include. Empty<br />(or absent) Include means "admit all". If Include is non-empty<br />and matches ZERO candidates, the reconcile surfaces Ready=False,<br />reason=UpstreamInvalid (operator-intent vs upstream-reality drift). |  |  |
 | `exclude` _string array_ | Exclude removes candidates from the post-Include set: a candidate<br />is filtered out if it matches any pattern in Exclude. Empty (or<br />absent) Exclude means "exclude nothing". Exclude is forward-looking<br />defense — zero matches is fine (lenient semantics per spec §6.5). |  |  |
 
 

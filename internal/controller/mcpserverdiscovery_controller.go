@@ -436,7 +436,7 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 	// ─── Step 5: Namespace filter (in-memory per D-07) + derivation ────────
 	// For each candidate ToolHive object: filter by namespace, derive the
-	// dotted name, read status.url (skip with EndpointUnknown if absent),
+	// child name, read status.url (skip with EndpointUnknown if absent),
 	// normalize status.transport per D-10 (skip with InvalidTransport
 	// for unmappable values).
 	candidates := make([]candidate, 0, len(raw))
@@ -659,7 +659,7 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 	// DELETE+CREATE round-trip against LiteLLM.
 	pendingRetries := make(map[string]struct{})
 	for _, c := range candidates {
-		// Adoption short-circuit: if this candidate's dotted name matches a
+		// Adoption short-circuit: if this candidate's child name matches a
 		// child whose ownerRef the user already stripped, the candidate is
 		// recorded in skipped[] above and MUST NOT trigger a fresh SSA write.
 		if _, adopted := adoptedNames[c.childName]; adopted {
@@ -871,7 +871,7 @@ func normalizeTransport(raw string) (string, bool) {
 // without apiVersion+kind.
 // - ObjectMeta.{Name, Namespace, Labels, OwnerReferences, Finalizers}
 // per MSDISC-10:
-// - Name = dotted three-part name.
+// - Name = <spec.prefix>-<source-name>.
 // - Labels[generatedByLabel] = parent.Name (the vanish-detection key).
 // - OwnerReferences[controller=true, blockOwnerDeletion=true] →
 // parent for cascade-delete + adoption recognition.

@@ -178,8 +178,8 @@ type MCPServerDiscoveryToolhive struct {
 // patterns surface as Ready=False, reason=InvalidConfig with a message
 // naming the offending pattern.
 type MCPServerDiscoveryFilters struct {
-	// Include narrows the candidate set: a candidate dotted name is
-	// admitted only if it matches at least one pattern in Include. Empty
+	// Include narrows the candidate set: a candidate `<spec.prefix>-<source-name>`
+	// is admitted only if it matches at least one pattern in Include. Empty
 	// (or absent) Include means "admit all". If Include is non-empty
 	// and matches ZERO candidates, the reconcile surfaces Ready=False,
 	// reason=UpstreamInvalid (operator-intent vs upstream-reality drift).
