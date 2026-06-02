@@ -13,7 +13,7 @@
 #  14. go mod tidy   (go.mod / go.sum drift blocks push)
 #  14b. helm-sync     (config/crd → deploy/helm/.../crd-sources drift blocks push)
 #  15. license-header SPDX gate (every in-scope *.go starts with SPDX line)
-#  16. golangci-lint full sweep (defensive — pre-commit runs qa-lint-changed)
+#  16. golangci-lint full sweep (full lint runs here; no pre-commit stage)
 #  17. make test-unit (pure-logic regression — ~5-10s warm)
 #
 # Soft checks (warnings only):
@@ -355,10 +355,9 @@ else
 fi
 
 # --- 16. golangci-lint full sweep ---
-# Defensive gate: pre-commit runs `make qa-lint-changed` (scoped to touched
-# packages) on every commit; this is the FULL sweep, catching anything
-# a `--no-verify` commit or a stale BASE_REF would have masked. Runs in
-# the devtools container.
+# Full lint sweep over the whole module — there is no pre-commit stage, so
+# this gate is the local lint authority before a push leaves the host.
+# Runs in the devtools container.
 hdr "16. golangci-lint full sweep"
 if [[ -x scripts/dev.sh ]]; then
   if ./scripts/dev.sh make qa-lint >/tmp/pre-push-lint.log 2>&1; then

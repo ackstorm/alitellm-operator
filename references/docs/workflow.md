@@ -23,9 +23,9 @@ would be pure dup, so it is intentionally not wired.
 
 Rationale:
 
-- **Feature branch push (no PR)**: zero CI runs. Local `pre-commit`
-  hook (`make pre-commit` = `lint-changed` + `unit`) covers WIP
-  iteration. Opening the PR fires the full suite once; subsequent
+- **Feature branch push (no PR)**: zero CI runs. The local `pre-push`
+  hook (`make pre-push`) gates the push (lint + unit + scanners + SPDX
+  + govulncheck). Opening the PR fires the full suite once; subsequent
   pushes to the PR branch supersede via `cancel-in-progress: true`.
 - **PR → main**: full pre-merge gate INCLUDING e2e. The PR is the
   merge boundary — a broken e2e here blocks merge instead of breaking
@@ -75,7 +75,7 @@ success on docs-only changes (skip-condition pattern).
 
 | Stage                         | Local command                                                                                         | Workflow(s) fired                                                                  | Job-level gate (`if:`)                                              | Outcome                                                                                                            |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Dev branch push (no PR)       | `git push origin <branch>`                                                                            | `govulncheck.yml` only                                                             | branch trigger                                                      | Zero `ci.yml` cost. Local `make pre-commit` covers WIP feedback.                                                   |
+| Dev branch push (no PR)       | `git push origin <branch>`                                                                            | `govulncheck.yml` only                                                             | branch trigger                                                      | Zero `ci.yml` cost. Local `make pre-push` hook gates the push.                                                     |
 | PR open / sync                | `gh pr create --base main`                                                                            | `ci.yml` (lint + unit + envtest + security + **e2e**), `docs.yml` build-test, `pr-labeler.yml` | `pull_request: main` (non-draft for e2e)                | PR blocked until all five required checks are green. Draft PRs skip e2e only.                                       |
 | Merge PR to main              | `gh pr merge N --merge --delete-branch`                                                               | `docs.yml` deploys `latest`+`dev`. `ci.yml` NOT fired (no push trigger).           | n/a (`ci.yml` only listens to `pull_request`)                       | Zero `ci.yml` cost on merge. Merge SHA content already validated as PR head.                                       |
 | Release commit                | `git commit --allow-empty -m 'chore(release): vX.Y.Z'` → `make pre-push` → `git push origin main`     | `release.yml` (active), `docs.yml`. `ci.yml` NOT fired (no push trigger).          | `startsWith(head_commit.message, 'chore(release): v')`              | release.yml runs unit + envtest-fast sanity, bumps manifests, goreleaser, cosign keyless OIDC, CycloneDX SBOM, helm OCI push, **tag created LAST**. |
@@ -195,9 +195,8 @@ Categories covered:
   1:1.
 - **Code provenance** — per-file SPDX license header
   (`// SPDX-License-Identifier: Apache-2.0`).
-- **Defense in depth** — full `make qa-lint` + `make test-unit` re-run
-  inside the devtools container, even though `pre-commit` (`make
-  pre-commit`) already covered the touched packages.
+- **Defense in depth** — full `make qa-lint` + `make test-unit` run
+  inside the devtools container on every push.
 
 Bypass is banned. If a gate fails, fix the root cause, never
 `--no-verify`. Run `scripts/pre-push-check.sh` directly (or

@@ -49,7 +49,7 @@ work happens when you debug it.
 | Ctx | Where it runs | Tools available | Examples |
 |-----|---------------|-----------------|----------|
 | **A** Devtools container | inside `litellm-devtools:latest` via `scripts/dev.sh` (auto-wrapped by the `container_target` macro) | go, helm, kind, kubectl, golangci-lint, controller-gen, setup-envtest, kustomize, crd-ref-docs | `gen-*`, `test-*`, `qa-*` (except gates), `build-operator`/`build-installer`, `install`/`deploy`, `helm-sync*`/`deploy-kustomize-sync*`, `cluster-*`, `e2e-run`/`e2e-focus`, `shell` |
-| **B** Host + docker | directly on the host (needs only the docker CLI/daemon) | docker, kind | `build-image`, `build-image-mock`, `docker-push`/`docker-load`/`docker-buildx`, `doctor`, `ensure-inotify`, gate orchestrators `pre-commit`/`pre-push`/`verify`, `release-bump`/`release-cut`, `operator-redeploy`, `e2e-full` (orchestrates context-A children) |
+| **B** Host + docker | directly on the host (needs only the docker CLI/daemon) | docker, kind | `build-image`, `build-image-mock`, `docker-push`/`docker-load`/`docker-buildx`, `doctor`, `ensure-inotify`, gate orchestrators `pre-push`/`verify`, `release-bump`/`release-cut`, `operator-redeploy`, `e2e-full` (orchestrates context-A children) |
 | **C** Kubernetes infra | host `kubectl` against the kind cluster (kubeconfig at `./.gocache/kube/config`) | kubectl | `wait-*`, `logs-*`, `watch-crs`, `pf-*`, `mock-mode` |
 
 > **Context C caveat — these targets are NOT auto-routed.** `wait-*`,
@@ -239,12 +239,11 @@ restart`, ~20s inner loop).
 ### Gates (no prefix) — context B (host-only)
 | Target | Description |
 |--------|-------------|
-| `pre-commit` | Fast local gate (`qa-lint-changed` + `test-unit`). Installed git hook. |
 | `pre-push` | 17-gate publication check (scanners + lint + unit + SPDX + govulncheck + …). Installed git hook. |
 | `verify` | `qa-lint` + `test-unit` + in-container `qa-security` + host `pre-push` — full gate bundle. |
-| `hooks` | Install the pre-commit + pre-push git hooks. |
+| `hooks` | Install the pre-push git hook (and remove any stale pre-commit hook). |
 
-> `pre-commit`/`pre-push`/`verify` are host-only — they spawn
+> `pre-push`/`verify` are host-only — they spawn
 > gitleaks/trufflehog containers on host docker. Do NOT call them via
 > `./scripts/dev.sh` (it would nest docker mounts that don't resolve).
 
