@@ -310,7 +310,7 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 	// ─── Step 3: Connection-gating (D-08) ──────────────────────────────────
 	snap := r.Cache.Snapshot()
-	if !snap.Ready {
+	if !snap.Usable() {
 		reason := snap.Reason
 		if reason == "" {
 			// Zero-value snapshot — no probe has completed yet.

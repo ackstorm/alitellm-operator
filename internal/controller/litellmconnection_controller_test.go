@@ -103,6 +103,25 @@ func resetConnCacheSnapshot() {
 	connCache.Rebuild(connection.ConnectionSnapshot{})
 }
 
+// setConnCacheReady restores the shared connCache to a VALID Ready
+// snapshot — Ready=true backed by the suite's mock-wired *litellm.Client.
+//
+// Test cleanup that needs the cache Ready (so an in-flight finalizer can
+// drain through the real reconciler) MUST use this instead of hand-rolling
+// connCache.Rebuild(ConnectionSnapshot{Ready: true}). A Ready snapshot with
+// a nil Client violates the ConnectionSnapshot.Usable() invariant: it
+// poisons the manager-level singleton and the next dependent reconcile
+// (e.g. the always-on ModelAlias singleton) dereferences snap.Client and
+// panics. That cross-test bleed is the root cause of issue #74's
+// shuffle-dependent envtest flakes.
+func setConnCacheReady() {
+	connCache.Rebuild(connection.ConnectionSnapshot{
+		Ready:  true,
+		Reason: reasonSynced,
+		Client: suiteLLMClient,
+	})
+}
+
 // pollSnapshotReason polls cache.Snapshot up to `timeout` for
 // snap.Reason == want. Returns the final snapshot regardless. The poll
 // interval is 100ms — fast enough that the LiteLLMConnection probe loop

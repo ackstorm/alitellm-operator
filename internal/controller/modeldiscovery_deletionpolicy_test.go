@@ -83,7 +83,10 @@ func TestModelDiscoveryChildForcedOrphan(t *testing.T) {
 		t.Fatalf("create child Model: %v", err)
 	}
 	t.Cleanup(func() {
-		connCache.Rebuild(connection.ConnectionSnapshot{Ready: true, Reason: "Synced"})
+		// Restore a VALID Ready snapshot (Client-backed) so the finalizer
+		// can drain. A Ready+nil-Client snapshot poisons the shared
+		// singleton and panics the next reconcile (issue #74).
+		setConnCacheReady()
 		ensureNoModel(t, context.Background(), name)
 	})
 

@@ -633,6 +633,36 @@ drain unconditionally on name-resolve-empty; the model controller now
 matches. Break-glass for an already-stuck CR (no operator redeploy):
 annotate `litellm.ackstorm.ai/deletion-policy-override=Orphan`.
 
+### ❌ Gating a LiteLLM mutation on `snap.Ready` alone
+```go
+snap := r.Cache.Snapshot()
+if !snap.Ready {              // passes a Ready+nil-Client snapshot through
+    return notReady(...)
+}
+snap.Client.GetRouterSettings(ctx)   // nil deref → recovered panic, poisoned reconcile
+```
+✅ Gate on `ConnectionSnapshot.Usable()` (Ready AND Client != nil):
+```go
+if !snap.Usable() {          // Ready+nil-Client takes the not-Ready path
+    return notReady(...)
+}
+snap.Client.GetRouterSettings(ctx)   // Client guaranteed non-nil here
+```
+WHY IT FAILS (#74): `Cache.Rebuild` does NOT enforce the
+`Ready=true ⇒ Client!=nil` invariant — it stores whatever snapshot it is
+handed. Production always pairs Ready with a fresh client, but envtest
+cleanup that rebuilt the shared singleton with
+`ConnectionSnapshot{Ready: true, Reason: "Synced"}` (no Client) poisoned
+the manager-level cache; the next reconcile of an always-on singleton
+(`modelalias`) dereferenced the nil `snap.Client` and panicked
+(controller-runtime recovers it, so it surfaced as a shuffle-dependent
+flake, not a crash). All six dependent reconcilers now gate on
+`snap.Usable()`; tests restore Ready state via `setConnCacheReady()`
+(suite-mock-backed client), never a bare `Ready:true` literal. NOTE: the
+remaining `-shuffle` flakes (mockServer POST-count bleed,
+connection-reason `Absent` vs `Unreachable`) are a SEPARATE shared-mock
+isolation bug tracked under #74 — not the Ready-invariant class fixed here.
+
 ## Repository-specific patterns
 
 - **E2E standing hydration = numbered kustomize phases**: the e2e cluster's

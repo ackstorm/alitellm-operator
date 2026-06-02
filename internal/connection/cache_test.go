@@ -450,3 +450,41 @@ func TestCache_InvalidateOn401_PreservesGenerationAndClient_WR04(t *testing.T) {
 		t.Errorf("WR-04 FAIL: Client pointer changed after InvalidateOn401() (want pointer identity to seed Client) — dependents holding a *litellm.Client reference may break under the placeholder write")
 	}
 }
+
+// TestUsable — issue #74 defensive invariant.
+//
+// Usable() is the dereference gate every dependent reconciler uses before
+// touching snap.Client. It must be true IFF Ready AND Client != nil.
+//
+// The load-bearing row is {Ready: true, Client: nil}: a Ready snapshot
+// with no Client (a contract violation, historically envtest cleanup
+// poisoning the shared connCache singleton) MUST report not-usable so the
+// reconciler takes the not-Ready path instead of dereferencing a nil
+// Client and panicking. The {Ready: false, Client: set} row guards against
+// the inverse mistake — gating on Client alone would wrongly mutate while
+// the connection is down.
+func TestUsable(t *testing.T) {
+	client := litellm.NewClient("http://example.invalid:4000", "sk-test", logr.Discard())
+	if client == nil {
+		t.Fatalf("NewClient returned nil; cannot build the Ready+Client row")
+	}
+
+	cases := []struct {
+		name string
+		snap ConnectionSnapshot
+		want bool
+	}{
+		{"zero value", ConnectionSnapshot{}, false},
+		{"ready with client", ConnectionSnapshot{Ready: true, Reason: "Synced", Client: client}, true},
+		{"ready without client (issue #74 poison)", ConnectionSnapshot{Ready: true, Reason: "Synced"}, false},
+		{"not ready with client", ConnectionSnapshot{Ready: false, Reason: "BadMasterKey", Client: client}, false},
+		{"not ready without client", ConnectionSnapshot{Ready: false, Reason: "Unreachable"}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.snap.Usable(); got != tc.want {
+				t.Errorf("Usable() = %v, want %v for snapshot %+v", got, tc.want, tc.snap)
+			}
+		})
+	}
+}

@@ -67,9 +67,11 @@ func TestModelDeletionPolicy_DeleteRetainsFinalizerWhenLiteLLMUnavailable(t *tes
 		t.Fatalf("create Model: %v", err)
 	}
 	t.Cleanup(func() {
-		// Force-cleanup: annotation override → Orphan + cache Ready so
-		// finalizer can drain even if the test asserted mid-block.
-		connCache.Rebuild(connection.ConnectionSnapshot{Ready: true, Reason: "Synced"})
+		// Force-cleanup: restore the cache to a VALID Ready snapshot so the
+		// finalizer can drain even if the test asserted mid-block. Must be a
+		// Client-backed Ready snapshot — a Ready+nil-Client snapshot poisons
+		// the shared singleton and panics the next reconcile (issue #74).
+		setConnCacheReady()
 		ensureNoModel(t, context.Background(), name)
 	})
 
