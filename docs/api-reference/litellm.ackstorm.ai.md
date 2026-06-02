@@ -1153,7 +1153,7 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `name` _string_ | Name is the candidate dotted three-part name<br />(`<discovery-name>.<toolhive-namespace>.<toolhive-name>`). |  | MinLength: 1 <br />Required: \{\} <br /> |
+| `name` _string_ | Name is the candidate child name `<spec.prefix>-<source-name>`<br />that would have become the child MCPServer's metadata.name<br />(v0.3.0 breaking change; pre-v0.3.0 used a dotted three-part name). |  | MinLength: 1 <br />Required: \{\} <br /> |
 | `reason` _string_ | Reason classifies the failure. Single-valued enum: only<br />ChildCRWriteFailed is valid; LiteLLM-side reasons surface on<br />the child MCPServer's status instead. |  | Enum: [ChildCRWriteFailed] <br />Required: \{\} <br /> |
 | `message` _string_ | Message is a free-form diagnostic. |  |  |
 

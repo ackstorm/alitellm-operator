@@ -421,8 +421,9 @@ type MCPServerSkippedCandidate struct {
 // The MCPServer- prefix on the Go type avoids a name collision with the
 // Phase 4 ModelDiscovery `FailedCandidate` type in the same package.
 type MCPServerFailedCandidate struct {
-	// Name is the candidate dotted three-part name
-	// (`<discovery-name>.<toolhive-namespace>.<toolhive-name>`).
+	// Name is the candidate child name `<spec.prefix>-<source-name>`
+	// that would have become the child MCPServer's metadata.name
+	// (v0.3.0 breaking change; pre-v0.3.0 used a dotted three-part name).
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
