@@ -76,8 +76,7 @@ constructors are pure functions and unit-testable without envtest.
 
 - HTTP client with master-key Bearer auth and per-Connection scoped
   cache instance.
-- `ClientOption` knobs: `WithTimeout`, `WithListCacheTTL`,
-  `WithUserAgent`.
+- `ClientOption` knobs: `WithRateLimit`, `WithListCacheTTL`.
 - Domain methods per CRD: `CreateMCPServer`, `UpdateMCPServer`,
   `DeleteMCPServer`, … and the cache-aware
   `CachedListMCPServers(ctx)`, `CachedListAgents(ctx)`.

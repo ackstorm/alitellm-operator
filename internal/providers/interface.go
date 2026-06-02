@@ -85,9 +85,10 @@ type ProviderConfig struct {
 	// instance profile / EKS Pod Identity). Per D-05.
 	AWSCreds *awsv2.Credentials
 
-	// HTTPClient is the manager-owned shared *http.Client (30s
-	// Timeout per D-02). Used by all HTTP providers (anthropic,
-	// gemini, openai, kubeai). NOT used by bedrock.
+	// HTTPClient is the manager-owned shared *http.Client (per D-02:
+	// 10s total-request Timeout, 30s Transport.IdleConnTimeout — see
+	// cmd/main.go). Used by all HTTP providers (anthropic, gemini,
+	// openai, kubeai). NOT used by bedrock.
 	HTTPClient *http.Client
 }
 
