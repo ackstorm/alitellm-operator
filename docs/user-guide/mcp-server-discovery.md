@@ -18,7 +18,7 @@ In v1alpha1 only `spec.type: toolhive` is supported.
 | `spec.toolhive.kinds`         | no       | List of `MCPServer`, `VirtualMCPServer`. Default: both.                                     |
 | `spec.params`                 | no       | Pass-through bag propagated VERBATIM into every child's `spec.params`.                      |
 | `spec.secrets[]`              | no       | Substitution map propagated into every child's `spec.secrets[]`.                            |
-| `spec.filters.include`        | no       | RE2 patterns — anchored, include-FIRST, against the dotted post-derivation name.            |
+| `spec.filters.include`        | no       | RE2 patterns — anchored, include-FIRST, against the generated child name `<spec.prefix>-<source-name>`. |
 | `spec.filters.exclude`        | no       | RE2 patterns — applied AFTER include.                                                       |
 | `spec.refresh.interval`       | yes      | Cadence between refreshes. CEL floor `1m` enforced at admission.                            |
 
@@ -106,8 +106,9 @@ prefix-distinct Discoveries.
 
 ## Filter target
 
-`spec.filters.{include,exclude}` patterns match the POST-DERIVATION
-dotted name `<discovery-name>.<toolhive-namespace>.<toolhive-name>`,
+`spec.filters.{include,exclude}` patterns match the generated child name
+`<spec.prefix>-<source-name>` (v0.3.0 breaking change; pre-v0.3.0 used the
+dotted three-part name `<discovery-name>.<toolhive-namespace>.<toolhive-name>`),
 NOT the bare ToolHive object name. Anchored RE2 syntax. Include-first
 (strict), exclude-second (lenient) — identical semantics to
 `LiteLLMModelDiscovery`.
@@ -117,7 +118,7 @@ NOT the bare ToolHive object name. Anchored RE2 syntax. Include-first
 ```bash
 kubectl get msdisc toolhive -o jsonpath='{.status}{"\n"}'
 # {"discoveredCount":3,"generatedCount":2,"generatedChildren":["th-ctx7","th-fetch"],
-#  "skippedCandidates":[{"name":"toolhive.default.local-stdio","reason":"InvalidTransport"}],
+#  "skippedCandidates":[{"name":"th-local-stdio","reason":"InvalidTransport"}],
 #  "lastRefreshAt":"...","conditions":[...]}
 
 kubectl get msdisc                  # printer cols: Type Ready Reason Discovered Generated Age
