@@ -607,6 +607,32 @@ to PARSE is gone. Different specs flake each run under cluster load.
 POST-only sites (no body parse) don't need the helper — the side effect
 lands regardless of attach.
 
+### ❌ Routing a *confirmed-absent* LiteLLM delete through `onAckMissing`
+```go
+// deletion path, status.lastRendered.modelID == ""
+case err == nil && resolved == nil:   // name-resolve: 404 / empty data[]
+    onAckMissing("name-resolve returned not-found")  // under Delete → blocks
+```
+A CR rejected on create (HTTP 422, e.g. missing `model`) never gets a
+`modelID`, so the finalizer-time delete falls to name-resolve, which
+returns empty → the entry is **confirmed absent**. Routing that through
+`onAckMissing` strands the CR in `Terminating` forever under
+`deletionPolicy: Delete` (`error="delete blocked: name-resolve returned
+not-found; entry already absent"`, controller-runtime backoff loop).
+✅ Confirmed-absent drains the finalizer regardless of policy:
+```go
+case err == nil && resolved == nil:
+    onConfirmedAbsent("name-resolve returned not-found", model.Name)  // falls through to RemoveFinalizer
+```
+WHY: `onAckMissing` exists to gate `Delete` on *cannot-confirm* states
+(LiteLLM unavailable, 401) — we genuinely don't know if the entry still
+exists. A definitive 404 / empty `data[]` (or 404 on `POST /model/delete`,
+`litellm.IsNotFound`) is positive proof the entry is gone, so the Delete
+goal is already met. The sibling controllers (a2aagent/mcpserver) already
+drain unconditionally on name-resolve-empty; the model controller now
+matches. Break-glass for an already-stuck CR (no operator redeploy):
+annotate `litellm.ackstorm.ai/deletion-policy-override=Orphan`.
+
 ## Repository-specific patterns
 
 - **E2E standing hydration = numbered kustomize phases**: the e2e cluster's

@@ -173,6 +173,22 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 				return nil
 			}
 
+			// onConfirmedAbsent handles the case where LiteLLM POSITIVELY
+			// confirms the entry is gone — name-resolve returned 404/empty,
+			// or POST /model/delete returned 404. The Delete goal (entry
+			// absent in LiteLLM) is already satisfied, so the finalizer is
+			// removed regardless of deletionPolicy. This is distinct from
+			// onAckMissing, which gates on policy precisely because it CANNOT
+			// confirm absence (LiteLLM unavailable / 401). Routing a confirmed
+			// 404/empty through onAckMissing stranded deletionPolicy=Delete CRs
+			// in Terminating with controller-runtime backoff. The caller falls
+			// through to RemoveFinalizer; no return value needed.
+			onConfirmedAbsent := func(reason, id string) {
+				metrics.DeletionBlocked.Forget(modelKind, model.Namespace, model.Name)
+				logger.Info("finalizer removed; LiteLLM model already absent",
+					"reason", reason, "id", id)
+			}
+
 			snap := r.Cache.Snapshot()
 			if snap.Ready {
 				modelID := model.Status.LastRendered.ModelID
@@ -180,13 +196,20 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 					// D-04: use persisted LiteLLM UUID.
 					if err := snap.Client.DeleteModel(ctx, modelID); err != nil {
 						var auth401 *litellm.Auth401Error
-						if errors.As(err, &auth401) {
+						switch {
+						case errors.As(err, &auth401):
 							r.Cache.InvalidateOn401()
 							logger.Info("deletion: 401 fast-path; cache invalidated", "path", auth401.Path)
 							if err := onAckMissing("401 on DeleteModel"); err != nil {
 								return ctrl.Result{}, err
 							}
-						} else {
+						case litellm.IsNotFound(err):
+							// 404 on POST /model/delete — entry confirmed absent
+							// in LiteLLM (deleted out-of-band, or never existed).
+							// Delete goal already satisfied; drain the finalizer
+							// regardless of policy (confirmed-absent, NOT ack-missing).
+							onConfirmedAbsent("404 on DeleteModel", modelID)
+						default:
 							// Transient error — return for backoff. Finalizer stays until delete succeeds.
 							return ctrl.Result{}, err
 						}
@@ -205,15 +228,18 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 					switch {
 					case err == nil && resolved == nil:
 						// Post-2026-05-26 review F4: name-resolve returned 404
-						// (or empty Data[]) — entry already absent in LiteLLM.
-						// Treat as success on the deletion path, same as if the
-						// direct-ID path had hit a 404 on DELETE. Pre-fix, a
-						// raw 404 from GET /model/info propagated as
-						// *RejectedError and stranded the CR in Terminating
-						// with controller-runtime exponential backoff.
-						if err := onAckMissing("name-resolve returned not-found; entry already absent"); err != nil {
-							return ctrl.Result{}, err
-						}
+						// (or empty Data[]) — entry CONFIRMED absent in LiteLLM.
+						// The Delete goal is already satisfied, so remove the
+						// finalizer regardless of deletionPolicy, mirroring the
+						// sibling controllers (a2aagent/mcpserver name-resolve-
+						// empty path, which drain unconditionally when the cache
+						// is Ready). onAckMissing is reserved for *cannot-confirm*
+						// conditions (LiteLLM unavailable, 401); routing a
+						// confirmed 404/empty through it stranded deletionPolicy=
+						// Delete CRs in Terminating with controller-runtime backoff
+						// (e.g. a model rejected on create that never reached
+						// LiteLLM, so status.lastRendered.modelID stayed empty).
+						onConfirmedAbsent("name-resolve returned not-found", model.Name)
 					case err != nil:
 						var auth401 *litellm.Auth401Error
 						if errors.As(err, &auth401) {
@@ -229,13 +255,18 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 						// resolved != nil — issue the DELETE on the resolved modelID.
 						if err := snap.Client.DeleteModel(ctx, resolved.ModelInfo.ID); err != nil {
 							var auth401 *litellm.Auth401Error
-							if errors.As(err, &auth401) {
+							switch {
+							case errors.As(err, &auth401):
 								r.Cache.InvalidateOn401()
 								logger.Info("deletion: 401 fast-path after name-resolve; cache invalidated", "path", auth401.Path)
 								if err := onAckMissing("401 on DeleteModel post-name-resolve"); err != nil {
 									return ctrl.Result{}, err
 								}
-							} else {
+							case litellm.IsNotFound(err):
+								// 404 between name-resolve and delete — entry
+								// raced to absent. Confirmed-absent; drain finalizer.
+								onConfirmedAbsent("404 on DeleteModel post-name-resolve", resolved.ModelInfo.ID)
+							default:
 								return ctrl.Result{}, err
 							}
 						} else {
