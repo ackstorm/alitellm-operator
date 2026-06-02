@@ -72,16 +72,27 @@ func rejectedMessage(opDesc string, err error, errStr string) string {
 		return clipMessage(fmt.Sprintf("LiteLLM rejected %s: %s", opDesc, errStr))
 	}
 
+	// #55 (P0 security): rej.Code and rej.Type are interpolated into CR
+	// status.conditions[].message — a cluster-readable surface. The
+	// construction site (client.makeRequest) only filters the "unparsed"
+	// sentinel; it does NOT enforce a closed enum, so a proxy in front of
+	// LiteLLM (or a non-LiteLLM upstream) can place arbitrary, possibly
+	// secret-shaped text in either field. Route BOTH through the same
+	// secret-shaped-token redactor the opt-in Message path uses, as
+	// defense in depth on this no-opt-in path.
+	code := sanitizeSecretShapedTokens(rej.Code)
 	base := fmt.Sprintf(
 		"LiteLLM rejected %s: %d (code=%s)",
-		opDesc, rej.Status, rej.Code,
+		opDesc, rej.Status, code,
 	)
 	if rej.Type != "" {
-		// UAT LOW-02: error.type is a closed enum (auth_error,
-		// validation_error, …) — safe to surface without the opt-in.
+		// UAT LOW-02: error.type is documented as a LiteLLM closed enum
+		// (auth_error, validation_error, …); surfaced without the opt-in,
+		// but sanitized first (#55) because the enum contract is not
+		// enforced upstream of the operator.
 		base = fmt.Sprintf(
 			"LiteLLM rejected %s: %d (code=%s, type=%s)",
-			opDesc, rej.Status, rej.Code, rej.Type,
+			opDesc, rej.Status, code, sanitizeSecretShapedTokens(rej.Type),
 		)
 	}
 
@@ -94,8 +105,9 @@ func rejectedMessage(opDesc string, err error, errStr string) string {
 }
 
 // sanitizeSecretShapedTokens replaces well-known secret prefixes with
-// [REDACTED]. Defense-in-depth for the dangerously-include-body opt-in
-// path — the default path never reaches this function.
+// [REDACTED]. Defense-in-depth on both paths: the opt-in
+// dangerously-include-body path (rej.Message) and the default path's
+// rej.Code / rej.Type interpolation (#55).
 func sanitizeSecretShapedTokens(s string) string {
 	return secretShapedTokenRE.ReplaceAllString(s, "[REDACTED]")
 }

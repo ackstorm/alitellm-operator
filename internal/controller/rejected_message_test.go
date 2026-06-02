@@ -182,6 +182,34 @@ func TestRejectedMessage_DefaultIncludesTypeWhenPresent(t *testing.T) {
 	}
 }
 
+// TestRejectedMessage_DefaultRedactsSecretInTypeAndCode — #55 (P0
+// security). The error.type / error.code fields are NOT enforced as a
+// closed enum upstream of the operator (a proxy in front of LiteLLM, or
+// a non-LiteLLM upstream, can echo arbitrary text). On the default,
+// no-opt-in path these are surfaced into CR status.message, so a
+// secret-shaped token placed in either must be redacted — never
+// persisted verbatim to a cluster-readable surface.
+func TestRejectedMessage_DefaultRedactsSecretInTypeAndCode(t *testing.T) {
+	t.Setenv("LITELLM_OPERATOR_DANGEROUSLY_INCLUDE_REJECTED_BODY", "")
+	rej := &litellm.RejectedError{
+		Method: "POST",
+		Path:   "/model/new",
+		Status: 401,
+		Code:   "Bearer sk-codefield-1234567890abcdef",
+		Type:   "auth_error sk-typefield-1234567890abcdef",
+	}
+	got := rejectedMessage("model create", rej, rej.Error())
+	if strings.Contains(got, "sk-codefield") {
+		t.Fatalf("secret-shaped token survived in code field: %q", got)
+	}
+	if strings.Contains(got, "sk-typefield") {
+		t.Fatalf("secret-shaped token survived in type field: %q", got)
+	}
+	if !strings.Contains(got, "[REDACTED]") {
+		t.Fatalf("expected redaction marker, got %q", got)
+	}
+}
+
 // TestRejectedMessage_DefaultOmitsTypeWhenEmpty — empty Type must
 // NOT produce a "type=" suffix, otherwise pre-LOW-02 callers parsing
 // messages programmatically would break.
