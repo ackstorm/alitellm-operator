@@ -1853,7 +1853,12 @@ overlay (the pinned <code>modelID</code>) and emits a Warning Event
 <ul>
 <li><code>LiteLLMUnavailable</code> — <code>LiteLLMConnection/default</code> not Ready.</li>
 <li><code>LiteLLMRejected</code> — LiteLLM returned 4xx/5xx on mutation. Inspect
-  <code>message</code> for the upstream payload.</li>
+  <code>message</code> for the upstream payload. A common first-install case is a
+  500 with <code>Set 'STORE_MODEL_IN_DB='True'' in your env to enable this
+  feature</code>: the proxy needs <code>STORE_MODEL_IN_DB=True</code> (env) or
+  <code>general_settings.store_model_in_db: true</code> (config) before it accepts
+  <code>POST /model/{new,update}</code>. This is upstream LiteLLM config, not an
+  operator setting — see the <a href="../../getting-started/quickstart/#prerequisites">quickstart prerequisites</a>.</li>
 </ul>
 <h2 id="see-also">See also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>

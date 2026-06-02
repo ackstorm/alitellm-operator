@@ -1722,6 +1722,17 @@
 <a href="https://github.com/BerriAI/litellm">BerriAI/litellm</a> upstream
 Helm chart first if you need a proxy.</p>
 </div>
+<div class="admonition warning">
+<p class="admonition-title">LiteLLM must persist models in its DB</p>
+<p>The proxy needs <code>STORE_MODEL_IN_DB=True</code> (env var) <strong>or</strong>
+<code>general_settings.store_model_in_db: true</code> (config) before it will
+accept <code>POST /model/{new,update}</code>. Without it, every <code>LiteLLMModel</code>
+goes <code>Ready=False, reason=LiteLLMRejected</code> and LiteLLM logs
+<code>Set 'STORE_MODEL_IN_DB='True'' in your env to enable this feature</code>.
+This is upstream LiteLLM config, not an operator setting. Teams,
+MCP servers, and A2A agents are unaffected — only model endpoints
+gate on the flag.</p>
+</div>
 <p>The watch namespace is whatever you set as Helm <code>watchNamespace</code>
 (default <code>default</code>). Every CR below lands there.</p>
 <h2 id="1-master-key-secret">1. Master-key Secret<a class="headerlink" href="#1-master-key-secret" title="Permanent link">&para;</a></h2>
