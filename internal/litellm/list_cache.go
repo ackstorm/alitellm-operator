@@ -42,9 +42,16 @@ type listCacheStore struct {
 
 	mcp         *listCacheEntry
 	mcpInflight chan struct{}
+	// mcpEpoch is a monotonic counter bumped on every MCP invalidation.
+	// The single-flight leader captures it before its upstream fetch and
+	// skips caching its (now stale) snapshot if the epoch advanced during
+	// the call — see CachedListMCPServers (#60).
+	mcpEpoch uint64
 
 	agents         *listCacheEntry
 	agentsInflight chan struct{}
+	// agentsEpoch mirrors mcpEpoch for the /v1/agents endpoint.
+	agentsEpoch uint64
 }
 
 // CachedListMCPServers returns the cached ListMCPServers result if
@@ -69,6 +76,7 @@ func (c *Client) invalidateMCPCache() {
 	}
 	c.listCache.mu.Lock()
 	c.listCache.mcp = nil
+	c.listCache.mcpEpoch++
 	c.listCache.mu.Unlock()
 }
 
@@ -79,6 +87,7 @@ func (c *Client) invalidateAgentsCache() {
 	}
 	c.listCache.mu.Lock()
 	c.listCache.agents = nil
+	c.listCache.agentsEpoch++
 	c.listCache.mu.Unlock()
 }
 
@@ -95,28 +104,51 @@ func (c *Client) CachedListMCPServers(ctx context.Context) ([]MCPServerEntry, er
 	if c.listCache.mcpInflight != nil {
 		ch := c.listCache.mcpInflight
 		c.listCache.mu.Unlock()
-		<-ch
+		select {
+		case <-ch:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 		c.listCache.mu.Lock()
 		out := c.listCache.mcp
 		c.listCache.mu.Unlock()
 		if out == nil {
-			// Inflight completed but cleared (rare race on close); fall
-			// through to a direct fetch rather than serve nil.
+			// Inflight completed but the cache is empty: the leader either
+			// panicked (its store never ran) or a mid-flight invalidation
+			// made it skip the store (#60). Fetch directly rather than
+			// serve nil.
 			return c.ListMCPServers(ctx)
 		}
 		return out.mcp, out.err
 	}
 	ch := make(chan struct{})
 	c.listCache.mcpInflight = ch
+	startEpoch := c.listCache.mcpEpoch
 	c.listCache.mu.Unlock()
+
+	// Reset the in-flight marker and wake all waiters even if ListMCPServers
+	// panics (JSON nil-deref, io.ReadAll OOM, transport panic) or ctx is
+	// canceled. Without this defer a leader failure strands every waiter on
+	// <-ch forever — operator-wide deadlock until pod restart (#51).
+	defer func() {
+		c.listCache.mu.Lock()
+		c.listCache.mcpInflight = nil
+		c.listCache.mu.Unlock()
+		close(ch)
+	}()
 
 	entries, err := c.ListMCPServers(ctx)
 
 	c.listCache.mu.Lock()
-	c.listCache.mcp = &listCacheEntry{mcp: entries, err: err, fetched: time.Now()}
-	c.listCache.mcpInflight = nil
+	// Store only if no invalidation landed during the fetch. A mid-flight
+	// Create/Update/Delete bumps mcpEpoch; caching the pre-mutation snapshot
+	// here would clobber that invalidation and let a vanish-probe delete a
+	// just-created server (#60). The leader still returns its own result to
+	// its caller below — it just doesn't poison the shared cache.
+	if c.listCache.mcpEpoch == startEpoch {
+		c.listCache.mcp = &listCacheEntry{mcp: entries, err: err, fetched: time.Now()}
+	}
 	c.listCache.mu.Unlock()
-	close(ch)
 	return entries, err
 }
 
@@ -135,7 +167,11 @@ func (c *Client) CachedListAgents(ctx context.Context) ([]AgentEntry, error) {
 	if c.listCache.agentsInflight != nil {
 		ch := c.listCache.agentsInflight
 		c.listCache.mu.Unlock()
-		<-ch
+		select {
+		case <-ch:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 		c.listCache.mu.Lock()
 		out := c.listCache.agents
 		c.listCache.mu.Unlock()
@@ -146,14 +182,25 @@ func (c *Client) CachedListAgents(ctx context.Context) ([]AgentEntry, error) {
 	}
 	ch := make(chan struct{})
 	c.listCache.agentsInflight = ch
+	startEpoch := c.listCache.agentsEpoch
 	c.listCache.mu.Unlock()
+
+	// Reset the in-flight marker and wake all waiters even if ListAgents
+	// panics or ctx is canceled — otherwise waiters strand forever (#51).
+	defer func() {
+		c.listCache.mu.Lock()
+		c.listCache.agentsInflight = nil
+		c.listCache.mu.Unlock()
+		close(ch)
+	}()
 
 	entries, err := c.ListAgents(ctx)
 
 	c.listCache.mu.Lock()
-	c.listCache.agents = &listCacheEntry{agents: entries, err: err, fetched: time.Now()}
-	c.listCache.agentsInflight = nil
+	// Skip the store if an invalidation advanced the epoch mid-flight (#60).
+	if c.listCache.agentsEpoch == startEpoch {
+		c.listCache.agents = &listCacheEntry{agents: entries, err: err, fetched: time.Now()}
+	}
 	c.listCache.mu.Unlock()
-	close(ch)
 	return entries, err
 }
