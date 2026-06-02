@@ -44,6 +44,10 @@ const dangerouslyIncludeRejectedBodyEnv = "LITELLM_OPERATOR_DANGEROUSLY_INCLUDE_
 // Authorization header forms. Non-exhaustive by design — the default
 // path already strips the entire envelope; this is defense in depth
 // for the opt-in path. Updated as new provider prefixes are observed.
+// Known over-match: the claude- alternative also matches Anthropic MODEL
+// names (e.g. "claude-3-opus-20240229") if one ever lands in rej.Code or
+// rej.Type. Accepted: redacting a model name in a rejection message is
+// harmless, and erring toward redaction is the intended bias.
 var secretShapedTokenRE = regexp.MustCompile(
 	`(?i)\b(?:sk-[A-Za-z0-9_\-]{8,}|xai-[A-Za-z0-9_\-]{8,}|claude-[A-Za-z0-9_\-]{8,}|gsk_[A-Za-z0-9_\-]{8,}|AKIA[0-9A-Z]{16}|AIzaSy[0-9A-Za-z_\-]{33}|hf_[A-Za-z0-9]{30,}|Bearer\s+[A-Za-z0-9_\-\.]{8,}|Authorization:\s*[A-Za-z0-9_\-\.]{8,})`,
 )

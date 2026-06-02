@@ -681,6 +681,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			AuthorizationURL:          ext.AuthorizationURL,
 			TokenURL:                  ext.TokenURL,
 			RegistrationURL:           ext.RegistrationURL,
+			OAuth2Flow:                ext.OAuth2Flow,
 			AllowAllKeys:              ext.AllowAllKeys,
 			AvailableOnPublicInternet: ext.AvailableOnPublicInternet,
 		}

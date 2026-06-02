@@ -224,6 +224,7 @@ type MCPServerUpdateRequest struct {
 	AuthorizationURL          string         `json:"authorization_url,omitempty"`
 	TokenURL                  string         `json:"token_url,omitempty"`
 	RegistrationURL           string         `json:"registration_url,omitempty"`
+	OAuth2Flow                string         `json:"oauth2_flow,omitempty"`
 	AllowAllKeys              *bool          `json:"allow_all_keys,omitempty"`
 	AvailableOnPublicInternet *bool          `json:"available_on_public_internet,omitempty"`
 	IsBYOK                    *bool          `json:"is_byok,omitempty"`

@@ -105,9 +105,9 @@ type MCPServerDiscoverySpec struct {
 	Secrets []SecretSubstitution `json:"secrets,omitempty"`
 
 	// Filters narrows the post-derivation candidate set via RE2
-	// include/exclude patterns matched against the POST-DERIVATION
-	// dotted three-part name (`<discovery-name>.<toolhive-namespace>.
-	// <toolhive-name>`) per spec §6.5. Empty (absent) Filters means
+	// include/exclude patterns matched against the generated child name
+	// `<spec.prefix>-<source-name>` (v0.3.0 breaking change; pre-v0.3.0
+	// used a dotted three-part name). Empty (absent) Filters means
 	// "no filtering" (every discovered ToolHive object becomes a
 	// candidate).
 	//
@@ -168,18 +168,18 @@ type MCPServerDiscoveryToolhive struct {
 }
 
 // MCPServerDiscoveryFilters carries the RE2 include/exclude pattern lists
-// applied to the POST-DERIVATION dotted three-part name (per spec §6.5).
-// The filter target is the DOTTED name, NOT the bare ToolHive object
-// name; this is the most common source of user confusion at runtime and
-// Will land a regression test exercising the dotted form.
+// applied to the generated child name `<spec.prefix>-<source-name>`
+// (v0.3.0 breaking change; pre-v0.3.0 used a dotted three-part name).
+// The filter target is the prefixed child name, NOT the bare ToolHive
+// object name — the most common source of user confusion at runtime.
 //
 // RE2 compile validity is a RUNTIME concern (CEL has no regex-compile
 // primitive). codes the compile + classification — invalid
 // patterns surface as Ready=False, reason=InvalidConfig with a message
 // naming the offending pattern.
 type MCPServerDiscoveryFilters struct {
-	// Include narrows the candidate set: a candidate dotted name is
-	// admitted only if it matches at least one pattern in Include. Empty
+	// Include narrows the candidate set: a candidate `<spec.prefix>-<source-name>`
+	// is admitted only if it matches at least one pattern in Include. Empty
 	// (or absent) Include means "admit all". If Include is non-empty
 	// and matches ZERO candidates, the reconcile surfaces Ready=False,
 	// reason=UpstreamInvalid (operator-intent vs upstream-reality drift).
@@ -273,6 +273,8 @@ type MCPServerDiscoveryStatus struct {
 	// counted). Maintains the invariant noted on
 	// MCPServerDiscoveryStatus's godoc above.
 	//
+	// Always serialized (value type, defaults to 0). The +optional marker
+	// only relaxes CRD required-field validation; it is never absent.
 	// +optional
 	// +kubebuilder:default=0
 	DiscoveredCount int32 `json:"discoveredCount"`
@@ -282,6 +284,8 @@ type MCPServerDiscoveryStatus struct {
 	// ownerReferences[controller=true, blockOwnerDeletion=true] +
 	// labels[litellm.ackstorm.ai/generated-by=<this>]).
 	//
+	// Always serialized (value type, defaults to 0). The +optional marker
+	// only relaxes CRD required-field validation; it is never absent.
 	// +optional
 	// +kubebuilder:default=0
 	GeneratedCount int32 `json:"generatedCount"`
@@ -351,9 +355,9 @@ type MCPServerDiscoveryStatus struct {
 // The MCPServer- prefix on the Go type avoids a name collision with the
 // Phase 4 ModelDiscovery `SkippedCandidate` type in the same package.
 type MCPServerSkippedCandidate struct {
-	// Name is the candidate dotted three-part name
-	// (`<discovery-name>.<toolhive-namespace>.<toolhive-name>`) that
-	// would have become the child MCPServer's metadata.name.
+	// Name is the candidate child name `<spec.prefix>-<source-name>`
+	// that would have become the child MCPServer's metadata.name
+	// (v0.3.0 breaking change; pre-v0.3.0 used a dotted three-part name).
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
@@ -421,8 +425,9 @@ type MCPServerSkippedCandidate struct {
 // The MCPServer- prefix on the Go type avoids a name collision with the
 // Phase 4 ModelDiscovery `FailedCandidate` type in the same package.
 type MCPServerFailedCandidate struct {
-	// Name is the candidate dotted three-part name
-	// (`<discovery-name>.<toolhive-namespace>.<toolhive-name>`).
+	// Name is the candidate child name `<spec.prefix>-<source-name>`
+	// that would have become the child MCPServer's metadata.name
+	// (v0.3.0 breaking change; pre-v0.3.0 used a dotted three-part name).
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1

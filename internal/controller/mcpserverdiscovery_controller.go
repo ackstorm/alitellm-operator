@@ -436,7 +436,7 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 	// ─── Step 5: Namespace filter (in-memory per D-07) + derivation ────────
 	// For each candidate ToolHive object: filter by namespace, derive the
-	// dotted name, read status.url (skip with EndpointUnknown if absent),
+	// child name, read status.url (skip with EndpointUnknown if absent),
 	// normalize status.transport per D-10 (skip with InvalidTransport
 	// for unmappable values).
 	candidates := make([]candidate, 0, len(raw))
@@ -563,15 +563,16 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 	// ─── Step 6: RE2 filter pipeline on childName (post-derivation) ───────
 	// Per <specifics> line 314: the filter target is the POST-DERIVATION
-	// dotted name, NOT the bare ToolHive object name. Reuse Phase 4's
-	// filters.Apply by mapping the MSDisc-typed filter into the
+	// child name (`<spec.prefix>-<source-name>`), NOT the bare ToolHive
+	// object name (pre-v0.3.0 was the dotted three-part form). Reuse
+	// Phase 4's filters.Apply by mapping the MSDisc-typed filter into the
 	// LiteLLMModelDiscovery filter shape (the underlying RE2 contract is
 	// identical — same Include-strict / Exclude-lenient semantics).
 	preFilterCount := len(candidates)
 	if md.Spec.Filters != nil {
-		dotted := make([]string, len(candidates))
+		childNames := make([]string, len(candidates))
 		for i, c := range candidates {
-			dotted[i] = c.childName
+			childNames[i] = c.childName
 		}
 		// Adapt MCPServerDiscoveryFilters → ModelDiscoveryFilters (same
 		// shape, same semantics — filter package owns the regex pipeline).
@@ -579,7 +580,7 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 			Include: md.Spec.Filters.Include,
 			Exclude: md.Spec.Filters.Exclude,
 		}
-		kept, err := filters.Apply(dotted, adapted)
+		kept, err := filters.Apply(childNames, adapted)
 		if err != nil {
 			// InvalidConfigError (bad regex) → Ready=False reason=InvalidConfig.
 			// UpstreamInvalidError (include matched zero) → Ready=False
@@ -599,7 +600,7 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 			metrics.ReconcileTotal.WithLabelValues(mcpServerDiscoveryKind, "success").Inc()
 			return ctrl.Result{RequeueAfter: md.Spec.Refresh.Interval.Duration}, nil
 		}
-		// Re-build candidates slice keeping only kept dotted names.
+		// Re-build candidates slice keeping only kept child names.
 		keptSet := make(map[string]struct{}, len(kept))
 		for _, k := range kept {
 			keptSet[k] = struct{}{}
@@ -658,7 +659,7 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 	// DELETE+CREATE round-trip against LiteLLM.
 	pendingRetries := make(map[string]struct{})
 	for _, c := range candidates {
-		// Adoption short-circuit: if this candidate's dotted name matches a
+		// Adoption short-circuit: if this candidate's child name matches a
 		// child whose ownerRef the user already stripped, the candidate is
 		// recorded in skipped[] above and MUST NOT trigger a fresh SSA write.
 		if _, adopted := adoptedNames[c.childName]; adopted {
@@ -870,7 +871,7 @@ func normalizeTransport(raw string) (string, bool) {
 // without apiVersion+kind.
 // - ObjectMeta.{Name, Namespace, Labels, OwnerReferences, Finalizers}
 // per MSDISC-10:
-// - Name = dotted three-part name.
+// - Name = <spec.prefix>-<source-name>.
 // - Labels[generatedByLabel] = parent.Name (the vanish-detection key).
 // - OwnerReferences[controller=true, blockOwnerDeletion=true] →
 // parent for cascade-delete + adoption recognition.

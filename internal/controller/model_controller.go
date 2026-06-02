@@ -743,26 +743,10 @@ func (r *ModelReconciler) classifyMutationError(ctx context.Context, model *lite
 		return ctrl.Result{}, nil // anti-storm: return nil, NOT err
 	}
 
-	// Check if it's a 4xx (non-401) — these appear in the error string as "litellm: 4XX on ."
-	// Use a simple check: if error string contains a 4xx code.
+	// Check if it's a 4xx (non-401) using the shared is4xxError helper
+	// (same frozen RejectedError.Error() string contract; Auth401Error excluded above).
 	errStr := err.Error()
-	is4xx := false
-	for _, prefix := range []string{"litellm: 4", "litellm: 42", "litellm: 40", "litellm: 41", "litellm: 43", "litellm: 44", "litellm: 45"} {
-		if len(errStr) > len(prefix) && errStr[:len(prefix)] == prefix {
-			is4xx = true
-			break
-		}
-	}
-	// More robust check: parse the HTTP status code from the error string
-	if !is4xx {
-		for code := 400; code < 500; code++ {
-			prefix := fmt.Sprintf("litellm: %d on", code)
-			if len(errStr) >= len(prefix) && errStr[:len(prefix)] == prefix {
-				is4xx = true
-				break
-			}
-		}
-	}
+	is4xx := is4xxError(err)
 
 	if is4xx {
 		// Deterministic 4xx — LiteLLMRejected. FIX2.txt M-5: surface the

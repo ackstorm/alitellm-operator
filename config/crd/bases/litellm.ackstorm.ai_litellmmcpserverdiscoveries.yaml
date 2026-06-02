@@ -107,9 +107,9 @@ spec:
               filters:
                 description: |-
                   Filters narrows the post-derivation candidate set via RE2
-                  include/exclude patterns matched against the POST-DERIVATION
-                  dotted three-part name (`<discovery-name>.<toolhive-namespace>.
-                  <toolhive-name>`) per spec §6.5. Empty (absent) Filters means
+                  include/exclude patterns matched against the generated child name
+                  `<spec.prefix>-<source-name>` (v0.3.0 breaking change; pre-v0.3.0
+                  used a dotted three-part name). Empty (absent) Filters means
                   "no filtering" (every discovered ToolHive object becomes a
                   candidate).
 
@@ -130,8 +130,8 @@ spec:
                     x-kubernetes-list-type: atomic
                   include:
                     description: |-
-                      Include narrows the candidate set: a candidate dotted name is
-                      admitted only if it matches at least one pattern in Include. Empty
+                      Include narrows the candidate set: a candidate `<spec.prefix>-<source-name>`
+                      is admitted only if it matches at least one pattern in Include. Empty
                       (or absent) Include means "admit all". If Include is non-empty
                       and matches ZERO candidates, the reconcile surfaces Ready=False,
                       reason=UpstreamInvalid (operator-intent vs upstream-reality drift).
@@ -424,6 +424,9 @@ spec:
                   the most recent successful refresh (filtered-out IDs are NOT
                   counted). Maintains the invariant noted on
                   MCPServerDiscoveryStatus's godoc above.
+
+                  Always serialized (value type, defaults to 0). The +optional marker
+                  only relaxes CRD required-field validation; it is never absent.
                 format: int32
                 type: integer
               failedCandidates:
@@ -451,8 +454,9 @@ spec:
                       type: string
                     name:
                       description: |-
-                        Name is the candidate dotted three-part name
-                        (`<discovery-name>.<toolhive-namespace>.<toolhive-name>`).
+                        Name is the candidate child name `<spec.prefix>-<source-name>`
+                        that would have become the child MCPServer's metadata.name
+                        (v0.3.0 breaking change; pre-v0.3.0 used a dotted three-part name).
                       minLength: 1
                       type: string
                     reason:
@@ -486,6 +490,9 @@ spec:
                   MCPServer CRs the Discovery currently owns (SSA-applied with
                   ownerReferences[controller=true, blockOwnerDeletion=true] +
                   labels[litellm.ackstorm.ai/generated-by=<this>]).
+
+                  Always serialized (value type, defaults to 0). The +optional marker
+                  only relaxes CRD required-field validation; it is never absent.
                 format: int32
                 type: integer
               lastRefreshAt:
@@ -546,9 +553,9 @@ spec:
                       type: string
                     name:
                       description: |-
-                        Name is the candidate dotted three-part name
-                        (`<discovery-name>.<toolhive-namespace>.<toolhive-name>`) that
-                        would have become the child MCPServer's metadata.name.
+                        Name is the candidate child name `<spec.prefix>-<source-name>`
+                        that would have become the child MCPServer's metadata.name
+                        (v0.3.0 breaking change; pre-v0.3.0 used a dotted three-part name).
                       minLength: 1
                       type: string
                     ownedBy:

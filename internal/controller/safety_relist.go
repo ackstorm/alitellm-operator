@@ -78,6 +78,12 @@ func ParseSafetyRelistInterval(raw string) (time.Duration, error) {
 //
 // d <= 0 is a no-op (callers should pass the parsed env value;
 // ParseSafetyRelistInterval returns 0 on unset to signal "keep defaults").
+//
+// NOTE: GuardRail is intentionally NOT covered here. The guardrail
+// reconciler has no RequeueAfter safety-relist path (it relies on the
+// BootSweeper relist + watch events), so there is no guardrail interval
+// var to set. Do not add one without also adding the reconciler-side
+// requeue.
 func SetSafetyRelistIntervals(d time.Duration) {
 	if d <= 0 {
 		return
