@@ -73,10 +73,14 @@ func connectionFanIn(ctx context.Context, c client.Client, obj client.Object, li
 		return nil
 	}
 	if err := c.List(ctx, list, client.InNamespace(ns)); err != nil {
+		log.FromContext(ctx).V(1).Info("connection fan-in: List failed, dropping re-enqueue",
+			"kind", kindLabel, "namespace", ns, "err", err.Error())
 		return nil
 	}
 	objs, err := apimeta.ExtractList(list)
 	if err != nil {
+		log.FromContext(ctx).V(1).Info("connection fan-in: ExtractList failed, dropping re-enqueue",
+			"kind", kindLabel, "err", err.Error())
 		return nil
 	}
 	out := make([]reconcile.Request, 0, len(objs))
