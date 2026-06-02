@@ -3,6 +3,7 @@
 package metrics
 
 import (
+	"strings"
 	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -72,20 +73,15 @@ func makeDeletionBlockedKey(kind, ns, name string) string {
 }
 
 // splitDeletionBlockedKey decomposes a key produced by
-// makeDeletionBlockedKey back into (kind, namespace, name). Invariant:
-// the key always has exactly two NUL separators.
+// makeDeletionBlockedKey back into (kind, namespace, name). The key
+// normally has exactly two NUL separators; SplitN caps the field count
+// at 3 so a stray NUL byte embedded in any input cannot overflow the
+// result array (an extra separator just lands inside the third field).
 func splitDeletionBlockedKey(k string) (string, string, string) {
-	var parts [3]string
-	i := 0
-	last := 0
-	for j := 0; j < len(k); j++ {
-		if k[j] == '\x00' {
-			parts[i] = k[last:j]
-			i++
-			last = j + 1
-		}
+	parts := strings.SplitN(k, "\x00", 3)
+	for len(parts) < 3 {
+		parts = append(parts, "")
 	}
-	parts[i] = k[last:]
 	return parts[0], parts[1], parts[2]
 }
 

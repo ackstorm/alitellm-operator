@@ -175,7 +175,7 @@ func (r *GuardRailReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 			snap := r.Cache.Snapshot()
 			guardrailID := gr.Status.LastRendered.GuardrailID
-			if snap.Ready && guardrailID != "" {
+			if snap.Usable() && guardrailID != "" {
 				if err := snap.Client.DeleteGuardrail(ctx, guardrailID); err != nil {
 					var auth401 *litellm.Auth401Error
 					switch {

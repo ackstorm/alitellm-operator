@@ -197,7 +197,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			}
 
 			snap := r.Cache.Snapshot()
-			if snap.Ready {
+			if snap.Usable() {
 				serverID := mcp.Status.LastRendered.ServerID
 				if serverID == "" {
 					// Phase 5 D-02 stale-status fallback: re-resolve by name

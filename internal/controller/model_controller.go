@@ -190,7 +190,7 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			}
 
 			snap := r.Cache.Snapshot()
-			if snap.Ready {
+			if snap.Usable() {
 				modelID := model.Status.LastRendered.ModelID
 				if modelID != "" {
 					// D-04: use persisted LiteLLM UUID.

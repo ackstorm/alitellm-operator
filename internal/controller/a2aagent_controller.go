@@ -198,7 +198,7 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			}
 
 			snap := r.Cache.Snapshot()
-			if snap.Ready {
+			if snap.Usable() {
 				agentID := a2a.Status.LastRendered.AgentID
 				if agentID == "" {
 					// Phase 5 D-02 stale-status fallback: re-resolve by name

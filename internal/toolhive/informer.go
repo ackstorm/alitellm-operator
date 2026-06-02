@@ -29,6 +29,7 @@ package toolhive
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -500,6 +501,8 @@ func (i *Informer) List(ctx context.Context, gvk schema.GroupVersionKind) (*unst
 
 	// Query both versions and feed into the dedup store.
 	store := newDedupStore()
+	var lastErr error
+	failures := 0
 	for _, listGVK := range listGVKs {
 		list := &unstructured.UnstructuredList{}
 		list.SetGroupVersionKind(listGVK)
@@ -509,11 +512,20 @@ func (i *Informer) List(ctx context.Context, gvk schema.GroupVersionKind) (*unst
 			i.Log.V(1).Info("toolhive List failed for version",
 				"listGVK", listGVK.String(),
 				"err", err.Error())
+			lastErr = err
+			failures++
 			continue
 		}
 		for idx := range list.Items {
 			store.Upsert(&list.Items[idx])
 		}
+	}
+	// If EVERY version query failed, the empty result is not authoritative.
+	// Surfacing nil here would let callers mistake a transient API outage
+	// for "no objects exist" and prune all child CRs. Propagate the error
+	// so the caller can return (ctrl.Result{}, err) for backoff.
+	if failures == len(listGVKs) && failures > 0 {
+		return nil, fmt.Errorf("toolhive List failed for all %d version(s): %w", failures, lastErr)
 	}
 
 	// FIX.txt LOW-7 (2026-05-22): each per-tuple dedup observation logs
