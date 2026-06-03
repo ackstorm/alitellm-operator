@@ -100,7 +100,9 @@ exec docker run --rm "${TTY_ARGS[@]}" \
     -e GOPATH=/workspace/.gocache/gopath \
     -e GOCACHE=/workspace/.gocache/build \
     -e GOMODCACHE=/workspace/.gocache/gopath/pkg/mod \
-    -e ENVTEST_BIN_DIR=/workspace/.gocache/envtest \
+    `# ENVTEST_BIN_DIR intentionally NOT overridden: inherit the image's` \
+    `# ENV ENVTEST_BIN_DIR=/opt/envtest so make uses the pre-baked envtest` \
+    `# assets (Makefile ENVTEST_ASSET_DIR) instead of re-downloading.` \
     -e KUBECONFIG=/workspace/.gocache/kube/config \
     -e HOST_PWD="${WORKSPACE}" \
     -e LITELLM_SPIKE_URL="${LITELLM_SPIKE_URL:-http://localhost:4000}" \

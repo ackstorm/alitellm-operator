@@ -161,7 +161,7 @@ test-envtest-race: ## Phase 2 — controller envtest with -race. Slower (~7m) bu
 _test-envtest-race: gen-manifests gen-code fmt vet setup-envtest
 	@# Runs envtest packages concurrently. Green runs show package status
 	@# plus slow tests; failed packages dump their captured logs.
-	@KUBEBUILDER_ASSETS="$$($(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)"; \
+	@KUBEBUILDER_ASSETS="$$($(envtest_assets))"; \
 	export KUBEBUILDER_ASSETS; \
 	scripts/run-envtest-packages.sh --race --timeout 15m --coverprofile cover-envtest.out -- ./internal/controller/... ./internal/toolhive/...
 
@@ -171,7 +171,7 @@ test-envtest-fast: ## Phase 2 — controller envtest WITHOUT -race. Dev inner lo
 _test-envtest-fast: setup-envtest
 	@# Runs envtest packages concurrently. Green runs show package status
 	@# plus slow tests; failed packages dump their captured logs.
-	@KUBEBUILDER_ASSETS="$$($(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)"; \
+	@KUBEBUILDER_ASSETS="$$($(envtest_assets))"; \
 	export KUBEBUILDER_ASSETS; \
 	scripts/run-envtest-packages.sh --timeout 10m -- ./internal/controller/... ./internal/toolhive/...
 
@@ -194,26 +194,26 @@ _test-envtest-pkg: setup-envtest
 	# FOCUS is single-quoted so a `-run` regex containing `|` (alternation,
 	# e.g. FOCUS='TestA|TestB') is passed as ONE argument instead of being
 	# split into a shell pipe by the inner `-c` shell.
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" \
+	KUBEBUILDER_ASSETS="$(shell $(envtest_assets))" \
 		script -q /dev/null -c "go test -v -count=1 -timeout $(or $(TIMEOUT),10m) $(if $(FOCUS),-run '$(FOCUS)',) $(PKG)"
 
 .PHONY: test-smoke-idempotency
 test-smoke-idempotency: ## Run the accelerated AC-R1 idempotency smoke (10s window, 1s safety re-list).
 	$(call container_target,_test-smoke-idempotency)
 _test-smoke-idempotency: gen-manifests gen-code fmt vet setup-envtest
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test -count=1 -timeout 60s -run TestIdempotencyNoMutationSteadyState ./internal/controller/...
+	KUBEBUILDER_ASSETS="$(shell $(envtest_assets))" go test -count=1 -timeout 60s -run TestIdempotencyNoMutationSteadyState ./internal/controller/...
 
 .PHONY: test-smoke-idempotency-long
 test-smoke-idempotency-long: ## Run the real 35-min AC-R1 idempotency test (nightly cadence; longidempotency build tag).
 	$(call container_target,_test-smoke-idempotency-long)
 _test-smoke-idempotency-long: gen-manifests gen-code fmt vet setup-envtest
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test -count=1 -timeout 40m -tags=longidempotency -run TestIdempotency35MinReal ./internal/controller/...
+	KUBEBUILDER_ASSETS="$(shell $(envtest_assets))" go test -count=1 -timeout 40m -tags=longidempotency -run TestIdempotency35MinReal ./internal/controller/...
 
 .PHONY: test-leak-soak
 test-leak-soak: ## REL-03: run the 1000-reconcile leak harness (nightly cadence; longidempotency build tag).
 	$(call container_target,_test-leak-soak)
 _test-leak-soak: gen-manifests gen-code fmt vet setup-envtest
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test -count=1 -timeout 5m -tags=longidempotency -run TestLeakHarness_1000Reconciles ./internal/controller/...
+	KUBEBUILDER_ASSETS="$(shell $(envtest_assets))" go test -count=1 -timeout 5m -tags=longidempotency -run TestLeakHarness_1000Reconciles ./internal/controller/...
 
 ##@ QA
 
@@ -456,6 +456,19 @@ CONTROLLER_TOOLS_VERSION ?= v0.17.0
 ENVTEST_VERSION ?= $(shell command -v go >/dev/null 2>&1 && go list -m -f "{{ .Version }}" sigs.k8s.io/controller-runtime | awk -F'[v.]' '{printf "release-%d.%d", $$2, $$3}')
 # (i.e. 1.31)
 ENVTEST_K8S_VERSION ?= $(shell command -v go >/dev/null 2>&1 && go list -m -f "{{ .Version }}" k8s.io/api | awk -F'[v.]' '{printf "1.%d", $$3}')
+
+# envtest asset resolution. ENVTEST_ASSET_DIR is the PRIMARY store, probed
+# first with -i (installed-only, NO network). In the devtools image it is
+# /opt/envtest — Dockerfile.devtools bakes the k8s assets there and sets
+# ENVTEST_BIN_DIR=/opt/envtest, which scripts/dev.sh propagates into the
+# container env; make picks it up as a variable. On a miss (version skew, or
+# a non-container path where ENVTEST_BIN_DIR is unset) it falls back to a
+# download into the writable $(LOCALBIN). $(envtest_assets) is a shell command
+# STRING (not a result), so it composes in both recipe-runtime `$$(...)` and
+# make-time `$(shell ...)` call sites.
+ENVTEST_ASSET_DIR ?= $(or $(ENVTEST_BIN_DIR),$(LOCALBIN))
+envtest_assets = $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(ENVTEST_ASSET_DIR) -i -p path 2>/dev/null || $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path
+
 GOLANGCI_LINT_VERSION ?= v1.62.2
 CRD_REF_DOCS_VERSION ?= v0.2.0
 
@@ -472,7 +485,7 @@ $(CONTROLLER_GEN): $(LOCALBIN)
 .PHONY: setup-envtest
 setup-envtest: envtest ## Download the binaries required for ENVTEST in the local bin directory.
 	@echo "Setting up envtest binaries for Kubernetes version $(ENVTEST_K8S_VERSION)..."
-	@$(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path || { \
+	@$(envtest_assets) || { \
 		echo "Error: Failed to set up envtest binaries for version $(ENVTEST_K8S_VERSION)."; \
 		exit 1; \
 	}
