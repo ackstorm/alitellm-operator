@@ -268,7 +268,7 @@ spec:
     matchNames:
       - {{ .Release.Namespace }}
   endpoints:
-    - port: metrics
+    - port: http
       path: /metrics
       interval: 30s
 {{- end }}
