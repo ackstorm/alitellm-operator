@@ -1792,7 +1792,7 @@ normal reconcile drives the LiteLLM entity to its spec.</p>
 <li>Loser CRs emit a <code>ConflictDetected</code> Kubernetes Event with the winner key.</li>
 <li>Winner CRs emit a <code>ConflictWon</code> Event when they take over after a
   previous winner left the set.</li>
-<li>The metric <code>litellm_operator_conflicts_total{kind, role}</code> increments
+<li>The metric <code>alitellm_operator_conflicts_total{kind, role}</code> increments
   with <code>role=loser</code> on every transition into Conflict and <code>role=winner</code>
   on every promotion.</li>
 </ul>

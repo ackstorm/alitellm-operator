@@ -1746,7 +1746,7 @@ not the child.</p>
 <h2 id="observability">Observability<a class="headerlink" href="#observability" title="Permanent link">&para;</a></h2>
 <p>When a Delete-policy CR is blocked on a missing ack, the operator:</p>
 <ol>
-<li>Increments the <code>litellm_operator_deletion_blocked{kind,namespace,name}</code> gauge.</li>
+<li>Increments the <code>alitellm_operator_deletion_blocked{kind,namespace,name}</code> gauge.</li>
 <li>Emits a <code>LiteLLMDeleteBlocked</code> Warning Event on the CR (rate-
    limited by the event recorder's default dedup window).</li>
 <li>Returns an error from the reconcile so controller-runtime requeues
@@ -1754,7 +1754,7 @@ not the child.</p>
 </ol>
 <p>When an Orphan-policy CR drops a finalizer without ack:</p>
 <ol>
-<li>Increments the <code>litellm_operator_deletion_orphaned_total{kind}</code> counter.</li>
+<li>Increments the <code>alitellm_operator_deletion_orphaned_total{kind}</code> counter.</li>
 <li>Emits a <code>LiteLLMDeleteOrphaned</code> Normal Event on the CR.</li>
 <li>Returns nil from the reconcile so the CR is garbage-collected.</li>
 </ol>
