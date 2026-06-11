@@ -75,7 +75,7 @@ Critical paths:
 ```
 alitellm-operator/
 ├── .github/                 ← bbd-derived; reconciled for ackstorm
-│   ├── workflows/           CI / release / docs / govulncheck / labeler / gotests
+│   ├── workflows/           CI / release / docs / govulncheck / labeler
 │   ├── CODEOWNERS, dependabot.yml, labeler.yml, ISSUE_TEMPLATE/, PR template
 ├── .goreleaser.yml          ← bbd-derived; stable release config
 ├── .goreleaser.prerelease.yml   ← prerelease (alpha/beta/rc tags)
@@ -138,8 +138,6 @@ Lint / Unit / Envtest / Security / E2E (kind + helm + ginkgo); linear
 history required; no force-push; no deletions). Post-merge SHA on main
 has identical content to the PR head SHA, so re-running CI on push
 main would be dup. Release commits are handled by `release.yml`.
-Soak / leak / fuzz harnesses live in `nightly.yml` (04:00 UTC +
-workflow_dispatch).
 
 Docs-only PRs (paths-ignore: `**/*.md`, `docs/**`, `.planning/**`,
 `references/**`, `FIX*.txt`, `LICENSE`, `NOTICE`, `CODEOWNERS`,

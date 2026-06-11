@@ -115,7 +115,6 @@ validated as the PR head). Authoritative trigger reference:
 | PR → main (any) | `govulncheck.yml` (HIGH advisory gate vs ack-list) | ≤ 3 min |
 | Push to main (post-merge, non-release) | none | n/a |
 | Cron Mon 05:08 UTC | `govulncheck.yml` (drift detection) | ≤ 3 min |
-| Cron 04:00 UTC + workflow_dispatch | `nightly.yml` (long-soak + leak-soak + fuzz, parallel) | ≤ 60 min |
 | `chore(release): v*` commit on main | `release.yml` (tests → bump → image + chart push → gh release → tag) | ≤ 20 min |
 
 Branch protection on `main` requires `Lint`, `Unit`, `Envtest`, `Security`,

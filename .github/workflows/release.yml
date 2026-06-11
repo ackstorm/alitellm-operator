@@ -87,12 +87,7 @@ jobs:
 
   build-and-release:
     name: Build + release
-    # TEMPORARY (#74 envtest flake): build no longer gates on run-tests so a
-    # flaky -shuffle envtest failure cannot block the release. run-tests
-    # still runs under `needs: parse` for visibility. REVERT to
-    # `needs: [parse, run-tests]` once the #74 shared-mock isolation flakes
-    # are fixed and the gate is reliable again.
-    needs: parse
+    needs: [parse, run-tests]
     runs-on: ubuntu-latest
     # Routed make targets (helm-sync) short-circuit to NATIVE execution
     # here via LITELLM_IN_DEVTOOLS=1, using the setup-go toolchain on the

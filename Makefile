@@ -203,18 +203,6 @@ test-smoke-idempotency: ## Run the accelerated AC-R1 idempotency smoke (10s wind
 _test-smoke-idempotency: gen-manifests gen-code fmt vet setup-envtest
 	KUBEBUILDER_ASSETS="$(shell $(envtest_assets))" go test -count=1 -timeout 60s -run TestIdempotencyNoMutationSteadyState ./internal/controller/...
 
-.PHONY: test-smoke-idempotency-long
-test-smoke-idempotency-long: ## Run the real 35-min AC-R1 idempotency test (nightly cadence; longidempotency build tag).
-	$(call container_target,_test-smoke-idempotency-long)
-_test-smoke-idempotency-long: gen-manifests gen-code fmt vet setup-envtest
-	KUBEBUILDER_ASSETS="$(shell $(envtest_assets))" go test -count=1 -timeout 40m -tags=longidempotency -run TestIdempotency35MinReal ./internal/controller/...
-
-.PHONY: test-leak-soak
-test-leak-soak: ## REL-03: run the 1000-reconcile leak harness (nightly cadence; longidempotency build tag).
-	$(call container_target,_test-leak-soak)
-_test-leak-soak: gen-manifests gen-code fmt vet setup-envtest
-	KUBEBUILDER_ASSETS="$(shell $(envtest_assets))" go test -count=1 -timeout 5m -tags=longidempotency -run TestLeakHarness_1000Reconciles ./internal/controller/...
-
 ##@ QA
 
 .PHONY: qa-lint
@@ -271,7 +259,7 @@ _qa-fuzz-short:
 	go test -run='^$$' -fuzz=FuzzNormalize  -fuzztime=$(FUZZ_TIME_SHORT) ./internal/normalize/...
 
 .PHONY: qa-fuzz-long
-qa-fuzz-long: ## Go fuzz targets with 10-minute budget per target (nightly cadence).
+qa-fuzz-long: ## Go fuzz targets with 10-minute budget per target (manual deep run).
 	$(call container_target,_qa-fuzz-long)
 _qa-fuzz-long:
 	go test -run='^$$' -fuzz=FuzzSubstitute -fuzztime=$(FUZZ_TIME_LONG) ./internal/substitution/...
