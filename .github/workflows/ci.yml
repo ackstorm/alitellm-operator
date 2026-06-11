@@ -21,8 +21,7 @@ on:
 
 # main is PR-only (branch protection enforces). Post-merge content equals
 # PR head content, so re-running on push main is redundant. Release
-# commits are handled by release.yml. Nightly soak/leak/fuzz lives in
-# nightly.yml.
+# commits are handled by release.yml.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

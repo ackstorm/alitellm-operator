@@ -35,10 +35,6 @@ import (
 // Mocking note (Pitfall 9): GET is a read; POST/PUT/DELETE are mutations.
 // AC-R1 only forbids mutations during steady state. The test inspects
 // both counters but only asserts on Mutations.
-//
-// Phase 7's elevated test (TestIdempotency35MinReal in this file, gated
-// by //go:build longidempotency) runs the full 35-min wall-clock window
-// per spec §11 AC-R1.
 func TestIdempotencyNoMutationSteadyState(t *testing.T) {
 	if reconcileCalls == nil {
 		t.Fatal("suite_test.go did not initialize globals — TestMain ordering bug")

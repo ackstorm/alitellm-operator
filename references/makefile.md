@@ -157,8 +157,6 @@ the Makefile, and `scripts/cluster.sh` only knows `up`, `hydrate`, `sync`,
 | `test-unit-pkg PKG=…` | A | Unit tests for one package. |
 | `test-envtest-pkg PKG=… [FOCUS=…] [TIMEOUT=…]` | A | envtest for one package. |
 | `test-smoke-idempotency` | A | Accelerated AC-R1 idempotency smoke (10s). |
-| `test-smoke-idempotency-long` | A | Real 35-min AC-R1 idempotency (nightly). |
-| `test-leak-soak` | A | REL-03 1000-reconcile leak harness (nightly). |
 
 ### QA / security (`qa-`)
 | Target | Ctx | Description |
@@ -169,7 +167,7 @@ the Makefile, and `scripts/cluster.sh` only knows `up`, `hydrate`, `sync`,
 | `qa-lint-changed [BASE_REF=…]` | A | Lint only packages touched vs BASE_REF (default `origin/main`). |
 | `qa-security` | A | gosec (via lint) + govulncheck (ack-list aware) + `qa-fuzz-short`, ≤6m. |
 | `qa-fuzz-short` | A | Go fuzz targets, 60s budget each (CI cadence). |
-| `qa-fuzz-long` | A | Go fuzz targets, 10-min budget each (nightly). |
+| `qa-fuzz-long` | A | Go fuzz targets, 10-min budget each (manual). |
 
 ### Build (`build-`, `docker-`, `run`)
 | Target | Ctx | Description |

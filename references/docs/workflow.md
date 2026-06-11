@@ -38,8 +38,10 @@ Rationale:
   (no push trigger). `release.yml` fires on push main and runs its
   own `make test-unit && make test-envtest-fast` sanity gate before goreleaser.
 - **Drift paranoia** (new CVE published overnight, infra rot, etc.):
-  not covered by `ci.yml`. If/when needed, add an envtest/security
-  drift job to `nightly.yml` (currently soak/leak/fuzz only).
+  not covered by `ci.yml`. `govulncheck.yml`'s weekly cron covers
+  advisory drift; if more is ever needed, add a scheduled workflow
+  that notifies on failure (a red cron nobody watches is worse than
+  no cron — the retired `nightly.yml` failed 21/21 runs unnoticed).
 
 ### `paths-ignore` — docs-only PRs skip CI entirely
 
@@ -92,7 +94,6 @@ success on docs-only changes (skip-condition pattern).
 | `push: tags v*`                  | n/a                                       | n/a           | ✅ deploy stable alias (or `preview` for `-alpha`/`-beta`/`-rc`) | n/a | n/a | n/a |
 | docs-only PR (paths-ignore match) | (none — workflow skipped)                | n/a           | ✅ (the docs path itself) | ✅ (no paths-ignore on govulncheck) | ✅       | n/a |
 | schedule (Mon 05:08 UTC)         | n/a                                       | n/a           | n/a                  | ✅ weekly drift   | n/a              | n/a                  |
-| schedule (04:00 UTC)             | n/a                                       | n/a           | n/a                  | n/a               | n/a — `nightly.yml` owns soak/leak/fuzz | n/a |
 | `workflow_dispatch` (manual)     | n/a                                       | n/a           | n/a                  | ✅                | n/a              | ✅ (force rebuild)    |
 
 ## Devtools image — content-addressed CI base layer
