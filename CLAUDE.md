@@ -689,6 +689,50 @@ LiteLLM. The e2e cluster already sets this
 (`test/e2e/cluster/01-deps/litellm.values.yaml`). Teams/MCP/A2A CRs are
 unaffected — only model endpoints gate on the flag.
 
+### ❌ Router model (`auto_router/…`) recreates forever, new modelID every reconcile
+```yaml
+spec:
+  params:
+    model: auto_router/complexity_router   # or any auto_router/* pseudo-model
+    complexity_router_config: { tiers: { SIMPLE: ackstorm.fast, ... } }
+    complexity_router_default_model: ackstorm.lite
+```
+Symptom: CR flips a fresh `status.lastRendered.modelID` every ~second,
+never visible in the LiteLLM UI / `GET /model/info`, operator log spams
+`safety re-list detected out-of-band delete; clearing ID` then
+`model created in LiteLLM`. **The model actually works for inference** —
+it is only invisible to the operator.
+✅ Handled since the router-aware reconcile: `isRouterModel` (litellm_params
+`model` prefix `auto_router/`) skips the Step 7b existence probe, so the CR
+reaches a stable `Ready=Synced` with the first-create id retained.
+WHY IT FAILED: LiteLLM stores router/auto-router/complexity-router
+deployments in its in-memory router, NOT the DB model table, so
+`GET /model/info?model_name=` (and `?litellm_model_id=`) never returns
+them. The existence probe read empty → cleared the ModelID → re-POSTed
+`/model/new` (LiteLLM answers *"already exists, ignoring"*, 200 + a fresh
+id) → infinite churn. Routers are the canonical *created-but-not-listed*
+class.
+
+### ❌ A non-router model storms LiteLLM with `/model/new` (created-but-not-listed)
+Same churn shape as the router case but for a model that genuinely never
+persists — e.g. `use_in_pass_through: true` on a LiteLLM build that 200s
+the create but discards it. These DON'T work for inference and can't be
+made to via the operator.
+✅ The recreate circuit breaker caps recreates at
+`LITELLM_OPERATOR_RECREATE_LIMIT_PER_MIN` (default **10**) per CR per 60s
+sliding window; on trip the CR is parked `Ready=False`,
+`reason=RecreateThrottled` and requeued after 5m (self-heals if LiteLLM
+behavior changes). Tune / inspect:
+```bash
+kubectl set env -n litellm-system deploy/alitellm-operator \
+  LITELLM_OPERATOR_RECREATE_LIMIT_PER_MIN=10
+kubectl get litellmmodel <name> -o jsonpath='{.status.conditions[?(@.type=="Ready")]}'
+```
+Router models never reach the breaker — they bypass the probe (above) and
+sit Ready. NOTE: the breaker is currently wired on the **Model** controller
+only; the sibling controllers (mcpserver/team/a2aagent) share the
+`probeVanishedResourceID` vanish path but not yet the breaker.
+
 ## Repository-specific patterns
 
 - **E2E standing hydration = numbered kustomize phases**: the e2e cluster's

@@ -935,8 +935,23 @@ func (m *MockServer) statefulBody(r *http.Request) []byte {
 		seq := m.modelSeq.Add(1)
 		modelID := fmt.Sprintf("mock-model-id-%d", seq)
 
+		// Mirror real LiteLLM: router pseudo-models (litellm_params.model
+		// "auto_router/…") are accepted (200 + a fresh id) but live in the
+		// in-memory router, NOT the DB model table — so GET /model/info never
+		// lists them. Returning the id without storing reproduces the
+		// created-but-not-listed trait the operator must tolerate (router
+		// models skip the existence probe; non-routers trip the breaker).
+		var routerCreate bool
+		if lp, ok := reqBody["litellm_params"].(map[string]any); ok {
+			if mdl, ok := lp["model"].(string); ok && strings.HasPrefix(mdl, "auto_router/") {
+				routerCreate = true
+			}
+		}
+
 		m.mu.Lock()
-		m.models[modelName] = &modelEntry{ModelID: modelID, ModelName: modelName}
+		if !routerCreate {
+			m.models[modelName] = &modelEntry{ModelID: modelID, ModelName: modelName}
+		}
 		m.perModelMutations[modelName]++
 		m.mu.Unlock()
 

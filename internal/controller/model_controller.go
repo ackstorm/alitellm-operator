@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -58,6 +59,33 @@ var modelSafetyRelistInterval = 10 * time.Minute
 
 // modelKind is the metric label for LiteLLMModel CRs.
 const modelKind = "LiteLLMModel"
+
+// reasonRecreateThrottled is the Ready=False reason set when a CR exceeds the
+// per-minute recreate ceiling (EnvRecreateLimitPerMin). It marks the
+// created-but-not-listed reconcile-storm class — LiteLLM 200s the create but
+// the entry never resolves on the existence probe — so the operator parks the
+// CR instead of re-POSTing at reconcile speed.
+const reasonRecreateThrottled = "RecreateThrottled"
+
+// recreateThrottleBackoff is how long a throttled CR is parked before the
+// next recreate attempt. Long enough that a still-broken model issues well
+// under the per-minute ceiling, short enough to self-heal once LiteLLM
+// behavior changes (e.g. an upgrade restores persistence).
+const recreateThrottleBackoff = 5 * time.Minute
+
+// isRouterModel reports whether the rendered litellm_params describe a LiteLLM
+// router pseudo-model (semantic auto-router or complexity-router). LiteLLM
+// stores these in its in-memory router, NOT the DB model table, so they are
+// invisible to GET /model/info — the operator's existence probe can never
+// resolve them, and a naive probe would loop forever clearing the ModelID and
+// re-POSTing (LiteLLM answers "already exists, ignoring" with a fresh id each
+// time). Recognised by the `auto_router/` provider prefix on `model` (both
+// variants use it, e.g. model: "auto_router/complexity_router"). Router models
+// skip the existence probe and rely on hash-equal steady state instead.
+func isRouterModel(params map[string]any) bool {
+	m, _ := params["model"].(string)
+	return strings.HasPrefix(m, "auto_router/")
+}
 
 // SecretRefIndexField is the field indexer path registered in cmd/main.go
 // for reverse-mapping Secret names back to Models that reference them
@@ -131,6 +159,13 @@ type ModelReconciler struct {
 	// ConnectionRebuilt — see GuardRailReconciler.ConnectionRebuilt
 	// (issue #44 cache-population race close). nil-safe.
 	ConnectionRebuilt <-chan event.GenericEvent
+	// Churn tracks per-CR recreate frequency to trip the RecreateThrottled
+	// circuit breaker. nil-safe (a nil guard disables throttling). Production
+	// wires newChurnGuard() in SetupWithManager; tests may leave it nil.
+	Churn *churnGuard
+	// RecreateLimit is the per-CR recreates-per-minute ceiling. <= 0 →
+	// DefaultRecreateLimitPerMin. Set from EnvRecreateLimitPerMin in cmd/main.go.
+	RecreateLimit int
 }
 
 // Reconcile implements the LiteLLMModel state machine.
@@ -138,6 +173,9 @@ type ModelReconciler struct {
 //nolint:gocyclo // Linear state machine — splitting into helpers obscures the §7.2 mapping.
 func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx).WithValues("model", req.NamespacedName)
+	// Stable churn-guard key. Captured before the CREATE branch shadows `req`
+	// with a *litellm.Deployment of the same name.
+	key := req.NamespacedName
 
 	// ─── Step 1: Fetch the CR ──────────────────────────────────────────────
 	var model litellmv1alpha1.LiteLLMModel
@@ -287,6 +325,8 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			// OBS-03: drop the cr_status_age_seconds label before the CR is gone
 			// so /metrics cardinality never grows monotonically (T-07-01-01).
 			metrics.CRStatusAgeTracker.Forget(modelKind, model.Name)
+			// Drop recreate-churn history for the departing CR.
+			r.Churn.Forget(key)
 			// Issue #23: idempotent Forget so the gauge clears whenever the
 			// finalizer is actually removed (covers any path that reached
 			// here without already calling Forget).
@@ -455,6 +495,13 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	sum := sha256.Sum256(canonicalBytes)
 	currentRenderedHash := fmt.Sprintf("%x", sum)
 
+	// Router pseudo-models (auto_router/complexity_router) live in LiteLLM's
+	// in-memory router, not the DB model table, so GET /model/info never
+	// returns them. The existence probe (Step 7b) and the safety re-list
+	// would loop forever clearing the ModelID and re-POSTing. Detect them
+	// once and skip the probe; they reconcile by hash-equal steady state.
+	routerModel := isRouterModel(paramsMap)
+
 	// ─── Step 7b: Existence probe (D-03 / AC-M3 conformance) ────────────────
 	// Verifies the entry still exists in LiteLLM. On not-found OR id-drift,
 	// clears ModelID so Step 9 CREATE branch fires and the create_missing
@@ -479,8 +526,9 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	// re-list tick. At the 30m production interval = 2 calls/hour/CR.
 	//
 	// Skipped on first reconcile (lastRendered.hash empty) — bootstrap
-	// CREATE runs via ModelID empty already.
-	if model.Status.LastRendered.ModelID != "" && model.Status.LastRendered.Hash != "" {
+	// CREATE runs via ModelID empty already. Skipped for router models
+	// (routerModel) — they are structurally invisible to GET /model/info.
+	if !routerModel && model.Status.LastRendered.ModelID != "" && model.Status.LastRendered.Hash != "" {
 		clear, probeErr := probeVanishedResourceID(ctx,
 			model.Status.LastRendered.ModelID,
 			func(c context.Context) (string, error) {
@@ -526,6 +574,9 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			}
 		}
 		metrics.CRStatusAgeTracker.RecordSuccess(modelKind, model.Name)
+		// Reached steady state — drop any recreate-churn history so a model
+		// that recovered is not throttled by stale counts.
+		r.Churn.Forget(key)
 		// Periodic safety-relist requeue — see mcpserver_controller.go
 		// mcpSafetyRelistInterval rationale (post v0.4.3 Owns predicate
 		// filter, children no longer reconcile on Discovery refresh
@@ -558,6 +609,30 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		// overwrite semantics already permit name collisions on first
 		// reconcile, so adoption is consistent and does NOT increment
 		// drift_corrected_total.
+		//
+		// Recreate circuit breaker: a recreate (not first reconcile) means the
+		// existence probe cleared a populated ModelID. If this repeats faster
+		// than RecreateLimit/min the entry is created-but-not-listed — LiteLLM
+		// 200s POST /model/new but the row never resolves — and re-POSTing at
+		// reconcile speed storms LiteLLM. Park the CR in Ready=False/
+		// RecreateThrottled and back off instead of issuing the create.
+		if !firstReconcile {
+			limit := r.RecreateLimit
+			if limit <= 0 {
+				limit = DefaultRecreateLimitPerMin
+			}
+			if n := r.Churn.Count(key); n >= limit {
+				msg := fmt.Sprintf("recreate throttled: %d recreates within %s (limit %d). "+
+					"LiteLLM accepts POST /model/new but the entry never appears on the existence probe "+
+					"(created-but-not-listed); parked to avoid a reconcile storm. Retrying after %s.",
+					n, churnWindow, limit, recreateThrottleBackoff)
+				if werr := r.writeStatus(ctx, &model, metav1.ConditionFalse, reasonRecreateThrottled, msg); werr != nil {
+					logStatusUpdateErr(logger, werr, "reason", reasonRecreateThrottled)
+				}
+				metrics.ReconcileTotal.WithLabelValues(modelKind, "success").Inc()
+				return ctrl.Result{RequeueAfter: recreateThrottleBackoff}, nil
+			}
+		}
 		if existing, probeErr := snap.Client.GetModelInfoByName(ctx, model.Name); probeErr != nil {
 			return ctrl.Result{}, probeErr
 		} else if existing != nil && existing.ModelInfo.ID != "" {
@@ -615,6 +690,9 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			// out-of-band delete was discovered). Suppressed on first reconcile (OWN-04).
 			if !firstReconcile {
 				metrics.DriftCorrectedTotal.WithLabelValues("model", "create_missing").Inc()
+				// Record this recreate so the circuit breaker trips if they
+				// keep recurring (created-but-not-listed storm).
+				r.Churn.Record(key)
 			}
 			logger.V(1).Info("model created in LiteLLM", "modelID", newModelID)
 		}
@@ -835,6 +913,15 @@ func (r *ModelReconciler) secretToModels(ctx context.Context, obj client.Object)
 //
 // Named("model") — controller registry name.
 func (r *ModelReconciler) SetupWithManager(mgr ctrl.Manager, safetyRelistCh ...chan reconcile.Request) error {
+	// Initialize the recreate circuit breaker. nil-safe receivers mean tests
+	// that leave Churn nil simply get the no-throttle path.
+	if r.Churn == nil {
+		r.Churn = newChurnGuard()
+	}
+	if r.RecreateLimit <= 0 {
+		r.RecreateLimit = DefaultRecreateLimitPerMin
+	}
+
 	b := ctrl.NewControllerManagedBy(mgr).
 		For(&litellmv1alpha1.LiteLLMModel{}, builder.WithPredicates()).
 		Watches(

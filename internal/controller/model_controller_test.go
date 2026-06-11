@@ -437,6 +437,86 @@ func TestModel_FirstReconcile_CreateNew_NoDrift(t *testing.T) {
 	}
 }
 
+// TestModel_RouterModel_NoChurn — Fix B (router-aware reconcile).
+//
+// A router pseudo-model (litellm_params.model "auto_router/…") is accepted
+// by LiteLLM (200 + id) but lives in the in-memory router, not the DB model
+// table, so GET /model/info never lists it (the mock mirrors this). Without
+// the router-aware skip, the existence probe would read empty, clear the
+// ModelID, and re-POST every reconcile — a storm with an ever-changing id.
+// This asserts the router CR reaches a STABLE Ready=Synced with exactly one
+// POST /model/new and a fixed modelID.
+func TestModel_RouterModel_NoChurn(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetModels()
+	ensureNoModel(t, ctx, "router-no-churn-test")
+	resetConnCacheSnapshot()
+
+	ensureNoConnectionDefault(t, ctx)
+	connCR := connDefaultCR()
+	if err := k8sClient.Create(ctx, connCR); err != nil {
+		t.Fatalf("create LiteLLMConnection: %v", err)
+	}
+	t.Cleanup(func() {
+		mockServer.SetMode(mock.ModeHappy)
+		_ = k8sClient.Delete(context.Background(), connCR, &client.DeleteOptions{})
+		ensureNoModel(t, context.Background(), "router-no-churn-test")
+		time.Sleep(50 * time.Millisecond)
+	})
+	if connSnap := pollSnapshotReason(30*time.Second, reasonSynced); connSnap.Reason != reasonSynced {
+		t.Fatalf("LiteLLMConnection not Synced within 30s")
+	}
+
+	cr := modelSampleCR("router-no-churn-test")
+	cr.Spec.Params.Raw = []byte(`{"model":"auto_router/complexity_router",` +
+		`"complexity_router_config":{"tiers":{"SIMPLE":"ackstorm.fast"}},` +
+		`"complexity_router_default_model":"ackstorm.lite"}`)
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create router Model: %v", err)
+	}
+
+	m := pollModelCondition(t, ctx, "router-no-churn-test", reasonSynced, 30*time.Second)
+	c := apimeta.FindStatusCondition(m.Status.Conditions, conditionTypeReady)
+	if c == nil || c.Status != metav1.ConditionTrue || c.Reason != reasonSynced {
+		t.Fatalf("router model not Ready/Synced: %+v", c)
+	}
+	if m.Status.LastRendered.ModelID == "" {
+		t.Fatal("router model lastRendered.modelID empty; want the create id retained")
+	}
+	firstID := m.Status.LastRendered.ModelID
+
+	countNew := func() int {
+		n := 0
+		for _, call := range mockServer.Recorded() {
+			if call.Method == http.MethodPost && call.Path == pathModelNew {
+				n++
+			}
+		}
+		return n
+	}
+	// Let several safety/event reconciles elapse — a churning router would
+	// re-POST and mutate the id during this window.
+	time.Sleep(2 * time.Second)
+
+	if n := countNew(); n != 1 {
+		t.Errorf("POST /model/new count for router model: want 1 (no churn), got %d", n)
+	}
+	var after litellmv1alpha1.LiteLLMModel
+	if err := k8sClient.Get(ctx, client.ObjectKey{Name: "router-no-churn-test", Namespace: WatchNamespace}, &after); err != nil {
+		t.Fatalf("re-get router model: %v", err)
+	}
+	if after.Status.LastRendered.ModelID != firstID {
+		t.Errorf("router modelID churned: was %q, now %q", firstID, after.Status.LastRendered.ModelID)
+	}
+	if rc := apimeta.FindStatusCondition(after.Status.Conditions, conditionTypeReady); rc == nil ||
+		rc.Reason == reasonRecreateThrottled {
+		t.Errorf("router model should be steady Ready, not throttled: %+v", rc)
+	}
+}
+
 // TestModel_SecondReconcile_NoSpecChange_NoOp — Task 2 Test 5.
 //
 // After a Model reaches Synced, a second reconcile with unchanged spec must
