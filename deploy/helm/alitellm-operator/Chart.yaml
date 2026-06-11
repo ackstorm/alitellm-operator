@@ -1,7 +1,7 @@
 apiVersion: v2
 name: alitellm-operator
-version: 0.7.9
-appVersion: v0.7.9
+version: 0.7.10
+appVersion: v0.7.10
 kubeVersion: ">= 1.27.0-0"
 description: >-
   LiteLLM operator for Kubernetes — declarative GitOps surface for Models, MCPServers, A2AAgents, Teams, ModelDiscovery, MCPServerDiscovery, and LiteLLMConnection.
