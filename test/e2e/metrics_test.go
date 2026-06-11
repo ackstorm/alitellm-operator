@@ -18,8 +18,8 @@ import (
 var expectedMetricNames = []string{
 	"reconcile_total",
 	"reconcile_duration_seconds",
-	"litellm_api_request_duration_seconds",
-	"litellm_api_errors_total",
+	"alitellm_api_request_duration_seconds",
+	"alitellm_api_errors_total",
 	"discovery_refresh_total",
 	"discovery_generated_count",
 	"discovery_skipped_total",

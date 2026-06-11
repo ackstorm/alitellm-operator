@@ -24,8 +24,8 @@ func TestAllS10MetricNamesAreRegistered(t *testing.T) {
 	want := []string{
 		"reconcile_total",
 		"reconcile_duration_seconds",
-		"litellm_api_request_duration_seconds",
-		"litellm_api_errors_total",
+		"alitellm_api_request_duration_seconds",
+		"alitellm_api_errors_total",
 		"discovery_refresh_total",
 		"discovery_generated_count",
 		"discovery_skipped_total",
@@ -136,7 +136,7 @@ func TestNoUnexpectedMetricNamesInS10Surface(t *testing.T) {
 	}
 	s10 := map[string]bool{
 		"reconcile_total": true, "reconcile_duration_seconds": true,
-		"litellm_api_request_duration_seconds": true, "litellm_api_errors_total": true,
+		"alitellm_api_request_duration_seconds": true, "alitellm_api_errors_total": true,
 		"discovery_refresh_total": true, "discovery_generated_count": true,
 		"discovery_skipped_total": true, "discovery_failed_total": true,
 		"drift_corrected_total": true, "connection_ready": true,
@@ -219,7 +219,7 @@ func TestChildCRWritesTotalLabelCombosArePreTouched(t *testing.T) {
 // *Kind constants) rather than allKinds because the label values must
 // align with what controllers actually emit at increment sites.
 func TestDeletionOrphanedTotalPreTouched(t *testing.T) {
-	got := testutil.CollectAndCount(DeletionOrphanedTotal, "litellm_operator_deletion_orphaned_total")
+	got := testutil.CollectAndCount(DeletionOrphanedTotal, "alitellm_operator_deletion_orphaned_total")
 	want := len(deletionPolicyKinds)
 	if got != want {
 		t.Fatalf("DeletionOrphanedTotal pre-touch count: got %d, want %d (deletionPolicyKinds)", got, want)
@@ -234,18 +234,18 @@ func TestDeletionBlockedTrackerRecordForget(t *testing.T) {
 	tr.Record("LiteLLMModel", "ns1", "foo")
 	tr.Record("LiteLLMModel", "ns1", "bar")
 
-	if n := testutil.CollectAndCount(tr, "litellm_operator_deletion_blocked"); n != 2 {
+	if n := testutil.CollectAndCount(tr, "alitellm_operator_deletion_blocked"); n != 2 {
 		t.Fatalf("after 2 Record: count=%d, want 2", n)
 	}
 
 	tr.Forget("LiteLLMModel", "ns1", "foo")
-	if n := testutil.CollectAndCount(tr, "litellm_operator_deletion_blocked"); n != 1 {
+	if n := testutil.CollectAndCount(tr, "alitellm_operator_deletion_blocked"); n != 1 {
 		t.Fatalf("after Forget: count=%d, want 1", n)
 	}
 
 	// Forget of absent key is a no-op.
 	tr.Forget("LiteLLMModel", "ns1", "never-recorded")
-	if n := testutil.CollectAndCount(tr, "litellm_operator_deletion_blocked"); n != 1 {
+	if n := testutil.CollectAndCount(tr, "alitellm_operator_deletion_blocked"); n != 1 {
 		t.Fatalf("after Forget of absent key: count=%d, want 1", n)
 	}
 }

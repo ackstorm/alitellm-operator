@@ -689,6 +689,24 @@ LiteLLM. The e2e cluster already sets this
 (`test/e2e/cluster/01-deps/litellm.values.yaml`). Teams/MCP/A2A CRs are
 unaffected — only model endpoints gate on the flag.
 
+### ❌ Expecting LiteLLM to fill model `created_at` → UI shows "Unknown date"
+```
+Models UI row:  alitellm-operator/0.7.8   Unknown date
+```
+✅ The operator must stamp `model_info.created_at` / `model_info.updated_at`
+itself on CREATE — same mechanism as the `created_by` stamp (FIX2 M-8).
+`model_controller.go` sets all four on the `POST /model/new` body
+(RFC3339 UTC). Adopted/out-of-band rows cannot be back-stamped.
+WHY IT FAILS: in OSS (non-premium) LiteLLM, `proxy_server.get_model_info_with_id`
+copies the DB `created_at`/`updated_at` columns into `model_info` ONLY when
+`premium_user is True` (Enterprise). Non-premium UIs read the date straight
+from the `model_info` JSON blob, so a blob without `created_at` renders
+"Unknown date". `POST /model/new` (`_add_model_to_db`) is the ONLY endpoint
+that persists the `model_info` blob — `POST /model/update` (`update_model`)
+rewrites `litellm_params` + the `updated_by` DB column ONLY and never touches
+the blob, so the timestamp cannot be added/refreshed on the UPDATE path.
+Stamp it on CREATE or it never appears.
+
 ## Repository-specific patterns
 
 - **E2E standing hydration = numbered kustomize phases**: the e2e cluster's

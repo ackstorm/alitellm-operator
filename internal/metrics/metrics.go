@@ -39,7 +39,7 @@ var ReconcileTotal = prometheus.NewCounterVec(
 //	}
 var LitellmOperatorReconcileTotal = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
-		Namespace: "litellm_operator",
+		Namespace: "alitellm_operator",
 		Name:      "reconcile_total",
 		Help:      "Reconciles by kind/namespace/result with reason-derived result enum (FIX2.txt LOW-6).",
 	},
@@ -82,7 +82,7 @@ var ReconcileDurationSeconds = prometheus.NewHistogramVec(
 // operation and status (2xx/4xx/5xx/error).
 var LiteLLMAPIRequestDurationSeconds = prometheus.NewHistogramVec(
 	prometheus.HistogramOpts{
-		Name:    "litellm_api_request_duration_seconds",
+		Name:    "alitellm_api_request_duration_seconds",
 		Help:    "LiteLLM REST request duration by operation and status (§10).",
 		Buckets: prometheus.DefBuckets,
 	},
@@ -93,7 +93,7 @@ var LiteLLMAPIRequestDurationSeconds = prometheus.NewHistogramVec(
 // status (4xx/5xx/error).
 var LiteLLMAPIErrorsTotal = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
-		Name: "litellm_api_errors_total",
+		Name: "alitellm_api_errors_total",
 		Help: "LiteLLM REST errors by operation and status (§10).",
 	},
 	[]string{"operation", "status"},
@@ -183,7 +183,7 @@ var DriftCorrectedTotal = prometheus.NewCounterVec(
 // metric to alert on instead of only a louder log line. Labeled by kind.
 var CascadeDrainOverdueTotal = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
-		Name: "litellm_operator_cascade_drain_overdue_total",
+		Name: "alitellm_operator_cascade_drain_overdue_total",
 		Help: "Discovery cascade-delete drains that exceeded the deadline (likely a wedged child finalizer), by kind.",
 	},
 	[]string{"kind"},
@@ -195,7 +195,7 @@ var CascadeDrainOverdueTotal = prometheus.NewCounterVec(
 // by kind so operators can alert on a specific CRD's orphan rate.
 var DeletionOrphanedTotal = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
-		Name: "litellm_operator_deletion_orphaned_total",
+		Name: "alitellm_operator_deletion_orphaned_total",
 		Help: "Count of CRs whose finalizer was removed without LiteLLM-side delete ack (deletionPolicy=Orphan).",
 	},
 	[]string{"kind"},
@@ -212,7 +212,7 @@ var DeletionOrphanedTotal = prometheus.NewCounterVec(
 // See docs/concepts/conflict-resolution.md.
 var ConflictsTotal = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
-		Name: "litellm_operator_conflicts_total",
+		Name: "alitellm_operator_conflicts_total",
 		Help: "Alpha-last-wins conflict resolutions by CRD kind and role (loser|winner). See ADR-0001.",
 	},
 	[]string{"kind", "role"},
@@ -271,10 +271,10 @@ var (
 	// reconcile_total{result}.
 	reconcileResults = []string{"success", "error", "requeued"}
 
-	// litellm_api_request_duration_seconds{status}.
+	// alitellm_api_request_duration_seconds{status}.
 	apiRequestStatuses = []string{"2xx", "4xx", "5xx", "error"}
 
-	// litellm_api_errors_total{status}.
+	// alitellm_api_errors_total{status}.
 	apiErrorStatuses = []string{"4xx", "5xx", "error"}
 
 	// discovery_refresh_total{result}.
@@ -304,7 +304,7 @@ var (
 	childCRWriteActions  = []string{"create", "update", "delete"}
 	childCRWriteResults  = []string{"success", "error"}
 
-	// litellm_operator_deletion_orphaned_total{kind} — Issue #23.
+	// alitellm_operator_deletion_orphaned_total{kind} — Issue #23.
 	// Uses full kind names ("LiteLLM*") to match the per-controller
 	// `*Kind` constants used at increment sites (modelKind="LiteLLMModel"
 	// etc.). Intentionally diverges from `allKinds` (which uses bare
@@ -365,14 +365,14 @@ func init() {
 		ReconcileDurationSeconds.WithLabelValues(k)
 	}
 
-	// litellm_api_request_duration_seconds{operation, status}.
+	// alitellm_api_request_duration_seconds{operation, status}.
 	for _, op := range allOperations {
 		for _, st := range apiRequestStatuses {
 			LiteLLMAPIRequestDurationSeconds.WithLabelValues(op, st)
 		}
 	}
 
-	// litellm_api_errors_total{operation, status}.
+	// alitellm_api_errors_total{operation, status}.
 	for _, op := range allOperations {
 		for _, st := range apiErrorStatuses {
 			LiteLLMAPIErrorsTotal.WithLabelValues(op, st)
@@ -433,7 +433,7 @@ func init() {
 	// The old name="" sentinel pre-touch is no longer needed because the
 	// custom Collector reports live ages, not zero sentinels.
 
-	// litellm_operator_conflicts_total{kind, role} — ADR-0001.
+	// alitellm_operator_conflicts_total{kind, role} — ADR-0001.
 	// Pre-touch every (kind, role) combo wired today so /metrics
 	// enumerates the full surface on first scrape. Add kinds here when
 	// new per-CR resolvers are wired.
@@ -443,7 +443,7 @@ func init() {
 		}
 	}
 
-	// litellm_operator_deletion_orphaned_total{kind} — Issue #23.
+	// alitellm_operator_deletion_orphaned_total{kind} — Issue #23.
 	// Pre-touch every kind affected by spec.deletionPolicy so /metrics
 	// enumerates the full surface on first scrape (Assumption A5 /
 	// AC-O1). Connection is excluded (no LiteLLM-side delete);

@@ -97,7 +97,7 @@ not the child.
 
 When a Delete-policy CR is blocked on a missing ack, the operator:
 
-1. Increments the `litellm_operator_deletion_blocked{kind,namespace,name}` gauge.
+1. Increments the `alitellm_operator_deletion_blocked{kind,namespace,name}` gauge.
 2. Emits a `LiteLLMDeleteBlocked` Warning Event on the CR (rate-
    limited by the event recorder's default dedup window).
 3. Returns an error from the reconcile so controller-runtime requeues
@@ -105,7 +105,7 @@ When a Delete-policy CR is blocked on a missing ack, the operator:
 
 When an Orphan-policy CR drops a finalizer without ack:
 
-1. Increments the `litellm_operator_deletion_orphaned_total{kind}` counter.
+1. Increments the `alitellm_operator_deletion_orphaned_total{kind}` counter.
 2. Emits a `LiteLLMDeleteOrphaned` Normal Event on the CR.
 3. Returns nil from the reconcile so the CR is garbage-collected.
 

@@ -593,15 +593,28 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			// JSON body omits both `model_info` (empty struct → still emitted but
 			// with no id field since ModelInfo.ID is omitempty per types.go fix)
 			// and prevents LiteLLM 1.83.10 from storing model_id="" in the DB.
+			nowStamp := time.Now().UTC().Format(time.RFC3339)
 			req := &litellm.Deployment{
 				ModelName:     model.Name,
 				LiteLLMParams: litellm.LiteLLMParams(paramsMap),
 				// FIX2.txt M-8 (2026-05-22): stamp operator identity so
 				// the LiteLLM UI "Created By" column shows
 				// alitellm-operator/<version> instead of "Unknown".
+				// 2026-06-08: stamp created_at/updated_at too. In OSS
+				// (non-premium) LiteLLM the Models UI reads these from the
+				// model_info JSON blob — proxy_server.get_model_info_with_id
+				// only copies the DB created_at/updated_at columns into
+				// model_info when premium_user is True. POST /model/new is
+				// the ONLY endpoint that persists the model_info blob
+				// (POST /model/update rewrites litellm_params + the
+				// updated_by DB column only, never the blob), so the
+				// timestamp must be stamped here on CREATE. Without it the
+				// UI shows "Unknown date".
 				ModelInfo: litellm.ModelInfo{
 					CreatedBy: identity.Operator(),
 					UpdatedBy: identity.Operator(),
+					CreatedAt: nowStamp,
+					UpdatedAt: nowStamp,
 				},
 			}
 			result, err := snap.Client.CreateModel(ctx, req)
@@ -640,14 +653,20 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 				return r.classifyMutationError(ctx, &model, logger, err, "POST /model/delete (D-02 shrinkage)")
 			}
 
+			nowStamp := time.Now().UTC().Format(time.RFC3339)
 			createReq := &litellm.Deployment{
 				ModelName:     model.Name,
 				LiteLLMParams: litellm.LiteLLMParams(paramsMap),
 				// FIX2.txt M-8: stamp identity on D-02 recreate too.
+				// 2026-06-08: also stamp created_at/updated_at — the D-02
+				// path is a true delete+recreate, so a fresh model_info
+				// blob is written and the timestamp resets (unavoidable).
 				ModelInfo: litellm.ModelInfo{
 					ID:        "",
 					CreatedBy: identity.Operator(),
 					UpdatedBy: identity.Operator(),
+					CreatedAt: nowStamp,
+					UpdatedAt: nowStamp,
 				},
 			}
 			result, err := snap.Client.CreateModel(ctx, createReq)
