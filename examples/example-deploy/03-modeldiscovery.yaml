@@ -84,7 +84,13 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
 spec:
   type: anthropic
+  # Child names are prefixed: "anthropic.claude-opus-4-7". To drop the
+  # prefix entirely and surface the bare normalized ID ("claude-opus-4-7"),
+  # set `disablePrefix: true` and REMOVE `prefix:` (the two are mutually
+  # exclusive — CEL rejects both at admission). Prefix-less names risk
+  # cross-Discovery collisions; safe for a single provider with unique IDs.
   prefix: anthropic
+  # disablePrefix: true
   credentialsSecretRef:
     name: anthropic-api-key
   secrets:

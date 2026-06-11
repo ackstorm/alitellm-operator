@@ -509,6 +509,10 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	// spec §6.3 line 762 (MDISC-11). The K8s-name form is for the child
 	// CR's metadata.name ONLY — the raw provider ID is preserved verbatim
 	// in child.spec.params.model via buildChildModel (MDISC-10).
+	// prefix defaults to lowercased(spec.type) when spec.prefix is empty
+	// (MDISC-04). spec.disablePrefix opts out of the prefix segment
+	// entirely — child names become the bare normalized ID. The CEL rule
+	// guarantees disablePrefix and a non-empty spec.prefix never coexist.
 	prefix := md.Spec.Prefix
 	if prefix == "" {
 		prefix = strings.ToLower(md.Spec.Type)
@@ -585,6 +589,9 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		// status.skippedCandidates[].
 		normalized := normalize.Normalize(rawID)
 		childName := prefix + "." + normalized
+		if md.Spec.DisablePrefix {
+			childName = normalized
+		}
 		// Adoption short-circuit (04-06): if this candidate's name belongs
 		// to a child whose ownerRef the user already stripped, the candidate
 		// is recorded as ExplicitModelExists above (in the adoption-recognition

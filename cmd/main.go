@@ -246,6 +246,7 @@ func main() {
 		Log:               ctrl.Log.WithName("controller").WithName("Model"),
 		BootEvents:        bootSweep.ModelEvents,
 		ConnectionRebuilt: connCache.Subscribe(),
+		RecreateLimit:     controller.ResolveRecreateLimitPerMin(os.Getenv(controller.EnvRecreateLimitPerMin)),
 	}).SetupWithManager(mgr, safetyRelistCh); err != nil {
 		setupLog.Error(err, "unable to set up Model reconciler")
 		os.Exit(1)
