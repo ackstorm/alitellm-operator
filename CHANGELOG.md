@@ -7,7 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **BREAKING (observability): Prometheus metric prefix renamed
+  `litellm_` → `alitellm_`.** The operator-owned metrics that carried
+  the upstream-confusing `litellm_` prefix now use the project's
+  `alitellm_` prefix, matching the operator name and disambiguating
+  operator metrics from LiteLLM proxy metrics:
+  - `litellm_operator_*` → `alitellm_operator_*`
+    (`reconcile_total`, `cascade_drain_overdue_total`,
+    `deletion_orphaned_total`, `deletion_blocked`, `conflicts_total`).
+  - `litellm_api_request_duration_seconds` →
+    `alitellm_api_request_duration_seconds`.
+  - `litellm_api_errors_total` → `alitellm_api_errors_total`.
+  Unprefixed metrics (`reconcile_total`, `discovery_*`,
+  `drift_corrected_total`, `connection_ready`, `child_cr_writes_total`,
+  `cr_status_age_seconds`) are unchanged. Update any Grafana dashboards,
+  recording rules, or Prometheus alerts referencing the old names.
+
 ### Fixed
+- **Model UI showed "Unknown date" — operator now stamps
+  `created_at`/`updated_at` on model create.** In OSS (non-premium)
+  LiteLLM the Models UI reads these from the `model_info` JSON blob
+  (`proxy_server.get_model_info_with_id` only copies the DB columns into
+  `model_info` when `premium_user is True`). `POST /model/new` is the
+  only endpoint that persists the blob, so `model_controller.go` now
+  stamps both timestamps (RFC3339 UTC) on create and on the D-02
+  delete+recreate path — same mechanism as the existing `created_by`
+  stamp. Adopted/out-of-band rows cannot be back-stamped.
 - **Chart CRD drift — PR #25 + PR #38 schema changes did not reach
   v0.7.0 users.** `deploy/helm/alitellm-operator/crd-sources/` was
   regenerated and now matches `config/crd/bases/`:

@@ -30,7 +30,7 @@ func NewDeletionBlockedTracker() *DeletionBlockedTracker {
 	return &DeletionBlockedTracker{
 		keys: map[string]struct{}{},
 		desc: prometheus.NewDesc(
-			"litellm_operator_deletion_blocked",
+			"alitellm_operator_deletion_blocked",
 			"1 per CR currently in Terminating because deletionPolicy=Delete and LiteLLM ack is missing.",
 			[]string{"kind", "namespace", "name"},
 			nil,
