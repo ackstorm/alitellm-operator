@@ -159,6 +159,26 @@ spec:
                 required:
                 - name
                 type: object
+              disablePrefix:
+                description: |-
+                  DisablePrefix opts the Discovery out of the per-provider name prefix
+                  entirely. When false (the default), the reconciler prepends
+                  <prefix>. to every generated child Model name, where prefix is
+                  spec.prefix or — when that is empty — lowercased(spec.type)
+                  (MDISC-04). When true, the generated child Model's metadata.name (and
+                  therefore the LiteLLM public model_name) is the bare normalized
+                  discovered ID with NO prefix segment — e.g. claude-fable-5 instead of
+                  anthropic.claude-fable-5.
+
+                  SETTING THIS IS A NAME-COLLISION RISK: the prefix exists to namespace
+                  children per-provider so two Discovery CRs cannot collide on a child
+                  CR name (and a child cannot collide with a hand-written LiteLLMModel).
+                  With DisablePrefix=true, the operator no longer guarantees that
+                  separation — a collision surfaces as an SSA conflict /
+                  ExplicitModelExists skip on the losing Discovery. Safe for a single
+                  Discovery whose normalized IDs are known-unique; otherwise leave it
+                  false. Mutually exclusive with a non-empty spec.prefix (CEL-enforced).
+                type: boolean
               filters:
                 description: |-
                   Filters narrows the post-provider-list candidate set via RE2
@@ -643,6 +663,8 @@ spec:
             && !has(self.spec.region))
         - message: spec.refresh.interval must be >= 1m
           rule: duration(self.spec.refresh.interval) >= duration('1m')
+        - message: spec.prefix and spec.disablePrefix are mutually exclusive
+          rule: '!(has(self.spec.disablePrefix) && self.spec.disablePrefix) || !has(self.spec.prefix)'
     served: true
     storage: true
     subresources:

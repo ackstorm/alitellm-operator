@@ -57,6 +57,27 @@ type ModelDiscoverySpec struct {
 	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
 	Prefix string `json:"prefix,omitempty"`
 
+	// DisablePrefix opts the Discovery out of the per-provider name prefix
+	// entirely. When false (the default), the reconciler prepends
+	// <prefix>. to every generated child Model name, where prefix is
+	// spec.prefix or — when that is empty — lowercased(spec.type)
+	// (MDISC-04). When true, the generated child Model's metadata.name (and
+	// therefore the LiteLLM public model_name) is the bare normalized
+	// discovered ID with NO prefix segment — e.g. claude-fable-5 instead of
+	// anthropic.claude-fable-5.
+	//
+	// SETTING THIS IS A NAME-COLLISION RISK: the prefix exists to namespace
+	// children per-provider so two Discovery CRs cannot collide on a child
+	// CR name (and a child cannot collide with a hand-written LiteLLMModel).
+	// With DisablePrefix=true, the operator no longer guarantees that
+	// separation — a collision surfaces as an SSA conflict /
+	// ExplicitModelExists skip on the losing Discovery. Safe for a single
+	// Discovery whose normalized IDs are known-unique; otherwise leave it
+	// false. Mutually exclusive with a non-empty spec.prefix (CEL-enforced).
+	//
+	// +optional
+	DisablePrefix bool `json:"disablePrefix,omitempty"`
+
 	// CredentialsSecretRef points to the Kubernetes Secret carrying the
 	// upstream provider's API credentials. Required for anthropic, gemini,
 	// openai; required-or-default-chain for bedrock; FORBIDDEN for kubeai
@@ -496,6 +517,7 @@ type FailedCandidate struct {
 // +kubebuilder:validation:XValidation:rule="self.spec.type != 'kubeai' || (has(self.spec.baseUrl) && !has(self.spec.credentialsSecretRef) && !has(self.spec.region))",message="kubeai requires spec.baseUrl and forbids spec.credentialsSecretRef/spec.region"
 // +kubebuilder:validation:XValidation:rule="self.spec.type != 'openai' || (has(self.spec.credentialsSecretRef) && !has(self.spec.region))",message="openai requires spec.credentialsSecretRef and forbids spec.region"
 // +kubebuilder:validation:XValidation:rule="duration(self.spec.refresh.interval) >= duration('1m')",message="spec.refresh.interval must be >= 1m"
+// +kubebuilder:validation:XValidation:rule="!(has(self.spec.disablePrefix) && self.spec.disablePrefix) || !has(self.spec.prefix)",message="spec.prefix and spec.disablePrefix are mutually exclusive"
 
 // LiteLLMModelDiscovery is the Schema for the litellmmodeldiscoveries API — the
 // first Pipeline B CRD (spec §3.3 / §7.1, _FINALv3 two-pipeline model).

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -1651,5 +1652,87 @@ func TestModelDiscovery_AC_CF3_Conflict(t *testing.T) {
 	if mdBAfter.Status.GeneratedCount != 0 {
 		t.Errorf("disc-b GeneratedCount: got %d, want 0 (loser of cross-Discovery race must not own the child)",
 			mdBAfter.Status.GeneratedCount)
+	}
+}
+
+// TestModelDiscovery_DisablePrefix locks the spec.disablePrefix contract
+// (option A): with DisablePrefix=true the generated child Model's
+// metadata.name (and therefore the LiteLLM public model_name) is the bare
+// normalized discovered ID — NO "<prefix>." segment — while the child's
+// litellm_params.model still carries the full "<provider>/<rawID>" route.
+// Default behavior (prefix prepended) is covered by every other discovery
+// test in this file, so this one asserts only the opt-out path.
+func TestModelDiscovery_DisablePrefix(t *testing.T) {
+	ctx := context.Background()
+	const mdName = "noprefix-anthropic"
+
+	ensureNoModelDiscovery(t, ctx, mdName)
+	t.Cleanup(func() { ensureNoModelDiscovery(t, context.Background(), mdName) })
+
+	fake := newFakeProvider("anthropic", []providers.Candidate{
+		{ID: "claude-opus-4-7", DisplayName: "Claude Opus 4.7"},
+	})
+	providers.RegisterTestProvider(t, "anthropic", fake)
+	ensureCredentialSecret(t, ctx, mdName+"-creds", "anthropic")
+
+	md := modeldiscoverySampleCR(mdName, "anthropic")
+	md.Spec.DisablePrefix = true // opt out of the per-provider name prefix
+	if err := k8sClient.Create(ctx, md); err != nil {
+		t.Fatalf("create ModelDiscovery: %v", err)
+	}
+
+	children := pollChildrenCount(t, ctx, mdName, 1, 30*time.Second)
+	if len(children) != 1 {
+		t.Fatalf("child count: got %d, want 1", len(children))
+	}
+
+	// The child name is the bare normalized ID — NOT prefixed.
+	const wantName = "claude-opus-4-7"
+	const prefixedName = "anthropic.claude-opus-4-7"
+	if children[0].Name != wantName {
+		t.Errorf("child name with DisablePrefix=true: got %q, want %q (no prefix)",
+			children[0].Name, wantName)
+	}
+	// The prefixed name must NOT exist.
+	var prefixed litellmv1alpha1.LiteLLMModel
+	if err := k8sClient.Get(ctx, client.ObjectKey{Name: prefixedName, Namespace: WatchNamespace}, &prefixed); !apierrors.IsNotFound(err) {
+		t.Errorf("prefixed child %q should be NotFound; got err=%v", prefixedName, err)
+	}
+
+	// The litellm route is unaffected: litellm_params.model keeps the
+	// full "<provider>/<rawID>" form regardless of the K8s-name prefix.
+	var decoded map[string]any
+	if err := json.Unmarshal(children[0].Spec.Params.Raw, &decoded); err != nil {
+		t.Fatalf("decode child spec.params: %v", err)
+	}
+	if got, want := decoded["model"], "anthropic/claude-opus-4-7"; got != want {
+		t.Errorf("child litellm_params.model: got %v, want %q", got, want)
+	}
+}
+
+// TestModelDiscovery_DisablePrefix_CELReject locks the admission-time
+// mutual-exclusion rule: spec.prefix and spec.disablePrefix=true cannot
+// coexist (a prefix-less Discovery has nothing to prefix). The CRD CEL
+// rule rejects the Create before any reconcile runs.
+func TestModelDiscovery_DisablePrefix_CELReject(t *testing.T) {
+	ctx := context.Background()
+	const mdName = "noprefix-conflict"
+
+	ensureNoModelDiscovery(t, ctx, mdName)
+	t.Cleanup(func() { ensureNoModelDiscovery(t, context.Background(), mdName) })
+
+	md := modeldiscoverySampleCR(mdName, "anthropic")
+	md.Spec.Prefix = providerTypeAnthropic // explicit prefix...
+	md.Spec.DisablePrefix = true           // ...AND opt-out → contradiction
+
+	err := k8sClient.Create(ctx, md)
+	if err == nil {
+		t.Fatalf("Create should be rejected when prefix and disablePrefix both set")
+	}
+	if !apierrors.IsInvalid(err) {
+		t.Fatalf("expected Invalid (CEL) admission error, got %T: %v", err, err)
+	}
+	if !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Errorf("error should mention the mutual-exclusion rule; got: %v", err)
 	}
 }
