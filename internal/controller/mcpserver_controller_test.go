@@ -264,8 +264,12 @@ func TestMCPServerReconciler_UpdateOnDrift(t *testing.T) {
 			originalServerID, updated.Status.LastRendered.ServerID)
 	}
 
-	// Assert exactly 1 PUT /v1/mcp/server; no DELETE, no POST.
-	// (Verdict ✓ per 05-00-SUMMARY.md — asserting single PUT call.)
+	// Assert the update went through the simple-PUT path: >=1 PUT, no
+	// DELETE, no POST. The load-bearing invariant is the SHAPE (PUT, never
+	// delete+recreate), not the exact PUT count — the reconcile loop is
+	// at-least-once and the 100ms safety re-list can fire a redundant
+	// idempotent PUT off cache-stale status before the first PUT's status
+	// write propagates (#74). delete/post stay exact-zero.
 	calls := mockServer.Recorded()
 	putCount := 0
 	deleteCount := 0
@@ -280,8 +284,8 @@ func TestMCPServerReconciler_UpdateOnDrift(t *testing.T) {
 			postCount++
 		}
 	}
-	if putCount != 1 {
-		t.Errorf("simple-PUT update arm: PUT /v1/mcp/server count: want 1, got %d (calls: %+v)", putCount, calls)
+	if putCount < 1 {
+		t.Errorf("simple-PUT update arm: PUT /v1/mcp/server count: want >=1, got %d (calls: %+v)", putCount, calls)
 	}
 	if deleteCount != 0 {
 		t.Errorf("unexpected DELETE /v1/mcp/server/<id> on simple-PUT update arm: count=%d (calls: %+v)", deleteCount, calls)

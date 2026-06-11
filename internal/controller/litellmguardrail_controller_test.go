@@ -342,8 +342,13 @@ func TestGuardRail_DriftCorrection_OnSpecEdit(t *testing.T) {
 		t.Fatalf("Create CR: %v", err)
 	}
 	_ = pollGuardrailCondition(t, ctx, name, "Synced")
-	if got, want := mockServer.MutationsByGuardrailName(name), int64(1); got != want {
-		t.Fatalf("post-CREATE mutations: got %d want %d", got, want)
+	// At-least-once pre-flight: a CREATE happened. The 100ms safety
+	// re-list can fire a redundant idempotent mutation for the same
+	// guardrail before the create's status write propagates (#74), so
+	// require >=1 rather than exactly 1 — the real per-test assertions
+	// below are delta/shape based and tolerate the slack.
+	if got := mockServer.MutationsByGuardrailName(name); got < 1 {
+		t.Fatalf("post-CREATE mutations: got %d want >=1", got)
 	}
 	id := pollGuardrailID(t, ctx, name, 5*time.Second)
 	if id == "" {
@@ -488,8 +493,13 @@ func TestGuardRail_FinalizerDelete(t *testing.T) {
 		t.Fatalf("Create CR: %v", err)
 	}
 	_ = pollGuardrailCondition(t, ctx, name, "Synced")
-	if got, want := mockServer.MutationsByGuardrailName(name), int64(1); got != want {
-		t.Fatalf("post-CREATE mutations: got %d want %d", got, want)
+	// At-least-once pre-flight: a CREATE happened. The 100ms safety
+	// re-list can fire a redundant idempotent mutation for the same
+	// guardrail before the create's status write propagates (#74), so
+	// require >=1 rather than exactly 1 — the real per-test assertions
+	// below are delta/shape based and tolerate the slack.
+	if got := mockServer.MutationsByGuardrailName(name); got < 1 {
+		t.Fatalf("post-CREATE mutations: got %d want >=1", got)
 	}
 
 	// Delete.
@@ -699,8 +709,13 @@ func TestGuardRail_SafetyRelist_CreateMissing(t *testing.T) {
 	if originalID == "" {
 		t.Fatal("CR never reached non-empty GuardrailID")
 	}
-	if got, want := mockServer.MutationsByGuardrailName(name), int64(1); got != want {
-		t.Fatalf("post-CREATE mutations: got %d want %d", got, want)
+	// At-least-once pre-flight: a CREATE happened. The 100ms safety
+	// re-list can fire a redundant idempotent mutation for the same
+	// guardrail before the create's status write propagates (#74), so
+	// require >=1 rather than exactly 1 — the real per-test assertions
+	// below are delta/shape based and tolerate the slack.
+	if got := mockServer.MutationsByGuardrailName(name); got < 1 {
+		t.Fatalf("post-CREATE mutations: got %d want >=1", got)
 	}
 
 	// Snapshot create_missing counter BEFORE the out-of-band DELETE.
@@ -729,13 +744,17 @@ func TestGuardRail_SafetyRelist_CreateMissing(t *testing.T) {
 		t.Fatalf("clear GuardrailID via Status().Update: %v", err)
 	}
 
-	// Wait up to 15s for the create_missing counter to bump. Original
-	// budget was 5s but CI runners under load (envtest + the Connection
-	// reconciler's 5min RequeueAfter cycle + the 100ms safety-relist
-	// runnable competing for the workqueue) regularly slip past 5s.
-	// 15s is comfortably above observed CI worst-case (~7s) and still
-	// fails fast on a genuine regression where the counter never fires.
-	deadline := time.Now().Add(15 * time.Second)
+	// Wait up to 30s for the create_missing counter to bump. Original
+	// budget was 5s, then 15s; but the FULL-suite release gate
+	// (`make test-full`, -race -shuffle over every controller package at
+	// once) puts far more pressure on the shared workqueue than the
+	// per-package PR Envtest job — the 100ms safety-relist runnables of
+	// ALL controllers plus the Connection reconciler's RequeueAfter cycle
+	// compete, and observed recovery slipped past 15s on a release run
+	// (#74). 30s is comfortably above that worst case; the loop still
+	// breaks the instant the counter bumps, so a genuine regression (the
+	// counter never fires) fails as fast as the work actually takes.
+	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		after := testutil.ToFloat64(metrics.DriftCorrectedTotal.WithLabelValues("guardrail", "create_missing"))
 		if after-before >= 1 {
@@ -745,7 +764,7 @@ func TestGuardRail_SafetyRelist_CreateMissing(t *testing.T) {
 	}
 	after := testutil.ToFloat64(metrics.DriftCorrectedTotal.WithLabelValues("guardrail", "create_missing"))
 	if delta := after - before; delta < 1 {
-		t.Fatalf("create_missing NOT incremented after out-of-band DELETE + safety re-list within 15s; delta=%.0f", delta)
+		t.Fatalf("create_missing NOT incremented after out-of-band DELETE + safety re-list within 30s; delta=%.0f", delta)
 	}
 
 	// Mock has a fresh entry under the same name; ID differs from the

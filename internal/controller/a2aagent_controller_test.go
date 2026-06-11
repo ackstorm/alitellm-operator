@@ -287,6 +287,10 @@ func TestA2AAgentReconciler_UpdateOnDrift(t *testing.T) {
 			originalAgentID, updated.Status.LastRendered.AgentID)
 	}
 
+	// Update went through the simple-PUT path: >=1 PUT, no DELETE, no
+	// POST. Shape (PUT, never delete+recreate) is load-bearing, not the
+	// exact PUT count — at-least-once reconcile + the 100ms safety re-list
+	// can fire a redundant idempotent PUT off cache-stale status (#74).
 	calls := mockServer.Recorded()
 	putCount := 0
 	deleteCount := 0
@@ -301,8 +305,8 @@ func TestA2AAgentReconciler_UpdateOnDrift(t *testing.T) {
 			postCount++
 		}
 	}
-	if putCount != 1 {
-		t.Errorf("simple-PUT update arm: PUT /v1/agents/<id> count: want 1, got %d", putCount)
+	if putCount < 1 {
+		t.Errorf("simple-PUT update arm: PUT /v1/agents/<id> count: want >=1, got %d", putCount)
 	}
 	if deleteCount != 0 {
 		t.Errorf("unexpected DELETE on simple-PUT update arm: count=%d", deleteCount)

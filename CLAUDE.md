@@ -653,10 +653,30 @@ the manager-level cache; the next reconcile of an always-on singleton
 (controller-runtime recovers it, so it surfaced as a shuffle-dependent
 flake, not a crash). All six dependent reconcilers now gate on
 `snap.Usable()`; tests restore Ready state via `setConnCacheReady()`
-(suite-mock-backed client), never a bare `Ready:true` literal. NOTE: the
-remaining `-shuffle` flakes (mockServer POST-count bleed,
-connection-reason `Absent` vs `Unreachable`) are a SEPARATE shared-mock
-isolation bug tracked under #74 — not the Ready-invariant class fixed here.
+(suite-mock-backed client), never a bare `Ready:true` literal. NOTE: a
+SEPARATE class of `-shuffle` flakes (tracked under #74) lives in the
+controller suite — it surfaces on the release gate (`make test-full`,
+`-race -shuffle=on` over the WHOLE controller package at once, heavier
+than the per-package PR Envtest job), not on PR CI.
+- **mockServer POST-count bleed → at-least-once over-count.** The
+  reconcile loop is at-least-once: the 100ms safety-relist runnables can
+  fire a redundant idempotent mutation off cache-stale status before the
+  prior write propagates. Tests that asserted an EXACT mutation count
+  (`POST /model/update == 1`, `PUT .../mcp|agents == 1`, post-CREATE
+  `MutationsBy*Name == 1`) flaked to 2. FIX (2026-06-11): assert the
+  drift-correction SHAPE — `>=1` of the expected verb, with `delete`/`new`
+  kept exact-zero — never an exact mutation count. A redundant idempotent
+  write is harmless in production (relist is 30m there).
+- **Relist-recovery deadline too tight under release load.**
+  `TestGuardRail_SafetyRelist_CreateMissing` waited 15s for safety-relist
+  recovery; the full-suite gate's workqueue contention slipped past it.
+  Bumped to 30s (loop still breaks on first success).
+- **connection-reason `Absent` vs `Unreachable`** ordering flake — still
+  open under #74, not yet addressed.
+NOTE: local envtest on a resource-starved host can fail at suite SETUP
+(`WaitForCacheSync: did not sync within 30s`) or mass ~30s poll-timeouts
+— that is environmental host starvation, NOT a code regression; verify on
+CI's Envtest job, which is the reliable signal.
 
 ### ❌ LiteLLM proxy without `STORE_MODEL_IN_DB` → every Model 500s
 ```yaml

@@ -680,7 +680,15 @@ func TestModel_SpecParamsEdit_Update(t *testing.T) {
 		t.Errorf("lastRendered.paramsKeys does not contain 'temperature'; keys=%v", updated.Status.LastRendered.ParamsKeys)
 	}
 
-	// Assert exactly 1 POST /model/update was issued (no delete, no new).
+	// Assert the key-addition went through the UPDATE path (>=1 update,
+	// no delete, no new). The load-bearing invariant is the SHAPE of the
+	// drift correction — update, never delete+recreate — not the exact
+	// update count. The reconcile loop is at-least-once: the 100ms safety
+	// re-list can fire a second, idempotent POST /model/update if it reads
+	// cache-stale status (old hash) against the freshly-edited spec before
+	// the first update's status write propagates (#74). A redundant update
+	// is harmless in production (LiteLLM update is idempotent; the relist
+	// is 30m there), so assert update>=1 and keep delete/new exact-zero.
 	calls := mockServer.Recorded()
 	updateCount := 0
 	deleteCount := 0
@@ -695,8 +703,8 @@ func TestModel_SpecParamsEdit_Update(t *testing.T) {
 			newCount++
 		}
 	}
-	if updateCount != 1 {
-		t.Errorf("POST /model/update count: want 1, got %d", updateCount)
+	if updateCount < 1 {
+		t.Errorf("POST /model/update count: want >=1, got %d", updateCount)
 	}
 	if deleteCount != 0 {
 		t.Errorf("unexpected POST /model/delete on key-addition reconcile: count=%d", deleteCount)
