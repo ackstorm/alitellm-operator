@@ -715,8 +715,8 @@ func (r *GuardRailReconciler) connectionToGuardrails(ctx context.Context, obj cl
 // SetupWithManager registers the GuardRailReconciler with the manager.
 //
 // Optional safetyRelistCh — when non-nil, wired as a source.TypedFunc so
-// the GuardRailSafetyRelistRunnable can enqueue reconcile.Requests
-// without adding a RequeueAfter path (REL-02 compliance).
+// the shared SafetyRelistRunnable (ListGuardRailRequests) can enqueue
+// reconcile.Requests without adding a RequeueAfter path (REL-02 compliance).
 func (r *GuardRailReconciler) SetupWithManager(mgr ctrl.Manager, safetyRelistCh ...chan reconcile.Request) error {
 	b := ctrl.NewControllerManagedBy(mgr).
 		For(&litellmv1alpha1.LiteLLMGuardRail{}, builder.WithPredicates()).
@@ -765,54 +765,22 @@ func (r *GuardRailReconciler) SetupWithManager(mgr ctrl.Manager, safetyRelistCh 
 	return b.Complete(r)
 }
 
-// GuardRailSafetyRelistRunnable implements manager.Runnable for the
-// guardrail safety re-list (out-of-band DELETE recovery). On each tick
-// it lists every LiteLLMGuardRail CR in the operator's namespace and
-// enqueues it; the reconciler's existence probe (Step 8.6) detects rows
-// that vanished in LiteLLM and falls through to CREATE, incrementing
+// ListGuardRailRequests lists all LiteLLMGuardRail CRs in namespace and
+// returns their reconcile.Requests, for the shared SafetyRelistRunnable.
+// Enqueuing them drives guardrail out-of-band DELETE recovery: the
+// reconciler's existence probe (Step 8.6) detects rows that vanished in
+// LiteLLM and falls through to CREATE, incrementing
 // drift_corrected_total{domain=guardrail,action=create_missing}.
-//
-// Interval is configurable: 30m in production (cmd/main.go), 100ms in
-// envtests. REL-02 compliance: the runnable uses a ticker + channel
-// rather than the reconciler's RequeueAfter so the grep gate stays at
-// exactly 1.
-type GuardRailSafetyRelistRunnable struct {
-	Client    client.Client
-	Namespace string
-	Interval  time.Duration
-	Log       logr.Logger
-	// RequeueCh is the channel the runnable writes reconcile.Requests to.
-	// SetupWithManager wires this as a source.TypedFunc raw source.
-	RequeueCh chan reconcile.Request
-}
-
-// Start implements manager.Runnable. Ticks at Interval, lists all
-// guardrails in Namespace, enqueues each. Channel-full drops are
-// tolerated — the next tick will re-enqueue.
-func (r *GuardRailSafetyRelistRunnable) Start(ctx context.Context) error {
-	ticker := time.NewTicker(r.Interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-			var list litellmv1alpha1.LiteLLMGuardRailList
-			if err := r.Client.List(ctx, &list, client.InNamespace(r.Namespace)); err != nil {
-				r.Log.V(1).Info("guardrail safety re-list: list failed; skipping tick", "error", err)
-				continue
-			}
-			for i := range list.Items {
-				req := reconcile.Request{
-					NamespacedName: client.ObjectKeyFromObject(&list.Items[i]),
-				}
-				select {
-				case r.RequeueCh <- req:
-				default:
-					// Channel full — skip; next tick retries.
-				}
-			}
-			r.Log.V(1).Info("guardrail safety re-list: enqueued", "count", len(list.Items))
-		}
+func ListGuardRailRequests(ctx context.Context, c client.Client, namespace string) ([]reconcile.Request, error) {
+	var list litellmv1alpha1.LiteLLMGuardRailList
+	if err := c.List(ctx, &list, client.InNamespace(namespace)); err != nil {
+		return nil, err
 	}
+	reqs := make([]reconcile.Request, 0, len(list.Items))
+	for i := range list.Items {
+		reqs = append(reqs, reconcile.Request{
+			NamespacedName: client.ObjectKeyFromObject(&list.Items[i]),
+		})
+	}
+	return reqs, nil
 }

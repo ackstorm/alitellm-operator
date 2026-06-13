@@ -17,7 +17,7 @@ import (
 // TeamDefaultRunnable is the manager.Runnable that satisfies spec §7.4
 // line 1313 (the synthetic `Team/default` reconcile contract) + the §7.6
 // 30-min safety re-list for the implicit-default key. Mirrors
-// ModelSafetyRelistRunnable structurally — the
+// SafetyRelistRunnable structurally — the
 // difference is that the Team variant has a single static key
 // ({Namespace, "default"}) rather than enumerating CRs in the namespace.
 //

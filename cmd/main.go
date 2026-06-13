@@ -213,15 +213,17 @@ func main() {
 	// second independent time.ParseDuration here defaulted to 30m and
 	// silently fell back to 30m on invalid input — disagreeing with both the
 	// reconciler package vars and the floor enforced for them.
-	safetyRelist := &controller.ModelSafetyRelistRunnable{
-		Client:    mgr.GetClient(),
-		Namespace: watchNS,
-		Interval:  relistInterval,
-		Log:       ctrl.Log.WithName("model-safety-relist"),
-		RequeueCh: safetyRelistCh,
+	safetyRelist := &controller.SafetyRelistRunnable{
+		Client:       mgr.GetClient(),
+		Namespace:    watchNS,
+		Interval:     relistInterval,
+		Log:          ctrl.Log.WithName("model-safety-relist"),
+		RequeueCh:    safetyRelistCh,
+		ListRequests: controller.ListModelRequests,
+		LogLabel:     "models",
 	}
 	if err := mgr.Add(safetyRelist); err != nil {
-		setupLog.Error(err, "unable to add ModelSafetyRelistRunnable to manager")
+		setupLog.Error(err, "unable to add model SafetyRelistRunnable to manager")
 		os.Exit(1)
 	}
 
@@ -483,14 +485,16 @@ func main() {
 	// the Model safety-re-list interval. Channel is read inside the
 	// reconciler's SetupWithManager via source.TypedFunc.
 	guardrailSafetyRelistCh := make(chan reconcile.Request, 256)
-	if err := mgr.Add(&controller.GuardRailSafetyRelistRunnable{
-		Client:    mgr.GetClient(),
-		Namespace: watchNS,
-		Interval:  relistInterval, // H5: single resolved cadence (was hardcoded 30m)
-		Log:       ctrl.Log.WithName("guardrail-safety-relist"),
-		RequeueCh: guardrailSafetyRelistCh,
+	if err := mgr.Add(&controller.SafetyRelistRunnable{
+		Client:       mgr.GetClient(),
+		Namespace:    watchNS,
+		Interval:     relistInterval, // H5: single resolved cadence (was hardcoded 30m)
+		Log:          ctrl.Log.WithName("guardrail-safety-relist"),
+		RequeueCh:    guardrailSafetyRelistCh,
+		ListRequests: controller.ListGuardRailRequests,
+		LogLabel:     "guardrails",
 	}); err != nil {
-		setupLog.Error(err, "unable to add GuardRailSafetyRelistRunnable")
+		setupLog.Error(err, "unable to add guardrail SafetyRelistRunnable")
 		os.Exit(1)
 	}
 

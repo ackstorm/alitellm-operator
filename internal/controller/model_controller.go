@@ -1034,58 +1034,22 @@ func setDiff(a, b []string) []string {
 	return diff
 }
 
-// ModelSafetyRelistRunnable implements manager.Runnable for the §7.6
-// 30-min safety re-list. On each tick it lists all LiteLLMModel CRs in the
-// operator's namespace and enqueues them for reconciliation. This causes
-// the Model reconciler to re-run the full hash-compare + LiteLLM existence
-// check (D-03 existence-only scope), recovering from out-of-band DELETEs
-// that the event-driven watch would not otherwise detect.
-//
-// The reconciler itself handles the drift_corrected_total{action=create_missing}
-// increment when the existence check reveals the LiteLLM entry is gone.
-//
-// The Interval is configurable: 30*time.Minute in production (cmd/main.go),
-// 100*time.Millisecond in envtests so tests don't time out.
-//
-// REL-02 compliance: the safety re-list uses a time.Ticker inside a Runnable
-// rather than RequeueAfter, so it does NOT add a RequeueAfter path to the
-// reconciler. The grep gate stays at exactly 1.
-type ModelSafetyRelistRunnable struct {
-	Client    client.Client
-	Namespace string
-	Interval  time.Duration
-	Log       logr.Logger
-	// RequeueCh is the channel the runnable writes reconcile.Requests to.
-	// SetupWithManager wires this as a Source.Channel watch.
-	RequeueCh chan reconcile.Request
-}
-
-// Start implements manager.Runnable. It ticks at Interval, listing all
-// LiteLLMModel CRs in Namespace and enqueuing each via RequeueCh.
-func (r *ModelSafetyRelistRunnable) Start(ctx context.Context) error {
-	ticker := time.NewTicker(r.Interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-			var modelList litellmv1alpha1.LiteLLMModelList
-			if err := r.Client.List(ctx, &modelList, client.InNamespace(r.Namespace)); err != nil {
-				r.Log.V(1).Info("safety re-list: list failed; skipping tick", "error", err)
-				continue
-			}
-			for i := range modelList.Items {
-				req := reconcile.Request{
-					NamespacedName: client.ObjectKeyFromObject(&modelList.Items[i]),
-				}
-				select {
-				case r.RequeueCh <- req:
-				default:
-					// Channel full — skip this item; it will be retried on next tick.
-				}
-			}
-			r.Log.V(1).Info("safety re-list: enqueued models", "count", len(modelList.Items))
-		}
+// ListModelRequests lists all LiteLLMModel CRs in namespace and returns their
+// reconcile.Requests, for the shared SafetyRelistRunnable. Enqueuing them
+// drives the §7.6 safety re-list: the Model reconciler re-runs the full
+// hash-compare + LiteLLM existence check (D-03 existence-only scope),
+// recovering from out-of-band DELETEs the event-driven watch would miss
+// (drift_corrected_total{action=create_missing}).
+func ListModelRequests(ctx context.Context, c client.Client, namespace string) ([]reconcile.Request, error) {
+	var modelList litellmv1alpha1.LiteLLMModelList
+	if err := c.List(ctx, &modelList, client.InNamespace(namespace)); err != nil {
+		return nil, err
 	}
+	reqs := make([]reconcile.Request, 0, len(modelList.Items))
+	for i := range modelList.Items {
+		reqs = append(reqs, reconcile.Request{
+			NamespacedName: client.ObjectKeyFromObject(&modelList.Items[i]),
+		})
+	}
+	return reqs, nil
 }

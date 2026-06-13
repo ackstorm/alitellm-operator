@@ -92,8 +92,8 @@ var (
 	// as Phase 1 + Phase 2 tests.
 	modelReconciler *ModelReconciler
 
-	// Phase 3 — ModelSafetyRelistRunnable + its request channel.
-	modelSafetyRelist   *ModelSafetyRelistRunnable
+	// Phase 3 — model SafetyRelistRunnable + its request channel.
+	modelSafetyRelist   *SafetyRelistRunnable
 	modelSafetyRelistCh chan reconcile.Request
 
 	// Phase 4 — ModelDiscoveryReconciler. Shares the
@@ -167,7 +167,7 @@ var (
 	// GuardRail safety-re-list runnable + its request channel. 100ms
 	// tick in envtest so out-of-band DELETE recovery is observable
 	// inside a 5s poll window.
-	guardrailSafetyRelist   *GuardRailSafetyRelistRunnable
+	guardrailSafetyRelist   *SafetyRelistRunnable
 	guardrailSafetyRelistCh chan reconcile.Request
 )
 
@@ -352,18 +352,20 @@ func setupAndRun(m *testing.M) int {
 		return 1
 	}
 
-	// Phase 3: wire ModelSafetyRelistRunnable with 100ms interval
+	// Phase 3: wire the model SafetyRelistRunnable with 100ms interval
 	// for fast test execution (production uses 30min).
 	modelSafetyRelistCh = make(chan reconcile.Request, 256)
-	modelSafetyRelist = &ModelSafetyRelistRunnable{
-		Client:    mgr.GetClient(),
-		Namespace: WatchNamespace,
-		Interval:  100 * time.Millisecond,
-		Log:       logr.Discard(),
-		RequeueCh: modelSafetyRelistCh,
+	modelSafetyRelist = &SafetyRelistRunnable{
+		Client:       mgr.GetClient(),
+		Namespace:    WatchNamespace,
+		Interval:     100 * time.Millisecond,
+		Log:          logr.Discard(),
+		RequeueCh:    modelSafetyRelistCh,
+		ListRequests: ListModelRequests,
+		LogLabel:     "models",
 	}
 	if err := mgr.Add(modelSafetyRelist); err != nil {
-		fmt.Fprintf(os.Stderr, "mgr.Add(ModelSafetyRelistRunnable): %v\n", err)
+		fmt.Fprintf(os.Stderr, "mgr.Add(model SafetyRelistRunnable): %v\n", err)
 		return 1
 	}
 
@@ -547,17 +549,19 @@ func setupAndRun(m *testing.M) int {
 	}
 	// GuardRail safety-re-list runnable — 100ms in envtest (vs 30m prod)
 	// so create_missing drift correction is observable inside a 5s poll
-	// window. Mirrors ModelSafetyRelistRunnable.
+	// window. Mirrors the model SafetyRelistRunnable.
 	guardrailSafetyRelistCh = make(chan reconcile.Request, 256)
-	guardrailSafetyRelist = &GuardRailSafetyRelistRunnable{
-		Client:    mgr.GetClient(),
-		Namespace: WatchNamespace,
-		Interval:  100 * time.Millisecond,
-		Log:       logr.Discard(),
-		RequeueCh: guardrailSafetyRelistCh,
+	guardrailSafetyRelist = &SafetyRelistRunnable{
+		Client:       mgr.GetClient(),
+		Namespace:    WatchNamespace,
+		Interval:     100 * time.Millisecond,
+		Log:          logr.Discard(),
+		RequeueCh:    guardrailSafetyRelistCh,
+		ListRequests: ListGuardRailRequests,
+		LogLabel:     "guardrails",
 	}
 	if err := mgr.Add(guardrailSafetyRelist); err != nil {
-		fmt.Fprintf(os.Stderr, "mgr.Add(GuardRailSafetyRelistRunnable): %v\n", err)
+		fmt.Fprintf(os.Stderr, "mgr.Add(guardrail SafetyRelistRunnable): %v\n", err)
 		return 1
 	}
 	guardrailReconciler = &GuardRailReconciler{
