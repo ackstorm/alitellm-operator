@@ -7,11 +7,16 @@ package controller
 // is behavior-identical to the inline code it replaces.
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"time"
 
+	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/ackstorm/alitellm-operator/internal/controller/deletionpolicy"
@@ -65,4 +70,62 @@ func newAckMissingFn(
 			"deletionPolicy=Orphan and LiteLLM ack missing (%s); finalizer removed; entry may persist", reason)
 		return nil
 	}
+}
+
+// classifyMutationError is the shared §7.7 LiteLLM-mutation error classifier
+// used by the model/mcpserver/a2aagent/team/guardrail reconcilers (each keeps a
+// thin per-type method that binds its CR and delegates here):
+//   - Auth401Error → invalidate() + Ready=False/LiteLLMUnavailable via
+//     writeStatusFn, then nil return (anti-storm REL-06: return nil, NOT err).
+//   - deterministic 4xx (non-401) → Ready=False/LiteLLMRejected via
+//     writeStatusFn + periodic requeue (FIX2 H-2), then nil return.
+//   - 5xx / network transient → return err for controller-runtime backoff;
+//     status left unchanged (OWN-09).
+//
+// writeStatusFn is the caller's writeStatus bound to its CR. The team
+// controller's CR may be nil on the synthetic implicit-default reconcile, so
+// its closure no-ops on nil — preserving the legacy `if team != nil` guard.
+// invalidate is r.Cache.InvalidateOn401; requeueAfter is
+// snap.NormalizedRequeueOnRejectedAfter. Behavior-identical to the inline
+// per-controller copies it replaces.
+func classifyMutationError(
+	ctx context.Context,
+	logger logr.Logger,
+	err error,
+	opDesc, kind string,
+	writeStatusFn func(ctx context.Context, status metav1.ConditionStatus, reason, message string) error,
+	invalidate func(),
+	requeueAfter func() time.Duration,
+) (ctrl.Result, error) {
+	var auth401 *litellm.Auth401Error
+	if errors.As(err, &auth401) {
+		invalidate()
+		msg := "401 from LiteLLM on " + opDesc + "; cache invalidated, re-probe enqueued"
+		if werr := writeStatusFn(ctx, metav1.ConditionFalse, reasonLiteLLMUnavailable, msg); werr != nil {
+			logStatusUpdateErr(logger, werr, "reason", reasonLiteLLMUnavailable)
+		}
+		logger.Info("401 fast-path: invalidating connection cache", "path", auth401.Path, "op", opDesc)
+		metrics.ReconcileTotal.WithLabelValues(kind, "success").Inc()
+		return ctrl.Result{}, nil // anti-storm: return nil, NOT err
+	}
+
+	errStr := err.Error()
+	if is4xxStatus(err) {
+		// Deterministic 4xx — LiteLLMRejected. rejectedMessage surfaces the
+		// parsed envelope detail when available (FIX2 M-5).
+		msg := rejectedMessage(opDesc, err, errStr)
+		if werr := writeStatusFn(ctx, metav1.ConditionFalse, "LiteLLMRejected", msg); werr != nil {
+			logStatusUpdateErr(logger, werr, "reason", "LiteLLMRejected")
+		}
+		logger.Info("LiteLLM rejected request", "op", opDesc, "error", errStr)
+		metrics.ReconcileTotal.WithLabelValues(kind, "success").Inc()
+		return ctrl.Result{RequeueAfter: requeueAfter()}, nil
+	}
+
+	// 5xx / network transient — return err for controller-runtime backoff
+	// (REL-02). Do NOT writeStatus on transient path (OWN-09: leave previous
+	// status unchanged).
+	logger.V(1).Info("transient error from LiteLLM; returning for backoff", "op", opDesc, "error", errStr)
+	metrics.ReconcileTotal.WithLabelValues(kind, "error").Inc()
+	return ctrl.Result{}, err
 }

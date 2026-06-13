@@ -812,39 +812,14 @@ func (r *MCPServerReconciler) resolveServerIDByName(ctx context.Context, llm *li
 // (anti-storm REL-06).
 // - 4xx (non-401) → LiteLLMRejected + nil return (deterministic).
 // - 5xx / network → return err for controller-runtime exponential backoff.
+// Thin shim over the shared classifyMutationError (shared_helpers.go).
 func (r *MCPServerReconciler) classifyMutationError(ctx context.Context, mcp *litellmv1alpha1.LiteLLMMCPServer, logger logr.Logger, err error, opDesc string) (ctrl.Result, error) {
-	var auth401 *litellm.Auth401Error
-	if errors.As(err, &auth401) {
-		r.Cache.InvalidateOn401()
-		msg := "401 from LiteLLM on " + opDesc + "; cache invalidated, re-probe enqueued"
-		if werr := r.writeStatus(ctx, mcp, metav1.ConditionFalse, reasonLiteLLMUnavailable, msg); werr != nil {
-			logStatusUpdateErr(logger, werr, "reason", reasonLiteLLMUnavailable)
-		}
-		logger.Info("401 fast-path: invalidating connection cache", "path", auth401.Path, "op", opDesc)
-		metrics.ReconcileTotal.WithLabelValues(mcpServerKind, "success").Inc()
-		return ctrl.Result{}, nil
-	}
-
-	errStr := err.Error()
-	is4xx := is4xxStatus(err)
-
-	if is4xx {
-		msg := rejectedMessage(opDesc, err, errStr)
-		if werr := r.writeStatus(ctx, mcp, metav1.ConditionFalse, "LiteLLMRejected", msg); werr != nil {
-			logStatusUpdateErr(logger, werr, "reason", "LiteLLMRejected")
-		}
-		logger.Info("LiteLLM rejected request", "op", opDesc, "error", errStr)
-		metrics.ReconcileTotal.WithLabelValues(mcpServerKind, "success").Inc()
-		// FIX2.txt H-2: periodically re-reconcile so an upstream fix
-		// (or a CR edit landing during the rate-limiter quiet window)
-		// heals without external poke.
-		return ctrl.Result{RequeueAfter: r.Cache.Snapshot().NormalizedRequeueOnRejectedAfter()}, nil
-	}
-
-	// 5xx / network transient — return err for controller-runtime backoff.
-	logger.V(1).Info("transient error from LiteLLM; returning for backoff", "op", opDesc, "error", errStr)
-	metrics.ReconcileTotal.WithLabelValues(mcpServerKind, "error").Inc()
-	return ctrl.Result{}, err
+	snap := r.Cache.Snapshot()
+	return classifyMutationError(ctx, logger, err, opDesc, mcpServerKind,
+		func(c context.Context, s metav1.ConditionStatus, reason, msg string) error {
+			return r.writeStatus(c, mcp, s, reason, msg)
+		},
+		r.Cache.InvalidateOn401, snap.NormalizedRequeueOnRejectedAfter)
 }
 
 // writeStatus sets the Ready condition and updates the status subresource.
