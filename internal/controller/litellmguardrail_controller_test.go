@@ -22,10 +22,13 @@ import (
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
+	"github.com/ackstorm/alitellm-operator/internal/controller/deletionpolicy"
 	"github.com/ackstorm/alitellm-operator/internal/litellm"
+	"github.com/ackstorm/alitellm-operator/internal/litellm/mock"
 	"github.com/ackstorm/alitellm-operator/internal/metrics"
 )
 
@@ -850,4 +853,59 @@ func TestGuardRail_ReservedKeysStripped(t *testing.T) {
 	if _, ok := params["policy_template"]; ok {
 		t.Errorf("litellm_params.policy_template should be stripped, got %v", params["policy_template"])
 	}
+}
+
+// TestGuardRail_DeletionPath_NeverPersisted_DeletePolicyDrains guards the
+// confirmed-absent drain (Task 2.5): a guardrail CR whose guardrailID was
+// never persisted must drain its finalizer even under deletionPolicy=Delete,
+// because the operator never confirmed a create (entry is provably absent).
+func TestGuardRail_DeletionPath_NeverPersisted_DeletePolicyDrains(t *testing.T) {
+	ctx := context.Background()
+	name := "gr-never-persisted"
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetGuardrails()
+	ensureNoGuardrailCR(t, ctx, name)
+	t.Cleanup(func() {
+		mockServer.SetMode(mock.ModeHappy)
+		ensureNoGuardrailCR(t, context.Background(), name)
+	})
+	ensureLiteLLMConnectionDefault(t, ctx)
+	readyConnectionForTest(t)
+
+	cr := guardrailReconcilerSampleCR(name)
+	cr.Spec.DeletionPolicy = string(deletionpolicy.Delete)
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create guardrail: %v", err)
+	}
+	// Wait for the finalizer to be added (Synced), then force guardrailID="".
+	_ = pollGuardrailCondition(t, ctx, name, "Synced")
+	key := client.ObjectKey{Name: name, Namespace: WatchNamespace}
+	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var gr litellmv1alpha1.LiteLLMGuardRail
+		if err := k8sClient.Get(ctx, key, &gr); err != nil {
+			return err
+		}
+		gr.Status.LastRendered.GuardrailID = ""
+		return k8sClient.Status().Update(ctx, &gr)
+	}); err != nil {
+		t.Fatalf("clear guardrailID: %v", err)
+	}
+
+	var got litellmv1alpha1.LiteLLMGuardRail
+	if err := k8sClient.Get(ctx, key, &got); err != nil {
+		t.Fatalf("get guardrail: %v", err)
+	}
+	if err := k8sClient.Delete(ctx, &got); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		if apierrors.IsNotFound(k8sClient.Get(ctx, key, &got)) {
+			return // success — finalizer drained under Delete
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("guardrail stuck Terminating with empty guardrailID under Delete policy")
 }
