@@ -314,6 +314,7 @@ func main() {
 		Log:               ctrl.Log.WithName("controller").WithName("MCPServer"),
 		BootEvents:        bootSweep.MCPServerEvents,
 		ConnectionRebuilt: connCache.Subscribe(),
+		RecreateLimit:     controller.ResolveRecreateLimitPerMin(os.Getenv(controller.EnvRecreateLimitPerMin)),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to set up MCPServer reconciler")
 		os.Exit(1)
@@ -346,6 +347,7 @@ func main() {
 		Log:               ctrl.Log.WithName("controller").WithName("A2AAgent"),
 		BootEvents:        bootSweep.A2AAgentEvents,
 		ConnectionRebuilt: connCache.Subscribe(),
+		RecreateLimit:     controller.ResolveRecreateLimitPerMin(os.Getenv(controller.EnvRecreateLimitPerMin)),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to set up A2AAgent reconciler")
 		os.Exit(1)
@@ -412,6 +414,7 @@ func main() {
 		Log:               ctrl.Log.WithName("controller").WithName("Team"),
 		BootEvents:        bootSweep.TeamEvents,
 		ConnectionRebuilt: connCache.Subscribe(),
+		RecreateLimit:     controller.ResolveRecreateLimitPerMin(os.Getenv(controller.EnvRecreateLimitPerMin)),
 	}).SetupWithManager(mgr, teamDefaultRequeueCh); err != nil {
 		setupLog.Error(err, "unable to set up Team reconciler")
 		os.Exit(1)
