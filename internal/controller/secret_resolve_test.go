@@ -90,3 +90,37 @@ func TestResolveSecretMap(t *testing.T) {
 		}
 	})
 }
+
+func TestResolveStringKey_TransientError_NotMissing(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	boom := errors.New("apiserver throttled")
+	c := fake.NewClientBuilder().WithScheme(scheme).
+		WithInterceptorFuncs(interceptor.Funcs{
+			Get: func(_ context.Context, _ client.WithWatch, _ client.ObjectKey, _ client.Object, _ ...client.GetOption) error {
+				return boom
+			},
+		}).Build()
+
+	r := &ModelDiscoveryReconciler{Client: c, Scheme: scheme}
+	ref := &litellmv1alpha1.SecretObjectRef{Name: "creds"}
+	_, missing, err := r.resolveStringKey(context.Background(), WatchNamespace, ref, "ANTHROPIC_API_KEY")
+	if err == nil {
+		t.Fatal("expected transient error to be returned")
+	}
+	if missing {
+		t.Error("transient error must NOT be classified as missing (SecretNotFound)")
+	}
+}
+
+func TestResolveStringKey_NotFound_IsMissing(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	c := fake.NewClientBuilder().WithScheme(scheme).Build() // no secret → IsNotFound
+	r := &ModelDiscoveryReconciler{Client: c, Scheme: scheme}
+	ref := &litellmv1alpha1.SecretObjectRef{Name: "creds"}
+	_, missing, err := r.resolveStringKey(context.Background(), WatchNamespace, ref, "ANTHROPIC_API_KEY")
+	if !missing {
+		t.Errorf("a genuinely-absent secret must be missing=true (err=%v)", err)
+	}
+}
