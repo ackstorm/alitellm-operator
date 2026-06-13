@@ -1736,3 +1736,79 @@ func TestModelDiscovery_DisablePrefix_CELReject(t *testing.T) {
 		t.Errorf("error should mention the mutual-exclusion rule; got: %v", err)
 	}
 }
+
+// TestModelDiscovery_SecretDeleted_ClearsSourceReachable guards finding
+// #11: after a successful discovery (SourceReachable=True), deleting the
+// credential secret must flip BOTH Ready (SecretNotFound) and
+// SourceReachable to False — the latter must not be left stale-True.
+func TestModelDiscovery_SecretDeleted_ClearsSourceReachable(t *testing.T) {
+	ctx := context.Background()
+	const mdName = "secretdel-anthropic"
+	ensureNoModelDiscovery(t, ctx, mdName)
+	t.Cleanup(func() { ensureNoModelDiscovery(t, context.Background(), mdName) })
+
+	fp := newFakeProvider("anthropic", []providers.Candidate{
+		{ID: "claude-3-5-sonnet-20241022", DisplayName: "Claude 3.5 Sonnet"},
+	})
+	providers.RegisterTestProvider(t, "anthropic", fp)
+	secretName := mdName + "-creds"
+	ensureCredentialSecret(t, ctx, secretName, "anthropic")
+
+	md := modeldiscoverySampleCR(mdName, "anthropic")
+	if err := k8sClient.Create(ctx, md); err != nil {
+		t.Fatalf("create ModelDiscovery: %v", err)
+	}
+
+	key := client.ObjectKey{Name: mdName, Namespace: WatchNamespace}
+	// 1. Reach success: SourceReachable=True.
+	srcTrue := false
+	for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline); {
+		var cur litellmv1alpha1.LiteLLMModelDiscovery
+		if err := k8sClient.Get(ctx, key, &cur); err == nil {
+			if c := apimeta.FindStatusCondition(cur.Status.Conditions, "SourceReachable"); c != nil && c.Status == metav1.ConditionTrue {
+				srcTrue = true
+				break
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !srcTrue {
+		t.Fatalf("SourceReachable did not become True on initial success")
+	}
+
+	// 2. Delete the credential secret.
+	sec := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: secretName, Namespace: WatchNamespace}}
+	if err := k8sClient.Delete(ctx, sec); err != nil && !apierrors.IsNotFound(err) {
+		t.Fatalf("delete secret: %v", err)
+	}
+
+	// 3. Trigger a reconcile via a benign annotation bump.
+	var mdLatest litellmv1alpha1.LiteLLMModelDiscovery
+	if err := updateWithRetry(ctx, key, &mdLatest,
+		func(o *litellmv1alpha1.LiteLLMModelDiscovery) error {
+			if o.Annotations == nil {
+				o.Annotations = map[string]string{}
+			}
+			o.Annotations["test.litellm.ackstorm.ai/trigger"] = "secret-deleted"
+			return nil
+		},
+	); err != nil {
+		t.Fatalf("annotate to trigger reconcile: %v", err)
+	}
+
+	// 4. Assert BOTH Ready=SecretNotFound (False) AND SourceReachable=False.
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		var cur litellmv1alpha1.LiteLLMModelDiscovery
+		if err := k8sClient.Get(ctx, key, &cur); err == nil {
+			ready := apimeta.FindStatusCondition(cur.Status.Conditions, conditionTypeReady)
+			src := apimeta.FindStatusCondition(cur.Status.Conditions, "SourceReachable")
+			if src != nil && src.Status == metav1.ConditionFalse &&
+				ready != nil && ready.Reason == reasonSecretNotFound {
+				return // success
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatal("after secret deletion: want SourceReachable=False AND Ready reason=SecretNotFound")
+}
