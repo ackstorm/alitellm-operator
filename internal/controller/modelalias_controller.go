@@ -129,11 +129,19 @@ func (r *ModelAliasReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	cli := snap.Client
 	current, err := cli.GetRouterSettings(ctx)
 	if err != nil {
+		var auth401 *litellm.Auth401Error
+		if errors.As(err, &auth401) {
+			r.Cache.InvalidateOn401()
+		}
 		msg := fmt.Sprintf("GET /get/config/callbacks: %v", err)
 		return r.broadcastNotReady(ctx, list.Items, modelAliasErrorReason(err), msg, snap.NormalizedRequeueOnRejectedAfter(), logger)
 	}
 	current.ModelGroupAlias = agg.Desired
 	if err := cli.UpdateRouterSettings(ctx, current); err != nil {
+		var auth401 *litellm.Auth401Error
+		if errors.As(err, &auth401) {
+			r.Cache.InvalidateOn401()
+		}
 		msg := fmt.Sprintf("POST /config/update: %v", err)
 		return r.broadcastNotReady(ctx, list.Items, modelAliasErrorReason(err), msg, snap.NormalizedRequeueOnRejectedAfter(), logger)
 	}

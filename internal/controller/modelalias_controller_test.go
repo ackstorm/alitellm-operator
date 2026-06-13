@@ -4,8 +4,12 @@ package controller
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
+	"github.com/go-logr/logr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -16,7 +20,21 @@ import (
 
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 	"github.com/ackstorm/alitellm-operator/internal/connection"
+	"github.com/ackstorm/alitellm-operator/internal/litellm"
 )
+
+// modelAlias401Cache is a connection.ConnectionCache stub that returns a
+// usable snapshot (Ready + a real Client) and records InvalidateOn401.
+// The shared FakeConnectionCache returns a nil Client, which fails the
+// snap.Usable() gate before the reconciler reaches the LiteLLM call.
+type modelAlias401Cache struct {
+	snap        connection.ConnectionSnapshot
+	invalidated atomic.Bool
+}
+
+func (f *modelAlias401Cache) Snapshot() connection.ConnectionSnapshot { return f.snap }
+func (f *modelAlias401Cache) InvalidateOn401()                        { f.invalidated.Store(true) }
+func (f *modelAlias401Cache) Rebuild(_ connection.ConnectionSnapshot) {}
 
 func TestModelAliasReconciler_ConnectionNotReady_WritesLiteLLMUnavailable(t *testing.T) {
 	scheme := runtime.NewScheme()
@@ -151,5 +169,43 @@ func TestModelAliasReconciler_FinalizerAddedToAliveCR(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("finalizer %q not added; finalizers=%v", modelAliasFinalizer, got.Finalizers)
+	}
+}
+
+func TestModelAlias_401_InvalidatesCache(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := litellmv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme: %v", err)
+	}
+	ma := &litellmv1alpha1.LiteLLMModelAlias{
+		ObjectMeta: metav1.ObjectMeta{Name: "ma-401", Namespace: "default", Generation: 1},
+		Spec: litellmv1alpha1.LiteLLMModelAliasSpec{
+			Aliases: []litellmv1alpha1.ModelAliasEntry{{Name: "k1", Value: "v1"}},
+		},
+	}
+	cli := fake.NewClientBuilder().WithScheme(scheme).WithObjects(ma).
+		WithStatusSubresource(&litellmv1alpha1.LiteLLMModelAlias{}).Build()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":{"type":"token_not_found_in_db","code":"401","message":"x"}}`))
+	}))
+	defer srv.Close()
+	llm := litellm.NewClient(srv.URL, "sk-test", logr.Discard())
+
+	fc := &modelAlias401Cache{snap: connection.ConnectionSnapshot{Ready: true, Reason: reasonSynced, Client: llm}}
+
+	r := &ModelAliasReconciler{
+		Client:    cli,
+		Scheme:    scheme,
+		Cache:     fc,
+		Recorder:  record.NewFakeRecorder(8),
+		Namespace: "default",
+		Log:       ctrl.Log.WithName("test"),
+	}
+	_, _ = r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Name: ModelAliasSingletonKey, Namespace: "default"}})
+
+	if !fc.invalidated.Load() {
+		t.Fatal("ModelAlias did not call InvalidateOn401 on a 401 from LiteLLM")
 	}
 }
