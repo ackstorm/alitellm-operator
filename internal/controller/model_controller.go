@@ -659,6 +659,7 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 				ModelInfo: litellm.ModelInfo{
 					ID:        newModelID,
 					UpdatedBy: identity.Operator(),
+					Extra:     infoMap, // D-05: forward spec.info verbatim
 				},
 			}); uerr != nil {
 				return r.classifyMutationError(ctx, &model, logger, uerr, "POST /model/update (FIX4 H-1 adoption stamp)")
@@ -690,6 +691,7 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 					UpdatedBy: identity.Operator(),
 					CreatedAt: nowStamp,
 					UpdatedAt: nowStamp,
+					Extra:     infoMap, // D-05: forward spec.info verbatim
 				},
 			}
 			result, err := snap.Client.CreateModel(ctx, req)
@@ -745,6 +747,7 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 					UpdatedBy: identity.Operator(),
 					CreatedAt: nowStamp,
 					UpdatedAt: nowStamp,
+					Extra:     infoMap, // D-05: forward spec.info verbatim
 				},
 			}
 			result, err := snap.Client.CreateModel(ctx, createReq)
@@ -774,6 +777,7 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 				ModelInfo: litellm.ModelInfo{
 					ID:        model.Status.LastRendered.ModelID,
 					UpdatedBy: identity.Operator(),
+					Extra:     infoMap, // D-05: forward spec.info verbatim
 				},
 			}
 			if _, err := snap.Client.UpdateModel(ctx, updateReq); err != nil {
