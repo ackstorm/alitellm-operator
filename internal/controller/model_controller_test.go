@@ -2668,3 +2668,50 @@ func TestModel_DuplicateSecretsAs_Rejected(t *testing.T) {
 	t.Logf("TestModel_DuplicateSecretsAs_Rejected: Ready=False reason=%q message=%q mutations_for_model=%d total_mutations=%d",
 		cond.Reason, cond.Message, mockServer.MutationsByModelName(modelName), mockServer.Mutations())
 }
+
+func TestModel_SpecInfo_ForwardedToLiteLLM(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetModels()
+	ensureNoModel(t, ctx, "specinfo-fwd")
+	resetConnCacheSnapshot()
+
+	ensureNoConnectionDefault(t, ctx)
+	connCR := connDefaultCR()
+	if err := k8sClient.Create(ctx, connCR); err != nil {
+		t.Fatalf("create LiteLLMConnection: %v", err)
+	}
+	t.Cleanup(func() {
+		mockServer.SetMode(mock.ModeHappy)
+		_ = k8sClient.Delete(context.Background(), connCR, &client.DeleteOptions{})
+		ensureNoModel(t, context.Background(), "specinfo-fwd")
+		time.Sleep(50 * time.Millisecond)
+	})
+	if snap := pollSnapshotReason(30*time.Second, reasonSynced); snap.Reason != reasonSynced {
+		t.Fatalf("connection not Synced")
+	}
+
+	cr := modelSampleCR("specinfo-fwd")
+	cr.Spec.Info = runtime.RawExtension{Raw: []byte(`{"base_model":"gpt-4o-mini","tier":"paid"}`)}
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create Model: %v", err)
+	}
+
+	m := pollModelCondition(t, ctx, "specinfo-fwd", reasonSynced, 30*time.Second)
+	if c := apimeta.FindStatusCondition(m.Status.Conditions, conditionTypeReady); c == nil || c.Reason != reasonSynced {
+		t.Fatalf("want Ready=Synced, got %+v", c)
+	}
+
+	mi := mockServer.LastModelInfoBody("specinfo-fwd")
+	if mi == nil {
+		t.Fatal("no model_info body captured for specinfo-fwd")
+	}
+	if mi["base_model"] != "gpt-4o-mini" {
+		t.Errorf("model_info.base_model: want gpt-4o-mini, got %v (full: %+v)", mi["base_model"], mi)
+	}
+	if mi["tier"] != "paid" {
+		t.Errorf("model_info.tier: want paid, got %v", mi["tier"])
+	}
+}
