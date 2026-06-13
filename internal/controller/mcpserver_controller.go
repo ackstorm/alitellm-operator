@@ -212,13 +212,19 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				if serverID != "" {
 					if err := snap.Client.DeleteMCPServer(ctx, serverID); err != nil {
 						var auth401 *litellm.Auth401Error
-						if errors.As(err, &auth401) {
+						switch {
+						case errors.As(err, &auth401):
 							r.Cache.InvalidateOn401()
 							logger.Info("deletion: 401 fast-path; cache invalidated", "path", auth401.Path)
 							if gerr := onAckMissing("401 on DeleteMCPServer"); gerr != nil {
 								return ctrl.Result{}, gerr
 							}
-						} else {
+						case is4xxError(err):
+							logger.Info("deletion: deterministic 4xx on DeleteMCPServer; ack-missing", "error", err.Error())
+							if gerr := onAckMissing("4xx on DeleteMCPServer: " + err.Error()); gerr != nil {
+								return ctrl.Result{}, gerr
+							}
+						default:
 							// Transient error — return for backoff. Finalizer stays.
 							return ctrl.Result{}, err
 						}

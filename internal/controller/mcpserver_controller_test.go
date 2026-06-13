@@ -24,6 +24,7 @@ import (
 
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 	"github.com/ackstorm/alitellm-operator/internal/connection"
+	"github.com/ackstorm/alitellm-operator/internal/controller/deletionpolicy"
 	"github.com/ackstorm/alitellm-operator/internal/litellm"
 	"github.com/ackstorm/alitellm-operator/internal/litellm/mock"
 	"github.com/ackstorm/alitellm-operator/internal/metrics"
@@ -1573,4 +1574,48 @@ func TestMCPServerReconciler_VanishDetection_OnOutOfBandDelete(t *testing.T) {
 	if final.Status.LastRendered.ServerID == originalServerID {
 		t.Logf("note: post-vanish ServerID == originalServerID (mock reused UUID); acceptable")
 	}
+}
+
+func TestMCPServer_DeletionPath_Deterministic4xx_OrphanDrains(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetMCPServers()
+	ensureNoMCPServer(t, ctx, "mcp-del-4xx-orphan")
+	resetConnCacheSnapshot()
+
+	cleanupConn := setupReadyConnectionMCP(t, ctx)
+	t.Cleanup(func() {
+		mockServer.SetMode(mock.ModeHappy)
+		cleanupConn()
+		ensureNoMCPServer(t, context.Background(), "mcp-del-4xx-orphan")
+	})
+
+	cr := mcpServerSampleCR("mcp-del-4xx-orphan")
+	cr.Spec.DeletionPolicy = string(deletionpolicy.Orphan)
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create MCPServer: %v", err)
+	}
+	m := pollMCPServerCondition(t, ctx, "mcp-del-4xx-orphan", reasonSynced, 30*time.Second)
+	if m.Status.LastRendered.ServerID == "" {
+		t.Fatalf("MCPServer not Synced within 30s")
+	}
+
+	// Every delete now fails with a deterministic 422.
+	mockServer.SetMode(mock.ModeDelete422)
+	if err := k8sClient.Delete(ctx, m); err != nil {
+		t.Fatalf("delete MCPServer: %v", err)
+	}
+
+	key := client.ObjectKey{Name: "mcp-del-4xx-orphan", Namespace: WatchNamespace}
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		var probe litellmv1alpha1.LiteLLMMCPServer
+		if apierrors.IsNotFound(k8sClient.Get(ctx, key, &probe)) {
+			return // success — finalizer drained under Orphan
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("MCPServer stuck Terminating after deterministic 4xx under Orphan policy")
 }
