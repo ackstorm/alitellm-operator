@@ -909,3 +909,46 @@ func TestGuardRail_DeletionPath_NeverPersisted_DeletePolicyDrains(t *testing.T) 
 	}
 	t.Fatalf("guardrail stuck Terminating with empty guardrailID under Delete policy")
 }
+
+// TestGuardRail_PoolMembers_DoNotAdoptSameRow guards finding #8: two CRs
+// sharing a guardrailName (an LB pool) must each create their own LiteLLM
+// row — by-name adoption is disabled when poolSize > 1, so they never
+// collapse onto the same guardrail_id.
+func TestGuardRail_PoolMembers_DoNotAdoptSameRow(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetGuardrails()
+	ensureNoGuardrailCR(t, ctx, "pool-a")
+	ensureNoGuardrailCR(t, ctx, "pool-b")
+	t.Cleanup(func() {
+		ensureNoGuardrailCR(t, context.Background(), "pool-a")
+		ensureNoGuardrailCR(t, context.Background(), "pool-b")
+	})
+	ensureLiteLLMConnectionDefault(t, ctx)
+	readyConnectionForTest(t)
+
+	// Two CRs sharing the SAME guardrailName (an LB pool), same provider.
+	a := guardrailReconcilerSampleCR("pool-a")
+	a.Spec.GuardrailName = "pool-x"
+	b := guardrailReconcilerSampleCR("pool-b")
+	b.Spec.GuardrailName = "pool-x"
+	if err := k8sClient.Create(ctx, a); err != nil {
+		t.Fatalf("create a: %v", err)
+	}
+	if err := k8sClient.Create(ctx, b); err != nil {
+		t.Fatalf("create b: %v", err)
+	}
+
+	gotA := pollGuardrailCondition(t, ctx, "pool-a", reasonSynced)
+	gotB := pollGuardrailCondition(t, ctx, "pool-b", reasonSynced)
+
+	if gotA.Status.LastRendered.GuardrailID == "" || gotB.Status.LastRendered.GuardrailID == "" {
+		t.Fatalf("both pool members must persist an ID; got a=%q b=%q",
+			gotA.Status.LastRendered.GuardrailID, gotB.Status.LastRendered.GuardrailID)
+	}
+	if gotA.Status.LastRendered.GuardrailID == gotB.Status.LastRendered.GuardrailID {
+		t.Errorf("pool members collapsed onto the same guardrail_id %q (adoption race)",
+			gotA.Status.LastRendered.GuardrailID)
+	}
+}
