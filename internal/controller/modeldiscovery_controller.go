@@ -387,7 +387,7 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	if md.Spec.BaseURL != "" {
 		if err := providers.ValidateBaseURL(md.Spec.BaseURL); err != nil {
 			metrics.DiscoveryRefreshTotal.WithLabelValues(modelDiscoveryKind, md.Spec.Type, "error").Inc()
-			return r.writeReady(ctx, &md, metav1.ConditionFalse, "InvalidConfig", err.Error()), nil
+			return r.writeReadyAndSource(ctx, &md, "InvalidConfig", err.Error()), nil
 		}
 	}
 
@@ -399,25 +399,34 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 	switch md.Spec.Type {
 	case providerTypeAnthropic:
-		key, err := r.resolveStringKey(ctx, md.Namespace, md.Spec.CredentialsSecretRef, "ANTHROPIC_API_KEY")
-		if err != nil {
-			res := r.writeReady(ctx, &md, metav1.ConditionFalse, reasonSecretNotFound, err.Error())
+		key, missing, err := r.resolveStringKey(ctx, md.Namespace, md.Spec.CredentialsSecretRef, "ANTHROPIC_API_KEY")
+		if err != nil && !missing {
+			return ctrl.Result{}, err // transient → controller-runtime backoff
+		}
+		if missing {
+			res := r.writeReadyAndSource(ctx, &md, reasonSecretNotFound, err.Error())
 			res.RequeueAfter = connection.DefaultRequeueOnRejectedAfter
 			return res, nil
 		}
 		cfg.APIKey = key
 	case providerTypeGemini:
-		key, err := r.resolveStringKey(ctx, md.Namespace, md.Spec.CredentialsSecretRef, "GEMINI_API_KEY")
-		if err != nil {
-			res := r.writeReady(ctx, &md, metav1.ConditionFalse, reasonSecretNotFound, err.Error())
+		key, missing, err := r.resolveStringKey(ctx, md.Namespace, md.Spec.CredentialsSecretRef, "GEMINI_API_KEY")
+		if err != nil && !missing {
+			return ctrl.Result{}, err // transient → controller-runtime backoff
+		}
+		if missing {
+			res := r.writeReadyAndSource(ctx, &md, reasonSecretNotFound, err.Error())
 			res.RequeueAfter = connection.DefaultRequeueOnRejectedAfter
 			return res, nil
 		}
 		cfg.APIKey = key
 	case providerTypeOpenAI:
-		key, err := r.resolveStringKey(ctx, md.Namespace, md.Spec.CredentialsSecretRef, "OPENAI_API_KEY")
-		if err != nil {
-			res := r.writeReady(ctx, &md, metav1.ConditionFalse, reasonSecretNotFound, err.Error())
+		key, missing, err := r.resolveStringKey(ctx, md.Namespace, md.Spec.CredentialsSecretRef, "OPENAI_API_KEY")
+		if err != nil && !missing {
+			return ctrl.Result{}, err // transient → controller-runtime backoff
+		}
+		if missing {
+			res := r.writeReadyAndSource(ctx, &md, reasonSecretNotFound, err.Error())
 			res.RequeueAfter = connection.DefaultRequeueOnRejectedAfter
 			return res, nil
 		}
@@ -426,9 +435,12 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		// Bedrock without credentialsSecretRef → leave AWSCreds nil so the
 		// SDK falls through to the default credential chain per D-05.
 		if md.Spec.CredentialsSecretRef != nil && md.Spec.CredentialsSecretRef.Name != "" {
-			creds, err := r.resolveAWSCredentials(ctx, md.Namespace, md.Spec.CredentialsSecretRef)
-			if err != nil {
-				res := r.writeReady(ctx, &md, metav1.ConditionFalse, reasonSecretNotFound, err.Error())
+			creds, missing, err := r.resolveAWSCredentials(ctx, md.Namespace, md.Spec.CredentialsSecretRef)
+			if err != nil && !missing {
+				return ctrl.Result{}, err // transient → controller-runtime backoff
+			}
+			if missing {
+				res := r.writeReadyAndSource(ctx, &md, reasonSecretNotFound, err.Error())
 				res.RequeueAfter = connection.DefaultRequeueOnRejectedAfter
 				return res, nil
 			}
@@ -494,7 +506,7 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		case errors.As(filterErr, &upstreamInvalid):
 			return r.writeReady(ctx, &md, metav1.ConditionFalse, "UpstreamInvalid", upstreamInvalid.Error()), nil
 		case errors.As(filterErr, &invalidConfig):
-			return r.writeReady(ctx, &md, metav1.ConditionFalse, "InvalidConfig", invalidConfig.Error()), nil
+			return r.writeReadyAndSource(ctx, &md, "InvalidConfig", invalidConfig.Error()), nil
 		default:
 			// Unknown error type from filters.Apply — should be impossible.
 			// Treat as a controller bug; return err for backoff.
@@ -1042,24 +1054,29 @@ func buildChildModel(
 // credentialsSecretRef (anthropic/gemini/openai); the CEL admission rule
 // guarantees presence. Defensive nil-check here matches the spec
 // language anyway.
+// resolveStringKey returns (value, missing, err). missing=true marks a
+// genuinely-absent secret (ref nil, secret IsNotFound, or key absent from an
+// existing secret) → SecretNotFound. missing=false with a non-nil err is a
+// transient read failure (apiserver throttled, etc.) the caller must return
+// for controller-runtime backoff — NOT a SecretNotFound terminal state.
 func (r *ModelDiscoveryReconciler) resolveStringKey(
 	ctx context.Context, namespace string, ref *litellmv1alpha1.SecretObjectRef, key string,
-) (string, error) {
+) (val string, missing bool, err error) {
 	if ref == nil || ref.Name == "" {
-		return "", fmt.Errorf("%s/<nil>:%s not found", namespace, key)
+		return "", true, fmt.Errorf("%s/<nil>:%s not found", namespace, key)
 	}
 	var secret corev1.Secret
-	if err := r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: ref.Name}, &secret); err != nil {
-		if apierrors.IsNotFound(err) {
-			return "", fmt.Errorf("%s/%s:%s not found", namespace, ref.Name, key)
+	if gerr := r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: ref.Name}, &secret); gerr != nil {
+		if apierrors.IsNotFound(gerr) {
+			return "", true, fmt.Errorf("%s/%s:%s not found", namespace, ref.Name, key)
 		}
-		return "", err
+		return "", false, gerr // transient — caller returns it for backoff
 	}
-	val, ok := secret.Data[key]
+	v, ok := secret.Data[key]
 	if !ok {
-		return "", fmt.Errorf("%s/%s:%s not found", namespace, ref.Name, key)
+		return "", true, fmt.Errorf("%s/%s:%s not found", namespace, ref.Name, key)
 	}
-	return string(val), nil
+	return string(v), false, nil
 }
 
 // resolveAWSCredentials reads AWS static credentials from the named Secret.
@@ -1067,35 +1084,35 @@ func (r *ModelDiscoveryReconciler) resolveStringKey(
 // Missing required keys surface MDISC-22 style messages.
 func (r *ModelDiscoveryReconciler) resolveAWSCredentials(
 	ctx context.Context, namespace string, ref *litellmv1alpha1.SecretObjectRef,
-) (*awsv2.Credentials, error) {
+) (creds *awsv2.Credentials, missing bool, err error) {
 	if ref == nil || ref.Name == "" {
-		return nil, nil //nolint:nilnil // intentional: bedrock-no-secret falls through to default chain
+		return nil, false, nil // intentional: bedrock-no-secret falls through to default chain
 	}
 	var secret corev1.Secret
-	if err := r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: ref.Name}, &secret); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil, fmt.Errorf("%s/%s:AWS_ACCESS_KEY_ID not found", namespace, ref.Name)
+	if gerr := r.Get(ctx, types.NamespacedName{Namespace: namespace, Name: ref.Name}, &secret); gerr != nil {
+		if apierrors.IsNotFound(gerr) {
+			return nil, true, fmt.Errorf("%s/%s:AWS_ACCESS_KEY_ID not found", namespace, ref.Name)
 		}
-		return nil, err
+		return nil, false, gerr // transient — caller returns it for backoff
 	}
 	accessKey, ok := secret.Data["AWS_ACCESS_KEY_ID"]
 	if !ok {
-		return nil, fmt.Errorf("%s/%s:AWS_ACCESS_KEY_ID not found", namespace, ref.Name)
+		return nil, true, fmt.Errorf("%s/%s:AWS_ACCESS_KEY_ID not found", namespace, ref.Name)
 	}
 	secretKey, ok := secret.Data["AWS_SECRET_ACCESS_KEY"]
 	if !ok {
-		return nil, fmt.Errorf("%s/%s:AWS_SECRET_ACCESS_KEY not found", namespace, ref.Name)
+		return nil, true, fmt.Errorf("%s/%s:AWS_SECRET_ACCESS_KEY not found", namespace, ref.Name)
 	}
-	creds := &awsv2.Credentials{
+	out := &awsv2.Credentials{
 		AccessKeyID:     string(accessKey),
 		SecretAccessKey: string(secretKey),
 		Source:          "alitellm-operator:credentialsSecretRef",
 	}
 	if sessionToken, ok := secret.Data["AWS_SESSION_TOKEN"]; ok {
-		creds.SessionToken = string(sessionToken)
-		creds.CanExpire = false
+		out.SessionToken = string(sessionToken)
+		out.CanExpire = false
 	}
-	return creds, nil
+	return out, false, nil
 }
 
 // writeReady sets only the Ready condition (no SourceReachable touch)
@@ -1163,6 +1180,24 @@ func (r *ModelDiscoveryReconciler) writeBothConditions(
 	if err := r.Status().Update(ctx, md); err != nil {
 		log.FromContext(ctx).V(1).Info("status update failed (best-effort path)", "error", err)
 	}
+}
+
+// writeReadyAndSource sets BOTH Ready and SourceReachable to
+// False/reason/message and increments the reconcile-total metric (parity
+// with writeReady). Used by deterministic error paths (SecretNotFound,
+// InvalidConfig) so a prior successful reconcile's SourceReachable=True is
+// not left stale (finding #11). Returns a zero Result; the caller sets
+// RequeueAfter as needed.
+func (r *ModelDiscoveryReconciler) writeReadyAndSource(
+	ctx context.Context, md *litellmv1alpha1.LiteLLMModelDiscovery, reason, message string,
+) ctrl.Result {
+	r.writeBothConditions(ctx, md,
+		metav1.ConditionFalse, reason, message,
+		metav1.ConditionFalse, reason, message)
+	metrics.LitellmOperatorReconcileTotal.WithLabelValues(
+		modelDiscoveryKind, md.Namespace, metrics.ReasonToReconcileResult(reason),
+	).Inc()
+	return ctrl.Result{}
 }
 
 // writeBothConditionsObj is the same as writeBothConditions but returns
