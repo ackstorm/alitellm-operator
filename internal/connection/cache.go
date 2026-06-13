@@ -240,6 +240,7 @@ func (c *Cache) InvalidateOn401() {
 			placeholder.Generation = cur.Generation
 			placeholder.Client = cur.Client
 		}
+		c.lastReady.Store(false) // so a subsequent Ready Rebuild is a real false→true edge that re-fires emitRebuilt
 		c.snapshot.Store(&placeholder)
 		// CR-02 defense-in-depth: recover from a TOCTOU `send on closed
 		// channel` panic if Start fires between the closed.Load above
