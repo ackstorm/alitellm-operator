@@ -33,6 +33,36 @@ type ModelInfo struct {
 	Extra               map[string]any `json:"-"`
 }
 
+// MarshalJSON inlines Extra into the model_info object so spec.info
+// pass-through keys reach LiteLLM (D-05). Typed fields take precedence on
+// a key collision (operator overlay wins, e.g. created_by/id). Empty Extra
+// is a no-op, preserving CR-16 omitempty semantics (empty ModelInfo → {}).
+func (m ModelInfo) MarshalJSON() ([]byte, error) {
+	type alias ModelInfo // shed the custom marshaler to avoid recursion; Extra stays json:"-"
+	base, err := json.Marshal(alias(m))
+	if err != nil {
+		return nil, err
+	}
+	if len(m.Extra) == 0 {
+		return base, nil
+	}
+	var merged map[string]json.RawMessage
+	if err := json.Unmarshal(base, &merged); err != nil {
+		return nil, err
+	}
+	for k, v := range m.Extra {
+		if _, exists := merged[k]; exists {
+			continue // typed field already set this key — operator overlay wins
+		}
+		raw, err := json.Marshal(v)
+		if err != nil {
+			return nil, err
+		}
+		merged[k] = raw
+	}
+	return json.Marshal(merged)
+}
+
 // Deployment is the POST /model/new request body.
 type Deployment struct {
 	ModelName     string        `json:"model_name"`
