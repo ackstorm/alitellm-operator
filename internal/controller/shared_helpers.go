@@ -19,6 +19,7 @@ import (
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 	"github.com/ackstorm/alitellm-operator/internal/controller/deletionpolicy"
@@ -189,4 +190,52 @@ func writeStatusWithRetry[T client.Object](
 		apply(fresh)
 		return c.Status().Update(ctx, fresh)
 	})
+}
+
+// SafetyRelistRunnable is the §7.6 safety re-list runnable shared by the model
+// and guardrail controllers. On each Interval tick it lists all CRs of one
+// kind in Namespace (via ListRequests) and non-blockingly enqueues their
+// reconcile.Requests on RequeueCh (a full channel skips the item — the next
+// tick retries). REL-02: uses a time.Ticker inside a manager.Runnable, never
+// RequeueAfter. Replaces the byte-identical ModelSafetyRelistRunnable and
+// GuardRailSafetyRelistRunnable; only ListRequests (the kind-specific list)
+// and LogLabel differ.
+type SafetyRelistRunnable struct {
+	Client    client.Client
+	Namespace string
+	Interval  time.Duration
+	Log       logr.Logger
+	// RequeueCh is the channel the runnable writes reconcile.Requests to.
+	// SetupWithManager wires this as a source.Channel / source.TypedFunc watch.
+	RequeueCh chan reconcile.Request
+	// ListRequests lists every CR of one kind in namespace and returns their
+	// reconcile.Requests, or an error to skip this tick.
+	ListRequests func(ctx context.Context, c client.Client, namespace string) ([]reconcile.Request, error)
+	// LogLabel names the kind in the V(1) debug lines (e.g. "models").
+	LogLabel string
+}
+
+func (r *SafetyRelistRunnable) Start(ctx context.Context) error {
+	ticker := time.NewTicker(r.Interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			reqs, err := r.ListRequests(ctx, r.Client, r.Namespace)
+			if err != nil {
+				r.Log.V(1).Info("safety re-list: list failed; skipping tick", "kind", r.LogLabel, "error", err)
+				continue
+			}
+			for _, req := range reqs {
+				select {
+				case r.RequeueCh <- req:
+				default:
+					// Channel full — skip this item; retried on next tick.
+				}
+			}
+			r.Log.V(1).Info("safety re-list: enqueued", "kind", r.LogLabel, "count", len(reqs))
+		}
+	}
 }
