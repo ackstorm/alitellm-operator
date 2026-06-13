@@ -173,6 +173,11 @@ type MockServer struct {
 	modelSeq          atomic.Int64           // monotonically increasing UUID suffix
 	perModelMutations map[string]int64       // tracks mutation count per model_name
 
+	// lastModelInfo records the model_info sub-block of the most recent
+	// POST /model/new or /model/update for each model_name, so tests can
+	// assert spec.info forwarding. Guarded by m.mu.
+	lastModelInfo map[string]map[string]any
+
 	// MCP server state. Two indices for O(1) lookups:
 	// mcpServers — keyed by ServerID (the LiteLLM-assigned UUID, surfaced
 	// in POST/PUT response bodies + DELETE path param)
@@ -263,6 +268,7 @@ func NewServer(t *testing.T) *MockServer {
 	m := &MockServer{
 		models:            make(map[string]*modelEntry),
 		perModelMutations: make(map[string]int64),
+		lastModelInfo:     make(map[string]map[string]any),
 		mcpServers:        make(map[string]*mcpEntry),
 		mcpByName:         make(map[string]string),
 		perMCPMutations:   make(map[string]int64),
@@ -320,6 +326,7 @@ func (m *MockServer) ResetModels() {
 	m.mu.Lock()
 	m.models = make(map[string]*modelEntry)
 	m.perModelMutations = make(map[string]int64)
+	m.lastModelInfo = make(map[string]map[string]any)
 	m.mu.Unlock()
 }
 
@@ -690,6 +697,14 @@ func (m *MockServer) GetModelID(name string) string {
 	return ""
 }
 
+// LastModelInfoBody returns the model_info sub-block of the most recent
+// POST /model/new or /model/update for the given model_name (nil if none).
+func (m *MockServer) LastModelInfoBody(name string) map[string]any {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.lastModelInfo[name]
+}
+
 // SetLoggingCallbacksNull controls whether POST /key/health returns
 // logging_callbacks: null (true) or the default healthy-callback list
 // (false). Used by UAT LOW-01 regression tests to assert the operator
@@ -952,6 +967,9 @@ func (m *MockServer) statefulBody(r *http.Request) []byte {
 		if !routerCreate {
 			m.models[modelName] = &modelEntry{ModelID: modelID, ModelName: modelName}
 		}
+		if mi, ok := reqBody["model_info"].(map[string]any); ok {
+			m.lastModelInfo[modelName] = mi
+		}
 		m.perModelMutations[modelName]++
 		m.mu.Unlock()
 
@@ -970,6 +988,9 @@ func (m *MockServer) statefulBody(r *http.Request) []byte {
 		modelName, _ := reqBody["model_name"].(string)
 		m.mu.Lock()
 		entry, exists := m.models[modelName]
+		if mi, ok := reqBody["model_info"].(map[string]any); ok {
+			m.lastModelInfo[modelName] = mi
+		}
 		m.perModelMutations[modelName]++
 		m.mu.Unlock()
 		if exists {
