@@ -1210,42 +1210,20 @@ func isTransientLiteLLMError(err error) bool {
 // - 4xx (non-401) → LiteLLMRejected + nil return (deterministic).
 // - 5xx / network → return err for controller-runtime exponential backoff.
 func (r *TeamReconciler) classifyMutationError(ctx context.Context, team *litellmv1alpha1.LiteLLMTeam, logger logr.Logger, err error, opDesc string) (ctrl.Result, error) {
-	// team may be nil when called from reconcileImplicitDefault — the
-	// synthetic LiteLLMTeam/default reconcile has no K8s CR to write status onto.
-	var auth401 *litellm.Auth401Error
-	if errors.As(err, &auth401) {
-		r.Cache.InvalidateOn401()
-		if team != nil {
-			msg := "401 from LiteLLM on " + opDesc + "; cache invalidated, re-probe enqueued"
-			if werr := r.writeStatus(ctx, team, metav1.ConditionFalse, reasonLiteLLMUnavailable, msg); werr != nil {
-				logStatusUpdateErr(logger, werr, "reason", reasonLiteLLMUnavailable)
+	// team may be nil when called from reconcileImplicitDefault — the synthetic
+	// LiteLLMTeam/default reconcile has no K8s CR to write status onto, so the
+	// writeStatus closure no-ops on nil (preserving the legacy `if team != nil`
+	// guard). All other side effects (cache-invalidate, logging, metrics,
+	// requeue) stay unconditional, matching the prior inline behavior.
+	snap := r.Cache.Snapshot()
+	return classifyMutationError(ctx, logger, err, opDesc, teamKind,
+		func(c context.Context, s metav1.ConditionStatus, reason, msg string) error {
+			if team == nil {
+				return nil
 			}
-		}
-		logger.Info("401 fast-path: invalidating connection cache", "path", auth401.Path, "op", opDesc)
-		metrics.ReconcileTotal.WithLabelValues(teamKind, "success").Inc()
-		return ctrl.Result{}, nil
-	}
-
-	errStr := err.Error()
-	is4xx := is4xxStatus(err)
-
-	if is4xx {
-		if team != nil {
-			msg := rejectedMessage(opDesc, err, errStr)
-			if werr := r.writeStatus(ctx, team, metav1.ConditionFalse, "LiteLLMRejected", msg); werr != nil {
-				logStatusUpdateErr(logger, werr, "reason", "LiteLLMRejected")
-			}
-		}
-		logger.Info("LiteLLM rejected request", "op", opDesc, "error", errStr)
-		metrics.ReconcileTotal.WithLabelValues(teamKind, "success").Inc()
-		// FIX2.txt H-2: periodic requeue on deterministic 4xx.
-		return ctrl.Result{RequeueAfter: r.Cache.Snapshot().NormalizedRequeueOnRejectedAfter()}, nil
-	}
-
-	// 5xx / network transient — return err for controller-runtime backoff.
-	logger.V(1).Info("transient error from LiteLLM; returning for backoff", "op", opDesc, "error", errStr)
-	metrics.ReconcileTotal.WithLabelValues(teamKind, "error").Inc()
-	return ctrl.Result{}, err
+			return r.writeStatus(c, team, s, reason, msg)
+		},
+		r.Cache.InvalidateOn401, snap.NormalizedRequeueOnRejectedAfter)
 }
 
 // writeStatus sets the Ready condition and updates the status subresource.

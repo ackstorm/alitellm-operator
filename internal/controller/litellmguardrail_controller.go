@@ -673,31 +673,12 @@ func (r *GuardRailReconciler) classifyMutationError(
 	err error,
 	opDesc string,
 ) (ctrl.Result, error) {
-	var auth401 *litellm.Auth401Error
-	if errors.As(err, &auth401) {
-		r.Cache.InvalidateOn401()
-		msg := "401 from LiteLLM on " + opDesc + "; cache invalidated, re-probe enqueued"
-		if werr := r.writeStatus(ctx, gr, metav1.ConditionFalse, reasonLiteLLMUnavailable, msg); werr != nil {
-			logStatusUpdateErr(logger, werr, "reason", reasonLiteLLMUnavailable)
-		}
-		logger.Info("401 fast-path: invalidating connection cache", "path", auth401.Path, "op", opDesc)
-		metrics.ReconcileTotal.WithLabelValues(guardrailKind, "success").Inc()
-		return ctrl.Result{}, nil
-	}
-
-	if is4xxStatus(err) {
-		msg := rejectedMessage(opDesc, err, err.Error())
-		if werr := r.writeStatus(ctx, gr, metav1.ConditionFalse, "LiteLLMRejected", msg); werr != nil {
-			logStatusUpdateErr(logger, werr, "reason", "LiteLLMRejected")
-		}
-		logger.Info("LiteLLM rejected request", "op", opDesc, "error", err.Error())
-		metrics.ReconcileTotal.WithLabelValues(guardrailKind, "success").Inc()
-		return ctrl.Result{RequeueAfter: r.Cache.Snapshot().NormalizedRequeueOnRejectedAfter()}, nil
-	}
-
-	logger.V(1).Info("transient error from LiteLLM; returning for backoff", "op", opDesc, "error", err.Error())
-	metrics.ReconcileTotal.WithLabelValues(guardrailKind, "error").Inc()
-	return ctrl.Result{}, err
+	snap := r.Cache.Snapshot()
+	return classifyMutationError(ctx, logger, err, opDesc, guardrailKind,
+		func(c context.Context, s metav1.ConditionStatus, reason, msg string) error {
+			return r.writeStatus(c, gr, s, reason, msg)
+		},
+		r.Cache.InvalidateOn401, snap.NormalizedRequeueOnRejectedAfter)
 }
 
 // writeStatus sets the Ready condition + observedGeneration + LastRendered
