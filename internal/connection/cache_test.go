@@ -488,3 +488,21 @@ func TestUsable(t *testing.T) {
 		})
 	}
 }
+
+func TestInvalidateOn401_RecoveryReEmits(t *testing.T) {
+	c := NewCache(logr.Discard())
+	sub := c.Subscribe()
+	c.Rebuild(ConnectionSnapshot{Ready: true, Reason: "Synced"})
+	<-sub // drain the initial false→true emit
+
+	// Transient 401 then recovery to Ready=true.
+	c.InvalidateOn401()
+	c.Rebuild(ConnectionSnapshot{Ready: true, Reason: "Synced"})
+
+	select {
+	case <-sub:
+		// expected: recovery is a real false→true edge and re-enqueues dependents
+	case <-time.After(1 * time.Second):
+		t.Fatal("InvalidateOn401 recovery did not re-emit: lastReady was not reset")
+	}
+}
