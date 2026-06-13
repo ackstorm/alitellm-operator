@@ -181,7 +181,7 @@ func modelAliasErrorReason(err error) string {
 	if errors.As(err, &auth401) {
 		return reasonLiteLLMUnavailable
 	}
-	if is4xxError(err) {
+	if is4xxStatus(err) {
 		return reasonModelAliasRejected
 	}
 	return reasonLiteLLMUnavailable

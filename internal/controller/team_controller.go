@@ -1189,24 +1189,18 @@ func (r *TeamReconciler) ResetImplicitDefaultCache() {
 	r.implicitDefaultTeamID = ""
 }
 
-// is4xxNon401Status returns true if err is a litellm.Client error whose
+// is4xxNon401Status returns true if err is a *litellm.RejectedError whose
 // HTTP status equals `wantStatus` (a 4xx code other than 401 — caller's
-// responsibility to ensure that constraint). Mirrors the inline error-
-// string prefix check used by classifyMutationError and isTransientLiteLLMError
-// (the litellm client's makeRequest formats 4xx errors as
-// `"litellm: <code> on <method> <path> (code=<code>)"`).
+// responsibility to ensure that constraint). Uses the typed
+// RejectedError.Status via rejectedStatus (errors.As-based), so it survives
+// error wrapping.
 //
 // Used by the non-default Team deletion path to distinguish:
 // - 404 on POST /team/delete → spec §7.5 line 1332 success (drift counter
 // fires, finalizer removed).
 // - other 4xx (e.g. 400, 403, 422) → LiteLLMRejected, finalizer NOT removed.
 func is4xxNon401Status(err error, wantStatus int) bool {
-	if err == nil {
-		return false
-	}
-	prefix := fmt.Sprintf("litellm: %d on", wantStatus)
-	errStr := err.Error()
-	return len(errStr) >= len(prefix) && errStr[:len(prefix)] == prefix
+	return rejectedStatus(err) == wantStatus
 }
 
 // isTransientLiteLLMError returns true if err looks like a 5xx / network
@@ -1214,19 +1208,10 @@ func is4xxNon401Status(err error, wantStatus int) bool {
 // backoff. 4xx (non-401) is treated as terminal so the finalizer-remove
 // path can proceed without leaving the CR stuck in Terminating forever.
 func isTransientLiteLLMError(err error) bool {
-	if err == nil {
-		return false
-	}
-	errStr := err.Error()
-	// 4xx → terminal (deterministic).
-	for code := 400; code < 500; code++ {
-		prefix := fmt.Sprintf("litellm: %d on", code)
-		if len(errStr) >= len(prefix) && errStr[:len(prefix)] == prefix {
-			return false
-		}
-	}
-	// Default to transient (5xx / network / context).
-	return true
+	// 4xx (incl. 404) → terminal (deterministic); nil → not transient.
+	// Anything else (5xx / network / context, and Auth401Error which the
+	// caller fast-paths before reaching here) → transient.
+	return err != nil && !is4xxStatus(err)
 }
 
 // classifyMutationError handles §7.7 error classification for LiteLLM
@@ -1253,14 +1238,7 @@ func (r *TeamReconciler) classifyMutationError(ctx context.Context, team *litell
 	}
 
 	errStr := err.Error()
-	is4xx := false
-	for code := 400; code < 500; code++ {
-		prefix := fmt.Sprintf("litellm: %d on", code)
-		if len(errStr) >= len(prefix) && errStr[:len(prefix)] == prefix {
-			is4xx = true
-			break
-		}
-	}
+	is4xx := is4xxStatus(err)
 
 	if is4xx {
 		if team != nil {
