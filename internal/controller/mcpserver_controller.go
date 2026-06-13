@@ -190,18 +190,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if controllerutil.ContainsFinalizer(&mcp, mcpServerFinalizer) {
 			// Issue #23: resolve effective deletion policy once.
 			policy := deletionpolicy.Resolve(&mcp, mcp.Spec.DeletionPolicy)
-			onAckMissing := func(reason string) error {
-				if policy == deletionpolicy.Delete {
-					metrics.DeletionBlocked.Record(mcpServerKind, mcp.Namespace, mcp.Name)
-					r.Recorder.Eventf(&mcp, corev1.EventTypeWarning, "LiteLLMDeleteBlocked",
-						"deletionPolicy=Delete and LiteLLM ack missing (%s); finalizer retained", reason)
-					return fmt.Errorf("delete blocked: %s", reason)
-				}
-				metrics.DeletionOrphanedTotal.WithLabelValues(mcpServerKind).Inc()
-				r.Recorder.Eventf(&mcp, corev1.EventTypeNormal, "LiteLLMDeleteOrphaned",
-					"deletionPolicy=Orphan and LiteLLM ack missing (%s); finalizer removed; entry may persist", reason)
-				return nil
-			}
+			onAckMissing := newAckMissingFn(r.Recorder, &mcp, mcpServerKind, mcp.Namespace, mcp.Name, policy)
 
 			snap := r.Cache.Snapshot()
 			if snap.Usable() {

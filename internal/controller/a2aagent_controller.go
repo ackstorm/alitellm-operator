@@ -191,18 +191,7 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		if controllerutil.ContainsFinalizer(&a2a, a2aAgentFinalizer) {
 			// Issue #23: resolve effective deletion policy once.
 			policy := deletionpolicy.Resolve(&a2a, a2a.Spec.DeletionPolicy)
-			onAckMissing := func(reason string) error {
-				if policy == deletionpolicy.Delete {
-					metrics.DeletionBlocked.Record(a2aAgentKind, a2a.Namespace, a2a.Name)
-					r.Recorder.Eventf(&a2a, corev1.EventTypeWarning, "LiteLLMDeleteBlocked",
-						"deletionPolicy=Delete and LiteLLM ack missing (%s); finalizer retained", reason)
-					return fmt.Errorf("delete blocked: %s", reason)
-				}
-				metrics.DeletionOrphanedTotal.WithLabelValues(a2aAgentKind).Inc()
-				r.Recorder.Eventf(&a2a, corev1.EventTypeNormal, "LiteLLMDeleteOrphaned",
-					"deletionPolicy=Orphan and LiteLLM ack missing (%s); finalizer removed; entry may persist", reason)
-				return nil
-			}
+			onAckMissing := newAckMissingFn(r.Recorder, &a2a, a2aAgentKind, a2a.Namespace, a2a.Name, policy)
 
 			snap := r.Cache.Snapshot()
 			if snap.Usable() {

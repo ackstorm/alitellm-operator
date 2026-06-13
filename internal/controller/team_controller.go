@@ -894,18 +894,7 @@ func (r *TeamReconciler) reconcileDeletion(ctx context.Context, team *litellmv1a
 	// onAckMissing returns nil on the Orphan branch (caller falls through
 	// to RemoveFinalizer) and a non-nil error on the Delete branch (caller
 	// returns the error for controller-runtime backoff).
-	onAckMissing := func(reason string) error {
-		if policy == deletionpolicy.Delete {
-			metrics.DeletionBlocked.Record(teamKind, team.Namespace, team.Name)
-			r.Recorder.Eventf(team, corev1.EventTypeWarning, "LiteLLMDeleteBlocked",
-				"deletionPolicy=Delete and LiteLLM ack missing (%s); finalizer retained", reason)
-			return fmt.Errorf("delete blocked: %s", reason)
-		}
-		metrics.DeletionOrphanedTotal.WithLabelValues(teamKind).Inc()
-		r.Recorder.Eventf(team, corev1.EventTypeNormal, "LiteLLMDeleteOrphaned",
-			"deletionPolicy=Orphan and LiteLLM ack missing (%s); finalizer removed; entry may persist", reason)
-		return nil
-	}
+	onAckMissing := newAckMissingFn(r.Recorder, team, teamKind, team.Namespace, team.Name, policy)
 
 	if team.Name == teamAliasDefault {
 		// AC-T4 PROTECTED PATH — re-apply the implicit empty body.

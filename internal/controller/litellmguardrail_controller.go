@@ -160,18 +160,7 @@ func (r *GuardRailReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if controllerutil.ContainsFinalizer(&gr, guardrailFinalizer) {
 			// Issue #23: resolve effective deletion policy once.
 			policy := deletionpolicy.Resolve(&gr, gr.Spec.DeletionPolicy)
-			onAckMissing := func(reason string) error {
-				if policy == deletionpolicy.Delete {
-					metrics.DeletionBlocked.Record(guardrailKind, gr.Namespace, gr.Name)
-					r.Recorder.Eventf(&gr, corev1.EventTypeWarning, "LiteLLMDeleteBlocked",
-						"deletionPolicy=Delete and LiteLLM ack missing (%s); finalizer retained", reason)
-					return fmt.Errorf("delete blocked: %s", reason)
-				}
-				metrics.DeletionOrphanedTotal.WithLabelValues(guardrailKind).Inc()
-				r.Recorder.Eventf(&gr, corev1.EventTypeNormal, "LiteLLMDeleteOrphaned",
-					"deletionPolicy=Orphan and LiteLLM ack missing (%s); finalizer removed; entry may persist", reason)
-				return nil
-			}
+			onAckMissing := newAckMissingFn(r.Recorder, &gr, guardrailKind, gr.Namespace, gr.Name, policy)
 
 			snap := r.Cache.Snapshot()
 			guardrailID := gr.Status.LastRendered.GuardrailID

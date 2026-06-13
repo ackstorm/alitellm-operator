@@ -198,18 +198,7 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			// through to RemoveFinalizer) and a non-nil error on the Delete
 			// branch (caller returns the error for controller-runtime
 			// backoff). The error message is the user-visible reason.
-			onAckMissing := func(reason string) error {
-				if policy == deletionpolicy.Delete {
-					metrics.DeletionBlocked.Record(modelKind, model.Namespace, model.Name)
-					r.Recorder.Eventf(&model, corev1.EventTypeWarning, "LiteLLMDeleteBlocked",
-						"deletionPolicy=Delete and LiteLLM ack missing (%s); finalizer retained", reason)
-					return fmt.Errorf("delete blocked: %s", reason)
-				}
-				metrics.DeletionOrphanedTotal.WithLabelValues(modelKind).Inc()
-				r.Recorder.Eventf(&model, corev1.EventTypeNormal, "LiteLLMDeleteOrphaned",
-					"deletionPolicy=Orphan and LiteLLM ack missing (%s); finalizer removed; entry may persist", reason)
-				return nil
-			}
+			onAckMissing := newAckMissingFn(r.Recorder, &model, modelKind, model.Namespace, model.Name, policy)
 
 			// onConfirmedAbsent handles the case where LiteLLM POSITIVELY
 			// confirms the entry is gone — name-resolve returned 404/empty,
