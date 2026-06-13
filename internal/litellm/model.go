@@ -57,6 +57,9 @@ func (c *Client) UpdateModel(ctx context.Context, req *updateDeployment) (*Model
 
 // DeleteModel issues POST /model/delete with body {"id": modelID}.
 func (c *Client) DeleteModel(ctx context.Context, modelID string) error {
+	if modelID == "" {
+		return fmt.Errorf("litellm: DeleteModel: empty model_id")
+	}
 	_, err := c.makeRequest(ctx, "POST", "/model/delete", &ModelDeleteRequest{ID: modelID})
 	return err
 }
