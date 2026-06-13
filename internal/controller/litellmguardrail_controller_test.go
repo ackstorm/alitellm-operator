@@ -952,3 +952,51 @@ func TestGuardRail_PoolMembers_DoNotAdoptSameRow(t *testing.T) {
 			gotA.Status.LastRendered.GuardrailID)
 	}
 }
+
+// TestGuardRail_SteadyState_IncrementsReconcileTotal guards finding #13:
+// the hash-equal steady-state return must increment
+// reconcile_total{guardrail,success} like every other success path.
+func TestGuardRail_SteadyState_IncrementsReconcileTotal(t *testing.T) {
+	ctx := context.Background()
+	name := "gr-steady-metric"
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetGuardrails()
+	ensureNoGuardrailCR(t, ctx, name)
+	t.Cleanup(func() { ensureNoGuardrailCR(t, context.Background(), name) })
+	ensureLiteLLMConnectionDefault(t, ctx)
+	readyConnectionForTest(t)
+
+	cr := guardrailReconcilerSampleCR(name)
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create guardrail: %v", err)
+	}
+	_ = pollGuardrailCondition(t, ctx, name, reasonSynced)
+
+	// Capture AFTER reaching Synced so the CREATE increment is already counted;
+	// the steady-state reconcile triggered below must add at least one more.
+	before := testutil.ToFloat64(metrics.ReconcileTotal.WithLabelValues(guardrailKind, "success"))
+
+	// Annotation bump does NOT change generation → reconcile hits steady-state.
+	key := client.ObjectKey{Name: name, Namespace: WatchNamespace}
+	if err := updateWithRetry(ctx, key, &litellmv1alpha1.LiteLLMGuardRail{},
+		func(o *litellmv1alpha1.LiteLLMGuardRail) error {
+			if o.Annotations == nil {
+				o.Annotations = map[string]string{}
+			}
+			o.Annotations["test.litellm.ackstorm.ai/trigger"] = "steady"
+			return nil
+		},
+	); err != nil {
+		t.Fatalf("annotate to trigger reconcile: %v", err)
+	}
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if testutil.ToFloat64(metrics.ReconcileTotal.WithLabelValues(guardrailKind, "success")) > before {
+			return // success — steady-state path incremented the counter
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Errorf("reconcile_total{guardrail,success} did not increment on the steady-state path (before=%v)", before)
+}
