@@ -765,9 +765,12 @@ kubectl set env -n litellm-system deploy/alitellm-operator \
 kubectl get litellmmodel <name> -o jsonpath='{.status.conditions[?(@.type=="Ready")]}'
 ```
 Router models never reach the breaker — they bypass the probe (above) and
-sit Ready. NOTE: the breaker is currently wired on the **Model** controller
-only; the sibling controllers (mcpserver/team/a2aagent) share the
-`probeVanishedResourceID` vanish path but not yet the breaker.
+sit Ready. NOTE: the breaker is wired on the **Model, MCPServer, Team, and
+A2AAgent** controllers (the four that share the `probeVanishedResourceID`
+vanish path + a CREATE-after-clear recreate site). Each parks its CR
+`Ready=False/RecreateThrottled` and backs off `recreateThrottleBackoff` on
+trip; `LITELLM_OPERATOR_RECREATE_LIMIT_PER_MIN` tunes all four. The Guardrail
+controller does not have a vanish-recreate site and is unaffected.
 
 ## Repository-specific patterns
 
