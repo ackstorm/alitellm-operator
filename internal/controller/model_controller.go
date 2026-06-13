@@ -247,6 +247,15 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 							// Delete goal already satisfied; drain the finalizer
 							// regardless of policy (confirmed-absent, NOT ack-missing).
 							onConfirmedAbsent("404 on DeleteModel", modelID)
+						case is4xxError(err):
+							// Deterministic non-404 4xx (404 already handled above): the
+							// delete will never succeed by retrying. Cannot confirm absence,
+							// so route through onAckMissing — policy-aware (Delete: block +
+							// Event + metric; Orphan: drain). Mirrors the 401 fast-path.
+							logger.Info("deletion: deterministic 4xx on DeleteModel; ack-missing", "error", err.Error())
+							if aerr := onAckMissing("4xx on DeleteModel: " + err.Error()); aerr != nil {
+								return ctrl.Result{}, aerr
+							}
 						default:
 							// Transient error — return for backoff. Finalizer stays until delete succeeds.
 							return ctrl.Result{}, err
@@ -304,6 +313,11 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 								// 404 between name-resolve and delete — entry
 								// raced to absent. Confirmed-absent; drain finalizer.
 								onConfirmedAbsent("404 on DeleteModel post-name-resolve", resolved.ModelInfo.ID)
+							case is4xxError(err):
+								logger.Info("deletion: deterministic 4xx on DeleteModel post-name-resolve; ack-missing", "error", err.Error())
+								if aerr := onAckMissing("4xx on DeleteModel post-name-resolve: " + err.Error()); aerr != nil {
+									return ctrl.Result{}, aerr
+								}
 							default:
 								return ctrl.Result{}, err
 							}
