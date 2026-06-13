@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
@@ -22,6 +23,7 @@ import (
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 	"github.com/ackstorm/alitellm-operator/internal/connection"
 	"github.com/ackstorm/alitellm-operator/internal/litellm/mock"
+	"github.com/ackstorm/alitellm-operator/internal/metrics"
 )
 
 // connDefaultCR returns a LiteLLMConnection CR named 'default' in
@@ -686,5 +688,44 @@ func TestConnection_LoggingHealthy_NoCallbacksReported(t *testing.T) {
 	}
 	if cond.Message == "" || strings.HasSuffix(cond.Message, ": ") {
 		t.Fatalf("LoggingHealthy message must be non-trivial, got %q", cond.Message)
+	}
+}
+
+// TestConnectionReadyGauge_ReassertedWhenStatusUnchanged guards finding
+// #10: after an operator restart the in-memory gauge is 0 but the CR's
+// Ready condition already equals what writeStatus is about to write. The
+// skip-when-equal path must STILL re-assert the gauge.
+func TestConnectionReadyGauge_ReassertedWhenStatusUnchanged(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := litellmv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme: %v", err)
+	}
+
+	conn := &litellmv1alpha1.LiteLLMConnection{
+		ObjectMeta: metav1.ObjectMeta{Name: "default", Namespace: "default", Generation: 1},
+	}
+	// Pre-set Ready=False/Connecting at ObservedGeneration=1 so writeStatus sees "unchanged".
+	apimeta.SetStatusCondition(&conn.Status.Conditions, metav1.Condition{
+		Type: conditionTypeReady, Status: metav1.ConditionFalse, Reason: reasonConnecting,
+		Message: "msg", ObservedGeneration: 1,
+	})
+	conn.Status.ObservedGeneration = 1
+
+	cli := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(conn).
+		WithStatusSubresource(&litellmv1alpha1.LiteLLMConnection{}).Build()
+	r := &LiteLLMConnectionReconciler{Client: cli, Scheme: scheme, Namespace: "default", Log: ctrl.Log.WithName("test")}
+
+	// Reset the one-hot gauge to 0 across all reasons (simulates post-restart).
+	for _, rk := range connectionReasonAll {
+		metrics.ConnectionReady.WithLabelValues(rk).Set(0)
+	}
+
+	if err := r.writeStatus(context.Background(), conn, reasonConnecting, "msg"); err != nil {
+		t.Fatalf("writeStatus: %v", err)
+	}
+
+	if v := testutil.ToFloat64(metrics.ConnectionReady.WithLabelValues(reasonConnecting)); v != 1 {
+		t.Errorf("connection_ready{Connecting}: want 1 after skip-when-equal, got %v", v)
 	}
 }
