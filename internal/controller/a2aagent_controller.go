@@ -17,7 +17,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -731,22 +730,17 @@ func (r *A2AAgentReconciler) writeStatus(
 	desiredLastRendered := a2a.Status.LastRendered
 	desiredObservedGen := a2a.Generation
 
-	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		var fresh litellmv1alpha1.LiteLLMA2AAgent
-		if err := r.Get(ctx, client.ObjectKeyFromObject(a2a), &fresh); err != nil {
-			return err
-		}
-		apimeta.SetStatusCondition(&fresh.Status.Conditions, cond)
-		fresh.Status.ObservedGeneration = desiredObservedGen
-		fresh.Status.LastRendered = desiredLastRendered
-		if updErr := r.Status().Update(ctx, &fresh); updErr != nil {
-			return updErr
-		}
+	var fresh litellmv1alpha1.LiteLLMA2AAgent
+	err := writeStatusWithRetry(ctx, r.Client, a2a, &fresh, func(f *litellmv1alpha1.LiteLLMA2AAgent) {
+		apimeta.SetStatusCondition(&f.Status.Conditions, cond)
+		f.Status.ObservedGeneration = desiredObservedGen
+		f.Status.LastRendered = desiredLastRendered
+	})
+	if err == nil {
 		// Propagate persisted state back so callers (logger, metrics) see it.
 		a2a.Status = fresh.Status
 		a2a.ResourceVersion = fresh.ResourceVersion
-		return nil
-	})
+	}
 	recordReconcileMetric(a2aAgentKind, a2a.Namespace, reason)
 	return err
 }

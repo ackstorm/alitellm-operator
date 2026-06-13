@@ -16,6 +16,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -161,4 +162,31 @@ func secretRefNames(secrets []litellmv1alpha1.SecretSubstitution) []string {
 		names = append(names, s.SecretRef.Name)
 	}
 	return names
+}
+
+// writeStatusWithRetry is the shared optimistic-locked status-write core used
+// by the per-controller writeStatus methods. On each attempt it re-Gets a
+// fresh copy of obj into fresh (so a 409 conflict is resolved by re-applying
+// onto the latest resourceVersion rather than leaking to controller-runtime
+// and re-entering Reconcile with stale status — which previously caused
+// duplicate LiteLLM POSTs), runs apply to mutate fresh's status, and persists
+// it via Status().Update. On success `fresh` holds the persisted object
+// (post-update resourceVersion); the caller propagates fresh.Status back onto
+// its in-memory CR. Extracted verbatim from the byte-identical
+// model/a2aagent/guardrail bodies; mcpserver/team are standardized onto it
+// (they previously used a bare Status().Update with no conflict-retry).
+func writeStatusWithRetry[T client.Object](
+	ctx context.Context,
+	c client.Client,
+	obj T,
+	fresh T,
+	apply func(fresh T),
+) error {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := c.Get(ctx, client.ObjectKeyFromObject(obj), fresh); err != nil {
+			return err
+		}
+		apply(fresh)
+		return c.Status().Update(ctx, fresh)
+	})
 }

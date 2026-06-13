@@ -19,7 +19,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/client-go/util/retry"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -842,43 +841,30 @@ func (r *ModelReconciler) writeStatus(
 	status metav1.ConditionStatus,
 	reason, message string,
 ) error {
+	// Optimistic-locked status write via the shared writeStatusWithRetry core.
+	// Re-Getting fresh on each attempt avoids a 409 leaking to controller-
+	// runtime (which would re-enter Reconcile with stale status and fire a
+	// duplicate POST /model/new before the Step 9 idempotency probe absorbs
+	// it). The captured intent — Conditions delta, ObservedGeneration,
+	// LastRendered — is re-applied onto the latest resourceVersion. Stay on
+	// Update, NOT Patch+MergeFrom: callers mutate model.Status.LastRendered
+	// before this call, so a MergeFrom orig would omit LastRendered and the
+	// next reconcile would see Hash=="" and re-POST.
 	cond := buildReadyCondition(model.Generation, status, reason, message)
-
-	// Retry on optimistic-lock conflict ("the object has been modified").
-	// Without this, a 409 leaks to controller-runtime which re-enters
-	// Reconcile with stale status (firstReconcile=true), causing duplicate
-	// POST /model/new calls before the idempotency probe (Step 9) absorbs
-	// them. Re-fetch on each attempt so we apply the condition + intent
-	// onto the latest resourceVersion. The intent — Conditions delta,
-	// ObservedGeneration, and LastRendered — is carried from the in-memory
-	// model the caller built.
-	//
-	// NOTE on Patch + MergeFrom: a previous refactor attempted to switch
-	// the inner write to a merge patch. That broke status semantics
-	// because callers mutate model.Status.LastRendered BEFORE invoking
-	// writeStatus; an orig captured here already carries the mutation,
-	// the patch body omits LastRendered, and the next reconcile sees
-	// Hash=="" and re-POSTs. Stay on Update; the 409 noise this path
-	// emits is demoted to V(1) by logStatusUpdateErr at the call site.
 	desiredLastRendered := model.Status.LastRendered
 	desiredObservedGen := model.Generation
 
-	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		var fresh litellmv1alpha1.LiteLLMModel
-		if err := r.Get(ctx, client.ObjectKeyFromObject(model), &fresh); err != nil {
-			return err
-		}
-		apimeta.SetStatusCondition(&fresh.Status.Conditions, cond)
-		fresh.Status.ObservedGeneration = desiredObservedGen
-		fresh.Status.LastRendered = desiredLastRendered
-		if updErr := r.Status().Update(ctx, &fresh); updErr != nil {
-			return updErr
-		}
-		// Propagate back to caller so subsequent reads (logger, metrics) see persisted state.
+	var fresh litellmv1alpha1.LiteLLMModel
+	err := writeStatusWithRetry(ctx, r.Client, model, &fresh, func(f *litellmv1alpha1.LiteLLMModel) {
+		apimeta.SetStatusCondition(&f.Status.Conditions, cond)
+		f.Status.ObservedGeneration = desiredObservedGen
+		f.Status.LastRendered = desiredLastRendered
+	})
+	if err == nil {
+		// Propagate persisted state back so subsequent reads (logger, metrics) see it.
 		model.Status = fresh.Status
 		model.ResourceVersion = fresh.ResourceVersion
-		return nil
-	})
+	}
 	recordReconcileMetric(modelKind, model.Namespace, reason)
 	return err
 }

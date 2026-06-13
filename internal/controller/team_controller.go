@@ -1224,21 +1224,31 @@ func (r *TeamReconciler) writeStatus(
 	status metav1.ConditionStatus,
 	reason, message string,
 ) error {
-	// Uses Update (not Patch + MergeFrom) because callers mutate
-	// team.Status.LastRendered in-memory BEFORE invoking writeStatus.
-	// A MergeFrom orig captured here would already include the mutation
-	// in both sides of the diff, so the patch body would omit
-	// LastRendered and the server would keep an empty TeamID. The next
-	// reconcile would then see Hash=="" and re-POST /team/new
-	// (duplicate-write regression observed in TestTeamHubSeam_AC_DC1
-	// and the AC_T3/T6/RateLimitsClearing/ProjectionOverride suite).
-	// The 409 conflict noise this Update path can emit is demoted to
-	// V(1) by logStatusUpdateErr at each call site.
+	// Uses Update-on-fresh (not Patch + MergeFrom) via the shared
+	// writeStatusWithRetry core. Callers mutate team.Status.LastRendered
+	// (TeamID) in-memory BEFORE this call; capturing it as desiredLR and
+	// re-applying onto the freshly-Get'd object preserves it (a MergeFrom orig
+	// would omit LastRendered → Hash=="" → duplicate re-POST /team/new, the
+	// regression seen in TestTeamHubSeam_AC_DC1 and the AC_T3/T6 suite).
+	// Standardized onto RetryOnConflict (previously a bare Status().Update):
+	// a 409 is now resolved by re-Get + re-apply instead of leaking to
+	// controller-runtime.
 	cond := buildReadyCondition(team.Generation, status, reason, message)
-	apimeta.SetStatusCondition(&team.Status.Conditions, cond)
-	team.Status.ObservedGeneration = team.Generation
+	desiredLR := team.Status.LastRendered
+	desiredObs := team.Generation
+
+	var fresh litellmv1alpha1.LiteLLMTeam
+	err := writeStatusWithRetry(ctx, r.Client, team, &fresh, func(f *litellmv1alpha1.LiteLLMTeam) {
+		apimeta.SetStatusCondition(&f.Status.Conditions, cond)
+		f.Status.ObservedGeneration = desiredObs
+		f.Status.LastRendered = desiredLR
+	})
+	if err == nil {
+		team.Status = fresh.Status
+		team.ResourceVersion = fresh.ResourceVersion
+	}
 	recordReconcileMetric(teamKind, team.Namespace, reason)
-	return r.Status().Update(ctx, team)
+	return err
 }
 
 // secretToTeams maps a Secret update event to the set of LiteLLMTeam CRs that

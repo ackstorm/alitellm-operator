@@ -820,21 +820,32 @@ func (r *MCPServerReconciler) writeStatus(
 	status metav1.ConditionStatus,
 	reason, message string,
 ) error {
-	// Uses Update (not Patch + MergeFrom) because callers mutate
-	// mcp.Status.LastRendered before this call; a MergeFrom orig captured
-	// here would already carry the mutation and the resulting patch would
-	// omit ServerID, leaving the server with an empty value and causing a
-	// duplicate POST /mcp/server/add on the next reconcile. 409 conflict
-	// noise on this Update path is demoted to V(1) by logStatusUpdateErr
-	// at each call site.
+	// Uses Update-on-fresh (not Patch + MergeFrom) via the shared
+	// writeStatusWithRetry core. Callers mutate mcp.Status.LastRendered
+	// (ServerID) before this call; capturing it as desiredLR and re-applying
+	// onto the freshly-Get'd object preserves it (a MergeFrom orig would omit
+	// ServerID and cause a duplicate POST /mcp/server/add). Standardized onto
+	// RetryOnConflict (previously a bare Status().Update): a 409 is now
+	// resolved by re-Get + re-apply instead of leaking to controller-runtime.
 	cond := buildReadyCondition(mcp.Generation, status, reason, message)
-	apimeta.SetStatusCondition(&mcp.Status.Conditions, cond)
-	mcp.Status.ObservedGeneration = mcp.Generation
+	desiredLR := mcp.Status.LastRendered
+	desiredObs := mcp.Generation
+
+	var fresh litellmv1alpha1.LiteLLMMCPServer
+	err := writeStatusWithRetry(ctx, r.Client, mcp, &fresh, func(f *litellmv1alpha1.LiteLLMMCPServer) {
+		apimeta.SetStatusCondition(&f.Status.Conditions, cond)
+		f.Status.ObservedGeneration = desiredObs
+		f.Status.LastRendered = desiredLR
+	})
+	if err == nil {
+		mcp.Status = fresh.Status
+		mcp.ResourceVersion = fresh.ResourceVersion
+	}
 	// FIX2.txt LOW-6: per-CR reconcile-outcome counter labeled by
 	// kind/namespace/result. Fired here so every status-write also
 	// surfaces on the prometheus dashboard without an extra call site.
 	recordReconcileMetric(mcpServerKind, mcp.Namespace, reason)
-	return r.Status().Update(ctx, mcp)
+	return err
 }
 
 // secretToMCPServers maps a Secret update event to the set of LiteLLMMCPServer
