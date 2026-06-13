@@ -149,3 +149,16 @@ func checkDuplicateSecretAs(secrets []litellmv1alpha1.SecretSubstitution, unique
 	}
 	return ""
 }
+
+// secretRefNames returns the SecretRef.Name of each entry in a secrets slice,
+// for field-indexer registration. Behavior-identical to the inline loops in
+// the per-kind Index*SecretRefs funcs: every entry's name is appended
+// unconditionally (no empty-name skip, no dedup), and an empty slice is
+// returned (non-nil) when secrets is empty.
+func secretRefNames(secrets []litellmv1alpha1.SecretSubstitution) []string {
+	names := make([]string, 0, len(secrets))
+	for _, s := range secrets {
+		names = append(names, s.SecretRef.Name)
+	}
+	return names
+}

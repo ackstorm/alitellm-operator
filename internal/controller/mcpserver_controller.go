@@ -79,11 +79,7 @@ func IndexMCPServerSecretRefs(o client.Object) []string {
 	if !ok {
 		return nil
 	}
-	names := make([]string, 0, len(mcp.Spec.Secrets))
-	for _, s := range mcp.Spec.Secrets {
-		names = append(names, s.SecretRef.Name)
-	}
-	return names
+	return secretRefNames(mcp.Spec.Secrets)
 }
 
 // Task 0 audit (per checker WARNING #6 — read-only events RBAC inheritance

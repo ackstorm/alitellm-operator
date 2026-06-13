@@ -102,11 +102,7 @@ func IndexModelSecretRefs(o client.Object) []string {
 	if !ok {
 		return nil
 	}
-	names := make([]string, 0, len(model.Spec.Secrets))
-	for _, s := range model.Spec.Secrets {
-		names = append(names, s.SecretRef.Name)
-	}
-	return names
+	return secretRefNames(model.Spec.Secrets)
 }
 
 // +kubebuilder:rbac:groups=litellm.ackstorm.ai,resources=litellmmodels,verbs=get;list;watch;create;update;patch;delete

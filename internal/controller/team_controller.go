@@ -85,11 +85,7 @@ func IndexTeamSecretRefs(o client.Object) []string {
 	if !ok {
 		return nil
 	}
-	names := make([]string, 0, len(team.Spec.Secrets))
-	for _, s := range team.Spec.Secrets {
-		names = append(names, s.SecretRef.Name)
-	}
-	return names
+	return secretRefNames(team.Spec.Secrets)
 }
 
 // Events RBAC marker inheritance (Phase 5 Task 0 audit, recorded
