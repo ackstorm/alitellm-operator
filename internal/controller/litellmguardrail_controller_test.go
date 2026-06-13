@@ -747,17 +747,23 @@ func TestGuardRail_SafetyRelist_CreateMissing(t *testing.T) {
 		t.Fatalf("clear GuardrailID via Status().Update: %v", err)
 	}
 
-	// Wait up to 30s for the create_missing counter to bump. Original
-	// budget was 5s, then 15s; but the FULL-suite release gate
-	// (`make test-full`, -race -shuffle over every controller package at
-	// once) puts far more pressure on the shared workqueue than the
-	// per-package PR Envtest job — the 100ms safety-relist runnables of
-	// ALL controllers plus the Connection reconciler's RequeueAfter cycle
-	// compete, and observed recovery slipped past 15s on a release run
-	// (#74). 30s is comfortably above that worst case; the loop still
-	// breaks the instant the counter bumps, so a genuine regression (the
-	// counter never fires) fails as fast as the work actually takes.
-	deadline := time.Now().Add(30 * time.Second)
+	// Wait for the create_missing counter to bump. This is an assertion on
+	// an ASYNCHRONOUS outcome: recovery is gated on the shared manager
+	// workqueue actually processing the guardrail reconcile, NOT on this
+	// loop's poll granularity. In isolation recovery lands in ~2-3s, but the
+	// FULL-suite release gate (`make test-full`, -race -shuffle over every
+	// controller package at once) saturates that workqueue — the 100ms
+	// safety-relist runnables of ALL controllers plus the Connection
+	// reconciler's RequeueAfter cycle compete, so the guardrail reconcile is
+	// queued behind everything else. Budget history: 5s → 15s → 30s, and a
+	// release run STILL slipped right past 30s (#74, v0.7.12 run, failed at
+	// the boundary). Driving Reconcile() directly here would race the
+	// background manager on the same object (-race double-reconcile hazard),
+	// so the robust fix for an async-outcome assertion is a generous bound
+	// with fast-break: the loop exits the instant the counter bumps (happy
+	// path ~2-3s), and only a genuine never-recovers regression spends the
+	// full budget. 90s sits well above the observed -race -shuffle tail.
+	deadline := time.Now().Add(90 * time.Second)
 	for time.Now().Before(deadline) {
 		after := testutil.ToFloat64(metrics.DriftCorrectedTotal.WithLabelValues("guardrail", "create_missing"))
 		if after-before >= 1 {
@@ -767,7 +773,7 @@ func TestGuardRail_SafetyRelist_CreateMissing(t *testing.T) {
 	}
 	after := testutil.ToFloat64(metrics.DriftCorrectedTotal.WithLabelValues("guardrail", "create_missing"))
 	if delta := after - before; delta < 1 {
-		t.Fatalf("create_missing NOT incremented after out-of-band DELETE + safety re-list within 30s; delta=%.0f", delta)
+		t.Fatalf("create_missing NOT incremented after out-of-band DELETE + safety re-list within 90s; delta=%.0f", delta)
 	}
 
 	// Mock has a fresh entry under the same name; ID differs from the
