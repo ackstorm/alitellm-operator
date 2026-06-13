@@ -373,19 +373,12 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	// ─── Step 3.5: SEC-03 uniqueness of spec.secrets[].as values ──────────
-	{
-		seen := make(map[string]struct{}, len(mcp.Spec.Secrets))
-		for _, entry := range mcp.Spec.Secrets {
-			if _, exists := seen[entry.As]; exists {
-				msg := fmt.Sprintf("spec.secrets[]: duplicate as value %q (SEC-03: must be unique within a LiteLLMMCPServer)", entry.As)
-				if werr := r.writeStatus(ctx, &mcp, metav1.ConditionFalse, "InvalidConfig", msg); werr != nil {
-					logStatusUpdateErr(logger, werr, "reason", "InvalidConfig")
-				}
-				metrics.ReconcileTotal.WithLabelValues(mcpServerKind, "success").Inc()
-				return ctrl.Result{}, nil
-			}
-			seen[entry.As] = struct{}{}
+	if msg := checkDuplicateSecretAs(mcp.Spec.Secrets, "SEC-03: must be unique within a LiteLLMMCPServer"); msg != "" {
+		if werr := r.writeStatus(ctx, &mcp, metav1.ConditionFalse, "InvalidConfig", msg); werr != nil {
+			logStatusUpdateErr(logger, werr, "reason", "InvalidConfig")
 		}
+		metrics.ReconcileTotal.WithLabelValues(mcpServerKind, "success").Inc()
+		return ctrl.Result{}, nil
 	}
 
 	// ─── Step 4: Resolve Secrets referenced by spec.secrets[] ─────────────

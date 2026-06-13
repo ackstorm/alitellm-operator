@@ -19,6 +19,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 	"github.com/ackstorm/alitellm-operator/internal/controller/deletionpolicy"
 	"github.com/ackstorm/alitellm-operator/internal/litellm"
 	"github.com/ackstorm/alitellm-operator/internal/metrics"
@@ -128,4 +129,23 @@ func classifyMutationError(
 	logger.V(1).Info("transient error from LiteLLM; returning for backoff", "op", opDesc, "error", errStr)
 	metrics.ReconcileTotal.WithLabelValues(kind, "error").Inc()
 	return ctrl.Result{}, err
+}
+
+// checkDuplicateSecretAs enforces SEC-03 uniqueness of spec.secrets[].as
+// values. It returns a non-empty InvalidConfig message naming the first
+// duplicated `as` value (the first entry whose `as` was already seen), or ""
+// if all are unique. The parenthetical wording differs slightly across
+// controllers (e.g. "SEC-03: must be unique within a LiteLLMModel",
+// "must be unique within an A2AAgent", "must be unique within a
+// LiteLLMGuardRail"), so the caller passes it verbatim as uniquenessPhrase to
+// keep the message bytes identical to the inline blocks this replaces.
+func checkDuplicateSecretAs(secrets []litellmv1alpha1.SecretSubstitution, uniquenessPhrase string) string {
+	seen := make(map[string]struct{}, len(secrets))
+	for _, e := range secrets {
+		if _, dup := seen[e.As]; dup {
+			return fmt.Sprintf("spec.secrets[]: duplicate as value %q (%s)", e.As, uniquenessPhrase)
+		}
+		seen[e.As] = struct{}{}
+	}
+	return ""
 }

@@ -276,19 +276,12 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 
 	// ─── Step 3.5: SEC-03 uniqueness of spec.secrets[].as values ──────────
-	{
-		seen := make(map[string]struct{}, len(a2a.Spec.Secrets))
-		for _, entry := range a2a.Spec.Secrets {
-			if _, exists := seen[entry.As]; exists {
-				msg := fmt.Sprintf("spec.secrets[]: duplicate as value %q (SEC-03: must be unique within an A2AAgent)", entry.As)
-				if werr := r.writeStatus(ctx, &a2a, metav1.ConditionFalse, "InvalidConfig", msg); werr != nil {
-					logStatusUpdateErr(logger, werr, "reason", "InvalidConfig")
-				}
-				metrics.ReconcileTotal.WithLabelValues(a2aAgentKind, "success").Inc()
-				return ctrl.Result{}, nil
-			}
-			seen[entry.As] = struct{}{}
+	if msg := checkDuplicateSecretAs(a2a.Spec.Secrets, "SEC-03: must be unique within an A2AAgent"); msg != "" {
+		if werr := r.writeStatus(ctx, &a2a, metav1.ConditionFalse, "InvalidConfig", msg); werr != nil {
+			logStatusUpdateErr(logger, werr, "reason", "InvalidConfig")
 		}
+		metrics.ReconcileTotal.WithLabelValues(a2aAgentKind, "success").Inc()
+		return ctrl.Result{}, nil
 	}
 
 	// ─── Step 4: Resolve Secrets referenced by spec.secrets[] ─────────────
