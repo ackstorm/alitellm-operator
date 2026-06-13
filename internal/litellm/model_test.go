@@ -502,3 +502,14 @@ func TestUpdateDeploymentJSONShape_1_85_1(t *testing.T) {
 		t.Errorf("model_info.updated_by: want alitellm-operator/0.3.1, got %v", mi["updated_by"])
 	}
 }
+
+func TestDeleteModel_EmptyIDGuard(t *testing.T) {
+	c := newTestClient(t, "http://unreachable.invalid")
+	err := c.DeleteModel(context.Background(), "")
+	if err == nil {
+		t.Fatal("expected error on empty model_id; no request should be issued")
+	}
+	if !strings.Contains(err.Error(), "empty model_id") {
+		t.Errorf("error %q does not mention empty model_id", err.Error())
+	}
+}
