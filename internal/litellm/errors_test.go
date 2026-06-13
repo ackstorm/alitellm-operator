@@ -84,3 +84,21 @@ func TestRejectedError_TypeFieldPropagates(t *testing.T) {
 		t.Fatalf("Error() shape regressed:\n  want: %q\n  got:  %q", got, wantErr)
 	}
 }
+
+func TestProcessLitellmError_TypeOnlyEnvelope_KeepsType(t *testing.T) {
+	body := []byte(`{"error":{"type":"not_found_error","message":"","code":""}}`)
+	kind, _, _ := processLitellmError(body)
+	if kind != "not_found_error" {
+		t.Errorf("type-only envelope: want kind=not_found_error, got %q", kind)
+	}
+}
+
+func TestProcessLitellmError_UnparseableStaysUnparsed(t *testing.T) {
+	// An unparseable body must yield the kindUnparsed sentinel — NOT a
+	// spurious real type. (makeRequest drops kindUnparsed → "" before it
+	// reaches CR status; see client.go.)
+	kind, _, _ := processLitellmError([]byte(`<html>500</html>`))
+	if kind != kindUnparsed {
+		t.Errorf("unparseable body: want kindUnparsed (%q), got %q", kindUnparsed, kind)
+	}
+}

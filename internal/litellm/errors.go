@@ -141,7 +141,8 @@ const kindUnparsed = "unparsed"
 // Derivative work from bbdsoftware/litellm-operator (Apache-2.0; NOTICE).
 func processLitellmError(body []byte) (kind, message, code string) {
 	var env litellmErrorEnvelope
-	if err := json.Unmarshal(body, &env); err != nil || env.Error.Code == "" && env.Error.Message == "" {
+	if err := json.Unmarshal(body, &env); err != nil ||
+		(env.Error.Type == "" && env.Error.Code == "" && env.Error.Message == "") {
 		cap := body
 		if len(cap) > 512 {
 			cap = cap[:512]
