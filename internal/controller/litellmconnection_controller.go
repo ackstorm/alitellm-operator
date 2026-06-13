@@ -548,21 +548,21 @@ func (r *LiteLLMConnectionReconciler) writeStatus(
 	conn *litellmv1alpha1.LiteLLMConnection,
 	reason, message string,
 ) error {
-	// Skip-when-equal: identical Ready condition + ObservedGeneration
-	// already matches Generation → no-op write would only churn the
-	// resourceVersion and feed the 409 storm the WR-03 gate observes.
-	// The metric gauge is also a no-op on this path (same labels would
-	// be re-set to the same values), so the guard sits ahead of it.
-	if statusReadyUnchanged(conn.Status.Conditions, conn.Status.ObservedGeneration, conn.Generation, metav1.ConditionFalse, reason, message) {
-		return nil
-	}
-
-	// §10: one-hot ConnectionReady gauge. Clear all six reasons to 0,
-	// then set the active reason to 1.
+	// §10: re-assert the one-hot ConnectionReady gauge on EVERY reconcile
+	// (idempotent + cheap). Must run BEFORE the skip-when-equal short-circuit
+	// so the gauge is restored after an operator restart, when the in-memory
+	// gauge is 0 but the persisted Ready condition already matches.
 	for _, rk := range connectionReasonAll {
 		metrics.ConnectionReady.WithLabelValues(rk).Set(0)
 	}
 	metrics.ConnectionReady.WithLabelValues(reason).Set(1)
+
+	// Skip-when-equal: identical Ready condition + ObservedGeneration
+	// already matches Generation → no-op write would only churn the
+	// resourceVersion and feed the 409 storm the WR-03 gate observes.
+	if statusReadyUnchanged(conn.Status.Conditions, conn.Status.ObservedGeneration, conn.Generation, metav1.ConditionFalse, reason, message) {
+		return nil
+	}
 
 	orig := conn.DeepCopy()
 	cond := metav1.Condition{
@@ -640,16 +640,17 @@ func (r *LiteLLMConnectionReconciler) writeReadyAndLoggingHealthy(
 		}
 		break
 	}
-	if readyEqual && lhEqual {
-		return nil
-	}
-
-	// §10: one-hot ConnectionReady gauge. Clear all reasons to 0,
-	// then set the active Ready reason to 1.
+	// §10: re-assert the one-hot ConnectionReady gauge before the
+	// skip-when-equal short-circuit (idempotent + cheap; restart-safe — see
+	// writeStatus rationale).
 	for _, rk := range connectionReasonAll {
 		metrics.ConnectionReady.WithLabelValues(rk).Set(0)
 	}
 	metrics.ConnectionReady.WithLabelValues(readyReason).Set(1)
+
+	if readyEqual && lhEqual {
+		return nil
+	}
 
 	orig := conn.DeepCopy()
 	now := metav1.Now()
