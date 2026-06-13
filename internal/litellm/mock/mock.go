@@ -31,6 +31,11 @@ const (
 	// LiteLLMRejected ready condition path (MODEL-06).
 	Mode422 = "422"
 
+	// ModeDelete422 returns HTTP 422 for any delete-shaped request
+	// (POST .../delete or HTTP DELETE) and serves all other paths happily.
+	// Used to exercise the deterministic-4xx finalizer-delete path.
+	ModeDelete422 = "delete422"
+
 	// ─── Phase 6 route-targeted modes ──────────────────────────
 	// These three modes flip only the specified Team route to a non-2xx
 	// response; every other path is served as happy. Used by the AC-T3
@@ -888,6 +893,19 @@ func (m *MockServer) handle(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// Other paths (GET /models, etc.) are served as happy.
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(m.statefulBody(r))
+		return
+	case ModeDelete422:
+		isDelete := (r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/delete")) ||
+			r.Method == http.MethodDelete
+		if isDelete {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_, _ = w.Write([]byte(`{"error":{"message":"Unprocessable Entity","type":"invalid_request_error","param":null,"code":"422"}}`))
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(m.statefulBody(r))
