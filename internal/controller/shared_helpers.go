@@ -8,8 +8,15 @@ package controller
 
 import (
 	"errors"
+	"fmt"
 
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/tools/record"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/ackstorm/alitellm-operator/internal/controller/deletionpolicy"
 	"github.com/ackstorm/alitellm-operator/internal/litellm"
+	"github.com/ackstorm/alitellm-operator/internal/metrics"
 )
 
 // rejectedStatus extracts the HTTP status of a *litellm.RejectedError, or 0
@@ -32,4 +39,30 @@ func rejectedStatus(err error) int {
 func is4xxStatus(err error) bool {
 	s := rejectedStatus(err)
 	return s >= 400 && s < 500
+}
+
+// newAckMissingFn builds the deletion-path "ack-missing" handler shared by all
+// controllers. Under deletionPolicy=Delete it records DeletionBlocked, emits a
+// Warning Event, and returns a non-nil error (finalizer retained); otherwise
+// (Orphan) it increments DeletionOrphanedTotal, emits a Normal Event, and
+// returns nil (caller drains the finalizer). Behavior-identical to the inline
+// closures it replaces — only kind/obj/namespace/name/policy are parameterized.
+func newAckMissingFn(
+	rec record.EventRecorder,
+	obj client.Object,
+	kind, namespace, name string,
+	policy deletionpolicy.Policy,
+) func(reason string) error {
+	return func(reason string) error {
+		if policy == deletionpolicy.Delete {
+			metrics.DeletionBlocked.Record(kind, namespace, name)
+			rec.Eventf(obj, corev1.EventTypeWarning, "LiteLLMDeleteBlocked",
+				"deletionPolicy=Delete and LiteLLM ack missing (%s); finalizer retained", reason)
+			return fmt.Errorf("delete blocked: %s", reason)
+		}
+		metrics.DeletionOrphanedTotal.WithLabelValues(kind).Inc()
+		rec.Eventf(obj, corev1.EventTypeNormal, "LiteLLMDeleteOrphaned",
+			"deletionPolicy=Orphan and LiteLLM ack missing (%s); finalizer removed; entry may persist", reason)
+		return nil
+	}
 }
