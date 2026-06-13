@@ -204,16 +204,20 @@ func (r *GuardRailReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 					logger.Info("finalizer removed; LiteLLM guardrail deleted",
 						"guardrailID", guardrailID)
 				}
-			} else {
-				// Issue #23: gate on resolved policy. Reason distinguishes
-				// the two sub-cases so the Event/log is actionable.
-				reason := "LiteLLM unavailable"
-				if guardrailID == "" {
-					reason = "guardrail_id never persisted"
-				}
-				if err := onAckMissing(reason); err != nil {
+			} else if !snap.Usable() {
+				// LiteLLM unavailable — cannot confirm absence; gate on policy.
+				if err := onAckMissing("LiteLLM unavailable"); err != nil {
 					return ctrl.Result{}, err
 				}
+			} else {
+				// snap.Usable() && guardrailID == "": the operator never
+				// persisted an ID, so it never confirmed a create. Treat as
+				// confirmed-absent and drain regardless of policy — mirrors the
+				// model controller's onConfirmedAbsent fix; routing this through
+				// onAckMissing stranded deletionPolicy=Delete CRs in Terminating.
+				metrics.DeletionBlocked.Forget(guardrailKind, gr.Namespace, gr.Name)
+				logger.Info("finalizer removed; guardrail_id never persisted (confirmed absent)",
+					"name", gr.Name)
 			}
 
 			metrics.CRStatusAgeTracker.Forget(guardrailKind, gr.Name)
