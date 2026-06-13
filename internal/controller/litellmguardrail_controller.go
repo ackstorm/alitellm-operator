@@ -447,7 +447,7 @@ func (r *GuardRailReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// when a sibling CR has already taken ownership — otherwise both CRs
 	// would compete to PUT the same row, defeating the LB-pool semantics
 	// where each CR owns its own LiteLLM entry under a shared name.
-	if persistedID == "" && existing != nil && existing.GuardrailID != "" && !anySiblingOwns {
+	if persistedID == "" && existing != nil && existing.GuardrailID != "" && !anySiblingOwns && poolSize <= 1 {
 		persistedID = existing.GuardrailID
 		logger.V(1).Info("adopted existing LiteLLM guardrail (idempotency probe)",
 			"guardrailID", persistedID)
