@@ -388,19 +388,12 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	//
 	// Note: no r.Recorder.Eventf on this path — status condition Ready=False
 	// is the user-facing surface; an Event would be redundant.
-	{
-		seen := make(map[string]struct{}, len(model.Spec.Secrets))
-		for _, entry := range model.Spec.Secrets {
-			if _, exists := seen[entry.As]; exists {
-				msg := fmt.Sprintf("spec.secrets[]: duplicate as value %q (SEC-03: must be unique within a LiteLLMModel)", entry.As)
-				if werr := r.writeStatus(ctx, &model, metav1.ConditionFalse, "InvalidConfig", msg); werr != nil {
-					logStatusUpdateErr(logger, werr, "reason", "InvalidConfig")
-				}
-				metrics.ReconcileTotal.WithLabelValues(modelKind, "success").Inc()
-				return ctrl.Result{}, nil
-			}
-			seen[entry.As] = struct{}{}
+	if msg := checkDuplicateSecretAs(model.Spec.Secrets, "SEC-03: must be unique within a LiteLLMModel"); msg != "" {
+		if werr := r.writeStatus(ctx, &model, metav1.ConditionFalse, "InvalidConfig", msg); werr != nil {
+			logStatusUpdateErr(logger, werr, "reason", "InvalidConfig")
 		}
+		metrics.ReconcileTotal.WithLabelValues(modelKind, "success").Inc()
+		return ctrl.Result{}, nil
 	}
 
 	// ─── Step 4: Resolve Secrets referenced by spec.secrets[] ─────────────

@@ -291,19 +291,12 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	}
 
 	// ─── Step 2.5: SEC-03 uniqueness of spec.secrets[].as values ──────────
-	{
-		seen := make(map[string]struct{}, len(team.Spec.Secrets))
-		for _, entry := range team.Spec.Secrets {
-			if _, exists := seen[entry.As]; exists {
-				msg := fmt.Sprintf("spec.secrets[]: duplicate as value %q (SEC-03: must be unique within a LiteLLMTeam)", entry.As)
-				if werr := r.writeStatus(ctx, &team, metav1.ConditionFalse, "InvalidConfig", msg); werr != nil {
-					logStatusUpdateErr(logger, werr, "reason", "InvalidConfig")
-				}
-				metrics.ReconcileTotal.WithLabelValues(teamKind, "success").Inc()
-				return ctrl.Result{}, nil
-			}
-			seen[entry.As] = struct{}{}
+	if msg := checkDuplicateSecretAs(team.Spec.Secrets, "SEC-03: must be unique within a LiteLLMTeam"); msg != "" {
+		if werr := r.writeStatus(ctx, &team, metav1.ConditionFalse, "InvalidConfig", msg); werr != nil {
+			logStatusUpdateErr(logger, werr, "reason", "InvalidConfig")
 		}
+		metrics.ReconcileTotal.WithLabelValues(teamKind, "success").Inc()
+		return ctrl.Result{}, nil
 	}
 
 	// ─── Step 3: Resolve Secrets referenced by spec.secrets[] ─────────────

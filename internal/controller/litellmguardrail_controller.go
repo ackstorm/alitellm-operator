@@ -254,19 +254,12 @@ func (r *GuardRailReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	// ─── Step 5.5: spec.secrets[].as uniqueness ────────────────────────────
-	{
-		seen := make(map[string]struct{}, len(gr.Spec.Secrets))
-		for _, entry := range gr.Spec.Secrets {
-			if _, exists := seen[entry.As]; exists {
-				msg := fmt.Sprintf("spec.secrets[]: duplicate as value %q (must be unique within a LiteLLMGuardRail)", entry.As)
-				if werr := r.writeStatus(ctx, &gr, metav1.ConditionFalse, "InvalidConfig", msg); werr != nil {
-					logStatusUpdateErr(logger, werr, "reason", "InvalidConfig")
-				}
-				metrics.ReconcileTotal.WithLabelValues(guardrailKind, "success").Inc()
-				return ctrl.Result{}, nil
-			}
-			seen[entry.As] = struct{}{}
+	if msg := checkDuplicateSecretAs(gr.Spec.Secrets, "must be unique within a LiteLLMGuardRail"); msg != "" {
+		if werr := r.writeStatus(ctx, &gr, metav1.ConditionFalse, "InvalidConfig", msg); werr != nil {
+			logStatusUpdateErr(logger, werr, "reason", "InvalidConfig")
 		}
+		metrics.ReconcileTotal.WithLabelValues(guardrailKind, "success").Inc()
+		return ctrl.Result{}, nil
 	}
 
 	// ─── Step 6: Resolve spec.secrets[] ────────────────────────────────────
