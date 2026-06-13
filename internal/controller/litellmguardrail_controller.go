@@ -186,7 +186,7 @@ func (r *GuardRailReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 						if gerr := onAckMissing("401 on DeleteGuardrail"); gerr != nil {
 							return ctrl.Result{}, gerr
 						}
-					case is4xxError(err):
+					case is4xxStatus(err):
 						// 404 / 4xx — treat as success; entry is already gone.
 						// Not ack-missing — LiteLLM positively reports the entry
 						// is gone, so finalizer removal is safe under both
@@ -696,7 +696,7 @@ func (r *GuardRailReconciler) classifyMutationError(
 		return ctrl.Result{}, nil
 	}
 
-	if is4xxError(err) {
+	if is4xxStatus(err) {
 		msg := rejectedMessage(opDesc, err, err.Error())
 		if werr := r.writeStatus(ctx, gr, metav1.ConditionFalse, "LiteLLMRejected", msg); werr != nil {
 			logStatusUpdateErr(logger, werr, "reason", "LiteLLMRejected")
@@ -709,24 +709,6 @@ func (r *GuardRailReconciler) classifyMutationError(
 	logger.V(1).Info("transient error from LiteLLM; returning for backoff", "op", opDesc, "error", err.Error())
 	metrics.ReconcileTotal.WithLabelValues(guardrailKind, "error").Inc()
 	return ctrl.Result{}, err
-}
-
-// is4xxError matches the same pattern ModelReconciler uses: makeRequest
-// returns formatted strings of the form "litellm: 4xx on .". An
-// Auth401Error must be checked separately BEFORE this — 401 is a 4xx
-// too but follows the anti-storm path.
-func is4xxError(err error) bool {
-	if err == nil {
-		return false
-	}
-	s := err.Error()
-	for code := 400; code < 500; code++ {
-		prefix := fmt.Sprintf("litellm: %d on", code)
-		if strings.HasPrefix(s, prefix) {
-			return true
-		}
-	}
-	return false
 }
 
 // writeStatus sets the Ready condition + observedGeneration + LastRendered

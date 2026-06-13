@@ -224,7 +224,7 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 							if gerr := onAckMissing("401 on DeleteAgent"); gerr != nil {
 								return ctrl.Result{}, gerr
 							}
-						case is4xxError(err):
+						case is4xxStatus(err):
 							logger.Info("deletion: deterministic 4xx on DeleteAgent; ack-missing", "error", err.Error())
 							if gerr := onAckMissing("4xx on DeleteAgent: " + err.Error()); gerr != nil {
 								return ctrl.Result{}, gerr
@@ -736,14 +736,7 @@ func (r *A2AAgentReconciler) classifyMutationError(ctx context.Context, a2a *lit
 	}
 
 	errStr := err.Error()
-	is4xx := false
-	for code := 400; code < 500; code++ {
-		prefix := fmt.Sprintf("litellm: %d on", code)
-		if len(errStr) >= len(prefix) && errStr[:len(prefix)] == prefix {
-			is4xx = true
-			break
-		}
-	}
+	is4xx := is4xxStatus(err)
 
 	if is4xx {
 		msg := rejectedMessage(opDesc, err, errStr)

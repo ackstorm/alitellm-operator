@@ -247,7 +247,7 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 							// Delete goal already satisfied; drain the finalizer
 							// regardless of policy (confirmed-absent, NOT ack-missing).
 							onConfirmedAbsent("404 on DeleteModel", modelID)
-						case is4xxError(err):
+						case is4xxStatus(err):
 							// Deterministic non-404 4xx (404 already handled above): the
 							// delete will never succeed by retrying. Cannot confirm absence,
 							// so route through onAckMissing — policy-aware (Delete: block +
@@ -313,7 +313,7 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 								// 404 between name-resolve and delete — entry
 								// raced to absent. Confirmed-absent; drain finalizer.
 								onConfirmedAbsent("404 on DeleteModel post-name-resolve", resolved.ModelInfo.ID)
-							case is4xxError(err):
+							case is4xxStatus(err):
 								logger.Info("deletion: deterministic 4xx on DeleteModel post-name-resolve; ack-missing", "error", err.Error())
 								if aerr := onAckMissing("4xx on DeleteModel post-name-resolve: " + err.Error()); aerr != nil {
 									return ctrl.Result{}, aerr
@@ -858,10 +858,10 @@ func (r *ModelReconciler) classifyMutationError(ctx context.Context, model *lite
 		return ctrl.Result{}, nil // anti-storm: return nil, NOT err
 	}
 
-	// Check if it's a 4xx (non-401) using the shared is4xxError helper
-	// (same frozen RejectedError.Error() string contract; Auth401Error excluded above).
+	// Check if it's a 4xx (non-401) using the shared is4xxStatus helper
+	// (typed errors.As on RejectedError.Status; Auth401Error excluded above).
 	errStr := err.Error()
-	is4xx := is4xxError(err)
+	is4xx := is4xxStatus(err)
 
 	if is4xx {
 		// Deterministic 4xx — LiteLLMRejected. FIX2.txt M-5: surface the
