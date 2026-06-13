@@ -1187,7 +1187,10 @@ func (r *ModelDiscoveryReconciler) writeBothConditions(
 // with writeReady). Used by deterministic error paths (SecretNotFound,
 // InvalidConfig) so a prior successful reconcile's SourceReachable=True is
 // not left stale (finding #11). Returns a zero Result; the caller sets
-// RequeueAfter as needed.
+// RequeueAfter as needed. Result is always zero ctrl.Result — the return
+// keeps call-site symmetry with writeReady (return ..., nil).
+//
+//nolint:unparam // result is always a zero ctrl.Result; mirrors writeReady for call-site symmetry.
 func (r *ModelDiscoveryReconciler) writeReadyAndSource(
 	ctx context.Context, md *litellmv1alpha1.LiteLLMModelDiscovery, reason, message string,
 ) ctrl.Result {
