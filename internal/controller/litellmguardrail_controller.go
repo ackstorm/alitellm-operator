@@ -683,21 +683,16 @@ func (r *GuardRailReconciler) writeStatus(
 	desiredLR := gr.Status.LastRendered
 	desiredObs := gr.Generation
 
-	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		var fresh litellmv1alpha1.LiteLLMGuardRail
-		if err := r.Get(ctx, client.ObjectKeyFromObject(gr), &fresh); err != nil {
-			return err
-		}
-		apimeta.SetStatusCondition(&fresh.Status.Conditions, cond)
-		fresh.Status.ObservedGeneration = desiredObs
-		fresh.Status.LastRendered = desiredLR
-		if u := r.Status().Update(ctx, &fresh); u != nil {
-			return u
-		}
+	var fresh litellmv1alpha1.LiteLLMGuardRail
+	err := writeStatusWithRetry(ctx, r.Client, gr, &fresh, func(f *litellmv1alpha1.LiteLLMGuardRail) {
+		apimeta.SetStatusCondition(&f.Status.Conditions, cond)
+		f.Status.ObservedGeneration = desiredObs
+		f.Status.LastRendered = desiredLR
+	})
+	if err == nil {
 		gr.Status = fresh.Status
 		gr.ResourceVersion = fresh.ResourceVersion
-		return nil
-	})
+	}
 	recordReconcileMetric(guardrailKind, gr.Namespace, reason)
 	return err
 }
