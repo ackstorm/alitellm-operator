@@ -476,6 +476,7 @@ func (r *GuardRailReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				logStatusUpdateErr(logger, uerr, "reason", "PoolSizeRefresh")
 			}
 		}
+		metrics.ReconcileTotal.WithLabelValues(guardrailKind, "success").Inc()
 		return ctrl.Result{}, nil
 	}
 
