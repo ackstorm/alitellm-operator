@@ -28,6 +28,7 @@ import (
 
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 	"github.com/ackstorm/alitellm-operator/internal/connection"
+	"github.com/ackstorm/alitellm-operator/internal/controller/deletionpolicy"
 	"github.com/ackstorm/alitellm-operator/internal/litellm/mock"
 	"github.com/ackstorm/alitellm-operator/internal/metrics"
 )
@@ -2714,4 +2715,57 @@ func TestModel_SpecInfo_ForwardedToLiteLLM(t *testing.T) {
 	if mi["tier"] != "paid" {
 		t.Errorf("model_info.tier: want paid, got %v", mi["tier"])
 	}
+}
+
+func TestModel_DeletionPath_Deterministic4xx_OrphanDrains(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetModels()
+	ensureNoModel(t, ctx, "del-4xx-orphan")
+	resetConnCacheSnapshot()
+
+	ensureNoConnectionDefault(t, ctx)
+	connCR := connDefaultCR()
+	if err := k8sClient.Create(ctx, connCR); err != nil {
+		t.Fatalf("create conn: %v", err)
+	}
+	t.Cleanup(func() {
+		mockServer.SetMode(mock.ModeHappy)
+		_ = k8sClient.Delete(context.Background(), connCR, &client.DeleteOptions{})
+		ensureNoModel(t, context.Background(), "del-4xx-orphan")
+		time.Sleep(50 * time.Millisecond)
+	})
+	if snap := pollSnapshotReason(30*time.Second, reasonSynced); snap.Reason != reasonSynced {
+		t.Fatalf("conn not Synced")
+	}
+
+	// Create with deletionPolicy=Orphan so a deterministic 4xx on delete drains.
+	cr := modelSampleCR("del-4xx-orphan")
+	cr.Spec.DeletionPolicy = string(deletionpolicy.Orphan)
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create model: %v", err)
+	}
+	_ = pollModelCondition(t, ctx, "del-4xx-orphan", reasonSynced, 30*time.Second)
+
+	// Now make every delete fail with 422, then delete the CR.
+	mockServer.SetMode(mock.ModeDelete422)
+	var got litellmv1alpha1.LiteLLMModel
+	if err := k8sClient.Get(ctx, client.ObjectKey{Namespace: WatchNamespace, Name: "del-4xx-orphan"}, &got); err != nil {
+		t.Fatalf("get model: %v", err)
+	}
+	if err := k8sClient.Delete(ctx, &got); err != nil {
+		t.Fatalf("delete model: %v", err)
+	}
+
+	// Under Orphan, a deterministic 4xx is "ack-missing" → finalizer drained.
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		err := k8sClient.Get(ctx, client.ObjectKey{Namespace: WatchNamespace, Name: "del-4xx-orphan"}, &got)
+		if apierrors.IsNotFound(err) {
+			return // success — CR drained
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("CR stuck Terminating after deterministic 4xx under Orphan policy")
 }
