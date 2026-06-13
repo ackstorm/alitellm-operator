@@ -58,11 +58,7 @@ func IndexGuardrailSecretRefs(o client.Object) []string {
 	if !ok {
 		return nil
 	}
-	names := make([]string, 0, len(gr.Spec.Secrets))
-	for _, s := range gr.Spec.Secrets {
-		names = append(names, s.SecretRef.Name)
-	}
-	return names
+	return secretRefNames(gr.Spec.Secrets)
 }
 
 // Reason values surfaced on the Ready condition. Reused reasons (Synced,

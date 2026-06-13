@@ -72,11 +72,7 @@ func IndexA2AAgentSecretRefs(o client.Object) []string {
 	if !ok {
 		return nil
 	}
-	names := make([]string, 0, len(a2a.Spec.Secrets))
-	for _, s := range a2a.Spec.Secrets {
-		names = append(names, s.SecretRef.Name)
-	}
-	return names
+	return secretRefNames(a2a.Spec.Secrets)
 }
 
 // Events RBAC marker inheritance (Phase 5 Task 0 audit, recorded
