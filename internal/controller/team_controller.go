@@ -196,6 +196,14 @@ type TeamReconciler struct {
 	// (issue #44 cache-population race close). nil-safe.
 	ConnectionRebuilt <-chan event.GenericEvent
 
+	// Churn tracks per-CR recreate frequency to trip the RecreateThrottled
+	// breaker on a created-but-not-listed team (finding #9). SetupWithManager
+	// wires newChurnGuard(); tests may leave it nil (no-throttle path).
+	Churn *churnGuard
+	// RecreateLimit is the per-CR recreates-per-minute ceiling. <= 0 →
+	// DefaultRecreateLimitPerMin.
+	RecreateLimit int
+
 	// implicitDefaultMu guards the implicitDefault* fields below. The
 	// synthetic LiteLLMTeam/default reconcile runs without a
 	// Kubernetes CR — there is no status subresource to persist the
@@ -547,6 +555,9 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			}
 		}
 		metrics.CRStatusAgeTracker.RecordSuccess(teamKind, team.Name)
+		// Reached steady state — drop any recreate-churn history so a team
+		// that recovered is not throttled by stale counts.
+		r.Churn.Forget(req.NamespacedName)
 		// v0.4.5: periodic safety-relist requeue so the Step 8b vanish
 		// probe runs even when the CR spec is stable.
 		return ctrl.Result{RequeueAfter: withJitter(teamSafetyRelistInterval)}, nil
@@ -604,6 +615,27 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		// breaks the bootstrap path. Skip Team stamping until LiteLLM
 		// ships a native audit column for /team/* — symmetry-only goal
 		// is not worth a CREATE regression.
+		// Recreate circuit breaker (finding #9): a recreate (not first
+		// reconcile) means the vanish probe cleared a populated TeamID. If
+		// this repeats faster than RecreateLimit/min the entry is
+		// created-but-not-listed; park the CR instead of storming LiteLLM.
+		if !firstReconcile {
+			limit := r.RecreateLimit
+			if limit <= 0 {
+				limit = DefaultRecreateLimitPerMin
+			}
+			if n := r.Churn.Count(req.NamespacedName); n >= limit {
+				msg := fmt.Sprintf("recreate throttled: %d recreates within %s (limit %d); "+
+					"LiteLLM accepts POST /team/new but the entry never appears on the existence probe "+
+					"(created-but-not-listed); parked to avoid a reconcile storm. Retrying after %s.",
+					n, churnWindow, limit, recreateThrottleBackoff)
+				if werr := r.writeStatus(ctx, &team, metav1.ConditionFalse, reasonRecreateThrottled, msg); werr != nil {
+					logStatusUpdateErr(logger, werr, "reason", reasonRecreateThrottled)
+				}
+				metrics.ReconcileTotal.WithLabelValues(teamKind, "success").Inc()
+				return ctrl.Result{RequeueAfter: recreateThrottleBackoff}, nil
+			}
+		}
 		result, cerr := snap.Client.CreateTeamRaw(ctx, body)
 		if cerr != nil {
 			return r.classifyMutationError(ctx, &team, logger, cerr, "POST /team/new")
@@ -617,6 +649,8 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		// depth against future Status-shape changes).
 		if !firstReconcile && team.Status.ObservedGeneration > 0 {
 			metrics.DriftCorrectedTotal.WithLabelValues("team", "create_missing").Inc()
+			// Record this recreate so the breaker trips on a storm.
+			r.Churn.Record(req.NamespacedName)
 		}
 		logger.V(1).Info("team created in LiteLLM", "teamID", newTeamID)
 	} else {
@@ -1296,6 +1330,12 @@ func (r *TeamReconciler) secretToTeams(ctx context.Context, obj client.Object) [
 // Named("team") — controller registry name.
 // No Owns(.) — Team has no child resources.
 func (r *TeamReconciler) SetupWithManager(mgr ctrl.Manager, requeueCh ...chan reconcile.Request) error {
+	if r.Churn == nil {
+		r.Churn = newChurnGuard()
+	}
+	if r.RecreateLimit <= 0 {
+		r.RecreateLimit = DefaultRecreateLimitPerMin
+	}
 	b := ctrl.NewControllerManagedBy(mgr).
 		For(&litellmv1alpha1.LiteLLMTeam{}, builder.WithPredicates()).
 		Watches(

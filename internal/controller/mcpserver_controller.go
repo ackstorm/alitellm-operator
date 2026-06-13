@@ -161,6 +161,13 @@ type MCPServerReconciler struct {
 	// ConnectionRebuilt — see GuardRailReconciler.ConnectionRebuilt
 	// (issue #44 cache-population race close). nil-safe.
 	ConnectionRebuilt <-chan event.GenericEvent
+	// Churn tracks per-CR recreate frequency to trip the RecreateThrottled
+	// breaker on a created-but-not-listed server (finding #9). SetupWithManager
+	// wires newChurnGuard(); tests may leave it nil (no-throttle path).
+	Churn *churnGuard
+	// RecreateLimit is the per-CR recreates-per-minute ceiling. <= 0 →
+	// DefaultRecreateLimitPerMin.
+	RecreateLimit int
 }
 
 // Reconcile implements the LiteLLMMCPServer state machine.
@@ -568,6 +575,9 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			}
 		}
 		metrics.CRStatusAgeTracker.RecordSuccess(mcpServerKind, mcp.Name)
+		// Reached steady state — drop any recreate-churn history so a server
+		// that recovered is not throttled by stale counts.
+		r.Churn.Forget(req.NamespacedName)
 		// Periodic safety-relist requeue: with Owns predicate filtering
 		// to generation-changes only (v0.4.3), the child no longer
 		// reconciles on Discovery refresh ticks. Out-of-band LiteLLM
@@ -646,6 +656,27 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			AllowAllKeys:              ext.AllowAllKeys,
 			AvailableOnPublicInternet: ext.AvailableOnPublicInternet,
 		}
+		// Recreate circuit breaker (finding #9): a recreate (not first
+		// reconcile) means the vanish probe cleared a populated ServerID. If
+		// this repeats faster than RecreateLimit/min the entry is
+		// created-but-not-listed; park the CR instead of storming LiteLLM.
+		if !firstReconcile {
+			limit := r.RecreateLimit
+			if limit <= 0 {
+				limit = DefaultRecreateLimitPerMin
+			}
+			if n := r.Churn.Count(req.NamespacedName); n >= limit {
+				msg := fmt.Sprintf("recreate throttled: %d recreates within %s (limit %d); "+
+					"LiteLLM accepts POST /v1/mcp/server but the entry never appears on the existence probe "+
+					"(created-but-not-listed); parked to avoid a reconcile storm. Retrying after %s.",
+					n, churnWindow, limit, recreateThrottleBackoff)
+				if werr := r.writeStatus(ctx, &mcp, metav1.ConditionFalse, reasonRecreateThrottled, msg); werr != nil {
+					logStatusUpdateErr(logger, werr, "reason", reasonRecreateThrottled)
+				}
+				metrics.ReconcileTotal.WithLabelValues(mcpServerKind, "success").Inc()
+				return ctrl.Result{RequeueAfter: recreateThrottleBackoff}, nil
+			}
+		}
 		result, err := snap.Client.CreateMCPServer(ctx, createReq)
 		if err != nil {
 			return r.classifyMutationError(ctx, &mcp, logger, err, "POST /v1/mcp/server")
@@ -658,6 +689,8 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		// ObservedGeneration > 0 already), the counter DOES increment.
 		if !firstReconcile && mcp.Status.ObservedGeneration > 0 {
 			metrics.DriftCorrectedTotal.WithLabelValues("mcp", "create_missing").Inc()
+			// Record this recreate so the breaker trips on a storm.
+			r.Churn.Record(req.NamespacedName)
 		}
 		logger.V(1).Info("mcp server created in LiteLLM", "serverID", newServerID)
 	} else {
@@ -884,6 +917,12 @@ func (r *MCPServerReconciler) secretToMCPServers(ctx context.Context, obj client
 // No Owns(.) and no safety re-list channel — Phase 5 may add
 // these if cross-CR vanish detection requires them (Phase 7 dogfood gate).
 func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if r.Churn == nil {
+		r.Churn = newChurnGuard()
+	}
+	if r.RecreateLimit <= 0 {
+		r.RecreateLimit = DefaultRecreateLimitPerMin
+	}
 	b := ctrl.NewControllerManagedBy(mgr).
 		For(&litellmv1alpha1.LiteLLMMCPServer{}, builder.WithPredicates()).
 		Watches(

@@ -162,6 +162,13 @@ type A2AAgentReconciler struct {
 	// ConnectionRebuilt — see GuardRailReconciler.ConnectionRebuilt
 	// (issue #44 cache-population race close). nil-safe.
 	ConnectionRebuilt <-chan event.GenericEvent
+	// Churn tracks per-CR recreate frequency to trip the RecreateThrottled
+	// breaker on a created-but-not-listed agent (finding #9). SetupWithManager
+	// wires newChurnGuard(); tests may leave it nil (no-throttle path).
+	Churn *churnGuard
+	// RecreateLimit is the per-CR recreates-per-minute ceiling. <= 0 →
+	// DefaultRecreateLimitPerMin.
+	RecreateLimit int
 }
 
 // Reconcile implements the LiteLLMA2AAgent state machine.
@@ -494,6 +501,9 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			}
 		}
 		metrics.CRStatusAgeTracker.RecordSuccess(a2aAgentKind, a2a.Name)
+		// Reached steady state — drop any recreate-churn history so an agent
+		// that recovered is not throttled by stale counts.
+		r.Churn.Forget(req.NamespacedName)
 		// v0.4.5: periodic safety-relist requeue so Step 8b vanish probe
 		// runs even when the CR spec is stable.
 		return ctrl.Result{RequeueAfter: withJitter(a2aAgentSafetyRelistInterval)}, nil
@@ -521,6 +531,27 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		// level, but agent_card_params is freeform and persisted verbatim.
 		// CREATE stamps both created_by + updated_by.
 		stampA2AIdentity(agentConfig, true)
+		// Recreate circuit breaker (finding #9): a recreate (not first
+		// reconcile) means the vanish probe cleared a populated AgentID. If
+		// this repeats faster than RecreateLimit/min the entry is
+		// created-but-not-listed; park the CR instead of storming LiteLLM.
+		if !firstReconcile {
+			limit := r.RecreateLimit
+			if limit <= 0 {
+				limit = DefaultRecreateLimitPerMin
+			}
+			if n := r.Churn.Count(req.NamespacedName); n >= limit {
+				msg := fmt.Sprintf("recreate throttled: %d recreates within %s (limit %d); "+
+					"LiteLLM accepts POST /v1/agents but the entry never appears on the existence probe "+
+					"(created-but-not-listed); parked to avoid a reconcile storm. Retrying after %s.",
+					n, churnWindow, limit, recreateThrottleBackoff)
+				if werr := r.writeStatus(ctx, &a2a, metav1.ConditionFalse, reasonRecreateThrottled, msg); werr != nil {
+					logStatusUpdateErr(logger, werr, "reason", reasonRecreateThrottled)
+				}
+				metrics.ReconcileTotal.WithLabelValues(a2aAgentKind, "success").Inc()
+				return ctrl.Result{RequeueAfter: recreateThrottleBackoff}, nil
+			}
+		}
 		result, err := snap.Client.CreateAgent(ctx, agentConfig)
 		if err != nil {
 			return r.classifyMutationError(ctx, &a2a, logger, err, "POST /v1/agents")
@@ -533,6 +564,8 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		// ObservedGeneration > 0 already), the counter DOES increment.
 		if !firstReconcile && a2a.Status.ObservedGeneration > 0 {
 			metrics.DriftCorrectedTotal.WithLabelValues("a2a", "create_missing").Inc()
+			// Record this recreate so the breaker trips on a storm.
+			r.Churn.Record(req.NamespacedName)
 		}
 		logger.V(1).Info("a2a agent created in LiteLLM", "agentID", newAgentID)
 	} else {
@@ -790,6 +823,12 @@ func (r *A2AAgentReconciler) secretToA2AAgents(ctx context.Context, obj client.O
 // No Owns(.) and no safety re-list channel — Phase 5 may add
 // these if cross-CR vanish detection requires them (Phase 7 dogfood gate).
 func (r *A2AAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if r.Churn == nil {
+		r.Churn = newChurnGuard()
+	}
+	if r.RecreateLimit <= 0 {
+		r.RecreateLimit = DefaultRecreateLimitPerMin
+	}
 	b := ctrl.NewControllerManagedBy(mgr).
 		For(&litellmv1alpha1.LiteLLMA2AAgent{}, builder.WithPredicates()).
 		Watches(
