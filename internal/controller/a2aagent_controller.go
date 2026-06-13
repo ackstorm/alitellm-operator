@@ -210,13 +210,19 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 				if agentID != "" {
 					if err := snap.Client.DeleteAgent(ctx, agentID); err != nil {
 						var auth401 *litellm.Auth401Error
-						if errors.As(err, &auth401) {
+						switch {
+						case errors.As(err, &auth401):
 							r.Cache.InvalidateOn401()
 							logger.Info("deletion: 401 fast-path; cache invalidated", "path", auth401.Path)
 							if gerr := onAckMissing("401 on DeleteAgent"); gerr != nil {
 								return ctrl.Result{}, gerr
 							}
-						} else {
+						case is4xxError(err):
+							logger.Info("deletion: deterministic 4xx on DeleteAgent; ack-missing", "error", err.Error())
+							if gerr := onAckMissing("4xx on DeleteAgent: " + err.Error()); gerr != nil {
+								return ctrl.Result{}, gerr
+							}
+						default:
 							// Transient error — return for backoff. Finalizer stays.
 							return ctrl.Result{}, err
 						}
