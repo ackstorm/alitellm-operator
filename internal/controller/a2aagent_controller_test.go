@@ -24,6 +24,7 @@ import (
 
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 	"github.com/ackstorm/alitellm-operator/internal/connection"
+	"github.com/ackstorm/alitellm-operator/internal/controller/deletionpolicy"
 	"github.com/ackstorm/alitellm-operator/internal/litellm/mock"
 	"github.com/ackstorm/alitellm-operator/internal/metrics"
 )
@@ -1496,4 +1497,45 @@ func TestA2AAgentReconciler_DriftIncrementOnFinalizerDelete(t *testing.T) {
 	if delta := after - before; delta < 1 {
 		t.Errorf("drift_corrected_total{domain=a2a,action=delete_vanished}: want >=1, got delta=%v", delta)
 	}
+}
+
+func TestA2AAgent_DeletionPath_Deterministic4xx_OrphanDrains(t *testing.T) {
+	ctx := context.Background()
+	resetMockA2A()
+	ensureNoA2AAgent(t, ctx, "a2a-del-4xx-orphan")
+	resetConnCacheSnapshot()
+
+	cleanupConn := setupReadyConnectionA2A(t, ctx)
+	t.Cleanup(func() {
+		mockServer.SetMode(mock.ModeHappy)
+		cleanupConn()
+		ensureNoA2AAgent(t, context.Background(), "a2a-del-4xx-orphan")
+	})
+
+	cr := a2aSampleCR("a2a-del-4xx-orphan")
+	cr.Spec.DeletionPolicy = string(deletionpolicy.Orphan)
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create A2AAgent: %v", err)
+	}
+	a := pollA2AAgentCondition(t, ctx, "a2a-del-4xx-orphan", reasonSynced, 30*time.Second)
+	if a.Status.LastRendered.AgentID == "" {
+		t.Fatalf("A2AAgent not Synced within 30s")
+	}
+
+	// Every delete now fails with a deterministic 422.
+	mockServer.SetMode(mock.ModeDelete422)
+	if err := k8sClient.Delete(ctx, a); err != nil {
+		t.Fatalf("delete A2AAgent: %v", err)
+	}
+
+	key := client.ObjectKey{Name: "a2a-del-4xx-orphan", Namespace: WatchNamespace}
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		var probe litellmv1alpha1.LiteLLMA2AAgent
+		if apierrors.IsNotFound(k8sClient.Get(ctx, key, &probe)) {
+			return // success — finalizer drained under Orphan
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("A2AAgent stuck Terminating after deterministic 4xx under Orphan policy")
 }
