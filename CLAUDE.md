@@ -794,6 +794,27 @@ controller does not have a vanish-recreate site and is unaffected.
   testability — the request constructor is pure data; the reconciler
   owns side effects.
 
+- **Cross-controller shared helpers** live ONCE in
+  `internal/controller/shared_helpers.go` — behavior shared by the
+  Model/MCPServer/Team/A2AAgent/GuardRail reconcilers is NOT copy-pasted per
+  controller (finding #14 consolidation): typed 4xx classification
+  (`is4xxStatus` / `rejectedStatus`, `errors.As` on
+  `litellm.RejectedError.Status` — survives error wrapping, unlike the retired
+  error-string prefix scan), the deletion-path ack-missing factory
+  (`newAckMissingFn`), the LiteLLM-mutation error classifier
+  (`classifyMutationError` — each reconciler keeps a thin method that binds its
+  CR via a `writeStatus` closure and delegates; team's closure no-ops on a nil
+  CR for the synthetic implicit-default reconcile), the SEC-03 duplicate-`as`
+  check (`checkDuplicateSecretAs`, taking the kind-specific message phrase
+  verbatim), the secret-ref indexer extraction (`secretRefNames`), the
+  optimistic-locked status-write core (`writeStatusWithRetry[T]` — all five
+  `writeStatus` methods delegate; mcp/team standardized onto conflict-retry),
+  and the safety-relist runnable (`SafetyRelistRunnable` + per-kind
+  `ListModelRequests` / `ListGuardRailRequests`). Touching this behavior? Edit
+  the shared helper, not five copies. The per-kind field-selector index
+  CONSTANTS and `Index*SecretRefs` funcs stay per-controller (concrete
+  `client.Object` required); only their extraction loop is shared.
+
 - **Field-selector index constants**: `internal/controller/<kind>_controller.go`
   declares e.g. `const teamNameIndexerKey = "spec.params.team_alias"`
   for indexer registration. `// #nosec G101` comments justify each
