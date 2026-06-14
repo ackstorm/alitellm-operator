@@ -10,6 +10,21 @@
 
 ---
 
+## Correction (applied 2026-06-14, after first -race -shuffle run)
+
+The first cut gated **all three** suite-global runnables off by default. That broke
+~5 Team implicit-default tests (`AC_T4_Default*`, `ImplicitDefault_*`, the 2
+bootstrap tests) which depend on the `TeamDefaultRunnable` driving the synthetic
+`Team/default` reconcile — they timed out at 15s. **Resolution: do NOT gate the
+`TeamDefaultRunnable`.** It is the lightest contention source (one deduped
+`Team/default` enqueue per tick, not a List+N-enqueue), so it stays always-on; only
+the two heavy `SafetyRelistRunnable`s (model + guardrail) are gated. Task 1 below is
+written for that corrected design (Steps 1.2/1.4/1.5 reflect it). The first
+`-race -shuffle` run also surfaced **pre-existing** MCPServer create-churn
+contamination (`want 1 POST, got 5`; `create_missing incremented on first
+reconcile`) — MCPServer has no gated runnable, so this is the cross-test mock-state
+leak Task 4 must fix (see expanded Task 4 scope).
+
 ## Design decisions (read before starting)
 
 1. **One production-code seam, nil-safe.** Phase 1 adds a `Gate func() bool` field to `SafetyRelistRunnable` (`internal/controller/shared_helpers.go`) and gates `TeamDefaultRunnable.enqueue` (`internal/controller/team_default_runnable.go`). Production wiring in `cmd/main.go` leaves `Gate` unset (`nil`) → the guard short-circuits → **byte-for-byte identical production behavior**. This is the only non-test file touched. The alternative (drive the relist channels directly from tests, zero prod change) was rejected because it stops the drift tests from exercising the real runnable end-to-end; the `Gate` keeps full fidelity for the ~4 tests that enable it. **If the reviewer objects to any prod-struct test seam, switch to the channel-drive alternative noted in Task 1.6.**
@@ -324,9 +339,11 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ## Task 4: Close cross-test state-isolation gaps
 
-These cause the fast-fail (~0.19s) contamination flakes (e.g. `TestMCPServer_ConflictResolution_SanitizationCollapse_Loser`) that survive even with relist quiet: leaked mock mode, unreset router settings, ambient connection-cache state.
+These cause the fast-fail (~0.19s) contamination flakes (e.g. `TestMCPServer_ConflictResolution_SanitizationCollapse_Loser`, and the `want 1 POST got 5` / `create_missing on first reconcile` MCPServer create-churn seen in the first `-race -shuffle` run) that survive even with relist quiet: leaked mock **mode** (a prior test's `ModeConflict`/`ModeError` not restored makes a neighbor's POST/list behave wrong → recreate churn), unreset router settings / domain stores, ambient connection-cache state.
 
 **Files:** `internal/litellm/mock/mock.go`, `internal/controller/modelalias_envtest_test.go`, mode-using `*_test.go` files
+
+> **Priority diagnosis:** the MCPServer create-churn is the highest-value target here. Before editing, confirm its trigger by reading the failing tests (`mcpserver_controller_test.go:188`, `:618`, `:1143`, `:1401`) and checking (a) whether a shuffled predecessor leaves a non-happy `SetMode` un-restored, and (b) whether those tests reset the mock MCPServer store (`ResetMCPServers`) in setup. The mode-guard (Step 4.3/4.4) plus ensuring each MCPServer test resets its store is expected to resolve it. If a residual store-reset gap is found, add a `t.Cleanup`/setup `mockServer.ResetMCPServers()` to the affected tests as part of this task.
 
 - [ ] **Step 4.1: Add `ResetRouterSettings()` to the mock**
 
