@@ -229,7 +229,17 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ---
 
-## Task 2: Make at-least-once assertions shape-based
+## Task 2: Make at-least-once assertions shape-based — DROPPED (superseded by Task 1)
+
+> **DROPPED 2026-06-14.** The `main` baseline `-race -shuffle` run proved Task 1's
+> relist gating ALREADY eliminated the at-least-once over-count flake this task
+> targeted (`TestModel_SpecParamsKeyRemoval_DeleteAndRecreate` fails on baseline,
+> passes post-Task-1). With relist gated off, the redundant idempotent mutation
+> can't fire in those tests, so the exact `==1` assertions are now stable — and
+> loosening them to `>=1` would only weaken churn detection (the MCPServer
+> contamination flakes are caught precisely by those exact counts). Not done.
+
+<details><summary>Original Task 2 (for reference)</summary>
 
 The reconcile loop is at-least-once: a redundant idempotent mutation is correct in production. With Task 1 quieting relist these rarely fire in tests, but asserting an EXACT count is still wrong-by-design. Convert each FRAGILE exact count to `>=`; leave the LEGIT exact ones (delete-exactly-once, structural `==0` invariants) untouched.
 
@@ -305,6 +315,8 @@ exact.
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
 
+</details>
+
 ---
 
 ## Task 3: Raise the guardrail poll ceiling (single-point, 13 tests)
@@ -337,7 +349,21 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ---
 
-## Task 4: Close cross-test state-isolation gaps
+## Task 4: Close cross-test state-isolation gaps — DEFERRED to a dedicated debug pass
+
+> **DEFERRED 2026-06-14.** The 5 residual `-race -shuffle` failures are all
+> PRE-EXISTING on `main` (baseline = 7 failures; post-Task-1 = 5, all a subset of
+> the 7). They are NOT contention-driven and NOT caused by this work: 4 are
+> mock-state contamination (`CreateOnFirstReconcile`, `OwnerRefTolerance`,
+> MCPServer + Team `DriftSuppressedOnFirstCreate`) that pass in isolation but
+> pollute the global `DriftCorrectedTotal{mcp,create_missing}` counter during a
+> neighbor's window; 1 is a test-design race (`UpdateForwardsAllParams` — the
+> create coalesces the update under `-race`, so the expected PUT never fires;
+> fails on `main` in isolation). The contamination vector is subtler than a
+> mode/store-reset gap (the cleanup helper already full-drains), so these need a
+> hands-on `/gsd:debug` pass, not a mechanical edit. Task 1 + Task 3 ship first.
+
+<details><summary>Original Task 4 (for reference)</summary>
 
 These cause the fast-fail (~0.19s) contamination flakes (e.g. `TestMCPServer_ConflictResolution_SanitizationCollapse_Loser`, and the `want 1 POST got 5` / `create_missing on first reconcile` MCPServer create-churn seen in the first `-race -shuffle` run) that survive even with relist quiet: leaked mock **mode** (a prior test's `ModeConflict`/`ModeError` not restored makes a neighbor's POST/list behave wrong → recreate churn), unreset router settings / domain stores, ambient connection-cache state.
 
@@ -399,6 +425,8 @@ neighbor — the contamination behind the fast-fail #74 flakes.
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
+
+</details>
 
 ---
 
