@@ -510,7 +510,6 @@ func setupAndRun(m *testing.M) int {
 		ReadyPollInterval: 50 * time.Millisecond,
 		Log:               logr.Discard(),
 		RequeueCh:         teamDefaultRequeueCh,
-		Gate:              suiteRelistEnabled.Load,
 	}
 	if err := mgr.Add(teamDefaultRunnable); err != nil {
 		fmt.Fprintf(os.Stderr, "mgr.Add(TeamDefaultRunnable): %v\n", err)

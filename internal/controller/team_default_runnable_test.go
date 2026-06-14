@@ -48,7 +48,6 @@ func TestTeamDefaultRunnable_BootstrapAfterConnectionReady(t *testing.T) {
 	mockServer.ResetTeams()
 	teamReconciler.ResetImplicitDefaultCache() // Phase 6 cross-suite flake fix (07-CONTEXT.md §Phase-6-flake option α)
 	resetConnCacheSnapshot()
-	enableSuiteRelist(t)
 
 	cleanupConn := setupReadyConnectionTeam(t, ctx)
 	t.Cleanup(cleanupConn)
@@ -104,7 +103,6 @@ func TestTeamDefaultRunnable_BootstrapWhenLiteLLMTeamAlreadyExists(t *testing.T)
 	mockServer.ResetTeams()
 	teamReconciler.ResetImplicitDefaultCache() // Phase 6 cross-suite flake fix (07-CONTEXT.md §Phase-6-flake option α)
 	resetConnCacheSnapshot()
-	enableSuiteRelist(t)
 
 	preExistingID := mockServer.AddHandManagedTeam("default")
 	t.Logf("pre-existing LiteLLM team aliased `default` with team_id=%q", preExistingID)
