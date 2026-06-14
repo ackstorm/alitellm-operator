@@ -71,8 +71,11 @@ func ensureNoGuardrailCR(t *testing.T, ctx context.Context, name string) {
 
 // pollReadyConditionDeadline bounds every call to
 // pollGuardrailCondition. Pulled out as a file-local const because all
-// 13 callers used the same value (unparam linter caught it).
-const pollReadyConditionDeadline = 5 * time.Second
+// 13 callers used the same value (unparam linter caught it). 30s (not 5s)
+// so the Ready condition has margin under -race -shuffle full-suite load;
+// the helper fast-breaks on the first satisfied poll, so the happy path
+// stays sub-second and only a genuinely stuck condition waits longer (#74).
+const pollReadyConditionDeadline = 30 * time.Second
 
 // pollGuardrailCondition polls the Ready condition for up to
 // pollReadyConditionDeadline. Returns the final re-Get'd CR; callers
