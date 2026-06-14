@@ -1,0 +1,2109 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Kubernetes operator that reconciles LiteLLM proxy resources declaratively">
+      
+      
+      
+        <link rel="canonical" href="https://ackstorm.github.io/alitellm-operator/dev/superpowers/plans/2026-06-14-controller-envtest-flake-elimination/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Controller Envtest #74 Flake Elimination Implementation Plan - alitellm-operator</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#controller-envtest-74-flake-elimination-implementation-plan" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="alitellm-operator" class="md-header__button md-logo" aria-label="alitellm-operator" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            alitellm-operator
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Controller Envtest #74 Flake Elimination Implementation Plan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="Share" aria-label="Share" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/ackstorm/alitellm-operator" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    ackstorm/alitellm-operator
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../getting-started/installation/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../user-guide/" class="md-tabs__link">
+          
+  
+  
+  User Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../concepts/conflict-resolution/" class="md-tabs__link">
+          
+  
+  
+  Concepts
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../developer-guide/architecture/" class="md-tabs__link">
+          
+  
+  
+  Developer Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../api-reference/litellm.ackstorm.ai/" class="md-tabs__link">
+          
+  
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../metrics/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Metrics
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../community/code-of-conduct/" class="md-tabs__link">
+          
+  
+  
+  Community
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="alitellm-operator" class="md-nav__button md-logo" aria-label="alitellm-operator" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    alitellm-operator
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/ackstorm/alitellm-operator" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    ackstorm/alitellm-operator
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../getting-started/quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/connection/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMConnection
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/team/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMTeam
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMModel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/a2a-agent/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMA2AAgent
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/mcp-server/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMMCPServer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/mcp-server-discovery/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMMCPServerDiscovery
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/model-discovery/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMModelDiscovery
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../user-guide/guardrail/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMGuardRail
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../concepts/conflict-resolution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Conflict Resolution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../concepts/deletion-semantics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deletion Semantics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Developer Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../developer-guide/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../developer-guide/development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../developer-guide/release-process/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release Process
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../developer-guide/contributions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../api-reference/litellm.ackstorm.ai/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metrics
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Community
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Community
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../community/code-of-conduct/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Code of Conduct
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../community/security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security Policy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#correction-applied-2026-06-14-after-first-race-shuffle-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Correction (applied 2026-06-14, after first -race -shuffle run)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#design-decisions-read-before-starting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Design decisions (read before starting)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#file-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        File structure
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-1-quiet-the-background-runnables-by-default-the-lynchpin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 1: Quiet the background runnables by default (the lynchpin)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-2-make-at-least-once-assertions-shape-based-dropped-superseded-by-task-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 2: Make at-least-once assertions shape-based — DROPPED (superseded by Task 1)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-3-raise-the-guardrail-poll-ceiling-single-point-13-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 3: Raise the guardrail poll ceiling (single-point, 13 tests)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-4-close-cross-test-state-isolation-gaps-deferred-to-a-dedicated-debug-pass" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 4: Close cross-test state-isolation gaps — DEFERRED to a dedicated debug pass
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#task-5-whole-suite-validation-docs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Task 5: Whole-suite validation + docs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#self-review-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Self-review notes
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="controller-envtest-74-flake-elimination-implementation-plan">Controller Envtest #74 Flake Elimination Implementation Plan<a class="headerlink" href="#controller-envtest-74-flake-elimination-implementation-plan" title="Permanent link">&para;</a></h1>
+<blockquote>
+<p><strong>For agentic workers:</strong> REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</p>
+</blockquote>
+<p><strong>Goal:</strong> Systematically eliminate the <code>#74</code> class of <code>-race -shuffle</code> flakes in the <code>internal/controller</code> envtest suite by removing the shared-workqueue contention floor and hardening the assertions/state-isolation that the contention exposes.</p>
+<p><strong>Architecture:</strong> The root cause is three accelerated (100ms) background runnables firing ~30 enqueues/sec into one shared manager workqueue for the entire package run, while only ~4 tests actually need fast relist. We add a nil-safe <code>Gate</code> predicate to the runnables (production behavior unchanged — <code>nil</code> Gate = always active) so the suite can silence relist for the ~292 tests that don't exercise drift recovery, then convert the now-exposed fragile assertions (exact at-least-once counts, fixed-sleep negative windows, a 5s poll ceiling) to shape-based / fast-break forms and close the cross-test state-isolation gaps.</p>
+<p><strong>Tech Stack:</strong> Go 1.26, controller-runtime v0.19.4 envtest, testify-free table tests, prometheus testutil, in-process LiteLLM mock (<code>internal/litellm/mock</code>). Host has NO Go — every command self-routes into the devtools container.</p>
+<hr />
+<h2 id="correction-applied-2026-06-14-after-first-race-shuffle-run">Correction (applied 2026-06-14, after first -race -shuffle run)<a class="headerlink" href="#correction-applied-2026-06-14-after-first-race-shuffle-run" title="Permanent link">&para;</a></h2>
+<p>The first cut gated <strong>all three</strong> suite-global runnables off by default. That broke
+~5 Team implicit-default tests (<code>AC_T4_Default*</code>, <code>ImplicitDefault_*</code>, the 2
+bootstrap tests) which depend on the <code>TeamDefaultRunnable</code> driving the synthetic
+<code>Team/default</code> reconcile — they timed out at 15s. <strong>Resolution: do NOT gate the
+<code>TeamDefaultRunnable</code>.</strong> It is the lightest contention source (one deduped
+<code>Team/default</code> enqueue per tick, not a List+N-enqueue), so it stays always-on; only
+the two heavy <code>SafetyRelistRunnable</code>s (model + guardrail) are gated. Task 1 below is
+written for that corrected design (Steps 1.2/1.4/1.5 reflect it). The first
+<code>-race -shuffle</code> run also surfaced <strong>pre-existing</strong> MCPServer create-churn
+contamination (<code>want 1 POST, got 5</code>; <code>create_missing incremented on first
+reconcile</code>) — MCPServer has no gated runnable, so this is the cross-test mock-state
+leak Task 4 must fix (see expanded Task 4 scope).</p>
+<h2 id="design-decisions-read-before-starting">Design decisions (read before starting)<a class="headerlink" href="#design-decisions-read-before-starting" title="Permanent link">&para;</a></h2>
+<ol>
+<li>
+<p><strong>One production-code seam, nil-safe.</strong> Phase 1 adds a <code>Gate func() bool</code> field to <code>SafetyRelistRunnable</code> (<code>internal/controller/shared_helpers.go</code>) and gates <code>TeamDefaultRunnable.enqueue</code> (<code>internal/controller/team_default_runnable.go</code>). Production wiring in <code>cmd/main.go</code> leaves <code>Gate</code> unset (<code>nil</code>) → the guard short-circuits → <strong>byte-for-byte identical production behavior</strong>. This is the only non-test file touched. The alternative (drive the relist channels directly from tests, zero prod change) was rejected because it stops the drift tests from exercising the real runnable end-to-end; the <code>Gate</code> keeps full fidelity for the ~4 tests that enable it. <strong>If the reviewer objects to any prod-struct test seam, switch to the channel-drive alternative noted in Task 1.6.</strong></p>
+</li>
+<li>
+<p><strong>Phase ordering is leverage-first.</strong> Phase 1 (quiet the runnables) is the lynchpin — it alone collapses the contention floor and makes the negative-assertion tests (<code>Mutations()==0</code>) robust. Phases 2–4 are correctness hardening that also stand on their own. Each phase is independently committable and leaves the suite green.</p>
+</li>
+<li>
+<p><strong>Verification signal.</strong> This host cannot run the full <code>-race</code> suite (documented OOM/timeout). The authoritative reproduction is the controller package alone under <code>-race -shuffle</code>. Every phase verifies with:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>./scripts/dev.sh go test -race -shuffle=on -count=1 -timeout 25m ./internal/controller/...
+</code></pre></div>
+   run in the <strong>background</strong> (bounded timeout). Logic-only changes additionally run the fast per-package path. CI (PR + release gate) remains the final signal.</p>
+</li>
+<li>
+<p><strong>No behavior change to controllers.</strong> Every assertion edit either widens an at-least-once exact count to <code>&gt;=</code>, raises a wall-clock budget with preserved fast-break, or adds state reset/cleanup. No controller logic, CRD, or request-builder code is modified.</p>
+</li>
+</ol>
+<hr />
+<h2 id="file-structure">File structure<a class="headerlink" href="#file-structure" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Responsibility</th>
+<th>Phase</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>internal/controller/shared_helpers.go</code></td>
+<td>add <code>Gate func() bool</code> to <code>SafetyRelistRunnable</code>; gate the tick</td>
+<td>1</td>
+</tr>
+<tr>
+<td><code>internal/controller/team_default_runnable.go</code></td>
+<td>add <code>Gate func() bool</code>; gate <code>enqueue</code></td>
+<td>1</td>
+</tr>
+<tr>
+<td><code>internal/controller/suite_test.go</code></td>
+<td>wire <code>Gate: suiteRelistEnabled.Load</code> on all 3 runnables; add <code>suiteRelistEnabled</code> + <code>enableSuiteRelist(t)</code></td>
+<td>1</td>
+</tr>
+<tr>
+<td><code>internal/controller/model_controller_test.go</code></td>
+<td><code>enableSuiteRelist</code> in drift test; <code>&gt;=</code> count fixes</td>
+<td>1,2</td>
+</tr>
+<tr>
+<td><code>internal/controller/litellmguardrail_controller_test.go</code></td>
+<td><code>enableSuiteRelist</code>; <code>&gt;=</code> count fix; raise poll ceiling const</td>
+<td>1,2,3</td>
+</tr>
+<tr>
+<td><code>internal/controller/team_default_runnable_test.go</code></td>
+<td><code>enableSuiteRelist</code> in 2 bootstrap tests; tolerate idle delta</td>
+<td>1,2</td>
+</tr>
+<tr>
+<td><code>internal/controller/team_controller_test.go</code></td>
+<td><code>&gt;=</code> create-count fix</td>
+<td>2</td>
+</tr>
+<tr>
+<td><code>internal/controller/mcpserver_controller_test.go</code></td>
+<td><code>&gt;=</code> create-count fix</td>
+<td>2</td>
+</tr>
+<tr>
+<td><code>internal/litellm/mock/mock.go</code></td>
+<td>add <code>ResetRouterSettings()</code></td>
+<td>4</td>
+</tr>
+<tr>
+<td><code>internal/controller/*_test.go</code> (mode users)</td>
+<td><code>setMockMode(t, ...)</code> cleanup-guarded helper + call sites</td>
+<td>4</td>
+</tr>
+<tr>
+<td><code>CLAUDE.md</code></td>
+<td>update the #74 failure-mode note to reflect the systemic fix</td>
+<td>5</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="task-1-quiet-the-background-runnables-by-default-the-lynchpin">Task 1: Quiet the background runnables by default (the lynchpin)<a class="headerlink" href="#task-1-quiet-the-background-runnables-by-default-the-lynchpin" title="Permanent link">&para;</a></h2>
+<p><strong>Files:</strong>
+- Modify: <code>internal/controller/shared_helpers.go</code> (SafetyRelistRunnable struct + Start)
+- Modify: <code>internal/controller/team_default_runnable.go</code> (struct + enqueue)
+- Modify: <code>internal/controller/suite_test.go</code> (wiring + helper)
+- Modify: <code>internal/controller/model_controller_test.go</code>, <code>internal/controller/litellmguardrail_controller_test.go</code>, <code>internal/controller/team_default_runnable_test.go</code> (enable relist in the ~4 dependent tests)</p>
+<ul>
+<li>[ ] <strong>Step 1.1: Add <code>Gate</code> to <code>SafetyRelistRunnable</code> and gate the tick</strong></li>
+</ul>
+<p>In <code>internal/controller/shared_helpers.go</code>, add the field after <code>LogLabel</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="w">    </span><span class="c1">// LogLabel names the kind in the V(1) debug lines (e.g. &quot;models&quot;).</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span><span class="nx">LogLabel</span><span class="w"> </span><span class="kt">string</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="c1">// Gate, when non-nil, is evaluated at the top of every tick. If it</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="c1">// returns false the tick is a complete no-op (no List, no enqueue).</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="c1">// Production leaves Gate nil (always active — identical behavior). The</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">    </span><span class="c1">// envtest suite sets it so background relist contention is silenced for</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">    </span><span class="c1">// the ~99% of tests that do not exercise drift recovery (#74 mitigation).</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">    </span><span class="nx">Gate</span><span class="w"> </span><span class="kd">func</span><span class="p">()</span><span class="w"> </span><span class="kt">bool</span>
+</code></pre></div>
+<p>In <code>Start</code>, make the tick the first thing inside the <code>case &lt;-ticker.C:</code> branch:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="o">&lt;-</span><span class="nx">ticker</span><span class="p">.</span><span class="nx">C</span><span class="p">:</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">            </span><span class="k">if</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nx">Gate</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="p">!</span><span class="nx">r</span><span class="p">.</span><span class="nx">Gate</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">                </span><span class="k">continue</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">            </span><span class="p">}</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">            </span><span class="nx">reqs</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nx">ListRequests</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nx">Client</span><span class="p">,</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nx">Namespace</span><span class="p">)</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 1.2: Add <code>Gate</code> to <code>TeamDefaultRunnable</code> and gate <code>enqueue</code></strong></li>
+</ul>
+<p>In <code>internal/controller/team_default_runnable.go</code>, add the field after <code>RequeueCh</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="w">    </span><span class="nx">RequeueCh</span><span class="w"> </span><span class="kd">chan</span><span class="o">&lt;-</span><span class="w"> </span><span class="nx">reconcile</span><span class="p">.</span><span class="nx">Request</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="c1">// Gate, when non-nil, gates every enqueue (initial + per-tick). If it</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span><span class="c1">// returns false the enqueue is a no-op. Production leaves it nil (always</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">    </span><span class="c1">// active). The envtest suite sets it to silence the implicit-default</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">    </span><span class="c1">// reconcile churn for tests that do not exercise team bootstrap (#74).</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">    </span><span class="nx">Gate</span><span class="w"> </span><span class="kd">func</span><span class="p">()</span><span class="w"> </span><span class="kt">bool</span>
+</code></pre></div>
+<p>In the <code>enqueue</code> method, add the guard as the first statement:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">r</span><span class="w"> </span><span class="o">*</span><span class="nx">TeamDefaultRunnable</span><span class="p">)</span><span class="w"> </span><span class="nx">enqueue</span><span class="p">(</span><span class="nx">req</span><span class="w"> </span><span class="nx">reconcile</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nx">Gate</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="p">!</span><span class="nx">r</span><span class="p">.</span><span class="nx">Gate</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">        </span><span class="k">return</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">    </span><span class="k">select</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nx">RequeueCh</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="nx">req</span><span class="p">:</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">        </span><span class="nx">r</span><span class="p">.</span><span class="nx">tickCount</span><span class="p">.</span><span class="nx">Add</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">    </span><span class="k">default</span><span class="p">:</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">        </span><span class="nx">r</span><span class="p">.</span><span class="nx">Log</span><span class="p">.</span><span class="nx">V</span><span class="p">(</span><span class="mi">1</span><span class="p">).</span><span class="nx">Info</span><span class="p">(</span><span class="s">&quot;TeamDefaultRunnable: requeue channel full; skipping tick&quot;</span><span class="p">,</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">            </span><span class="s">&quot;namespace&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">req</span><span class="p">.</span><span class="nx">NamespacedName</span><span class="p">.</span><span class="nx">Namespace</span><span class="p">)</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="p">}</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 1.3: Add the suite toggle + helper</strong></li>
+</ul>
+<p>In <code>internal/controller/suite_test.go</code>, near the other package-level test vars (top of file, after imports), add:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1">// suiteRelistEnabled gates the three suite-global background runnables</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="c1">// (model + guardrail SafetyRelistRunnable, TeamDefaultRunnable). Default</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="c1">// false: the runnables tick but do no work, so the ~292 tests that don&#39;t</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1">// exercise drift recovery run free of the shared-workqueue contention floor</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="c1">// that produced the #74 -race -shuffle flakes. The handful of drift /</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="c1">// bootstrap tests opt in via enableSuiteRelist(t).</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="kd">var</span><span class="w"> </span><span class="nx">suiteRelistEnabled</span><span class="w"> </span><span class="nx">atomic</span><span class="p">.</span><span class="nx">Bool</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="c1">// enableSuiteRelist turns the suite-global relist runnables ON for the</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="c1">// duration of one test and restores OFF on cleanup. Call this in any test</span>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="c1">// that depends on the background safety-relist or team-default runnable</span>
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="c1">// firing (drift recovery, implicit-default bootstrap).</span>
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="kd">func</span><span class="w"> </span><span class="nx">enableSuiteRelist</span><span class="p">(</span><span class="nx">t</span><span class="w"> </span><span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a><span class="w">    </span><span class="nx">t</span><span class="p">.</span><span class="nx">Helper</span><span class="p">()</span>
+<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a><span class="w">    </span><span class="nx">suiteRelistEnabled</span><span class="p">.</span><span class="nx">Store</span><span class="p">(</span><span class="kc">true</span><span class="p">)</span>
+<a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a><span class="w">    </span><span class="nx">t</span><span class="p">.</span><span class="nx">Cleanup</span><span class="p">(</span><span class="kd">func</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">suiteRelistEnabled</span><span class="p">.</span><span class="nx">Store</span><span class="p">(</span><span class="kc">false</span><span class="p">)</span><span class="w"> </span><span class="p">})</span>
+<a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a><span class="p">}</span>
+</code></pre></div>
+<p>Ensure <code>"sync/atomic"</code> is in the suite_test.go import block (add if absent).</p>
+<ul>
+<li>[ ] <strong>Step 1.4: Wire <code>Gate</code> on all three runnable constructions</strong></li>
+</ul>
+<p>In <code>internal/controller/suite_test.go</code>, add <code>Gate: suiteRelistEnabled.Load,</code> to each of the three structs:</p>
+<p><code>modelSafetyRelist</code> (after <code>LogLabel: "models",</code>):
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="w">        </span><span class="nx">ListRequests</span><span class="p">:</span><span class="w"> </span><span class="nx">ListModelRequests</span><span class="p">,</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">        </span><span class="nx">LogLabel</span><span class="p">:</span><span class="w">     </span><span class="s">&quot;models&quot;</span><span class="p">,</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">        </span><span class="nx">Gate</span><span class="p">:</span><span class="w">         </span><span class="nx">suiteRelistEnabled</span><span class="p">.</span><span class="nx">Load</span><span class="p">,</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span><span class="p">}</span>
+</code></pre></div></p>
+<p><code>guardrailSafetyRelist</code> (after <code>LogLabel: "guardrails",</code>):
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="w">        </span><span class="nx">ListRequests</span><span class="p">:</span><span class="w"> </span><span class="nx">ListGuardRailRequests</span><span class="p">,</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">        </span><span class="nx">LogLabel</span><span class="p">:</span><span class="w">     </span><span class="s">&quot;guardrails&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">        </span><span class="nx">Gate</span><span class="p">:</span><span class="w">         </span><span class="nx">suiteRelistEnabled</span><span class="p">.</span><span class="nx">Load</span><span class="p">,</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">    </span><span class="p">}</span>
+</code></pre></div></p>
+<p><code>teamDefaultRunnable</code> (after <code>RequeueCh: teamDefaultRequeueCh,</code>):
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="w">        </span><span class="nx">RequeueCh</span><span class="p">:</span><span class="w">         </span><span class="nx">teamDefaultRequeueCh</span><span class="p">,</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">        </span><span class="nx">Gate</span><span class="p">:</span><span class="w">              </span><span class="nx">suiteRelistEnabled</span><span class="p">.</span><span class="nx">Load</span><span class="p">,</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span><span class="p">}</span>
+</code></pre></div></p>
+<ul>
+<li>[ ] <strong>Step 1.5: Opt the ~4 dependent tests into relist</strong></li>
+</ul>
+<p>Add <code>enableSuiteRelist(t)</code> as the first line (after <code>ctx</code>/setup but before the drift action) in each:</p>
+<ol>
+<li><code>internal/controller/model_controller_test.go</code> — <code>TestModel_DriftCounter_CreateMissing_SafetyRelist</code> (~line 1674). Insert <code>enableSuiteRelist(t)</code> near the top of the test body.</li>
+<li><code>internal/controller/litellmguardrail_controller_test.go</code> — <code>TestGuardRail_SafetyRelist_CreateMissing</code> (line 697). Insert after <code>ensureNoGuardrailCR(...)</code> setup, before the create.</li>
+<li><code>internal/controller/team_default_runnable_test.go</code> — <code>TestTeamDefaultRunnable_BootstrapAfterConnectionReady</code>. Insert at the top of the body.</li>
+<li><code>internal/controller/team_default_runnable_test.go</code> — <code>TestTeamDefaultRunnable_BootstrapWhenLiteLLMTeamAlreadyExists</code>. Insert at the top of the body.</li>
+</ol>
+<blockquote>
+<p>Note: <code>TestTeamDefaultRunnable_Cadence_30MinReList</code> and <code>TestTeamDefaultRunnable_GatedOnConnectionReady</code> construct their OWN local <code>TeamDefaultRunnable</code> (with <code>Gate</code> nil) and do NOT need <code>enableSuiteRelist</code>. Leave them unchanged.</p>
+</blockquote>
+<ul>
+<li>[ ] <strong>Step 1.6: (Fallback only — do NOT apply unless reviewer vetoes the prod seam)</strong></li>
+</ul>
+<p>If the <code>Gate</code> field is rejected: revert Steps 1.1/1.2, set the model+guardrail global runnable <code>Interval</code> to <code>10 * time.Minute</code> in suite_test.go (quiet), keep <code>teamDefaultRunnable</code> at 100ms (its single deduped enqueue is near-free), and in the 2 drift tests replace reliance on the global runnable by sending the CR's request directly onto the relist channel inside the existing poll loop, e.g. for guardrail:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="w">    </span><span class="nx">req</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">reconcile</span><span class="p">.</span><span class="nx">Request</span><span class="p">{</span><span class="nx">NamespacedName</span><span class="p">:</span><span class="w"> </span><span class="nx">key</span><span class="p">}</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">    </span><span class="c1">// drive the relist seam the runnable would drive</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span><span class="k">select</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">case</span><span class="w"> </span><span class="nx">guardrailSafetyRelistCh</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="nx">req</span><span class="p">:</span><span class="w"> </span><span class="k">default</span><span class="p">:</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+placed inside the wait loop body. This keeps zero prod change at the cost of the drift tests no longer covering the runnable's List step (already covered by the local-instance TickCount tests).</p>
+<ul>
+<li>[ ] <strong>Step 1.7: Build + vet</strong></li>
+</ul>
+<p>Run: <code>make build-operator</code>
+Expected: builds clean (proves <code>cmd/main.go</code> still compiles with <code>Gate</code> nil).</p>
+<ul>
+<li>[ ] <strong>Step 1.8: Run the two drift tests + 2 bootstrap tests focused</strong></li>
+</ul>
+<p>Run: <code>make test-envtest-pkg PKG=./internal/controller/... FOCUS='TestModel_DriftCounter_CreateMissing_SafetyRelist|TestGuardRail_SafetyRelist_CreateMissing|TestTeamDefaultRunnable_Bootstrap' TIMEOUT=8m</code>
+Expected: all 4 PASS (relist enabled for them).</p>
+<ul>
+<li>[ ] <strong>Step 1.9: Run the full controller package under <code>-race -shuffle</code> (background, bounded)</strong></li>
+</ul>
+<p>Run (background): <code>./scripts/dev.sh go test -race -shuffle=on -count=1 -timeout 25m ./internal/controller/... 2&gt;&amp;1 | tee /tmp/phase1-race-shuffle.log</code>
+Expected on completion: <code>ok ... internal/controller</code>, no <code>--- FAIL</code>. This is the primary signal the contention floor is gone. If a residual flake appears, it is now isolated (not drowned in noise) — diagnose with the agents' fragility catalog.</p>
+<ul>
+<li>[ ] <strong>Step 1.10: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>git<span class="w"> </span>add<span class="w"> </span>internal/controller/shared_helpers.go<span class="w"> </span>internal/controller/team_default_runnable.go<span class="w"> </span>internal/controller/suite_test.go<span class="w"> </span>internal/controller/model_controller_test.go<span class="w"> </span>internal/controller/litellmguardrail_controller_test.go<span class="w"> </span>internal/controller/team_default_runnable_test.go
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;test(controller): gate suite-global relist runnables off by default (#74)</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="s2">The model+guardrail SafetyRelistRunnable and TeamDefaultRunnable ticked at</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="s2">100ms for the whole package run (~30 enqueues/s into the shared workqueue),</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="s2">the contention floor behind the #74 -race -shuffle flakes. Add a nil-safe</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="s2">Gate predicate (production leaves it nil → identical behavior) and default</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="s2">the suite OFF; the ~4 drift/bootstrap tests opt in via enableSuiteRelist(t).</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="s2">Co-Authored-By: Claude Opus 4.8 (1M context) &lt;noreply@anthropic.com&gt;&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="task-2-make-at-least-once-assertions-shape-based-dropped-superseded-by-task-1">Task 2: Make at-least-once assertions shape-based — DROPPED (superseded by Task 1)<a class="headerlink" href="#task-2-make-at-least-once-assertions-shape-based-dropped-superseded-by-task-1" title="Permanent link">&para;</a></h2>
+<blockquote>
+<p><strong>DROPPED 2026-06-14.</strong> The <code>main</code> baseline <code>-race -shuffle</code> run proved Task 1's
+relist gating ALREADY eliminated the at-least-once over-count flake this task
+targeted (<code>TestModel_SpecParamsKeyRemoval_DeleteAndRecreate</code> fails on baseline,
+passes post-Task-1). With relist gated off, the redundant idempotent mutation
+can't fire in those tests, so the exact <code>==1</code> assertions are now stable — and
+loosening them to <code>&gt;=1</code> would only weaken churn detection (the MCPServer
+contamination flakes are caught precisely by those exact counts). Not done.</p>
+</blockquote>
+<details><summary>Original Task 2 (for reference)</summary>
+
+The reconcile loop is at-least-once: a redundant idempotent mutation is correct in production. With Task 1 quieting relist these rarely fire in tests, but asserting an EXACT count is still wrong-by-design. Convert each FRAGILE exact count to `>=`; leave the LEGIT exact ones (delete-exactly-once, structural `==0` invariants) untouched.
+
+**Files:** `model_controller_test.go`, `mcpserver_controller_test.go`, `team_controller_test.go`, `litellmguardrail_controller_test.go`, `team_default_runnable_test.go`
+
+- [ ] **Step 2.1: Convert the four create-count `!= 1` assertions to `< 1`**
+
+Apply this transformation (verb legitimately fires `>=1`):
+
+1. `team_controller_test.go:178` — `MutationsByTeamAlias("team-create-nobudget") != 1` →
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">got</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">mockServer</span><span class="p">.</span><span class="nx">MutationsByTeamAlias</span><span class="p">(</span><span class="s">&quot;team-create-nobudget&quot;</span><span class="p">);</span><span class="w"> </span><span class="nx">got</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Fatalf</span><span class="p">(</span><span class="s">&quot;post-create team mutations: got %d want &gt;=1&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">got</span><span class="p">)</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">    </span><span class="p">}</span>
+</code></pre></div>
+2. `model_controller_test.go:436` — the `newCount != 1` (POST /model/new) check →
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">newCount</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Fatalf</span><span class="p">(</span><span class="s">&quot;POST /model/new count: got %d want &gt;=1&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">newCount</span><span class="p">)</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">    </span><span class="p">}</span>
+</code></pre></div>
+3. `mcpserver_controller_test.go:187` — `postCount != 1` →
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">postCount</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Fatalf</span><span class="p">(</span><span class="s">&quot;POST mcp/server count: got %d want &gt;=1&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">postCount</span><span class="p">)</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">    </span><span class="p">}</span>
+</code></pre></div>
+4. `litellmguardrail_controller_test.go:195` — `MutationsByGuardrailName(name) != 1` →
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">got</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">mockServer</span><span class="p">.</span><span class="nx">MutationsByGuardrailName</span><span class="p">(</span><span class="nx">name</span><span class="p">);</span><span class="w"> </span><span class="nx">got</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Fatalf</span><span class="p">(</span><span class="s">&quot;post-create guardrail mutations: got %d want &gt;=1&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">got</span><span class="p">)</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">    </span><span class="p">}</span>
+</code></pre></div>
+
+> Preserve each call site's surrounding variable names; only the comparison and message change. Read each line first to match exact local identifiers.
+
+- [ ] **Step 2.2: Fix the delete-and-recreate re-create count**
+
+`model_controller_test.go:838` — `newCount != 1` (the POST /model/new AFTER the delete in `TestModel_SpecParamsKeyRemoval_DeleteAndRecreate`) → `newCount < 1`. **Leave line 835 (`deleteCount != 1`) and line 841 (`updateCount != 0`) EXACT** — delete is once-by-design and update-must-not-fire is a structural invariant.
+
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">newCount</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Fatalf</span><span class="p">(</span><span class="s">&quot;re-create POST /model/new: got %d want &gt;=1&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">newCount</span><span class="p">)</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">    </span><span class="p">}</span>
+</code></pre></div>
+
+- [ ] **Step 2.3: Tolerate at-least-once in the team idle-tick assertion**
+
+`team_default_runnable_test.go:131-133` — the exact `mutsAfterIdle != mutsAfterFirst` equality. With the suite-global team runnable now gated OFF during this test (it uses a LOCAL runnable, so global is silent), this is already robust, but make the intent explicit and at-least-once-safe:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">mutsAfterIdle</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="nx">mutsAfterFirst</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Fatalf</span><span class="p">(</span><span class="s">&quot;idle ticks must not DECREASE mutations: after=%d first=%d&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">mutsAfterIdle</span><span class="p">,</span><span class="w"> </span><span class="nx">mutsAfterFirst</span><span class="p">)</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="w">    </span><span class="p">}</span>
+</code></pre></div>
+(The test's real assertion — that the hash-equal short-circuit suppresses NEW work — is covered by TickCount elsewhere; mutation count must merely not regress.)
+
+- [ ] **Step 2.4: Run affected packages focused**
+
+Run: `make test-envtest-pkg PKG=./internal/controller/... FOCUS='TestModel_FirstReconcile_CreateNew_NoDrift|TestMCPServerReconciler_CreateOnFirstReconcile|TestGuardRail_HappyCreate|TestModel_SpecParamsKeyRemoval_DeleteAndRecreate|TestTeamReconciler_.*nobudget|TestTeamDefaultRunnable' TIMEOUT=8m`
+Expected: all PASS.
+
+- [ ] **Step 2.5: Commit**
+
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>git<span class="w"> </span>add<span class="w"> </span>internal/controller/model_controller_test.go<span class="w"> </span>internal/controller/mcpserver_controller_test.go<span class="w"> </span>internal/controller/team_controller_test.go<span class="w"> </span>internal/controller/litellmguardrail_controller_test.go<span class="w"> </span>internal/controller/team_default_runnable_test.go
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;test(controller): assert &gt;=1 on at-least-once create paths (#74)</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="s2">Drift-correction/create verbs can legitimately fire more than once</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="s2">(at-least-once reconcile). Replace exact ==1 with &gt;=1 on the create-count</span>
+<a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="s2">assertions; keep delete-once and update-must-not-fire structural invariants</span>
+<a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="s2">exact.</span>
+<a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a>
+<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a><span class="s2">Co-Authored-By: Claude Opus 4.8 (1M context) &lt;noreply@anthropic.com&gt;&quot;</span>
+</code></pre></div>
+
+</details>
+
+<hr />
+<h2 id="task-3-raise-the-guardrail-poll-ceiling-single-point-13-tests">Task 3: Raise the guardrail poll ceiling (single-point, 13 tests)<a class="headerlink" href="#task-3-raise-the-guardrail-poll-ceiling-single-point-13-tests" title="Permanent link">&para;</a></h2>
+<p><code>pollGuardrailCondition</code> / <code>pollGuardrailID</code> funnel all 13 guardrail tests through a hardcoded 5s <code>pollReadyConditionDeadline</code>, fragile for the Ready condition under <code>-race</code>.</p>
+<p><strong>Files:</strong> <code>internal/controller/litellmguardrail_controller_test.go</code></p>
+<ul>
+<li>[ ] <strong>Step 3.1: Raise the const</strong></li>
+</ul>
+<p>Find <code>pollReadyConditionDeadline</code> (near line 84). Change:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="kd">const</span><span class="w"> </span><span class="nx">pollReadyConditionDeadline</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mi">30</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nx">time</span><span class="p">.</span><span class="nx">Second</span>
+</code></pre></div>
+(from <code>5 * time.Second</code>). The helpers already fast-break on the first satisfied poll, so the happy path stays ~sub-second; only a genuinely stuck condition now waits longer.</p>
+<ul>
+<li>[ ] <strong>Step 3.2: Run the guardrail tests</strong></li>
+</ul>
+<p>Run: <code>make test-envtest-pkg PKG=./internal/controller/... FOCUS='TestGuardRail' TIMEOUT=8m</code>
+Expected: all guardrail tests PASS.</p>
+<ul>
+<li>[ ] <strong>Step 3.3: Commit</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>git<span class="w"> </span>add<span class="w"> </span>internal/controller/litellmguardrail_controller_test.go
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;test(guardrail): raise pollReadyConditionDeadline 5s-&gt;30s with fast-break (#74)</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="s2">Co-Authored-By: Claude Opus 4.8 (1M context) &lt;noreply@anthropic.com&gt;&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="task-4-close-cross-test-state-isolation-gaps-deferred-to-a-dedicated-debug-pass">Task 4: Close cross-test state-isolation gaps — DEFERRED to a dedicated debug pass<a class="headerlink" href="#task-4-close-cross-test-state-isolation-gaps-deferred-to-a-dedicated-debug-pass" title="Permanent link">&para;</a></h2>
+<blockquote>
+<p><strong>DEFERRED 2026-06-14.</strong> The 5 residual <code>-race -shuffle</code> failures are all
+PRE-EXISTING on <code>main</code> (baseline = 7 failures; post-Task-1 = 5, all a subset of
+the 7). They are NOT contention-driven and NOT caused by this work: 4 are
+mock-state contamination (<code>CreateOnFirstReconcile</code>, <code>OwnerRefTolerance</code>,
+MCPServer + Team <code>DriftSuppressedOnFirstCreate</code>) that pass in isolation but
+pollute the global <code>DriftCorrectedTotal{mcp,create_missing}</code> counter during a
+neighbor's window; 1 is a test-design race (<code>UpdateForwardsAllParams</code> — the
+create coalesces the update under <code>-race</code>, so the expected PUT never fires;
+fails on <code>main</code> in isolation). The contamination vector is subtler than a
+mode/store-reset gap (the cleanup helper already full-drains), so these need a
+hands-on <code>/gsd:debug</code> pass, not a mechanical edit. Task 1 + Task 3 ship first.</p>
+</blockquote>
+<details><summary>Original Task 4 (for reference)</summary>
+
+These cause the fast-fail (~0.19s) contamination flakes (e.g. `TestMCPServer_ConflictResolution_SanitizationCollapse_Loser`, and the `want 1 POST got 5` / `create_missing on first reconcile` MCPServer create-churn seen in the first `-race -shuffle` run) that survive even with relist quiet: leaked mock **mode** (a prior test's `ModeConflict`/`ModeError` not restored makes a neighbor's POST/list behave wrong → recreate churn), unreset router settings / domain stores, ambient connection-cache state.
+
+**Files:** `internal/litellm/mock/mock.go`, `internal/controller/modelalias_envtest_test.go`, mode-using `*_test.go` files
+
+> **Priority diagnosis:** the MCPServer create-churn is the highest-value target here. Before editing, confirm its trigger by reading the failing tests (`mcpserver_controller_test.go:188`, `:618`, `:1143`, `:1401`) and checking (a) whether a shuffled predecessor leaves a non-happy `SetMode` un-restored, and (b) whether those tests reset the mock MCPServer store (`ResetMCPServers`) in setup. The mode-guard (Step 4.3/4.4) plus ensuring each MCPServer test resets its store is expected to resolve it. If a residual store-reset gap is found, add a `t.Cleanup`/setup `mockServer.ResetMCPServers()` to the affected tests as part of this task.
+
+- [ ] **Step 4.1: Add `ResetRouterSettings()` to the mock**
+
+In `internal/litellm/mock/mock.go`, beside the other `ResetX` methods, add (matching the receiver/locking pattern of the existing `ResetModels`):
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="c1">// ResetRouterSettings clears router/model-group-alias state between tests.</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">s</span><span class="w"> </span><span class="o">*</span><span class="nx">MockServer</span><span class="p">)</span><span class="w"> </span><span class="nx">ResetRouterSettings</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="w">    </span><span class="nx">s</span><span class="p">.</span><span class="nx">mu</span><span class="p">.</span><span class="nx">Lock</span><span class="p">()</span>
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="w">    </span><span class="k">defer</span><span class="w"> </span><span class="nx">s</span><span class="p">.</span><span class="nx">mu</span><span class="p">.</span><span class="nx">Unlock</span><span class="p">()</span>
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a><span class="w">    </span><span class="nx">s</span><span class="p">.</span><span class="nx">routerSettings</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="kt">any</span><span class="p">{}</span>
+<a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a><span class="p">}</span>
+</code></pre></div>
+(Match the exact field name and mutex identifier already used by `ResetModels` — read that method first.)
+
+- [ ] **Step 4.2: Reset router settings in the modelalias test**
+
+In `internal/controller/modelalias_envtest_test.go`, at the top of the test that reads `ModelGroupAlias()`, add `mockServer.ResetRouterSettings()` to its setup (and `t.Cleanup` if other tests could observe leftover router state).
+
+- [ ] **Step 4.3: Add a cleanup-guarded mode helper**
+
+In `internal/controller/suite_test.go`, add:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="c1">// setMockMode sets the mock server mode for one test and restores ModeHappy</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="c1">// on cleanup, so a non-happy mode can never leak into a shuffled neighbor.</span>
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="kd">func</span><span class="w"> </span><span class="nx">setMockMode</span><span class="p">(</span><span class="nx">t</span><span class="w"> </span><span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">,</span><span class="w"> </span><span class="nx">mode</span><span class="w"> </span><span class="nx">mock</span><span class="p">.</span><span class="nx">Mode</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="w">    </span><span class="nx">t</span><span class="p">.</span><span class="nx">Helper</span><span class="p">()</span>
+<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a><span class="w">    </span><span class="nx">mockServer</span><span class="p">.</span><span class="nx">SetMode</span><span class="p">(</span><span class="nx">mode</span><span class="p">)</span>
+<a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a><span class="w">    </span><span class="nx">t</span><span class="p">.</span><span class="nx">Cleanup</span><span class="p">(</span><span class="kd">func</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">mockServer</span><span class="p">.</span><span class="nx">SetMode</span><span class="p">(</span><span class="nx">mock</span><span class="p">.</span><span class="nx">ModeHappy</span><span class="p">)</span><span class="w"> </span><span class="p">})</span>
+<a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a><span class="p">}</span>
+</code></pre></div>
+(Adjust the `mock.Mode` / `mock.ModeHappy` qualifiers to the actual exported names — read the mock package.)
+
+- [ ] **Step 4.4: Route non-happy `SetMode` call sites through the helper**
+
+Grep for non-happy mode switches and convert each to the guarded helper:
+Run: `grep -rn "SetMode(" internal/controller/*_test.go | grep -iv "ModeHappy"`
+For each hit where the test sets an error/conflict mode in its body, replace `mockServer.SetMode(X)` with `setMockMode(t, X)` and delete any now-redundant manual restore. Leave `SetMode(ModeHappy)` resets that other tests do at their own start (harmless) — or convert them too for uniformity.
+
+- [ ] **Step 4.5: Verify the previously-contaminated test under shuffle**
+
+Run (background): `./scripts/dev.sh go test -race -shuffle=on -count=3 -timeout 25m -run 'TestMCPServer_ConflictResolution|TestModelAlias|TestGuardRail' ./internal/controller/... 2>&1 | tee /tmp/phase4-shuffle.log`
+Expected: 3/3 shuffles green for the targeted set.
+
+- [ ] **Step 4.6: Commit**
+
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>git<span class="w"> </span>add<span class="w"> </span>internal/litellm/mock/mock.go<span class="w"> </span>internal/controller/modelalias_envtest_test.go<span class="w"> </span>internal/controller/suite_test.go<span class="w"> </span>internal/controller/*_test.go
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;test(controller): close mock-state isolation gaps (mode/router) (#74)</span>
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a>
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a><span class="s2">Add ResetRouterSettings + a cleanup-guarded setMockMode helper so a</span>
+<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a><span class="s2">non-happy mock mode or stale router-alias state can&#39;t leak into a shuffled</span>
+<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a><span class="s2">neighbor — the contamination behind the fast-fail #74 flakes.</span>
+<a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a>
+<a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a><span class="s2">Co-Authored-By: Claude Opus 4.8 (1M context) &lt;noreply@anthropic.com&gt;&quot;</span>
+</code></pre></div>
+
+</details>
+
+<hr />
+<h2 id="task-5-whole-suite-validation-docs">Task 5: Whole-suite validation + docs<a class="headerlink" href="#task-5-whole-suite-validation-docs" title="Permanent link">&para;</a></h2>
+<ul>
+<li>[ ] <strong>Step 5.1: Full controller package, multiple shuffle seeds, under race</strong></li>
+</ul>
+<p>Run (background, bounded): <code>./scripts/dev.sh go test -race -shuffle=on -count=2 -timeout 40m ./internal/controller/... 2&gt;&amp;1 | tee /tmp/phase5-race-shuffle.log</code>
+Expected: <code>ok ... internal/controller</code> for both shuffle iterations, zero <code>--- FAIL</code>.</p>
+<ul>
+<li>[ ] <strong>Step 5.2: Fast per-package sanity</strong></li>
+</ul>
+<p>Run: <code>make test-envtest-fast</code>
+Expected: controller + toolhive packages green.</p>
+<ul>
+<li>[ ] <strong>Step 5.3: Lint</strong></li>
+</ul>
+<p>Run: <code>make qa-lint</code>
+Expected: clean (new helpers/fields carry doc comments; no unused).</p>
+<ul>
+<li>[ ] <strong>Step 5.4: Update the #74 note in CLAUDE.md</strong></li>
+</ul>
+<p>In <code>CLAUDE.md</code>, under the <code>### ❌ Gating a LiteLLM mutation on snap.Ready alone</code> / <code>#74</code> block, append a short note that the suite-global relist runnables are now <code>Gate</code>-d OFF by default (<code>enableSuiteRelist(t)</code> opts in), at-least-once paths assert <code>&gt;=1</code>, and the guardrail poll ceiling is 30s — so new controller tests should NOT assume background relist fires unless they enable it, and must assert mutation SHAPE not exact counts. Keep it to ~4-6 lines; this is intent, not inventory.</p>
+<ul>
+<li>[ ] <strong>Step 5.5: Commit docs</strong></li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>git<span class="w"> </span>add<span class="w"> </span>CLAUDE.md
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;docs: record #74 suite-flake systemic fix (gated relist, shape asserts)</span>
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a>
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a><span class="s2">Co-Authored-By: Claude Opus 4.8 (1M context) &lt;noreply@anthropic.com&gt;&quot;</span>
+</code></pre></div>
+<ul>
+<li>[ ] <strong>Step 5.6: Finish the branch</strong></li>
+</ul>
+<p>REQUIRED SUB-SKILL: Use superpowers:finishing-a-development-branch — verify tests, push (pre-push gate runs), open PR to main, let the full CI matrix (incl. the <code>-race -shuffle</code> release-equivalent Envtest) run, merge on green.</p>
+<hr />
+<h2 id="self-review-notes">Self-review notes<a class="headerlink" href="#self-review-notes" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Spec coverage:</strong> Phase 1 addresses the contention floor (runnable churn analysis §B/C); Phase 2 the exact-count fragility (assertion catalog §B); Phase 3 the guardrail 5s ceiling (poll-helper catalog §C); Phase 4 the mock-state contamination (shared-state catalog §A/E). The fixed-1.25s/1s negative-window sleeps (assertion catalog §A) are NOT separately rewritten because they assert "nothing happened" and become robust once Phase 1 silences relist — if Step 5.1 still flags one, add a targeted task then.</li>
+<li><strong>Out of scope (flag for a follow-up if Step 5.1 still flakes):</strong> per-test/per-group manager isolation and serializing the controller-vs-toolhive <code>-race</code> run (<code>ENVTEST_JOBS=1</code>) — both are larger, environmental, and likely unnecessary once the contention floor is gone.</li>
+<li><strong>Type consistency:</strong> <code>Gate func() bool</code> is the same field name on both runnables; <code>suiteRelistEnabled.Load</code> (a <code>func() bool</code> method value) is the wired Gate; <code>enableSuiteRelist(t)</code> / <code>setMockMode(t, ...)</code> are the two new suite helpers; <code>ResetRouterSettings()</code> the one new mock method.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/ackstorm/alitellm-operator" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "search.share", "content.code.copy", "content.code.annotate"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"alias": true, "default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
