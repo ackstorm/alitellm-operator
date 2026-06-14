@@ -73,6 +73,12 @@ type TeamDefaultRunnable struct {
 	// safetyRelistCh)).
 	RequeueCh chan<- reconcile.Request
 
+	// Gate, when non-nil, gates every enqueue (initial + per-tick). If it
+	// returns false the enqueue is a no-op. Production leaves it nil (always
+	// active). The envtest suite sets it to silence the implicit-default
+	// reconcile churn for tests that do not exercise team bootstrap (#74).
+	Gate func() bool
+
 	// tickCount is a test-observable counter incremented on every
 	// enqueue (initial Ready-gated + per-tick). Zero allocation in
 	// production; tests assert delta via TickCount.
@@ -143,6 +149,9 @@ func (r *TeamDefaultRunnable) Start(ctx context.Context) error {
 // tick counter. Back-pressure (full channel) is logged at V(1) and
 // silently skipped — the next tick will retry.
 func (r *TeamDefaultRunnable) enqueue(req reconcile.Request) {
+	if r.Gate != nil && !r.Gate() {
+		return
+	}
 	select {
 	case r.RequeueCh <- req:
 		r.tickCount.Add(1)

@@ -213,6 +213,12 @@ type SafetyRelistRunnable struct {
 	ListRequests func(ctx context.Context, c client.Client, namespace string) ([]reconcile.Request, error)
 	// LogLabel names the kind in the V(1) debug lines (e.g. "models").
 	LogLabel string
+	// Gate, when non-nil, is evaluated at the top of every tick. If it
+	// returns false the tick is a complete no-op (no List, no enqueue).
+	// Production leaves Gate nil (always active — identical behavior). The
+	// envtest suite sets it so background relist contention is silenced for
+	// the ~99% of tests that do not exercise drift recovery (#74 mitigation).
+	Gate func() bool
 }
 
 func (r *SafetyRelistRunnable) Start(ctx context.Context) error {
@@ -223,6 +229,9 @@ func (r *SafetyRelistRunnable) Start(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
+			if r.Gate != nil && !r.Gate() {
+				continue
+			}
 			reqs, err := r.ListRequests(ctx, r.Client, r.Namespace)
 			if err != nil {
 				r.Log.V(1).Info("safety re-list: list failed; skipping tick", "kind", r.LogLabel, "error", err)
