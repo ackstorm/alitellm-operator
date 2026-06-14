@@ -51,10 +51,13 @@ import (
 // bootstrap tests opt in via enableSuiteRelist(t).
 var suiteRelistEnabled atomic.Bool
 
-// enableSuiteRelist turns the suite-global relist runnables ON for the
-// duration of one test and restores OFF on cleanup. Call this in any test
-// that depends on the background safety-relist or team-default runnable
-// firing (drift recovery, implicit-default bootstrap).
+// enableSuiteRelist turns the suite-global model+guardrail SafetyRelistRunnables
+// ON for the duration of one test and restores OFF on cleanup. Call this in any
+// test that depends on the background safety-relist firing (drift recovery). The
+// TeamDefaultRunnable is NOT gated (always on), so implicit-default/bootstrap
+// tests do not need this. NOT safe under t.Parallel: the package-global toggle is
+// shared, so a parallel test's cleanup could flip it mid-run on a neighbor — the
+// suite runs serially, which this relies on.
 func enableSuiteRelist(t *testing.T) {
 	t.Helper()
 	suiteRelistEnabled.Store(true)
