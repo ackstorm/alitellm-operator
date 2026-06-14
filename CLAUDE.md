@@ -671,6 +671,26 @@ than the per-package PR Envtest job), not on PR CI.
   Bumped to 30s (loop still breaks on first success).
 - **connection-reason `Absent` vs `Unreachable`** ordering flake — still
   open under #74, not yet addressed.
+- **Suite-global relist gated OFF by default (2026-06-14, #74 systemic
+  fix).** The model + guardrail `SafetyRelistRunnable`s ticked at 100ms for
+  the whole package run (~30 enqueues/s into the shared workqueue) — the
+  contention floor behind the timing flakes. They now carry a nil-safe
+  `Gate func() bool` (production leaves it nil → identical behavior) and the
+  envtest suite defaults them OFF via `suiteRelistEnabled`; only the ~2
+  drift-recovery tests opt in with `enableSuiteRelist(t)`. The
+  `TeamDefaultRunnable` is NOT gated (it enqueues one deduped `Team/default`
+  request per tick — implicit-default/bootstrap tests depend on it). This
+  fix alone removed the two headline #74 flakes
+  (`TestModel_SpecParamsKeyRemoval_DeleteAndRecreate` at-least-once
+  over-count; `TestConnectionProbeLoop_BadMasterKey` anti-storm) on a fixed
+  `-race -shuffle` seed (7→5 failures, 0 regressions). New controller tests
+  must NOT assume background relist fires unless they call
+  `enableSuiteRelist(t)`. The remaining 5 `-race -shuffle` failures are
+  PRE-EXISTING test-design/contamination races (MCPServer
+  `CreateOnFirstReconcile` / `OwnerRefTolerance` /
+  `DriftSuppressedOnFirstCreate`, Team `DriftSuppressedOnFirstCreate`,
+  MCPServer `UpdateForwardsAllParams`) — tracked for a dedicated debug pass,
+  NOT caused by the gating change.
 NOTE: local envtest on a resource-starved host can fail at suite SETUP
 (`WaitForCacheSync: did not sync within 30s`) or mass ~30s poll-timeouts
 — that is environmental host starvation, NOT a code regression; verify on
