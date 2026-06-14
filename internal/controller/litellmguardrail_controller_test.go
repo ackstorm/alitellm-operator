@@ -702,6 +702,7 @@ func TestGuardRail_SafetyRelist_CreateMissing(t *testing.T) {
 	mockServer.ResetGuardrails()
 	ensureLiteLLMConnectionDefault(t, ctx)
 	readyConnectionForTest(t)
+	enableSuiteRelist(t)
 
 	cr := guardrailReconcilerSampleCR(name)
 	if err := k8sClient.Create(ctx, cr); err != nil {

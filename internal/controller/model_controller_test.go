@@ -1679,6 +1679,7 @@ func TestModel_DriftCounter_CreateMissing_SafetyRelist(t *testing.T) {
 	mockServer.ResetModels()
 	ensureNoModel(t, ctx, "drift-create-missing")
 	resetConnCacheSnapshot()
+	enableSuiteRelist(t)
 
 	ensureNoConnectionDefault(t, ctx)
 	connCR := connDefaultCR()

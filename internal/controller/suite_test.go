@@ -43,6 +43,24 @@ import (
 	_ "github.com/ackstorm/alitellm-operator/internal/metrics"
 )
 
+// suiteRelistEnabled gates the three suite-global background runnables
+// (model + guardrail SafetyRelistRunnable, TeamDefaultRunnable). Default
+// false: the runnables tick but do no work, so the ~292 tests that don't
+// exercise drift recovery run free of the shared-workqueue contention floor
+// that produced the #74 -race -shuffle flakes. The handful of drift /
+// bootstrap tests opt in via enableSuiteRelist(t).
+var suiteRelistEnabled atomic.Bool
+
+// enableSuiteRelist turns the suite-global relist runnables ON for the
+// duration of one test and restores OFF on cleanup. Call this in any test
+// that depends on the background safety-relist or team-default runnable
+// firing (drift recovery, implicit-default bootstrap).
+func enableSuiteRelist(t *testing.T) {
+	t.Helper()
+	suiteRelistEnabled.Store(true)
+	t.Cleanup(func() { suiteRelistEnabled.Store(false) })
+}
+
 // WatchNamespace is the namespace the test manager watches. AC-N4 tests
 // verify that CRs created elsewhere (e.g. "default") are never reconciled.
 const WatchNamespace = "default"
@@ -363,6 +381,7 @@ func setupAndRun(m *testing.M) int {
 		RequeueCh:    modelSafetyRelistCh,
 		ListRequests: ListModelRequests,
 		LogLabel:     "models",
+		Gate:         suiteRelistEnabled.Load,
 	}
 	if err := mgr.Add(modelSafetyRelist); err != nil {
 		fmt.Fprintf(os.Stderr, "mgr.Add(model SafetyRelistRunnable): %v\n", err)
@@ -491,6 +510,7 @@ func setupAndRun(m *testing.M) int {
 		ReadyPollInterval: 50 * time.Millisecond,
 		Log:               logr.Discard(),
 		RequeueCh:         teamDefaultRequeueCh,
+		Gate:              suiteRelistEnabled.Load,
 	}
 	if err := mgr.Add(teamDefaultRunnable); err != nil {
 		fmt.Fprintf(os.Stderr, "mgr.Add(TeamDefaultRunnable): %v\n", err)
@@ -559,6 +579,7 @@ func setupAndRun(m *testing.M) int {
 		RequeueCh:    guardrailSafetyRelistCh,
 		ListRequests: ListGuardRailRequests,
 		LogLabel:     "guardrails",
+		Gate:         suiteRelistEnabled.Load,
 	}
 	if err := mgr.Add(guardrailSafetyRelist); err != nil {
 		fmt.Fprintf(os.Stderr, "mgr.Add(guardrail SafetyRelistRunnable): %v\n", err)
