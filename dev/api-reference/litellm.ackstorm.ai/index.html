@@ -5231,9 +5231,9 @@ model — LiteLLM resolves at inference time.</p>
 <tbody>
 <tr>
 <td><code>name</code> <em>string</em></td>
-<td>Name is the model_group_alias map KEY — the model name clients send to<br />LiteLLM. Must match <code>^[A-Za-z0-9][A-Za-z0-9._/-]\{0,252\}$</code>. Cluster-wide<br />uniqueness across all LiteLLMModelAlias CRs is enforced at reconcile<br />time (alphabetical-last-wins on (CR namespace, CR name, array index));<br />losers report Ready=False reason=AliasConflict in<br />status.aliasStatuses[].</td>
+<td>Name is the model_group_alias map KEY — the model name clients send to<br />LiteLLM. Must match <code>^[A-Za-z0-9][A-Za-z0-9._:/@+\[\]-]\{0,252\}$</code>: starts<br />with an alphanumeric, then any of letters/digits/<code>. _ : / @ + [ ] -</code>.<br />The charset mirrors real LiteLLM model identifiers — square brackets<br />(<code>claude-opus-4-8[1m]</code> context-window variants), colons<br />(<code>ollama/llama3:8b</code> tags), and at-signs (<code>gpt-4@2024-08-06</code> version<br />pins) — since Name is only ever used as a JSON key in<br />router_settings.model_group_alias, never as a k8s label/index/URL path.<br />Whitespace and control characters stay rejected. Cluster-wide<br />uniqueness across all LiteLLMModelAlias CRs is enforced at reconcile<br />time (alphabetical-last-wins on (CR namespace, CR name, array index));<br />losers report Ready=False reason=AliasConflict in<br />status.aliasStatuses[].</td>
 <td></td>
-<td>MaxLength: 253 <br />MinLength: 1 <br />Pattern: <code>^[A-Za-z0-9][A-Za-z0-9._/-]\{0,252\}$</code> <br />Required: {} <br /></td>
+<td>MaxLength: 253 <br />MinLength: 1 <br />Pattern: <code>^[A-Za-z0-9][A-Za-z0-9._:/@+\[\]-]\{0,252\}$</code> <br />Required: {} <br /></td>
 </tr>
 <tr>
 <td><code>value</code> <em>string</em></td>
