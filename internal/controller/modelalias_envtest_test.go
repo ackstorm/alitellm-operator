@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -100,6 +101,62 @@ func TestModelAlias_Envtest_HappyPath_MultiEntry(t *testing.T) {
 				t.Fatalf("mock alias map missing ackstorm.fast: %v", got2)
 			}
 			return
+		}
+	}
+}
+
+// TestModelAlias_Envtest_NameCharset_AdmissionValidation exercises the
+// CRD `spec.aliases[].name` pattern at the apiserver admission layer
+// (no reconcile / connection needed — validation runs before the
+// controller sees the object). Real LiteLLM model identifiers must be
+// accepted as alias names (square brackets for context-window variants,
+// colons for tags, at-signs for version pins); whitespace must stay
+// rejected. Guards the relaxed pattern
+// `^[A-Za-z0-9][A-Za-z0-9._:/@+\[\]-]{0,252}$` against regression.
+func TestModelAlias_Envtest_NameCharset_AdmissionValidation(t *testing.T) {
+	ctx := context.Background()
+	ns := WatchNamespace
+
+	mkCR := func(objName, aliasName string) *litellmv1alpha1.LiteLLMModelAlias {
+		return &litellmv1alpha1.LiteLLMModelAlias{
+			ObjectMeta: metav1.ObjectMeta{Name: objName, Namespace: ns},
+			Spec: litellmv1alpha1.LiteLLMModelAliasSpec{
+				Aliases: []litellmv1alpha1.ModelAliasEntry{
+					{Name: aliasName, Value: "ANTHROPIC.claude-opus-4-8"},
+				},
+			},
+		}
+	}
+
+	accepted := []struct{ objName, aliasName string }{
+		{"charset-brackets", "claude-opus-4-8[1m]"}, // the reported real model name
+		{"charset-colon", "ollama/llama3:8b"},       // provider tag
+		{"charset-at", "gpt-4@2024-08-06"},          // version pin
+		{"charset-plain", "ackstorm.smart"},         // unchanged classic form
+	}
+	for _, tc := range accepted {
+		cr := mkCR(tc.objName, tc.aliasName)
+		if err := k8sClient.Create(ctx, cr); err != nil {
+			t.Errorf("alias name %q should be ACCEPTED, got admission error: %v", tc.aliasName, err)
+			continue
+		}
+		t.Cleanup(func() { _ = k8sClient.Delete(context.Background(), cr) })
+	}
+
+	rejected := []struct{ objName, aliasName string }{
+		{"charset-space", "bad name"},          // whitespace
+		{"charset-leadingdot", ".leading-dot"}, // must start alphanumeric
+	}
+	for _, tc := range rejected {
+		cr := mkCR(tc.objName, tc.aliasName)
+		err := k8sClient.Create(ctx, cr)
+		if err == nil {
+			_ = k8sClient.Delete(context.Background(), cr)
+			t.Errorf("alias name %q should be REJECTED by the pattern, but admission accepted it", tc.aliasName)
+			continue
+		}
+		if !apierrors.IsInvalid(err) {
+			t.Errorf("alias name %q rejected with non-validation error: %v", tc.aliasName, err)
 		}
 	}
 }

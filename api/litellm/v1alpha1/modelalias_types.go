@@ -15,7 +15,14 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 // model — LiteLLM resolves at inference time.
 type ModelAliasEntry struct {
 	// Name is the model_group_alias map KEY — the model name clients send to
-	// LiteLLM. Must match `^[A-Za-z0-9][A-Za-z0-9._/-]{0,252}$`. Cluster-wide
+	// LiteLLM. Must match `^[A-Za-z0-9][A-Za-z0-9._:/@+\[\]-]{0,252}$`: starts
+	// with an alphanumeric, then any of letters/digits/`. _ : / @ + [ ] -`.
+	// The charset mirrors real LiteLLM model identifiers — square brackets
+	// (`claude-opus-4-8[1m]` context-window variants), colons
+	// (`ollama/llama3:8b` tags), and at-signs (`gpt-4@2024-08-06` version
+	// pins) — since Name is only ever used as a JSON key in
+	// router_settings.model_group_alias, never as a k8s label/index/URL path.
+	// Whitespace and control characters stay rejected. Cluster-wide
 	// uniqueness across all LiteLLMModelAlias CRs is enforced at reconcile
 	// time (alphabetical-last-wins on (CR namespace, CR name, array index));
 	// losers report Ready=False reason=AliasConflict in
@@ -24,7 +31,7 @@ type ModelAliasEntry struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=253
-	// +kubebuilder:validation:Pattern=`^[A-Za-z0-9][A-Za-z0-9._/-]{0,252}$`
+	// +kubebuilder:validation:Pattern=`^[A-Za-z0-9][A-Za-z0-9._:/@+\[\]-]{0,252}$`
 	Name string `json:"name"`
 
 	// Value is the resolved LiteLLM model_name or model_group the alias
