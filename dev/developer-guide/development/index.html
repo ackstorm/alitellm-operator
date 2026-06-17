@@ -1927,7 +1927,7 @@ that introduces the dependency change.</p>
 </tr>
 <tr>
 <td><code>WATCH_NAMESPACE</code></td>
-<td>Override the operator's watch namespace. Default <code>default</code>.</td>
+<td>Override the operator's watch namespace. Code fallback <code>default</code> when unset; the Helm chart sets it from <code>watchNamespace</code>, which defaults to the install namespace.</td>
 </tr>
 </tbody>
 </table>
