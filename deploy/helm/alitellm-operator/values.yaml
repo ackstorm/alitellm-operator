@@ -37,7 +37,17 @@ image:
 # watchNamespace is the Kubernetes namespace the operator watches for CRs.
 # Maps to the WATCH_NAMESPACE env var on the manager Deployment.
 # Per spec §4 / SCOPE-04: CRs in any other namespace are never reconciled.
-watchNamespace: default
+#
+# Empty (default) → the operator watches its own install namespace
+# (.Release.Namespace). WATCH_NAMESPACE also pins the leader-election
+# lease and the LiteLLMConnection/default singleton, while the chart
+# binds RBAC in .Release.Namespace — so watchNamespace MUST equal the
+# install namespace. Leaving this empty keeps them aligned automatically;
+# `helm install -n litellm-system` then watches litellm-system with no
+# extra flag. Set explicitly ONLY if you deliberately watch a namespace
+# other than the one the operator is installed into (requires matching
+# RBAC in that namespace — not provisioned by this chart).
+watchNamespace: ""
 toolhive:
   # enabled=true (default) includes the ClusterRole + ClusterRoleBinding
   # that grants the operator read access to ToolHive MCPServer +

@@ -782,7 +782,7 @@ spec:
         - /alitellm-operator
         env:
         - name: WATCH_NAMESPACE
-          value: {{ .Values.watchNamespace }}
+          value: {{ .Values.watchNamespace | default .Release.Namespace }}
         {{- range .Values.extraEnv }}
         - name: {{ .name }}
           value: {{ .value | quote }}

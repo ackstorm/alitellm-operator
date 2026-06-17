@@ -126,6 +126,13 @@ content = '---\n'.join(_result_cr08)
 # We inject it after the `command:` block in the manager container so that
 # Helm users can parameterize the watch namespace.
 #
+# Default = .Release.Namespace (NOT a hardcoded "default"): the operator's
+# RBAC, leader-election lease, and LiteLLMConnection/default singleton all
+# live in WATCH_NAMESPACE, while the chart binds RBAC in .Release.Namespace.
+# Defaulting watchNamespace to the release namespace keeps the two aligned
+# so `helm install -n X` (without --set watchNamespace) is not broken-by-
+# construction. An explicit watchNamespace still overrides.
+#
 # Target pattern (in the Deployment):
 #   command:
 #   - /alitellm-operator
@@ -135,7 +142,7 @@ content = '---\n'.join(_result_cr08)
 # substituted by step 1 above).
 content = content.replace(
     '        command:\n        - /alitellm-operator\n        image: {{ .Values.image.repo }}:{{ .Values.image.tag }}',
-    '        command:\n        - /alitellm-operator\n        env:\n        - name: WATCH_NAMESPACE\n          value: {{ .Values.watchNamespace }}\n        {{- range .Values.extraEnv }}\n        - name: {{ .name }}\n          value: {{ .value | quote }}\n        {{- end }}\n        image: {{ .Values.image.repo }}:{{ .Values.image.tag }}',
+    '        command:\n        - /alitellm-operator\n        env:\n        - name: WATCH_NAMESPACE\n          value: {{ .Values.watchNamespace | default .Release.Namespace }}\n        {{- range .Values.extraEnv }}\n        - name: {{ .name }}\n          value: {{ .value | quote }}\n        {{- end }}\n        image: {{ .Values.image.repo }}:{{ .Values.image.tag }}',
 )
 
 # ─── Substitution 6 (Tier 2 A5): resources block templated from .Values.resources

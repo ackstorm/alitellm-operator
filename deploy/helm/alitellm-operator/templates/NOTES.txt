@@ -1,8 +1,17 @@
+{{- $watchNS := .Values.watchNamespace | default .Release.Namespace -}}
 LiteLLM Operator v{{ .Chart.AppVersion }} has been installed!
 
 Namespace: {{ .Release.Namespace }}
-Watch namespace: {{ .Values.watchNamespace }}
+Watch namespace: {{ $watchNS }}
 Image: {{ .Values.image.repo }}:{{ .Values.image.tag }}
+{{- if and .Values.watchNamespace (ne .Values.watchNamespace .Release.Namespace) }}
+
+WARNING: watchNamespace ({{ .Values.watchNamespace }}) != install namespace ({{ .Release.Namespace }}).
+This chart binds the manager RBAC and the leader-election lease in {{ .Release.Namespace }}, but
+the operator will watch {{ .Values.watchNamespace }} and place its lease there. Leader election and
+CR reconciliation will FAIL unless matching Role/RoleBinding exist in {{ .Values.watchNamespace }}.
+Unset watchNamespace (it then defaults to the install namespace) or provision the RBAC yourself.
+{{- end }}
 
 === IMPORTANT: CRD Upgrade Dance (D-03) ===
 
@@ -51,11 +60,11 @@ Tip: For a fresh namespace, run:
 
   kubectl create secret generic litellm-master-key \
     --from-literal=LITELLM_MASTER_KEY=<your-master-key> \
-    -n {{ .Values.watchNamespace }}
+    -n {{ $watchNS }}
 
 2. Create a LiteLLMConnection CR:
 
-  kubectl apply -n {{ .Values.watchNamespace }} -f - <<EOF
+  kubectl apply -n {{ $watchNS }} -f - <<EOF
   apiVersion: litellm.ackstorm.ai/v1alpha1
   kind: LiteLLMConnection
   metadata:
@@ -69,7 +78,7 @@ Tip: For a fresh namespace, run:
 
 3. Check the connection status:
 
-  kubectl get litellmconnection default -n {{ .Values.watchNamespace }} -o yaml
+  kubectl get litellmconnection default -n {{ $watchNS }} -o yaml
 
 For a full walkthrough, see:
   https://github.com/ackstorm/alitellm-operator/blob/main/README.md
