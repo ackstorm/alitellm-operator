@@ -60,7 +60,7 @@ production-suitable for a small dogfood cluster.
 | `image.repo`                   | `ghcr.io/ackstorm/alitellm-operator`          | Container image.                                                                               |
 | `image.tag`                    | matches chart `appVersion`                    | Auto-bumped by release CI; see [Releases](https://github.com/ackstorm/alitellm-operator/releases). |
 | `image.pullPolicy`             | `IfNotPresent`                                |                                                                                                |
-| `watchNamespace`               | `default`                                     | Single namespace the operator reconciles. CRs in other namespaces are ignored (SCOPE-04).      |
+| `watchNamespace`               | `""` → install namespace                      | Single namespace the operator reconciles; CRs elsewhere are ignored (SCOPE-04). Empty defaults to the install namespace (`.Release.Namespace`) so RBAC, the leader-election lease, and `LiteLLMConnection/default` stay co-located. Set explicitly only to watch a *different* namespace — you must then provision matching RBAC there (this chart binds RBAC in the install namespace). |
 | `toolhive.enabled`             | `true`                                        | Enables the ClusterRole granting read on ToolHive `MCPServer` / `VirtualMCPServer`.            |
 | `metrics.serviceMonitor.enabled` | `false`                                     | Set `true` when prometheus-operator is installed; renders the ServiceMonitor stub.             |
 | `safetyRelistInterval`         | `""` (operator default `10m`)                 | Per-reconciler vanish-probe cadence. Maps to `LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL`. Floor 5s. |
@@ -75,7 +75,8 @@ Example `values.yaml` (omit `image.tag` to use the chart's bundled
 default, which matches `appVersion`):
 
 ```yaml
-watchNamespace: litellm
+# watchNamespace omitted → operator watches its install namespace.
+# Install into the namespace you want watched: `helm install -n litellm ...`.
 toolhive:
   enabled: false           # cluster has no ToolHive CRDs
 safetyRelistInterval: 30m  # large CR catalogue, prefer fewer LiteLLM probes
@@ -90,7 +91,7 @@ The operator reads runtime config from a small env-var surface:
 
 | Variable                                    | Default     | Description                                                                                            |
 |---------------------------------------------|-------------|--------------------------------------------------------------------------------------------------------|
-| `WATCH_NAMESPACE`                           | `default`   | Single namespace the operator reconciles. Maps from Helm `watchNamespace`.                             |
+| `WATCH_NAMESPACE`                           | `default` (raw manifest); Helm sets it from `watchNamespace`, which defaults to the install namespace | Single namespace the operator reconciles. Also pins the leader-election lease and `LiteLLMConnection/default`. |
 | `LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL`   | unset → `10m` | Vanish-probe cadence per reconciler kind. Floor `5s`; sub-floor values are rejected at startup.       |
 | `METRICS_BIND_ADDRESS`                      | `:8080`     | Prometheus metrics listener.                                                                           |
 | `HEALTH_PROBE_BIND_ADDRESS`                 | `:8081`     | controller-runtime healthz / readyz.                                                                   |
