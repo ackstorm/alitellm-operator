@@ -99,6 +99,27 @@ func pollModelCondition(t *testing.T, ctx context.Context, name, wantReason stri
 	return &m
 }
 
+// TestInfoHash_ChangesWithAccessGroups — pure-logic coverage for the
+// info-only canonical hash that drives recreate-on-model_info-change.
+//
+// LiteLLM POST /model/update never persists the model_info blob, so the
+// operator must detect ANY model_info change (e.g. adding access_groups) and
+// force a delete+recreate. infoHash is the SHA-256 over the canonical model_info
+// map, excluding the operator-managed `id` overlay (which oscillates between
+// create/update and must not perturb the hash).
+func TestInfoHash_ChangesWithAccessGroups(t *testing.T) {
+	h1 := infoHash(map[string]any{"description": "x"})
+	h2 := infoHash(map[string]any{"description": "x", "access_groups": []any{"anthropic"}})
+	if h1 == h2 {
+		t.Fatalf("infoHash must change when access_groups is added: %s == %s", h1, h2)
+	}
+	// id is excluded — adding it must NOT change the hash.
+	h3 := infoHash(map[string]any{"description": "x", "id": "uuid"})
+	if h1 != h3 {
+		t.Fatalf("infoHash must ignore id overlay: %s != %s", h1, h3)
+	}
+}
+
 // TestModel_FinalizerAddedOnFirstReconcile — Task 1 Test 1.
 //
 // Create a Model CR; assert that on the next reconcile the reconciler adds

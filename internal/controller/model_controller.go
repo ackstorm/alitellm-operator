@@ -474,6 +474,15 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 	delete(infoMap, "id") // always remove before hashing and body construction
 
+	// currentInfoHash hashes the model_info blob alone (excluding the `id`
+	// overlay). currentRenderedHash below covers BOTH litellm_params and
+	// model_info, so a params-only edit perturbs it without changing
+	// currentInfoHash — letting the UPDATE path distinguish a recreate-forcing
+	// model_info change (LiteLLM /model/update never persists the blob) from a
+	// plain /model/update params change. Computed here so the same infoMap that
+	// feeds the create/update body is the one that is hashed and persisted.
+	currentInfoHash := infoHash(infoMap)
+
 	// Build merged canonical body.
 	merged := map[string]any{
 		"litellm_params": paramsMap,
@@ -793,6 +802,7 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		Hash:       currentRenderedHash,
 		ParamsKeys: sortedKeys(paramsMap),
 		InfoKeys:   sortedKeys(infoMap),
+		InfoHash:   currentInfoHash,
 		ModelID:    newModelID,
 		At:         &now,
 	}
@@ -953,6 +963,27 @@ func (r *ModelReconciler) SetupWithManager(mgr ctrl.Manager, safetyRelistCh ...c
 // sufficient for the AC-R1 steady-state hash (D-01 Claude's Discretion).
 func canonicalJSON(v any) ([]byte, error) {
 	return canonicalMarshal(v)
+}
+
+// infoHash returns the SHA-256 (hex) of the canonical-JSON model_info map,
+// excluding the operator-managed `id` overlay. Used to detect model_info
+// changes that require a delete+recreate: LiteLLM POST /model/update rewrites
+// litellm_params + updated_by only and NEVER persists the model_info blob, so
+// the operator must recreate (POST /model/new) on any model_info change. The
+// `id` overlay oscillates (null on create, resolved UUID on update) and is
+// excluded so the hash is stable across create/update reconciles (mirrors the
+// D-01 currentRenderedHash exclusion).
+func infoHash(infoMap map[string]any) string {
+	m := make(map[string]any, len(infoMap))
+	for k, v := range infoMap {
+		if k == "id" {
+			continue
+		}
+		m[k] = v
+	}
+	b, _ := canonicalJSON(m)
+	sum := sha256.Sum256(b)
+	return fmt.Sprintf("%x", sum)
 }
 
 func canonicalMarshal(v any) ([]byte, error) {
