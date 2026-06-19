@@ -240,15 +240,16 @@ func main() {
 	}
 
 	if err := (&controller.ModelReconciler{
-		Client:            mgr.GetClient(),
-		Scheme:            mgr.GetScheme(),
-		Cache:             connCache, // typed as connection.ConnectionCache per D-12
-		Recorder:          mgr.GetEventRecorderFor("model-controller"),
-		Namespace:         watchNS,
-		Log:               ctrl.Log.WithName("controller").WithName("Model"),
-		BootEvents:        bootSweep.ModelEvents,
-		ConnectionRebuilt: connCache.Subscribe(),
-		RecreateLimit:     controller.ResolveRecreateLimitPerMin(os.Getenv(controller.EnvRecreateLimitPerMin)),
+		Client:             mgr.GetClient(),
+		Scheme:             mgr.GetScheme(),
+		Cache:              connCache, // typed as connection.ConnectionCache per D-12
+		Recorder:           mgr.GetEventRecorderFor("model-controller"),
+		Namespace:          watchNS,
+		Log:                ctrl.Log.WithName("controller").WithName("Model"),
+		BootEvents:         bootSweep.ModelEvents,
+		ConnectionRebuilt:  connCache.Subscribe(),
+		RecreateLimit:      controller.ResolveRecreateLimitPerMin(os.Getenv(controller.EnvRecreateLimitPerMin)),
+		DefaultAccessGroup: controller.ResolveDefaultAccessGroup(os.Getenv(controller.EnvDefaultAccessGroup)),
 	}).SetupWithManager(mgr, safetyRelistCh); err != nil {
 		setupLog.Error(err, "unable to set up Model reconciler")
 		os.Exit(1)

@@ -140,11 +140,26 @@ hash is compared against `status.lastRendered.hash`:
   `modelID`, increment
   `drift_corrected_total{domain=model,action=create_missing}`.
 
-`spec.params` or `spec.info` shrinkage (a key removed from either bag)
-triggers delete-and-recreate — `POST /model/update` is wholesale-replace
-on LiteLLM, but the shrinkage path was retained from earlier
-defect-mitigation work and `modelID` is re-pinned in the same
-reconcile.
+`spec.params` shrinkage (a key removed) triggers delete-and-recreate;
+`modelID` is re-pinned in the same reconcile.
+
+ANY `spec.info` (`model_info`) change — value edit, key addition, OR key
+removal — also triggers delete-and-recreate, NOT a bare `POST /model/update`.
+LiteLLM's `POST /model/update` rewrites `litellm_params` + `updated_by` only
+and never persists the `model_info` blob; only `POST /model/new` does. The
+operator tracks `status.lastRendered.infoHash` (SHA-256 of the rendered
+`model_info`, excluding the `id` overlay) to detect these changes. An empty
+stored `infoHash` (pre-upgrade status) is backfilled silently — a model whose
+blob is already stale in LiteLLM needs a one-time manual recreate (delete the
+LiteLLM entry; the operator recreates it fresh via `POST /model/new`).
+
+## Default access group
+
+If `spec.info.access_groups` is absent or empty, the operator injects the
+`DEFAULT_ACCESS_GROUP` value (default `default`; set the env var to `""` to
+disable) so every model belongs to at least one LiteLLM access group. This
+covers standalone models and Discovery-generated children alike. An explicit
+non-empty `access_groups` is never overridden.
 
 ## `spec.info.id` is operator-controlled
 
@@ -156,7 +171,7 @@ overlay (the pinned `modelID`) and emits a Warning Event
 
 ```bash
 kubectl get mdl claude-sonnet-4-5 -o jsonpath='{.status.lastRendered}{"\n"}'
-# {"at":"...","hash":"abc...","infoKeys":["description"],"modelID":"<uuid>","paramsKeys":["api_base","api_key","model"]}
+# {"at":"...","hash":"abc...","infoHash":"def...","infoKeys":["access_groups","description"],"modelID":"<uuid>","paramsKeys":["api_base","api_key","model"]}
 
 kubectl get mdl claude-sonnet-4-5 -o jsonpath='{.status.conditions[?(@.type=="Ready")]}{"\n"}'
 # {"type":"Ready","status":"True","reason":"Synced"}

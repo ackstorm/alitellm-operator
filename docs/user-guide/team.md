@@ -27,8 +27,11 @@ management system; see [Out of Scope](../index.md) in the home page.
 After `kubectl apply`, expect:
 
 - `status.conditions[type=Ready].status=True` / `reason=Synced`.
-- `status.lastRendered.teamID` pinned with the LiteLLM-assigned UUID
-  (used directly by the finalizer DELETE path — no re-resolve by alias).
+- `status.lastRendered.teamID` pinned with the team's `team_id`. For teams
+  the operator creates new, this equals `metadata.name` (see
+  [team_id assignment](#team_id-assignment)); teams that already existed
+  under a server-assigned UUID keep that UUID. Used directly by the
+  finalizer DELETE path — no re-resolve by alias.
 - `status.lastRendered.hash` = SHA-256 of the rendered merged body.
 
 ## Minimal example
@@ -91,15 +94,54 @@ null`, `rpm_limit: null`, `tpm_limit: null`). Per spec §6.7, LiteLLM
 treats `null` as "no limit set" via wholesale-replace on
 `POST /team/update`.
 
+## team_id assignment
+
+When the operator **creates a new** LiteLLM team, it sets
+`team_id == metadata.name` (human-readable, structurally collision-free)
+instead of letting LiteLLM mint a random UUID. The chosen `team_id` is
+persisted in `status.lastRendered.teamID` and surfaces verbatim in the
+LiteLLM UI / API.
+
+The CR's `metadata.name` already projects to `team_alias`, so after an
+operator restart (which loses CR status) the team is re-adopted by alias
+lookup (`GET /v2/team/list?team_alias=`) — it reaches the **UPDATE** arm
+and is never recreated.
+
+This change is **CREATE-only**:
+
+- **New teams** (no existing team under the alias) → `team_id =
+  metadata.name`.
+- **Existing teams** (already created, found by alias — including the
+  pre-change teams that hold a server-assigned UUID) → take the UPDATE
+  arm and **keep their original UUID**. The operator never rewrites an
+  existing team's identity.
+
+Caveats:
+
+- **No automatic migration.** Existing UUID teams are not migrated to a
+  name-id. Migrating one manually means delete + recreate, which orphans
+  the team's virtual keys (they foreign-key on `team_id`). Out of scope.
+- **Cross-namespace name collision is unhandled by design.** `team_id`
+  is `metadata.name` verbatim, with no namespace prefix (single-namespace
+  deployment assumed). Two `LiteLLMTeam` CRs sharing a `metadata.name`
+  across namespaces would collide on the same `team_id`. v1alpha1 does
+  not guard against this.
+
 ## Reserved overlay keys — `ProjectionOverride` warning
 
-The operator stamps 7 structural keys onto the request body and ALWAYS
-wins over `spec.params`:
+The operator stamps these structural keys onto the request body and
+ALWAYS wins over `spec.params`:
 
 ```
 team_alias, max_budget, budget_duration, rpm_limit, tpm_limit,
 rpm_limit_type, tpm_limit_type
 ```
+
+`team_id` is ALSO operator-controlled per the
+[team_id assignment](#team_id-assignment) rules (CREATE arm → name,
+UPDATE arm → existing id); setting it in `spec.params` has no effect.
+Unlike the seven keys above, a `spec.params.team_id` is overwritten
+SILENTLY — it does NOT emit a `ProjectionOverride` Warning Event.
 
 Setting any of these inside `spec.params` is silently overridden and
 emits a `reason=ProjectionOverride` Warning Event per colliding key.
@@ -148,7 +190,9 @@ spec:
 
 ```bash
 kubectl get team finance -o jsonpath='{.status.lastRendered}{"\n"}'
-# {"at":"2026-05-24T...","hash":"abc...","paramsKeys":["metadata"],"teamID":"t-uuid"}
+# {"at":"2026-05-24T...","hash":"abc...","paramsKeys":["metadata"],"teamID":"finance"}
+# (teamID == metadata.name for operator-created teams; a UUID for teams
+#  that already existed under a server-assigned id — see team_id assignment)
 
 kubectl get team finance -o jsonpath='{.status.conditions[?(@.type=="Ready")]}{"\n"}'
 # {"type":"Ready","status":"True","reason":"Synced","message":""}

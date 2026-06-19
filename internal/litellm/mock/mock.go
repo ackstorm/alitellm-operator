@@ -570,6 +570,21 @@ func (m *MockServer) AddHandManagedTeam(alias string) string {
 	return teamID
 }
 
+// AddHandManagedTeamWithID inserts a Team into the mock's internal store
+// with a caller-chosen team_id (instead of a minted UUID). Used by the
+// adopt envtest to seed a name-id team — team_id == team_alias == name —
+// that simulates a team the operator previously created with the
+// name-as-id scheme and must re-adopt by alias after a status loss.
+func (m *MockServer) AddHandManagedTeamWithID(alias, teamID string) {
+	m.mu.Lock()
+	m.teams[teamID] = &teamEntry{
+		TeamID:    teamID,
+		TeamAlias: alias,
+	}
+	m.teamByAlias[alias] = teamID
+	m.mu.Unlock()
+}
+
 // DeleteTeamOutOfBand removes a Team from the mock's internal store
 // WITHOUT going through the HTTP handler. Simulates an out-of-band
 // DELETE in LiteLLM (e.g. a hand admin removes the entry directly).
@@ -1132,8 +1147,16 @@ func (m *MockServer) statefulBody(r *http.Request) []byte {
 			}
 		}
 		budgetDuration, _ := reqBody["budget_duration"].(string)
-		seq := m.teamSeq.Add(1)
-		teamID := fmt.Sprintf("mock-team-id-%d", seq)
+		// Honor a caller-supplied team_id (mirrors LiteLLM 1.83.10, which
+		// accepts a client-chosen team_id on POST /team/new — verified in
+		// prod: team "platform" has team_id "team-platform"). Fall back to
+		// a minted UUID only when the body omits team_id, preserving the
+		// legacy server-assigned-id behavior for older tests.
+		teamID, _ := reqBody["team_id"].(string)
+		if teamID == "" {
+			seq := m.teamSeq.Add(1)
+			teamID = fmt.Sprintf("mock-team-id-%d", seq)
+		}
 
 		m.mu.Lock()
 		m.teams[teamID] = &teamEntry{

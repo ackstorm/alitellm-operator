@@ -19,8 +19,15 @@
 # no Kubernetes CR created by the operator (AC-T2).
 #
 # After apply, expect:
-#   (a) status.lastRendered.teamID populated with the LiteLLM-assigned
-#       UUID (Phase 5 D-02 / DEF-§6.4/§6.6-ID-PERSIST pin).
+#   (a) status.lastRendered.teamID populated with the team_id. On a fresh
+#       deploy the operator CREATES this team, so team_id == metadata.name
+#       ("finance") — human-readable, collision-free (CREATE-arm name-id).
+#       A team that ALREADY existed under a server-assigned UUID reaches
+#       the UPDATE arm via alias lookup and keeps that UUID (no migration,
+#       CREATE-only change; Phase 5 D-02 / DEF-§6.4/§6.6-ID-PERSIST pin).
+#       NOTE: team_id == metadata.name verbatim — no namespace prefix; two
+#       Team CRs sharing a name across namespaces would collide (single-
+#       namespace assumption, out of scope for v1alpha1).
 #   (b) team_alias=finance projected to LiteLLM (bare metadata.name).
 #   (c) max_budget=500.0 + budget_duration="30d" at the top level of
 #       POST /team/new body (spec.budget.limit + period projection).

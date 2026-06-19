@@ -103,6 +103,14 @@ spec:
     rpm: 25
     timeout: 300
     stream_timeout: 60
+  # model_info applied to EVERY generated child Model (children are
+  # LiteLLMModels). access_groups here assigns all discovered Anthropic
+  # models to the "anthropic" access group. If this block (or access_groups)
+  # is OMITTED, the operator injects DEFAULT_ACCESS_GROUP ("default") per
+  # child so each model still belongs to at least one group.
+  info:
+    access_groups:
+      - anthropic
   filters:
     include: []
     # Canonical-only: drop dated snapshots, keep rolling aliases.

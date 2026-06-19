@@ -38,7 +38,15 @@ import (
 const (
 	pathModelNew    = "/model/new"
 	pathModelDelete = "/model/delete"
+	pathModelUpdate = "/model/update"
 )
+
+// methodPOST is the HTTP method asserted on LiteLLM mutation routes in this file.
+const methodPOST = "POST"
+
+// accessGroupDefault is the access-group VALUE injected when none is declared.
+// Distinct from WatchNamespace (also "default") which names the watched namespace.
+const accessGroupDefault = "default"
 
 // modelSampleCR returns a basic Model CR with simple spec.params and no secrets.
 // The model name must be unique across tests — callers pass a unique name.
@@ -97,6 +105,69 @@ func pollModelCondition(t *testing.T, ctx context.Context, name, wantReason stri
 		time.Sleep(50 * time.Millisecond)
 	}
 	return &m
+}
+
+// TestInfoHash_ChangesWithAccessGroups — pure-logic coverage for the
+// info-only canonical hash that drives recreate-on-model_info-change.
+//
+// LiteLLM POST /model/update never persists the model_info blob, so the
+// operator must detect ANY model_info change (e.g. adding access_groups) and
+// force a delete+recreate. infoHash is the SHA-256 over the canonical model_info
+// map, excluding the operator-managed `id` overlay (which oscillates between
+// create/update and must not perturb the hash).
+func TestInfoHash_ChangesWithAccessGroups(t *testing.T) {
+	h1 := infoHash(map[string]any{"description": "x"})
+	h2 := infoHash(map[string]any{"description": "x", "access_groups": []any{providerTypeAnthropic}})
+	if h1 == h2 {
+		t.Fatalf("infoHash must change when access_groups is added: %s == %s", h1, h2)
+	}
+	// id is excluded — adding it must NOT change the hash.
+	h3 := infoHash(map[string]any{"description": "x", "id": "uuid"})
+	if h1 != h3 {
+		t.Fatalf("infoHash must ignore id overlay: %s != %s", h1, h3)
+	}
+}
+
+// TestResolveDefaultAccessGroup — pure-logic coverage for the
+// DEFAULT_ACCESS_GROUP env resolver. Empty → "default"; explicit values pass
+// through unchanged.
+func TestResolveDefaultAccessGroup(t *testing.T) {
+	if got := ResolveDefaultAccessGroup(""); got != accessGroupDefault {
+		t.Fatalf("empty → default, got %q", got)
+	}
+	if got := ResolveDefaultAccessGroup("base"); got != "base" {
+		t.Fatalf("explicit passthrough, got %q", got)
+	}
+}
+
+// TestEnsureAccessGroup — pure-logic coverage for default-access-group
+// injection into the rendered model_info. Absent or empty access_groups → the
+// configured default is injected; an existing non-empty list is left untouched.
+func TestEnsureAccessGroup(t *testing.T) {
+	// absent → injected
+	m := map[string]any{"description": "x"}
+	ensureDefaultAccessGroup(m, accessGroupDefault)
+	if ag, _ := m["access_groups"].([]any); len(ag) != 1 || ag[0] != accessGroupDefault {
+		t.Fatalf("expected injected default, got %v", m["access_groups"])
+	}
+	// present → untouched
+	m2 := map[string]any{"access_groups": []any{providerTypeAnthropic}}
+	ensureDefaultAccessGroup(m2, accessGroupDefault)
+	if ag, _ := m2["access_groups"].([]any); len(ag) != 1 || ag[0] != providerTypeAnthropic {
+		t.Fatalf("must not overwrite existing groups, got %v", m2["access_groups"])
+	}
+	// empty list → treated as absent → injected
+	m3 := map[string]any{"access_groups": []any{}}
+	ensureDefaultAccessGroup(m3, accessGroupDefault)
+	if ag, _ := m3["access_groups"].([]any); len(ag) != 1 || ag[0] != accessGroupDefault {
+		t.Fatalf("empty list should be filled with default, got %v", m3["access_groups"])
+	}
+	// present but wrong type (string) → preserved, NOT clobbered
+	m4 := map[string]any{"access_groups": providerTypeAnthropic}
+	ensureDefaultAccessGroup(m4, accessGroupDefault)
+	if m4["access_groups"] != providerTypeAnthropic {
+		t.Fatalf("wrong-typed access_groups must be preserved, got %v", m4["access_groups"])
+	}
 }
 
 // TestModel_FinalizerAddedOnFirstReconcile — Task 1 Test 1.
@@ -696,7 +767,7 @@ func TestModel_SpecParamsEdit_Update(t *testing.T) {
 	newCount := 0
 	for _, c := range calls {
 		switch {
-		case c.Method == "POST" && c.Path == "/model/update":
+		case c.Method == methodPOST && c.Path == pathModelUpdate:
 			updateCount++
 		case c.Method == http.MethodPost && c.Path == pathModelDelete:
 			deleteCount++
@@ -828,7 +899,7 @@ func TestModel_SpecParamsKeyRemoval_DeleteAndRecreate(t *testing.T) {
 			deleteCount++
 		case c.Method == http.MethodPost && c.Path == pathModelNew:
 			newCount++
-		case c.Method == "POST" && c.Path == "/model/update":
+		case c.Method == methodPOST && c.Path == pathModelUpdate:
 			updateCount++
 		}
 	}
@@ -855,6 +926,217 @@ func TestModel_SpecParamsKeyRemoval_DeleteAndRecreate(t *testing.T) {
 		if k == "temperature" {
 			t.Errorf("temperature still in paramsKeys after key removal; paramsKeys=%v", updated.Status.LastRendered.ParamsKeys)
 		}
+	}
+}
+
+// TestModelInfoChange_TriggersRecreate — model_info-persistence fix.
+//
+// LiteLLM POST /model/update rewrites litellm_params + updated_by ONLY; it
+// never persists the model_info blob (only POST /model/new does). So ADDING a
+// model_info value/key (here: access_groups) on an already-created model — a
+// non-shrinking change that previously took the plain /model/update path —
+// must now force a delete+recreate so the blob lands in LiteLLM's DB.
+//
+// The model is created WITH a non-empty spec.info first, so status.InfoHash is
+// populated (non-empty). The backfill guard only treats an EMPTY stored
+// InfoHash as "unchanged" (pre-upgrade migration); a populated-then-changed
+// InfoHash must trip the recreate. The reconcile must:
+//   - issue exactly 1 POST /model/delete + 1 POST /model/new (no /model/update)
+//   - re-pin lastRendered.modelID to a NEW UUID
+//   - carry access_groups on the recreate's model_info body
+func TestModelInfoChange_TriggersRecreate(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetModels()
+	ensureNoModel(t, ctx, "infochange-test")
+	resetConnCacheSnapshot()
+
+	// Ensure LiteLLMConnection/default is ready.
+	ensureNoConnectionDefault(t, ctx)
+	connCR := connDefaultCR()
+	if err := k8sClient.Create(ctx, connCR); err != nil {
+		t.Fatalf("create LiteLLMConnection: %v", err)
+	}
+	t.Cleanup(func() {
+		mockServer.SetMode(mock.ModeHappy)
+		_ = k8sClient.Delete(context.Background(), connCR, &client.DeleteOptions{})
+		ensureNoModel(t, context.Background(), "infochange-test")
+		time.Sleep(50 * time.Millisecond)
+	})
+	connSnap := pollSnapshotReason(30*time.Second, reasonSynced)
+	if connSnap.Reason != reasonSynced {
+		t.Fatalf("LiteLLMConnection not Synced within 30s")
+	}
+
+	// Create with a non-empty spec.info (description only — no access_groups).
+	cr := modelSampleCR("infochange-test")
+	cr.Spec.Info = runtime.RawExtension{Raw: []byte(`{"description":"x"}`)}
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create Model with spec.info: %v", err)
+	}
+
+	// Wait for first reconcile (Ready=Synced, InfoHash populated).
+	m := pollModelCondition(t, ctx, "infochange-test", reasonSynced, 30*time.Second)
+	if m.Status.LastRendered.ModelID == "" {
+		t.Fatalf("Model not Synced within 30s; conditions=%+v", m.Status.Conditions)
+	}
+	if m.Status.LastRendered.InfoHash == "" {
+		t.Fatalf("InfoHash empty after first reconcile; want populated (spec.info was non-empty)")
+	}
+	originalModelID := m.Status.LastRendered.ModelID
+	originalInfoHash := m.Status.LastRendered.InfoHash
+
+	// Reset recorded calls before the model_info-change reconcile.
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+
+	// Add access_groups to spec.info — a non-shrinking model_info change.
+	if err := updateWithRetry(ctx,
+		client.ObjectKeyFromObject(m),
+		m,
+		func(model *litellmv1alpha1.LiteLLMModel) error {
+			model.Spec.Info = runtime.RawExtension{
+				Raw: []byte(`{"description":"x","access_groups":["anthropic"]}`),
+			}
+			return nil
+		},
+	); err != nil {
+		t.Fatalf("update Model to add access_groups: %v", err)
+	}
+
+	// Wait for the reconcile to detect the model_info change and recreate.
+	deadline := time.Now().Add(30 * time.Second)
+	var updated *litellmv1alpha1.LiteLLMModel
+	for time.Now().Before(deadline) {
+		updated = pollModelCondition(t, ctx, "infochange-test", reasonSynced, 5*time.Second)
+		if updated.Status.LastRendered.InfoHash != originalInfoHash &&
+			updated.Status.LastRendered.ModelID != originalModelID &&
+			updated.Status.LastRendered.ModelID != "" {
+			break
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+
+	// Assert mockServer call sequence: 1 DELETE + 1 NEW, no UPDATE.
+	calls := mockServer.Recorded()
+	deleteCount := 0
+	newCount := 0
+	updateCount := 0
+	for _, c := range calls {
+		switch {
+		case c.Method == http.MethodPost && c.Path == pathModelDelete:
+			deleteCount++
+		case c.Method == http.MethodPost && c.Path == pathModelNew:
+			newCount++
+		case c.Method == methodPOST && c.Path == pathModelUpdate:
+			updateCount++
+		}
+	}
+	if deleteCount != 1 {
+		t.Errorf("model_info change: expected 1 POST /model/delete, got %d (calls: %+v)", deleteCount, calls)
+	}
+	if newCount != 1 {
+		t.Errorf("model_info change: expected 1 POST /model/new, got %d (calls: %+v)", newCount, calls)
+	}
+	if updateCount != 0 {
+		t.Errorf("model_info change: expected 0 POST /model/update, got %d (calls: %+v)", updateCount, calls)
+	}
+
+	// Assert new ModelID is different from original (fresh UUID from recreate).
+	if updated.Status.LastRendered.ModelID == originalModelID {
+		t.Errorf("ModelID unchanged after model_info change; want new UUID; got %q", updated.Status.LastRendered.ModelID)
+	}
+	if updated.Status.LastRendered.ModelID == "" {
+		t.Errorf("ModelID is empty after model_info recreate")
+	}
+
+	// Assert the recreate body's model_info carries access_groups.
+	mi := mockServer.LastModelInfoBody("infochange-test")
+	if mi == nil {
+		t.Fatal("no model_info body captured for infochange-test")
+	}
+	ag, _ := mi["access_groups"].([]any)
+	if len(ag) != 1 || ag[0] != providerTypeAnthropic {
+		t.Errorf("recreate model_info.access_groups: want [anthropic], got %v (full: %+v)", mi["access_groups"], mi)
+	}
+}
+
+// TestDefaultAccessGroup_InjectedOnCreate — default-access-group injection.
+//
+// The suite reconciler runs with DefaultAccessGroup="default". An ungrouped
+// model (spec.info with no access_groups) must land in the default group on
+// POST /model/new; a model that already declares access_groups must keep its
+// own list with no "default" added (no override).
+func TestDefaultAccessGroup_InjectedOnCreate(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetModels()
+	ensureNoModel(t, ctx, "ag-ungrouped")
+	ensureNoModel(t, ctx, "ag-grouped")
+	resetConnCacheSnapshot()
+
+	// Ensure LiteLLMConnection/default is ready.
+	ensureNoConnectionDefault(t, ctx)
+	connCR := connDefaultCR()
+	if err := k8sClient.Create(ctx, connCR); err != nil {
+		t.Fatalf("create LiteLLMConnection: %v", err)
+	}
+	t.Cleanup(func() {
+		mockServer.SetMode(mock.ModeHappy)
+		_ = k8sClient.Delete(context.Background(), connCR, &client.DeleteOptions{})
+		ensureNoModel(t, context.Background(), "ag-ungrouped")
+		ensureNoModel(t, context.Background(), "ag-grouped")
+		time.Sleep(50 * time.Millisecond)
+	})
+	connSnap := pollSnapshotReason(30*time.Second, reasonSynced)
+	if connSnap.Reason != reasonSynced {
+		t.Fatalf("LiteLLMConnection not Synced within 30s")
+	}
+
+	// 1. Ungrouped model — spec.info with no access_groups.
+	ungrouped := modelSampleCR("ag-ungrouped")
+	ungrouped.Spec.Info = runtime.RawExtension{Raw: []byte(`{"description":"x"}`)}
+	if err := k8sClient.Create(ctx, ungrouped); err != nil {
+		t.Fatalf("create ungrouped Model: %v", err)
+	}
+	mu := pollModelCondition(t, ctx, "ag-ungrouped", reasonSynced, 30*time.Second)
+	if mu.Status.LastRendered.ModelID == "" {
+		t.Fatalf("ungrouped Model not Synced within 30s; conditions=%+v", mu.Status.Conditions)
+	}
+
+	// 2. Assert the POST /model/new body carries access_groups == ["default"].
+	miU := mockServer.LastModelInfoBody("ag-ungrouped")
+	if miU == nil {
+		t.Fatal("no model_info body captured for ag-ungrouped")
+	}
+	agU, _ := miU["access_groups"].([]any)
+	if len(agU) != 1 || agU[0] != accessGroupDefault {
+		t.Errorf("ungrouped model_info.access_groups: want [default], got %v (full: %+v)", miU["access_groups"], miU)
+	}
+
+	// 3. Grouped model — spec.info already declares access_groups:["anthropic"].
+	grouped := modelSampleCR("ag-grouped")
+	grouped.Spec.Info = runtime.RawExtension{Raw: []byte(`{"description":"y","access_groups":["anthropic"]}`)}
+	if err := k8sClient.Create(ctx, grouped); err != nil {
+		t.Fatalf("create grouped Model: %v", err)
+	}
+	mg := pollModelCondition(t, ctx, "ag-grouped", reasonSynced, 30*time.Second)
+	if mg.Status.LastRendered.ModelID == "" {
+		t.Fatalf("grouped Model not Synced within 30s; conditions=%+v", mg.Status.Conditions)
+	}
+
+	// 4. Assert its body keeps ["anthropic"] — no override, no "default" added.
+	miG := mockServer.LastModelInfoBody("ag-grouped")
+	if miG == nil {
+		t.Fatal("no model_info body captured for ag-grouped")
+	}
+	agG, _ := miG["access_groups"].([]any)
+	if len(agG) != 1 || agG[0] != providerTypeAnthropic {
+		t.Errorf("grouped model_info.access_groups: want [anthropic] (no override), got %v (full: %+v)", miG["access_groups"], miG)
 	}
 }
 

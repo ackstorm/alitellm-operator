@@ -46,6 +46,12 @@ spec:
   # model_info pass-through — forwarded verbatim to LiteLLM model_info.
   info:
     description: "Anthropic Sonnet 4.5 — dogfood model"
+    # access_groups assigns the model to one or more LiteLLM access groups
+    # (group-scoped virtual keys can then see it). If OMITTED, the operator
+    # injects the DEFAULT_ACCESS_GROUP value ("default") so the model still
+    # belongs to at least one group. An explicit list here is never overridden.
+    access_groups:
+      - anthropic
   # Secrets declares the substitution map for {{NAME}} placeholders in
   # spec.params. Each entry resolves one Secret key into a named
   # placeholder. Rotation propagates within 30s via the Secret-watch path.

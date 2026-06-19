@@ -595,9 +595,16 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 
 	var newTeamID string
 	if len(entries) == 0 {
-		// CREATE arm — operator does not pre-set team_id in the body
-		// (server-assigned). Build body without team_id.
-		delete(body, "team_id")
+		// CREATE arm — pin team_id to the CR name so new teams get a
+		// human-readable, collision-free ID. Existing teams reach the
+		// UPDATE arm via ListTeamsByAlias (alias == team.Name) and keep
+		// their original server-assigned UUID — this change is CREATE-only.
+		// LiteLLM accepts a caller-supplied team_id on POST /team/new
+		// (verified in prod: team "platform" has team_id "team-platform").
+		// Single-namespace assumption: two LiteLLMTeam CRs sharing a
+		// metadata.name across namespaces would collide on team_id —
+		// out of scope (see CLAUDE.md / docs).
+		body["team_id"] = team.Name
 		// FIX4.txt H-1 inventory case (b): /team/new has no native
 		// audit field at the top level. Empirically (e2e AC-T4 against
 		// LiteLLM 1.83.10), injecting `metadata.created_by/updated_by`
@@ -625,11 +632,15 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 				return ctrl.Result{RequeueAfter: recreateThrottleBackoff}, nil
 			}
 		}
-		result, cerr := snap.Client.CreateTeamRaw(ctx, body)
-		if cerr != nil {
+		if _, cerr := snap.Client.CreateTeamRaw(ctx, body); cerr != nil {
 			return r.classifyMutationError(ctx, &team, logger, cerr, "POST /team/new")
 		}
-		newTeamID = result.TeamID
+		// Pin the persisted teamID to the name we supplied, not the create
+		// response. LiteLLM echoes the caller-supplied team_id, but pinning
+		// from team.Name keeps status.lastRendered.teamID correct even if a
+		// future LiteLLM response omits or rewrites the field — and it must
+		// match what the post-restart alias lookup will re-adopt.
+		newTeamID = team.Name
 		// Two-gate first-reconcile suppression:
 		// drift_corrected_total{action=create_missing} only increments
 		// when !firstReconcile AND ObservedGeneration > 0 (the latter

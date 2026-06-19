@@ -136,6 +136,22 @@ func IndexModelSecretRefs(o client.Object) []string {
 // - NO PATCH /model/{id}/update (spec §7.2 forbids; POST /model/update only).
 // - NO global LIST-and-prune (OWN-01 — one name per reconcile).
 // - NO RequeueAfter (REL-02 — Model is event-driven only).
+// EnvDefaultAccessGroup names the access group injected into a model's
+// model_info.access_groups when it declares none. Empty → "default".
+const EnvDefaultAccessGroup = "DEFAULT_ACCESS_GROUP"
+
+// defaultAccessGroupFallback is the access group injected when DEFAULT_ACCESS_GROUP is unset.
+const defaultAccessGroupFallback = "default"
+
+// ResolveDefaultAccessGroup returns the configured default access group name,
+// falling back to "default" when unset/empty.
+func ResolveDefaultAccessGroup(v string) string {
+	if v == "" {
+		return defaultAccessGroupFallback
+	}
+	return v
+}
+
 type ModelReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
@@ -161,6 +177,12 @@ type ModelReconciler struct {
 	// RecreateLimit is the per-CR recreates-per-minute ceiling. <= 0 →
 	// DefaultRecreateLimitPerMin. Set from EnvRecreateLimitPerMin in cmd/main.go.
 	RecreateLimit int
+	// DefaultAccessGroup is injected into a model's model_info.access_groups
+	// when it declares none (so every LiteLLM model belongs to at least one
+	// access group). Empty disables injection. Set from EnvDefaultAccessGroup
+	// in cmd/main.go (resolves "" → "default" there); left empty in tests that
+	// do not exercise injection.
+	DefaultAccessGroup string
 }
 
 // Reconcile implements the LiteLLMModel state machine.
@@ -474,6 +496,25 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 	delete(infoMap, "id") // always remove before hashing and body construction
 
+	// Inject the default access group when the model declares none, BEFORE the
+	// hashes below — so the injected group is part of currentInfoHash /
+	// currentRenderedHash and is persisted on the create/update body (and thus
+	// survives in the steady-state hash compare). No-op when DefaultAccessGroup
+	// is empty or the model already declares a non-empty access_groups list.
+	// Running before the hashes means the injected group is folded into the
+	// backfilled InfoHash and does NOT compound with the empty-InfoHash
+	// migration guard (the guard backfills a hash of the post-injection blob).
+	ensureDefaultAccessGroup(infoMap, r.DefaultAccessGroup)
+
+	// currentInfoHash hashes the model_info blob alone (excluding the `id`
+	// overlay). currentRenderedHash below covers BOTH litellm_params and
+	// model_info, so a params-only edit perturbs it without changing
+	// currentInfoHash — letting the UPDATE path distinguish a recreate-forcing
+	// model_info change (LiteLLM /model/update never persists the blob) from a
+	// plain /model/update params change. Computed here so the same infoMap that
+	// feeds the create/update body is the one that is hashed and persisted.
+	currentInfoHash := infoHash(infoMap)
+
 	// Build merged canonical body.
 	merged := map[string]any{
 		"litellm_params": paramsMap,
@@ -712,11 +753,24 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		removedInfoKeys := setDiff(model.Status.LastRendered.InfoKeys, currentInfoKeys)
 		shrinkage := len(removedParamsKeys) > 0 || len(removedInfoKeys) > 0
 
-		if shrinkage {
-			// D-02: delete-and-recreate on key shrinkage (Probe 9 ✗ + Probe 9b ✗).
+		// LiteLLM /model/update never rewrites the model_info blob (only
+		// /model/new persists it). So ANY model_info change — not just key
+		// shrinkage, but value edits and key ADDITIONS too — must delete+recreate,
+		// otherwise the changed blob is silently dropped on the LiteLLM side.
+		// Backfill guard: an empty stored InfoHash is a pre-upgrade status — treat
+		// as unchanged (it is backfilled on the status write below) to avoid a
+		// mass recreate of every existing model on operator upgrade.
+		infoChanged := model.Status.LastRendered.InfoHash != "" &&
+			model.Status.LastRendered.InfoHash != currentInfoHash
+
+		if shrinkage || infoChanged {
+			// Delete-and-recreate: D-02 key shrinkage (Probe 9 ✗ + Probe 9b ✗)
+			// OR a model_info blob change (/model/update would drop the blob).
 			oldID := model.Status.LastRendered.ModelID
-			logger.V(1).Info("D-02 shrinkage detected; delete-and-recreate",
+			logger.V(1).Info("delete-and-recreate triggered",
 				"oldModelID", oldID,
+				"shrinkage", shrinkage,
+				"infoChanged", infoChanged,
 				"removedParamsKeys", removedParamsKeys,
 				"removedInfoKeys", removedInfoKeys)
 
@@ -793,6 +847,7 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		Hash:       currentRenderedHash,
 		ParamsKeys: sortedKeys(paramsMap),
 		InfoKeys:   sortedKeys(infoMap),
+		InfoHash:   currentInfoHash,
 		ModelID:    newModelID,
 		At:         &now,
 	}
@@ -953,6 +1008,54 @@ func (r *ModelReconciler) SetupWithManager(mgr ctrl.Manager, safetyRelistCh ...c
 // sufficient for the AC-R1 steady-state hash (D-01 Claude's Discretion).
 func canonicalJSON(v any) ([]byte, error) {
 	return canonicalMarshal(v)
+}
+
+// infoHash returns the SHA-256 (hex) of the canonical-JSON model_info map,
+// excluding the operator-managed `id` overlay. Used to detect model_info
+// changes that require a delete+recreate: LiteLLM POST /model/update rewrites
+// litellm_params + updated_by only and NEVER persists the model_info blob, so
+// the operator must recreate (POST /model/new) on any model_info change. The
+// `id` overlay oscillates (null on create, resolved UUID on update) and is
+// excluded so the hash is stable across create/update reconciles (mirrors the
+// D-01 currentRenderedHash exclusion).
+func infoHash(infoMap map[string]any) string {
+	m := make(map[string]any, len(infoMap))
+	for k, v := range infoMap {
+		if k == "id" {
+			continue
+		}
+		m[k] = v
+	}
+	// infoMap originates from json.Unmarshal, so it holds only JSON-marshalable
+	// types; canonicalJSON cannot fail here (the sibling currentRenderedHash
+	// path propagates the error only because it shares the helper generically).
+	b, _ := canonicalJSON(m)
+	sum := sha256.Sum256(b)
+	return fmt.Sprintf("%x", sum)
+}
+
+// ensureDefaultAccessGroup injects access_groups:[group] into the rendered
+// model_info when the model declares none (absent OR empty list). Existing
+// non-empty groups are left untouched, and a present-but-wrong-typed value
+// (e.g. a string/object) is preserved as the user's data rather than
+// overridden. No-op when group == "". This guarantees every reconciled model
+// belongs to at least one access group, and runs at a single point that covers
+// both standalone LiteLLMModel CRs and Discovery-generated children (children
+// are LiteLLMModels reconciled here too).
+func ensureDefaultAccessGroup(infoMap map[string]any, group string) {
+	if group == "" {
+		return
+	}
+	// Inject ONLY when access_groups is absent or an explicitly empty list.
+	// A present-but-wrong-typed value (e.g. a string/object) is the user's
+	// data — leave it untouched rather than silently clobbering it; the
+	// downstream LiteLLM call will surface any real schema problem.
+	if v, present := infoMap["access_groups"]; present {
+		if ag, ok := v.([]any); !ok || len(ag) > 0 {
+			return
+		}
+	}
+	infoMap["access_groups"] = []any{group}
 }
 
 func canonicalMarshal(v any) ([]byte, error) {
