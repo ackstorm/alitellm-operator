@@ -721,11 +721,24 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		removedInfoKeys := setDiff(model.Status.LastRendered.InfoKeys, currentInfoKeys)
 		shrinkage := len(removedParamsKeys) > 0 || len(removedInfoKeys) > 0
 
-		if shrinkage {
-			// D-02: delete-and-recreate on key shrinkage (Probe 9 ✗ + Probe 9b ✗).
+		// LiteLLM /model/update never rewrites the model_info blob (only
+		// /model/new persists it). So ANY model_info change — not just key
+		// shrinkage, but value edits and key ADDITIONS too — must delete+recreate,
+		// otherwise the changed blob is silently dropped on the LiteLLM side.
+		// Backfill guard: an empty stored InfoHash is a pre-upgrade status — treat
+		// as unchanged (it is backfilled on the status write below) to avoid a
+		// mass recreate of every existing model on operator upgrade.
+		infoChanged := model.Status.LastRendered.InfoHash != "" &&
+			model.Status.LastRendered.InfoHash != currentInfoHash
+
+		if shrinkage || infoChanged {
+			// Delete-and-recreate: D-02 key shrinkage (Probe 9 ✗ + Probe 9b ✗)
+			// OR a model_info blob change (/model/update would drop the blob).
 			oldID := model.Status.LastRendered.ModelID
-			logger.V(1).Info("D-02 shrinkage detected; delete-and-recreate",
+			logger.V(1).Info("delete-and-recreate triggered",
 				"oldModelID", oldID,
+				"shrinkage", shrinkage,
+				"infoChanged", infoChanged,
 				"removedParamsKeys", removedParamsKeys,
 				"removedInfoKeys", removedInfoKeys)
 

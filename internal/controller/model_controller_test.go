@@ -879,6 +879,140 @@ func TestModel_SpecParamsKeyRemoval_DeleteAndRecreate(t *testing.T) {
 	}
 }
 
+// TestModelInfoChange_TriggersRecreate — model_info-persistence fix.
+//
+// LiteLLM POST /model/update rewrites litellm_params + updated_by ONLY; it
+// never persists the model_info blob (only POST /model/new does). So ADDING a
+// model_info value/key (here: access_groups) on an already-created model — a
+// non-shrinking change that previously took the plain /model/update path —
+// must now force a delete+recreate so the blob lands in LiteLLM's DB.
+//
+// The model is created WITH a non-empty spec.info first, so status.InfoHash is
+// populated (non-empty). The backfill guard only treats an EMPTY stored
+// InfoHash as "unchanged" (pre-upgrade migration); a populated-then-changed
+// InfoHash must trip the recreate. The reconcile must:
+//   - issue exactly 1 POST /model/delete + 1 POST /model/new (no /model/update)
+//   - re-pin lastRendered.modelID to a NEW UUID
+//   - carry access_groups on the recreate's model_info body
+func TestModelInfoChange_TriggersRecreate(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetModels()
+	ensureNoModel(t, ctx, "infochange-test")
+	resetConnCacheSnapshot()
+
+	// Ensure LiteLLMConnection/default is ready.
+	ensureNoConnectionDefault(t, ctx)
+	connCR := connDefaultCR()
+	if err := k8sClient.Create(ctx, connCR); err != nil {
+		t.Fatalf("create LiteLLMConnection: %v", err)
+	}
+	t.Cleanup(func() {
+		mockServer.SetMode(mock.ModeHappy)
+		_ = k8sClient.Delete(context.Background(), connCR, &client.DeleteOptions{})
+		ensureNoModel(t, context.Background(), "infochange-test")
+		time.Sleep(50 * time.Millisecond)
+	})
+	connSnap := pollSnapshotReason(30*time.Second, reasonSynced)
+	if connSnap.Reason != reasonSynced {
+		t.Fatalf("LiteLLMConnection not Synced within 30s")
+	}
+
+	// Create with a non-empty spec.info (description only — no access_groups).
+	cr := modelSampleCR("infochange-test")
+	cr.Spec.Info = runtime.RawExtension{Raw: []byte(`{"description":"x"}`)}
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create Model with spec.info: %v", err)
+	}
+
+	// Wait for first reconcile (Ready=Synced, InfoHash populated).
+	m := pollModelCondition(t, ctx, "infochange-test", reasonSynced, 30*time.Second)
+	if m.Status.LastRendered.ModelID == "" {
+		t.Fatalf("Model not Synced within 30s; conditions=%+v", m.Status.Conditions)
+	}
+	if m.Status.LastRendered.InfoHash == "" {
+		t.Fatalf("InfoHash empty after first reconcile; want populated (spec.info was non-empty)")
+	}
+	originalModelID := m.Status.LastRendered.ModelID
+	originalInfoHash := m.Status.LastRendered.InfoHash
+
+	// Reset recorded calls before the model_info-change reconcile.
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+
+	// Add access_groups to spec.info — a non-shrinking model_info change.
+	if err := updateWithRetry(ctx,
+		client.ObjectKeyFromObject(m),
+		m,
+		func(model *litellmv1alpha1.LiteLLMModel) error {
+			model.Spec.Info = runtime.RawExtension{
+				Raw: []byte(`{"description":"x","access_groups":["anthropic"]}`),
+			}
+			return nil
+		},
+	); err != nil {
+		t.Fatalf("update Model to add access_groups: %v", err)
+	}
+
+	// Wait for the reconcile to detect the model_info change and recreate.
+	deadline := time.Now().Add(30 * time.Second)
+	var updated *litellmv1alpha1.LiteLLMModel
+	for time.Now().Before(deadline) {
+		updated = pollModelCondition(t, ctx, "infochange-test", reasonSynced, 5*time.Second)
+		if updated.Status.LastRendered.InfoHash != originalInfoHash &&
+			updated.Status.LastRendered.ModelID != originalModelID &&
+			updated.Status.LastRendered.ModelID != "" {
+			break
+		}
+		time.Sleep(300 * time.Millisecond)
+	}
+
+	// Assert mockServer call sequence: 1 DELETE + 1 NEW, no UPDATE.
+	calls := mockServer.Recorded()
+	deleteCount := 0
+	newCount := 0
+	updateCount := 0
+	for _, c := range calls {
+		switch {
+		case c.Method == http.MethodPost && c.Path == pathModelDelete:
+			deleteCount++
+		case c.Method == http.MethodPost && c.Path == pathModelNew:
+			newCount++
+		case c.Method == "POST" && c.Path == "/model/update":
+			updateCount++
+		}
+	}
+	if deleteCount != 1 {
+		t.Errorf("model_info change: expected 1 POST /model/delete, got %d (calls: %+v)", deleteCount, calls)
+	}
+	if newCount != 1 {
+		t.Errorf("model_info change: expected 1 POST /model/new, got %d (calls: %+v)", newCount, calls)
+	}
+	if updateCount != 0 {
+		t.Errorf("model_info change: expected 0 POST /model/update, got %d (calls: %+v)", updateCount, calls)
+	}
+
+	// Assert new ModelID is different from original (fresh UUID from recreate).
+	if updated.Status.LastRendered.ModelID == originalModelID {
+		t.Errorf("ModelID unchanged after model_info change; want new UUID; got %q", updated.Status.LastRendered.ModelID)
+	}
+	if updated.Status.LastRendered.ModelID == "" {
+		t.Errorf("ModelID is empty after model_info recreate")
+	}
+
+	// Assert the recreate body's model_info carries access_groups.
+	mi := mockServer.LastModelInfoBody("infochange-test")
+	if mi == nil {
+		t.Fatal("no model_info body captured for infochange-test")
+	}
+	ag, _ := mi["access_groups"].([]any)
+	if len(ag) != 1 || ag[0] != "anthropic" {
+		t.Errorf("recreate model_info.access_groups: want [anthropic], got %v (full: %+v)", mi["access_groups"], mi)
+	}
+}
+
 // TestModel_OwnerReferenceFromDiscovery_ReconciledIdentically — Task 2 Test 8.
 //
 // A Model with metadata.ownerReferences[controller=true] pointing at a fake
