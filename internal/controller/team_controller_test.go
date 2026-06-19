@@ -348,6 +348,84 @@ func TestTeamUpdate_KeepsExistingUUID(t *testing.T) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
+// Test 1d: AdoptNameIDFoundByAlias — post-restart re-adopt, no duplicate
+// ──────────────────────────────────────────────────────────────────────────
+
+// TestTeamAdopt_NameIDFoundByAlias — after an operator restart that lost
+// the CR status, a team previously created with the name-as-id scheme
+// (team_id == team_alias == metadata.name) MUST be re-adopted via the
+// UPDATE arm (ListTeamsByAlias matches it), NEVER recreated. A duplicate
+// POST /team/new would 400 against LiteLLM's existing team_id. The CR is
+// reconciled with EMPTY status to simulate the post-restart bootstrap.
+func TestTeamAdopt_NameIDFoundByAlias(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetTeams()
+	teamReconciler.ResetImplicitDefaultCache() // Phase 6 cross-suite flake fix (07-CONTEXT.md §Phase-6-flake option α)
+	ensureNoTeam(t, ctx, "anthropic")
+	resetConnCacheSnapshot()
+
+	// Seed a name-id team: team_id == team_alias == "anthropic". This is
+	// exactly the state left in LiteLLM by a prior name-as-id create.
+	mockServer.AddHandManagedTeamWithID("anthropic", "anthropic")
+
+	cleanupConn := setupReadyConnectionTeam(t, ctx)
+	t.Cleanup(func() {
+		cleanupConn()
+		ensureNoTeam(t, context.Background(), "anthropic")
+	})
+
+	// Apply the CR with EMPTY status (fresh Create == post-restart bootstrap:
+	// the operator has no lastRendered.teamID to pin from).
+	cr := teamSampleCR("anthropic")
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create Team: %v", err)
+	}
+
+	// The adopt path is the UPDATE arm — its body pins team_id to the
+	// matched entry ("anthropic"). Wait for it.
+	deadline := time.Now().Add(30 * time.Second)
+	var sawUpdate bool
+	for time.Now().Before(deadline) {
+		body := mockServer.LastTeamBody("anthropic")
+		if body != nil {
+			if v, _ := body["team_id"].(string); v == "anthropic" {
+				sawUpdate = true
+				break
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !sawUpdate {
+		t.Fatalf("adopt UPDATE arm did not fire within 30s (no body with team_id=%q observed)", "anthropic")
+	}
+
+	tm := pollTeamCondition(t, ctx, "anthropic", reasonSynced, 30*time.Second)
+	if c := apimeta.FindStatusCondition(tm.Status.Conditions, conditionTypeReady); c == nil ||
+		c.Status != metav1.ConditionTrue || c.Reason != reasonSynced {
+		t.Fatalf("Ready condition not Synced; condition=%+v", c)
+	}
+
+	// Exactly ONE mutation (the adopt UPDATE) — NO duplicate POST /team/new.
+	if got := mockServer.MutationsByTeamAlias("anthropic"); got != 1 {
+		t.Errorf("MutationsByTeamAlias: want 1 (one POST /team/update, no /team/new), got %d", got)
+	}
+
+	// The mock still holds exactly ONE entry under this alias (no duplicate),
+	// keyed on the adopted name-id.
+	if id := mockServer.GetTeamID("anthropic"); id != "anthropic" {
+		t.Errorf("adopted entry team_id: want %q, got %q", "anthropic", id)
+	}
+
+	// Status was re-adopted onto the name-id (not a fresh UUID).
+	if tm.Status.LastRendered.TeamID != "anthropic" {
+		t.Errorf("status.lastRendered.teamID: want adopted name-id %q, got %q", "anthropic", tm.Status.LastRendered.TeamID)
+	}
+}
+
+// ──────────────────────────────────────────────────────────────────────────
 // Test 2: CreateOnFirstReconcile (with budget) — AC-T1 budget projection
 // ──────────────────────────────────────────────────────────────────────────
 

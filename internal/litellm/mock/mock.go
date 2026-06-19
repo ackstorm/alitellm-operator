@@ -570,6 +570,21 @@ func (m *MockServer) AddHandManagedTeam(alias string) string {
 	return teamID
 }
 
+// AddHandManagedTeamWithID inserts a Team into the mock's internal store
+// with a caller-chosen team_id (instead of a minted UUID). Used by the
+// adopt envtest to seed a name-id team — team_id == team_alias == name —
+// that simulates a team the operator previously created with the
+// name-as-id scheme and must re-adopt by alias after a status loss.
+func (m *MockServer) AddHandManagedTeamWithID(alias, teamID string) {
+	m.mu.Lock()
+	m.teams[teamID] = &teamEntry{
+		TeamID:    teamID,
+		TeamAlias: alias,
+	}
+	m.teamByAlias[alias] = teamID
+	m.mu.Unlock()
+}
+
 // DeleteTeamOutOfBand removes a Team from the mock's internal store
 // WITHOUT going through the HTTP handler. Simulates an out-of-band
 // DELETE in LiteLLM (e.g. a hand admin removes the entry directly).
