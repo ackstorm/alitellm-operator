@@ -134,12 +134,14 @@ ALWAYS wins over `spec.params`:
 
 ```
 team_alias, max_budget, budget_duration, rpm_limit, tpm_limit,
-rpm_limit_type, tpm_limit_type, team_id
+rpm_limit_type, tpm_limit_type
 ```
 
-`team_id` is operator-controlled per the
+`team_id` is ALSO operator-controlled per the
 [team_id assignment](#team_id-assignment) rules (CREATE arm → name,
 UPDATE arm → existing id); setting it in `spec.params` has no effect.
+Unlike the seven keys above, a `spec.params.team_id` is overwritten
+SILENTLY — it does NOT emit a `ProjectionOverride` Warning Event.
 
 Setting any of these inside `spec.params` is silently overridden and
 emits a `reason=ProjectionOverride` Warning Event per colliding key.
