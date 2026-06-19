@@ -3437,6 +3437,12 @@ operator — saves a GET /model/info per reconcile. Documented deviation.</p>
 <td></td>
 </tr>
 <tr>
+<td><code>infoHash</code> <em>string</em></td>
+<td>InfoHash is the SHA-256 (hex) of the canonical-JSON rendered<br />model_info blob (excluding the operator-managed <code>id</code> overlay). It<br />detects model_info value/key changes that REQUIRE a delete+recreate,<br />because LiteLLM POST /model/update never persists the model_info blob<br />(only POST /model/new does). Empty on a pre-upgrade status → backfilled<br />silently on the next reconcile (no recreate) to avoid a mass recreate<br />on operator upgrade.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
 <td><code>modelID</code> <em>string</em></td>
 <td>ModelID is the LiteLLM-assigned UUID (model_info.id) for this<br />Model entry. Persisted here so the reconciler can reference it directly<br />on subsequent reconciles without an extra GET /model/info call (D-04).<br />IMPORTANT (D-02 consequence): on every delete-and-recreate cycle, LiteLLM<br />assigns a fresh UUID. The reconciler MUST re-pin this field to the new<br />UUID inside the same reconcile that performed the delete+recreate, before<br />returning success, to avoid a stale-ID 404 on the next reconcile.<br />Diverges from spec §6.2: documented in spec/DEFECTS-1.82.6.md row 7 (D-04).</td>
 <td></td>

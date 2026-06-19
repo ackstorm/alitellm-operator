@@ -799,6 +799,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#team_id-assignment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        team_id assignment
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#reserved-overlay-keys-projectionoverride-warning" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1631,6 +1642,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#team_id-assignment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        team_id assignment
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#reserved-overlay-keys-projectionoverride-warning" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1765,8 +1787,11 @@ management system; see <a href="../../">Out of Scope</a> in the home page.</p>
 <p>After <code>kubectl apply</code>, expect:</p>
 <ul>
 <li><code>status.conditions[type=Ready].status=True</code> / <code>reason=Synced</code>.</li>
-<li><code>status.lastRendered.teamID</code> pinned with the LiteLLM-assigned UUID
-  (used directly by the finalizer DELETE path — no re-resolve by alias).</li>
+<li><code>status.lastRendered.teamID</code> pinned with the team's <code>team_id</code>. For teams
+  the operator creates new, this equals <code>metadata.name</code> (see
+  <a href="#team_id-assignment">team_id assignment</a>); teams that already existed
+  under a server-assigned UUID keep that UUID. Used directly by the
+  finalizer DELETE path — no re-resolve by alias.</li>
 <li><code>status.lastRendered.hash</code> = SHA-256 of the rendered merged body.</li>
 </ul>
 <h2 id="minimal-example">Minimal example<a class="headerlink" href="#minimal-example" title="Permanent link">&para;</a></h2>
@@ -1813,12 +1838,47 @@ omitted.</p>
 null</code>, <code>rpm_limit: null</code>, <code>tpm_limit: null</code>). Per spec §6.7, LiteLLM
 treats <code>null</code> as "no limit set" via wholesale-replace on
 <code>POST /team/update</code>.</p>
+<h2 id="team_id-assignment">team_id assignment<a class="headerlink" href="#team_id-assignment" title="Permanent link">&para;</a></h2>
+<p>When the operator <strong>creates a new</strong> LiteLLM team, it sets
+<code>team_id == metadata.name</code> (human-readable, structurally collision-free)
+instead of letting LiteLLM mint a random UUID. The chosen <code>team_id</code> is
+persisted in <code>status.lastRendered.teamID</code> and surfaces verbatim in the
+LiteLLM UI / API.</p>
+<p>The CR's <code>metadata.name</code> already projects to <code>team_alias</code>, so after an
+operator restart (which loses CR status) the team is re-adopted by alias
+lookup (<code>GET /v2/team/list?team_alias=</code>) — it reaches the <strong>UPDATE</strong> arm
+and is never recreated.</p>
+<p>This change is <strong>CREATE-only</strong>:</p>
+<ul>
+<li><strong>New teams</strong> (no existing team under the alias) → <code>team_id =
+  metadata.name</code>.</li>
+<li><strong>Existing teams</strong> (already created, found by alias — including the
+  pre-change teams that hold a server-assigned UUID) → take the UPDATE
+  arm and <strong>keep their original UUID</strong>. The operator never rewrites an
+  existing team's identity.</li>
+</ul>
+<p>Caveats:</p>
+<ul>
+<li><strong>No automatic migration.</strong> Existing UUID teams are not migrated to a
+  name-id. Migrating one manually means delete + recreate, which orphans
+  the team's virtual keys (they foreign-key on <code>team_id</code>). Out of scope.</li>
+<li><strong>Cross-namespace name collision is unhandled by design.</strong> <code>team_id</code>
+  is <code>metadata.name</code> verbatim, with no namespace prefix (single-namespace
+  deployment assumed). Two <code>LiteLLMTeam</code> CRs sharing a <code>metadata.name</code>
+  across namespaces would collide on the same <code>team_id</code>. v1alpha1 does
+  not guard against this.</li>
+</ul>
 <h2 id="reserved-overlay-keys-projectionoverride-warning">Reserved overlay keys — <code>ProjectionOverride</code> warning<a class="headerlink" href="#reserved-overlay-keys-projectionoverride-warning" title="Permanent link">&para;</a></h2>
-<p>The operator stamps 7 structural keys onto the request body and ALWAYS
-wins over <code>spec.params</code>:</p>
+<p>The operator stamps these structural keys onto the request body and
+ALWAYS wins over <code>spec.params</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>team_alias, max_budget, budget_duration, rpm_limit, tpm_limit,
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>rpm_limit_type, tpm_limit_type
 </code></pre></div>
+<p><code>team_id</code> is ALSO operator-controlled per the
+<a href="#team_id-assignment">team_id assignment</a> rules (CREATE arm → name,
+UPDATE arm → existing id); setting it in <code>spec.params</code> has no effect.
+Unlike the seven keys above, a <code>spec.params.team_id</code> is overwritten
+SILENTLY — it does NOT emit a <code>ProjectionOverride</code> Warning Event.</p>
 <p>Setting any of these inside <code>spec.params</code> is silently overridden and
 emits a <code>reason=ProjectionOverride</code> Warning Event per colliding key.
 Use the typed <code>spec.budget</code> / <code>spec.rateLimits</code> sub-blocks instead.</p>
@@ -1854,10 +1914,12 @@ LiteLLM <code>metadata</code> map inside <code>params</code>:</p>
 </code></pre></div>
 <h2 id="status-what-to-read">Status: what to read<a class="headerlink" href="#status-what-to-read" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>team<span class="w"> </span>finance<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.status.lastRendered}{&quot;\n&quot;}&#39;</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="c1"># {&quot;at&quot;:&quot;2026-05-24T...&quot;,&quot;hash&quot;:&quot;abc...&quot;,&quot;paramsKeys&quot;:[&quot;metadata&quot;],&quot;teamID&quot;:&quot;t-uuid&quot;}</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>kubectl<span class="w"> </span>get<span class="w"> </span>team<span class="w"> </span>finance<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.status.conditions[?(@.type==&quot;Ready&quot;)]}{&quot;\n&quot;}&#39;</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="c1"># {&quot;type&quot;:&quot;Ready&quot;,&quot;status&quot;:&quot;True&quot;,&quot;reason&quot;:&quot;Synced&quot;,&quot;message&quot;:&quot;&quot;}</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="c1"># {&quot;at&quot;:&quot;2026-05-24T...&quot;,&quot;hash&quot;:&quot;abc...&quot;,&quot;paramsKeys&quot;:[&quot;metadata&quot;],&quot;teamID&quot;:&quot;finance&quot;}</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="c1"># (teamID == metadata.name for operator-created teams; a UUID for teams</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1">#  that already existed under a server-assigned id — see team_id assignment)</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>kubectl<span class="w"> </span>get<span class="w"> </span>team<span class="w"> </span>finance<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.status.conditions[?(@.type==&quot;Ready&quot;)]}{&quot;\n&quot;}&#39;</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="c1"># {&quot;type&quot;:&quot;Ready&quot;,&quot;status&quot;:&quot;True&quot;,&quot;reason&quot;:&quot;Synced&quot;,&quot;message&quot;:&quot;&quot;}</span>
 </code></pre></div>
 <p>Other <code>Ready=False</code> reasons:</p>
 <ul>

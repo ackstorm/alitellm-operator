@@ -838,6 +838,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#default-access-group" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Default access group
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#specinfoid-is-operator-controlled" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1631,6 +1642,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#default-access-group" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Default access group
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#specinfoid-is-operator-controlled" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1833,18 +1855,30 @@ hash is compared against <code>status.lastRendered.hash</code>:</p>
   <code>modelID</code>, increment
   <code>drift_corrected_total{domain=model,action=create_missing}</code>.</li>
 </ul>
-<p><code>spec.params</code> or <code>spec.info</code> shrinkage (a key removed from either bag)
-triggers delete-and-recreate — <code>POST /model/update</code> is wholesale-replace
-on LiteLLM, but the shrinkage path was retained from earlier
-defect-mitigation work and <code>modelID</code> is re-pinned in the same
-reconcile.</p>
+<p><code>spec.params</code> shrinkage (a key removed) triggers delete-and-recreate;
+<code>modelID</code> is re-pinned in the same reconcile.</p>
+<p>ANY <code>spec.info</code> (<code>model_info</code>) change — value edit, key addition, OR key
+removal — also triggers delete-and-recreate, NOT a bare <code>POST /model/update</code>.
+LiteLLM's <code>POST /model/update</code> rewrites <code>litellm_params</code> + <code>updated_by</code> only
+and never persists the <code>model_info</code> blob; only <code>POST /model/new</code> does. The
+operator tracks <code>status.lastRendered.infoHash</code> (SHA-256 of the rendered
+<code>model_info</code>, excluding the <code>id</code> overlay) to detect these changes. An empty
+stored <code>infoHash</code> (pre-upgrade status) is backfilled silently — a model whose
+blob is already stale in LiteLLM needs a one-time manual recreate (delete the
+LiteLLM entry; the operator recreates it fresh via <code>POST /model/new</code>).</p>
+<h2 id="default-access-group">Default access group<a class="headerlink" href="#default-access-group" title="Permanent link">&para;</a></h2>
+<p>If <code>spec.info.access_groups</code> is absent or empty, the operator injects the
+<code>DEFAULT_ACCESS_GROUP</code> value (default <code>default</code>; set the env var to <code>""</code> to
+disable) so every model belongs to at least one LiteLLM access group. This
+covers standalone models and Discovery-generated children alike. An explicit
+non-empty <code>access_groups</code> is never overridden.</p>
 <h2 id="specinfoid-is-operator-controlled"><code>spec.info.id</code> is operator-controlled<a class="headerlink" href="#specinfoid-is-operator-controlled" title="Permanent link">&para;</a></h2>
 <p>Setting <code>spec.info.id</code> is silently overridden by the operator's
 overlay (the pinned <code>modelID</code>) and emits a Warning Event
 <code>reason=ProjectionOverride</code>. Do not set it.</p>
 <h2 id="status-what-to-read">Status: what to read<a class="headerlink" href="#status-what-to-read" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>mdl<span class="w"> </span>claude-sonnet-4-5<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.status.lastRendered}{&quot;\n&quot;}&#39;</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="c1"># {&quot;at&quot;:&quot;...&quot;,&quot;hash&quot;:&quot;abc...&quot;,&quot;infoKeys&quot;:[&quot;description&quot;],&quot;modelID&quot;:&quot;&lt;uuid&gt;&quot;,&quot;paramsKeys&quot;:[&quot;api_base&quot;,&quot;api_key&quot;,&quot;model&quot;]}</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="c1"># {&quot;at&quot;:&quot;...&quot;,&quot;hash&quot;:&quot;abc...&quot;,&quot;infoHash&quot;:&quot;def...&quot;,&quot;infoKeys&quot;:[&quot;access_groups&quot;,&quot;description&quot;],&quot;modelID&quot;:&quot;&lt;uuid&gt;&quot;,&quot;paramsKeys&quot;:[&quot;api_base&quot;,&quot;api_key&quot;,&quot;model&quot;]}</span>
 <a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
 <a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>kubectl<span class="w"> </span>get<span class="w"> </span>mdl<span class="w"> </span>claude-sonnet-4-5<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.status.conditions[?(@.type==&quot;Ready&quot;)]}{&quot;\n&quot;}&#39;</span>
 <a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="c1"># {&quot;type&quot;:&quot;Ready&quot;,&quot;status&quot;:&quot;True&quot;,&quot;reason&quot;:&quot;Synced&quot;}</span>
