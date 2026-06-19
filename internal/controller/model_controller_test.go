@@ -120,6 +120,18 @@ func TestInfoHash_ChangesWithAccessGroups(t *testing.T) {
 	}
 }
 
+// TestResolveDefaultAccessGroup — pure-logic coverage for the
+// DEFAULT_ACCESS_GROUP env resolver. Empty → "default"; explicit values pass
+// through unchanged.
+func TestResolveDefaultAccessGroup(t *testing.T) {
+	if got := ResolveDefaultAccessGroup(""); got != "default" {
+		t.Fatalf("empty → default, got %q", got)
+	}
+	if got := ResolveDefaultAccessGroup("base"); got != "base" {
+		t.Fatalf("explicit passthrough, got %q", got)
+	}
+}
+
 // TestModel_FinalizerAddedOnFirstReconcile — Task 1 Test 1.
 //
 // Create a Model CR; assert that on the next reconcile the reconciler adds

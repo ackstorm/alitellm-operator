@@ -136,6 +136,19 @@ func IndexModelSecretRefs(o client.Object) []string {
 // - NO PATCH /model/{id}/update (spec §7.2 forbids; POST /model/update only).
 // - NO global LIST-and-prune (OWN-01 — one name per reconcile).
 // - NO RequeueAfter (REL-02 — Model is event-driven only).
+// EnvDefaultAccessGroup names the access group injected into a model's
+// model_info.access_groups when it declares none. Empty → "default".
+const EnvDefaultAccessGroup = "DEFAULT_ACCESS_GROUP"
+
+// ResolveDefaultAccessGroup returns the configured default access group name,
+// falling back to "default" when unset/empty.
+func ResolveDefaultAccessGroup(v string) string {
+	if v == "" {
+		return "default"
+	}
+	return v
+}
+
 type ModelReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
@@ -161,6 +174,12 @@ type ModelReconciler struct {
 	// RecreateLimit is the per-CR recreates-per-minute ceiling. <= 0 →
 	// DefaultRecreateLimitPerMin. Set from EnvRecreateLimitPerMin in cmd/main.go.
 	RecreateLimit int
+	// DefaultAccessGroup is injected into a model's model_info.access_groups
+	// when it declares none (so every LiteLLM model belongs to at least one
+	// access group). Empty disables injection. Set from EnvDefaultAccessGroup
+	// in cmd/main.go (resolves "" → "default" there); left empty in tests that
+	// do not exercise injection.
+	DefaultAccessGroup string
 }
 
 // Reconcile implements the LiteLLMModel state machine.
