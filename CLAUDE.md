@@ -883,6 +883,22 @@ controller does not have a vanish-recreate site and is unaffected.
   for indexer registration. `// #nosec G101` comments justify each
   (gosec misidentifies them as credentials).
 
+- **Team `team_id` = `metadata.name` on CREATE only**
+  (`team_controller.go` Step 10 CREATE arm): new LiteLLM teams get
+  `team_id == metadata.name` (human-readable, collision-free); the body
+  pins it and `status.lastRendered.teamID` is set from `team.Name`, not
+  the create response. EXISTING teams (found by `ListTeamsByAlias` →
+  UPDATE arm) keep their original server-assigned UUID — this is a
+  CREATE-arm-only change, never touch the UPDATE arm's `team_id` pin.
+  Post-restart re-adoption works because `team_alias == metadata.name`,
+  so the alias lookup matches the name-id team (UPDATE arm, no duplicate
+  `/team/new`). Caveats: no auto-migration of existing UUID teams
+  (manual delete+recreate orphans their virtual keys, which FK on
+  `team_id`); `team_id` is `metadata.name` verbatim (no namespace
+  prefix), so two Team CRs sharing a name across namespaces collide —
+  unhandled by design (single-namespace assumption). User-facing docs:
+  `docs/user-guide/team.md` § "team_id assignment".
+
 - **Fuzz seed corpus** at `internal/<pkg>/testdata/fuzz/<TargetName>/`
   carries one entry per SEC regression test. Adding a new regression
   test? Add a matching corpus entry.
