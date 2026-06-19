@@ -493,6 +493,13 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 	delete(infoMap, "id") // always remove before hashing and body construction
 
+	// Inject the default access group when the model declares none, BEFORE the
+	// hashes below — so the injected group is part of currentInfoHash /
+	// currentRenderedHash and is persisted on the create/update body (and thus
+	// survives in the steady-state hash compare). No-op when DefaultAccessGroup
+	// is empty or the model already declares a non-empty access_groups list.
+	ensureDefaultAccessGroup(infoMap, r.DefaultAccessGroup)
+
 	// currentInfoHash hashes the model_info blob alone (excluding the `id`
 	// overlay). currentRenderedHash below covers BOTH litellm_params and
 	// model_info, so a params-only edit perturbs it without changing
@@ -1016,6 +1023,22 @@ func infoHash(infoMap map[string]any) string {
 	b, _ := canonicalJSON(m)
 	sum := sha256.Sum256(b)
 	return fmt.Sprintf("%x", sum)
+}
+
+// ensureDefaultAccessGroup injects access_groups:[group] into the rendered
+// model_info when the model declares none (absent OR empty list). Existing
+// non-empty groups are left untouched. No-op when group == "". This guarantees
+// every reconciled model belongs to at least one access group, and runs at a
+// single point that covers both standalone LiteLLMModel CRs and
+// Discovery-generated children (children are LiteLLMModels reconciled here too).
+func ensureDefaultAccessGroup(infoMap map[string]any, group string) {
+	if group == "" {
+		return
+	}
+	if ag, ok := infoMap["access_groups"].([]any); ok && len(ag) > 0 {
+		return
+	}
+	infoMap["access_groups"] = []any{group}
 }
 
 func canonicalMarshal(v any) ([]byte, error) {

@@ -132,6 +132,30 @@ func TestResolveDefaultAccessGroup(t *testing.T) {
 	}
 }
 
+// TestEnsureAccessGroup — pure-logic coverage for default-access-group
+// injection into the rendered model_info. Absent or empty access_groups → the
+// configured default is injected; an existing non-empty list is left untouched.
+func TestEnsureAccessGroup(t *testing.T) {
+	// absent → injected
+	m := map[string]any{"description": "x"}
+	ensureDefaultAccessGroup(m, "default")
+	if ag, _ := m["access_groups"].([]any); len(ag) != 1 || ag[0] != "default" {
+		t.Fatalf("expected injected default, got %v", m["access_groups"])
+	}
+	// present → untouched
+	m2 := map[string]any{"access_groups": []any{"anthropic"}}
+	ensureDefaultAccessGroup(m2, "default")
+	if ag, _ := m2["access_groups"].([]any); len(ag) != 1 || ag[0] != "anthropic" {
+		t.Fatalf("must not overwrite existing groups, got %v", m2["access_groups"])
+	}
+	// empty list → treated as absent → injected
+	m3 := map[string]any{"access_groups": []any{}}
+	ensureDefaultAccessGroup(m3, "default")
+	if ag, _ := m3["access_groups"].([]any); len(ag) != 1 || ag[0] != "default" {
+		t.Fatalf("empty list should be filled with default, got %v", m3["access_groups"])
+	}
+}
+
 // TestModel_FinalizerAddedOnFirstReconcile — Task 1 Test 1.
 //
 // Create a Model CR; assert that on the next reconcile the reconciler adds
