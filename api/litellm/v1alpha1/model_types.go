@@ -223,6 +223,17 @@ type LastRenderedStatus struct {
 	// +optional
 	InfoKeys []string `json:"infoKeys,omitempty"`
 
+	// InfoHash is the SHA-256 (hex) of the canonical-JSON rendered
+	// model_info blob (excluding the operator-managed `id` overlay). It
+	// detects model_info value/key changes that REQUIRE a delete+recreate,
+	// because LiteLLM POST /model/update never persists the model_info blob
+	// (only POST /model/new does). Empty on a pre-upgrade status → backfilled
+	// silently on the next reconcile (no recreate) to avoid a mass recreate
+	// on operator upgrade.
+	//
+	// +optional
+	InfoHash string `json:"infoHash,omitempty"`
+
 	// ModelID is the LiteLLM-assigned UUID (model_info.id) for this
 	// Model entry. Persisted here so the reconciler can reference it directly
 	// on subsequent reconciles without an extra GET /model/info call (D-04).
