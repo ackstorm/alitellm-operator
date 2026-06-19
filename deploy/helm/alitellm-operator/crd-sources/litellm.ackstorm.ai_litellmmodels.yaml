@@ -323,6 +323,16 @@ spec:
                       do not oscillate (D-01). An empty hash indicates the Model has not yet
                       been successfully reconciled.
                     type: string
+                  infoHash:
+                    description: |-
+                      InfoHash is the SHA-256 (hex) of the canonical-JSON rendered
+                      model_info blob (excluding the operator-managed `id` overlay). It
+                      detects model_info value/key changes that REQUIRE a delete+recreate,
+                      because LiteLLM POST /model/update never persists the model_info blob
+                      (only POST /model/new does). Empty on a pre-upgrade status → backfilled
+                      silently on the next reconcile (no recreate) to avoid a mass recreate
+                      on operator upgrade.
+                    type: string
                   infoKeys:
                     description: |-
                       InfoKeys is the sorted list of dotted-path keys present in spec.info at

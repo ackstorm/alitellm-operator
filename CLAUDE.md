@@ -745,6 +745,49 @@ rewrites `litellm_params` + the `updated_by` DB column ONLY and never touches
 the blob, so the timestamp cannot be added/refreshed on the UPDATE path.
 Stamp it on CREATE or it never appears.
 
+### ❌ `model_info` changes (e.g. `access_groups`) silently dropped on UPDATE
+```yaml
+# Adding a model_info value/key to an existing model:
+spec:
+  info:
+    access_groups: ["anthropic"]   # added after the model was first created
+```
+Symptom: the CR reports `Ready=Synced`, but LiteLLM's DB `model_info` blob
+still lacks the new value — because a non-shrinking `model_info` change used
+to take the plain `POST /model/update` path, which never rewrites the blob
+(same root cause as the `created_at` entry above — only `POST /model/new`
+persists `model_info`).
+✅ The operator now tracks `status.lastRendered.infoHash` (SHA-256 of the
+rendered `model_info`, excluding the `id` overlay) and forces a
+delete+recreate (`POST /model/delete` + `POST /model/new`) on ANY `model_info`
+change, so the blob lands in LiteLLM. The `currentRenderedHash` already covered
+`model_info` values, but it only short-circuits the steady state; the UPDATE
+branch needs `infoHash` to distinguish a blob change from a params-only change.
+MIGRATION: an empty stored `infoHash` (pre-upgrade status) is backfilled
+silently (treated as unchanged) to avoid a mass recreate of every model on
+operator upgrade. CONSEQUENCE: models whose blob is ALREADY stale in LiteLLM
+(e.g. `access_groups` added before this fix shipped) are NOT auto-healed —
+delete the entry in LiteLLM once and the operator recreates it fresh via
+`POST /model/new`. Forward changes are handled correctly.
+
+### ❌ Model created with no access group → unreachable by group-scoped keys
+Symptom: a `LiteLLMModel` (or Discovery-generated child) with no
+`spec.info.access_groups` lands in LiteLLM belonging to NO access group, so
+virtual keys scoped by access group can't see it.
+✅ The operator injects a default access group into the rendered `model_info`
+when the model declares none (absent OR empty list). The group name is set by
+`DEFAULT_ACCESS_GROUP` (default **`default`**); empty disables injection. The
+injection happens at a single point in `model_controller.go` BEFORE the
+`infoHash`/`renderedHash` are computed, so it covers both standalone
+`LiteLLMModel` CRs AND Discovery-generated children (children are
+`LiteLLMModel`s reconciled by the same controller), is persisted on the
+create/update body, and survives the steady-state hash compare. An explicit
+non-empty `spec.info.access_groups` is never overridden.
+```bash
+kubectl set env -n litellm-system deploy/alitellm-operator \
+  DEFAULT_ACCESS_GROUP=default   # or "" to disable injection
+```
+
 ### ❌ Router model (`auto_router/…`) recreates forever, new modelID every reconcile
 ```yaml
 spec:
