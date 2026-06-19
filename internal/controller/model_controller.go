@@ -140,11 +140,14 @@ func IndexModelSecretRefs(o client.Object) []string {
 // model_info.access_groups when it declares none. Empty → "default".
 const EnvDefaultAccessGroup = "DEFAULT_ACCESS_GROUP"
 
+// defaultAccessGroupFallback is the access group injected when DEFAULT_ACCESS_GROUP is unset.
+const defaultAccessGroupFallback = "default"
+
 // ResolveDefaultAccessGroup returns the configured default access group name,
 // falling back to "default" when unset/empty.
 func ResolveDefaultAccessGroup(v string) string {
 	if v == "" {
-		return "default"
+		return defaultAccessGroupFallback
 	}
 	return v
 }

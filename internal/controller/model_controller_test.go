@@ -38,7 +38,15 @@ import (
 const (
 	pathModelNew    = "/model/new"
 	pathModelDelete = "/model/delete"
+	pathModelUpdate = "/model/update"
 )
+
+// methodPOST is the HTTP method asserted on LiteLLM mutation routes in this file.
+const methodPOST = "POST"
+
+// accessGroupDefault is the access-group VALUE injected when none is declared.
+// Distinct from WatchNamespace (also "default") which names the watched namespace.
+const accessGroupDefault = "default"
 
 // modelSampleCR returns a basic Model CR with simple spec.params and no secrets.
 // The model name must be unique across tests — callers pass a unique name.
@@ -109,7 +117,7 @@ func pollModelCondition(t *testing.T, ctx context.Context, name, wantReason stri
 // create/update and must not perturb the hash).
 func TestInfoHash_ChangesWithAccessGroups(t *testing.T) {
 	h1 := infoHash(map[string]any{"description": "x"})
-	h2 := infoHash(map[string]any{"description": "x", "access_groups": []any{"anthropic"}})
+	h2 := infoHash(map[string]any{"description": "x", "access_groups": []any{providerTypeAnthropic}})
 	if h1 == h2 {
 		t.Fatalf("infoHash must change when access_groups is added: %s == %s", h1, h2)
 	}
@@ -124,7 +132,7 @@ func TestInfoHash_ChangesWithAccessGroups(t *testing.T) {
 // DEFAULT_ACCESS_GROUP env resolver. Empty → "default"; explicit values pass
 // through unchanged.
 func TestResolveDefaultAccessGroup(t *testing.T) {
-	if got := ResolveDefaultAccessGroup(""); got != "default" {
+	if got := ResolveDefaultAccessGroup(""); got != accessGroupDefault {
 		t.Fatalf("empty → default, got %q", got)
 	}
 	if got := ResolveDefaultAccessGroup("base"); got != "base" {
@@ -138,26 +146,26 @@ func TestResolveDefaultAccessGroup(t *testing.T) {
 func TestEnsureAccessGroup(t *testing.T) {
 	// absent → injected
 	m := map[string]any{"description": "x"}
-	ensureDefaultAccessGroup(m, "default")
-	if ag, _ := m["access_groups"].([]any); len(ag) != 1 || ag[0] != "default" {
+	ensureDefaultAccessGroup(m, accessGroupDefault)
+	if ag, _ := m["access_groups"].([]any); len(ag) != 1 || ag[0] != accessGroupDefault {
 		t.Fatalf("expected injected default, got %v", m["access_groups"])
 	}
 	// present → untouched
-	m2 := map[string]any{"access_groups": []any{"anthropic"}}
-	ensureDefaultAccessGroup(m2, "default")
-	if ag, _ := m2["access_groups"].([]any); len(ag) != 1 || ag[0] != "anthropic" {
+	m2 := map[string]any{"access_groups": []any{providerTypeAnthropic}}
+	ensureDefaultAccessGroup(m2, accessGroupDefault)
+	if ag, _ := m2["access_groups"].([]any); len(ag) != 1 || ag[0] != providerTypeAnthropic {
 		t.Fatalf("must not overwrite existing groups, got %v", m2["access_groups"])
 	}
 	// empty list → treated as absent → injected
 	m3 := map[string]any{"access_groups": []any{}}
-	ensureDefaultAccessGroup(m3, "default")
-	if ag, _ := m3["access_groups"].([]any); len(ag) != 1 || ag[0] != "default" {
+	ensureDefaultAccessGroup(m3, accessGroupDefault)
+	if ag, _ := m3["access_groups"].([]any); len(ag) != 1 || ag[0] != accessGroupDefault {
 		t.Fatalf("empty list should be filled with default, got %v", m3["access_groups"])
 	}
 	// present but wrong type (string) → preserved, NOT clobbered
-	m4 := map[string]any{"access_groups": "anthropic"}
-	ensureDefaultAccessGroup(m4, "default")
-	if m4["access_groups"] != "anthropic" {
+	m4 := map[string]any{"access_groups": providerTypeAnthropic}
+	ensureDefaultAccessGroup(m4, accessGroupDefault)
+	if m4["access_groups"] != providerTypeAnthropic {
 		t.Fatalf("wrong-typed access_groups must be preserved, got %v", m4["access_groups"])
 	}
 }
@@ -759,7 +767,7 @@ func TestModel_SpecParamsEdit_Update(t *testing.T) {
 	newCount := 0
 	for _, c := range calls {
 		switch {
-		case c.Method == "POST" && c.Path == "/model/update":
+		case c.Method == methodPOST && c.Path == pathModelUpdate:
 			updateCount++
 		case c.Method == http.MethodPost && c.Path == pathModelDelete:
 			deleteCount++
@@ -891,7 +899,7 @@ func TestModel_SpecParamsKeyRemoval_DeleteAndRecreate(t *testing.T) {
 			deleteCount++
 		case c.Method == http.MethodPost && c.Path == pathModelNew:
 			newCount++
-		case c.Method == "POST" && c.Path == "/model/update":
+		case c.Method == methodPOST && c.Path == pathModelUpdate:
 			updateCount++
 		}
 	}
@@ -1022,7 +1030,7 @@ func TestModelInfoChange_TriggersRecreate(t *testing.T) {
 			deleteCount++
 		case c.Method == http.MethodPost && c.Path == pathModelNew:
 			newCount++
-		case c.Method == "POST" && c.Path == "/model/update":
+		case c.Method == methodPOST && c.Path == pathModelUpdate:
 			updateCount++
 		}
 	}
@@ -1050,7 +1058,7 @@ func TestModelInfoChange_TriggersRecreate(t *testing.T) {
 		t.Fatal("no model_info body captured for infochange-test")
 	}
 	ag, _ := mi["access_groups"].([]any)
-	if len(ag) != 1 || ag[0] != "anthropic" {
+	if len(ag) != 1 || ag[0] != providerTypeAnthropic {
 		t.Errorf("recreate model_info.access_groups: want [anthropic], got %v (full: %+v)", mi["access_groups"], mi)
 	}
 }
@@ -1106,7 +1114,7 @@ func TestDefaultAccessGroup_InjectedOnCreate(t *testing.T) {
 		t.Fatal("no model_info body captured for ag-ungrouped")
 	}
 	agU, _ := miU["access_groups"].([]any)
-	if len(agU) != 1 || agU[0] != "default" {
+	if len(agU) != 1 || agU[0] != accessGroupDefault {
 		t.Errorf("ungrouped model_info.access_groups: want [default], got %v (full: %+v)", miU["access_groups"], miU)
 	}
 
@@ -1127,7 +1135,7 @@ func TestDefaultAccessGroup_InjectedOnCreate(t *testing.T) {
 		t.Fatal("no model_info body captured for ag-grouped")
 	}
 	agG, _ := miG["access_groups"].([]any)
-	if len(agG) != 1 || agG[0] != "anthropic" {
+	if len(agG) != 1 || agG[0] != providerTypeAnthropic {
 		t.Errorf("grouped model_info.access_groups: want [anthropic] (no override), got %v (full: %+v)", miG["access_groups"], miG)
 	}
 }
