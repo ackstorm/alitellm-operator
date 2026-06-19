@@ -498,6 +498,9 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	// currentRenderedHash and is persisted on the create/update body (and thus
 	// survives in the steady-state hash compare). No-op when DefaultAccessGroup
 	// is empty or the model already declares a non-empty access_groups list.
+	// Running before the hashes means the injected group is folded into the
+	// backfilled InfoHash and does NOT compound with the empty-InfoHash
+	// migration guard (the guard backfills a hash of the post-injection blob).
 	ensureDefaultAccessGroup(infoMap, r.DefaultAccessGroup)
 
 	// currentInfoHash hashes the model_info blob alone (excluding the `id`
@@ -1020,6 +1023,9 @@ func infoHash(infoMap map[string]any) string {
 		}
 		m[k] = v
 	}
+	// infoMap originates from json.Unmarshal, so it holds only JSON-marshalable
+	// types; canonicalJSON cannot fail here (the sibling currentRenderedHash
+	// path propagates the error only because it shares the helper generically).
 	b, _ := canonicalJSON(m)
 	sum := sha256.Sum256(b)
 	return fmt.Sprintf("%x", sum)
@@ -1027,16 +1033,24 @@ func infoHash(infoMap map[string]any) string {
 
 // ensureDefaultAccessGroup injects access_groups:[group] into the rendered
 // model_info when the model declares none (absent OR empty list). Existing
-// non-empty groups are left untouched. No-op when group == "". This guarantees
-// every reconciled model belongs to at least one access group, and runs at a
-// single point that covers both standalone LiteLLMModel CRs and
-// Discovery-generated children (children are LiteLLMModels reconciled here too).
+// non-empty groups are left untouched, and a present-but-wrong-typed value
+// (e.g. a string/object) is preserved as the user's data rather than
+// overridden. No-op when group == "". This guarantees every reconciled model
+// belongs to at least one access group, and runs at a single point that covers
+// both standalone LiteLLMModel CRs and Discovery-generated children (children
+// are LiteLLMModels reconciled here too).
 func ensureDefaultAccessGroup(infoMap map[string]any, group string) {
 	if group == "" {
 		return
 	}
-	if ag, ok := infoMap["access_groups"].([]any); ok && len(ag) > 0 {
-		return
+	// Inject ONLY when access_groups is absent or an explicitly empty list.
+	// A present-but-wrong-typed value (e.g. a string/object) is the user's
+	// data — leave it untouched rather than silently clobbering it; the
+	// downstream LiteLLM call will surface any real schema problem.
+	if v, present := infoMap["access_groups"]; present {
+		if ag, ok := v.([]any); !ok || len(ag) > 0 {
+			return
+		}
 	}
 	infoMap["access_groups"] = []any{group}
 }

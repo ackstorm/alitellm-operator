@@ -154,6 +154,12 @@ func TestEnsureAccessGroup(t *testing.T) {
 	if ag, _ := m3["access_groups"].([]any); len(ag) != 1 || ag[0] != "default" {
 		t.Fatalf("empty list should be filled with default, got %v", m3["access_groups"])
 	}
+	// present but wrong type (string) → preserved, NOT clobbered
+	m4 := map[string]any{"access_groups": "anthropic"}
+	ensureDefaultAccessGroup(m4, "default")
+	if m4["access_groups"] != "anthropic" {
+		t.Fatalf("wrong-typed access_groups must be preserved, got %v", m4["access_groups"])
+	}
 }
 
 // TestModel_FinalizerAddedOnFirstReconcile — Task 1 Test 1.
