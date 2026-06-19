@@ -269,6 +269,85 @@ func TestTeamCreate_UsesNameAsTeamID(t *testing.T) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
+// Test 1c: UpdateKeepsExistingUUID — name-as-id change is CREATE-only
+// ──────────────────────────────────────────────────────────────────────────
+
+// TestTeamUpdate_KeepsExistingUUID — a team that already exists in
+// LiteLLM under a server-assigned UUID MUST take the UPDATE arm and keep
+// that UUID. The name-as-id change (Task 1) is CREATE-only — it must
+// never rewrite an existing team's identity. Regression guard: if a
+// future change leaked team.Name into the UPDATE arm, the pinned body
+// team_id and status.teamID would flip from the UUID to the name and
+// this test would fail.
+func TestTeamUpdate_KeepsExistingUUID(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetTeams()
+	teamReconciler.ResetImplicitDefaultCache() // Phase 6 cross-suite flake fix (07-CONTEXT.md §Phase-6-flake option α)
+	ensureNoTeam(t, ctx, "anthropic")
+	resetConnCacheSnapshot()
+
+	// Pre-seed a hand-managed team under the alias the CR will declare, so
+	// ListTeamsByAlias("anthropic") returns one UUID entry → UPDATE arm
+	// (never CREATE). AddHandManagedTeam mints a "mock-team-id-N" UUID,
+	// standing in for the legacy server-assigned id of an existing team.
+	existingUUID := mockServer.AddHandManagedTeam("anthropic")
+
+	cleanupConn := setupReadyConnectionTeam(t, ctx)
+	t.Cleanup(func() {
+		cleanupConn()
+		ensureNoTeam(t, context.Background(), "anthropic")
+	})
+
+	cr := teamSampleCR("anthropic")
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create Team: %v", err)
+	}
+
+	// Wait for the UPDATE arm to fire — the UPDATE body pins team_id to
+	// the existing UUID (CREATE arm would pin it to "anthropic" instead).
+	deadline := time.Now().Add(30 * time.Second)
+	var sawUpdate bool
+	for time.Now().Before(deadline) {
+		body := mockServer.LastTeamBody("anthropic")
+		if body != nil {
+			if v, _ := body["team_id"].(string); v == existingUUID {
+				sawUpdate = true
+				break
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !sawUpdate {
+		t.Fatalf("UPDATE arm did not fire within 30s (no body with team_id=%q observed)", existingUUID)
+	}
+
+	tm := pollTeamCondition(t, ctx, "anthropic", reasonSynced, 30*time.Second)
+	if c := apimeta.FindStatusCondition(tm.Status.Conditions, conditionTypeReady); c == nil ||
+		c.Status != metav1.ConditionTrue || c.Reason != reasonSynced {
+		t.Fatalf("Ready condition not Synced; condition=%+v", c)
+	}
+
+	// Exactly ONE mutation (the UPDATE) — NO POST /team/new was issued.
+	if got := mockServer.MutationsByTeamAlias("anthropic"); got != 1 {
+		t.Errorf("MutationsByTeamAlias: want 1 (one POST /team/update, no /team/new), got %d", got)
+	}
+
+	// The UPDATE body MUST pin the existing UUID, not the name.
+	body := mockServer.LastTeamBody("anthropic")
+	if id, _ := body["team_id"].(string); id != existingUUID {
+		t.Errorf("UPDATE body.team_id: want existing UUID %q, got %v", existingUUID, body["team_id"])
+	}
+
+	// The persisted status teamID MUST stay on the UUID.
+	if tm.Status.LastRendered.TeamID != existingUUID {
+		t.Errorf("status.lastRendered.teamID: want existing UUID %q, got %q", existingUUID, tm.Status.LastRendered.TeamID)
+	}
+}
+
+// ──────────────────────────────────────────────────────────────────────────
 // Test 2: CreateOnFirstReconcile (with budget) — AC-T1 budget projection
 // ──────────────────────────────────────────────────────────────────────────
 
