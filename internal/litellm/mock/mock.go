@@ -1132,8 +1132,16 @@ func (m *MockServer) statefulBody(r *http.Request) []byte {
 			}
 		}
 		budgetDuration, _ := reqBody["budget_duration"].(string)
-		seq := m.teamSeq.Add(1)
-		teamID := fmt.Sprintf("mock-team-id-%d", seq)
+		// Honor a caller-supplied team_id (mirrors LiteLLM 1.83.10, which
+		// accepts a client-chosen team_id on POST /team/new — verified in
+		// prod: team "platform" has team_id "team-platform"). Fall back to
+		// a minted UUID only when the body omits team_id, preserving the
+		// legacy server-assigned-id behavior for older tests.
+		teamID, _ := reqBody["team_id"].(string)
+		if teamID == "" {
+			seq := m.teamSeq.Add(1)
+			teamID = fmt.Sprintf("mock-team-id-%d", seq)
+		}
 
 		m.mu.Lock()
 		m.teams[teamID] = &teamEntry{

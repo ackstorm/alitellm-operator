@@ -209,6 +209,66 @@ func TestTeamReconciler_CreateOnFirstReconcile_NoBudget(t *testing.T) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
+// Test 1b: CreateUsesNameAsTeamID — new teams pin team_id == metadata.name
+// ──────────────────────────────────────────────────────────────────────────
+
+// TestTeamCreate_UsesNameAsTeamID — a freshly-created team (empty alias
+// lookup → CREATE arm) MUST be sent to LiteLLM with team_id ==
+// metadata.name (human-readable, collision-free), NOT a server-assigned
+// UUID. The persisted status.lastRendered.teamID MUST equal the name too,
+// so the alias/id round-trip survives an operator restart.
+//
+// Contrast with TestTeamReconciler_CreateOnFirstReconcile_NoBudget, which
+// (pre-change) asserted only that the minted teamID was non-empty. This
+// test pins the exact value to metadata.name.
+func TestTeamCreate_UsesNameAsTeamID(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetTeams()
+	teamReconciler.ResetImplicitDefaultCache() // Phase 6 cross-suite flake fix (07-CONTEXT.md §Phase-6-flake option α)
+	ensureNoTeam(t, ctx, "anthropic")
+	resetConnCacheSnapshot()
+
+	cleanupConn := setupReadyConnectionTeam(t, ctx)
+	t.Cleanup(func() {
+		cleanupConn()
+		ensureNoTeam(t, context.Background(), "anthropic")
+	})
+
+	cr := teamSampleCR("anthropic")
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create Team: %v", err)
+	}
+
+	tm := pollTeamCondition(t, ctx, "anthropic", reasonSynced, 30*time.Second)
+	c := apimeta.FindStatusCondition(tm.Status.Conditions, conditionTypeReady)
+	if c == nil || c.Status != metav1.ConditionTrue || c.Reason != reasonSynced {
+		t.Fatalf("Ready condition not Synced; condition=%+v", c)
+	}
+
+	// CREATE arm fired exactly once.
+	if got := mockServer.MutationsByTeamAlias("anthropic"); got != 1 {
+		t.Errorf("MutationsByTeamAlias: want 1 (one POST /team/new), got %d", got)
+	}
+
+	// The POST /team/new body MUST carry team_id == metadata.name.
+	body := mockServer.LastTeamBody("anthropic")
+	if body == nil {
+		t.Fatalf("LastTeamBody is nil — mock did not capture POST /team/new body")
+	}
+	if id, _ := body["team_id"].(string); id != "anthropic" {
+		t.Errorf("body.team_id: want metadata.name %q, got %v", "anthropic", body["team_id"])
+	}
+
+	// The persisted status teamID MUST equal the name, not a UUID.
+	if tm.Status.LastRendered.TeamID != "anthropic" {
+		t.Errorf("status.lastRendered.teamID: want %q, got %q", "anthropic", tm.Status.LastRendered.TeamID)
+	}
+}
+
+// ──────────────────────────────────────────────────────────────────────────
 // Test 2: CreateOnFirstReconcile (with budget) — AC-T1 budget projection
 // ──────────────────────────────────────────────────────────────────────────
 
