@@ -1049,6 +1049,83 @@ func TestModelInfoChange_TriggersRecreate(t *testing.T) {
 	}
 }
 
+// TestDefaultAccessGroup_InjectedOnCreate — default-access-group injection.
+//
+// The suite reconciler runs with DefaultAccessGroup="default". An ungrouped
+// model (spec.info with no access_groups) must land in the default group on
+// POST /model/new; a model that already declares access_groups must keep its
+// own list with no "default" added (no override).
+func TestDefaultAccessGroup_InjectedOnCreate(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetModels()
+	ensureNoModel(t, ctx, "ag-ungrouped")
+	ensureNoModel(t, ctx, "ag-grouped")
+	resetConnCacheSnapshot()
+
+	// Ensure LiteLLMConnection/default is ready.
+	ensureNoConnectionDefault(t, ctx)
+	connCR := connDefaultCR()
+	if err := k8sClient.Create(ctx, connCR); err != nil {
+		t.Fatalf("create LiteLLMConnection: %v", err)
+	}
+	t.Cleanup(func() {
+		mockServer.SetMode(mock.ModeHappy)
+		_ = k8sClient.Delete(context.Background(), connCR, &client.DeleteOptions{})
+		ensureNoModel(t, context.Background(), "ag-ungrouped")
+		ensureNoModel(t, context.Background(), "ag-grouped")
+		time.Sleep(50 * time.Millisecond)
+	})
+	connSnap := pollSnapshotReason(30*time.Second, reasonSynced)
+	if connSnap.Reason != reasonSynced {
+		t.Fatalf("LiteLLMConnection not Synced within 30s")
+	}
+
+	// 1. Ungrouped model — spec.info with no access_groups.
+	ungrouped := modelSampleCR("ag-ungrouped")
+	ungrouped.Spec.Info = runtime.RawExtension{Raw: []byte(`{"description":"x"}`)}
+	if err := k8sClient.Create(ctx, ungrouped); err != nil {
+		t.Fatalf("create ungrouped Model: %v", err)
+	}
+	mu := pollModelCondition(t, ctx, "ag-ungrouped", reasonSynced, 30*time.Second)
+	if mu.Status.LastRendered.ModelID == "" {
+		t.Fatalf("ungrouped Model not Synced within 30s; conditions=%+v", mu.Status.Conditions)
+	}
+
+	// 2. Assert the POST /model/new body carries access_groups == ["default"].
+	miU := mockServer.LastModelInfoBody("ag-ungrouped")
+	if miU == nil {
+		t.Fatal("no model_info body captured for ag-ungrouped")
+	}
+	agU, _ := miU["access_groups"].([]any)
+	if len(agU) != 1 || agU[0] != "default" {
+		t.Errorf("ungrouped model_info.access_groups: want [default], got %v (full: %+v)", miU["access_groups"], miU)
+	}
+
+	// 3. Grouped model — spec.info already declares access_groups:["anthropic"].
+	grouped := modelSampleCR("ag-grouped")
+	grouped.Spec.Info = runtime.RawExtension{Raw: []byte(`{"description":"y","access_groups":["anthropic"]}`)}
+	if err := k8sClient.Create(ctx, grouped); err != nil {
+		t.Fatalf("create grouped Model: %v", err)
+	}
+	mg := pollModelCondition(t, ctx, "ag-grouped", reasonSynced, 30*time.Second)
+	if mg.Status.LastRendered.ModelID == "" {
+		t.Fatalf("grouped Model not Synced within 30s; conditions=%+v", mg.Status.Conditions)
+	}
+
+	// 4. Assert its body keeps ["anthropic"] — no override, no "default" added.
+	miG := mockServer.LastModelInfoBody("ag-grouped")
+	if miG == nil {
+		t.Fatal("no model_info body captured for ag-grouped")
+	}
+	agG, _ := miG["access_groups"].([]any)
+	if len(agG) != 1 || agG[0] != "anthropic" {
+		t.Errorf("grouped model_info.access_groups: want [anthropic] (no override), got %v (full: %+v)", miG["access_groups"], miG)
+	}
+}
+
 // TestModel_OwnerReferenceFromDiscovery_ReconciledIdentically — Task 2 Test 8.
 //
 // A Model with metadata.ownerReferences[controller=true] pointing at a fake

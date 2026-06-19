@@ -399,6 +399,10 @@ func setupAndRun(m *testing.M) int {
 		Namespace:         WatchNamespace,
 		Log:               logr.Discard(),
 		ConnectionRebuilt: connCache.Subscribe(),
+		// Exercise default-access-group injection suite-wide (matches the
+		// production resolver default). Set before SetupWithManager so the
+		// reconcile goroutine never reads this field concurrently with a write.
+		DefaultAccessGroup: "default",
 	}
 	if err := modelReconciler.SetupWithManager(mgr, modelSafetyRelistCh); err != nil {
 		fmt.Fprintf(os.Stderr, "SetupWithManager(Model): %v\n", err)
