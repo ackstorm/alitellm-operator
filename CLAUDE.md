@@ -835,6 +835,37 @@ vanish path + a CREATE-after-clear recreate site). Each parks its CR
 trip; `LITELLM_OPERATOR_RECREATE_LIMIT_PER_MIN` tunes all four. The Guardrail
 controller does not have a vanish-recreate site and is unaffected.
 
+### ❌ Resolving the Model safety-relist by the FIRST `/model/info` row
+```go
+// Step 7b probe closure (pre-fix):
+entry, _ := GetModelInfoByName(ctx, model.Name)
+return entry.ModelInfo.ID   // first row only
+```
+✅ Resolve by PRESENCE of the tracked id in the full set, and prune extras:
+```go
+ids, _ := GetModelIDsByName(ctx, model.Name)
+for _, id := range ids { if id == lastID { return lastID } } // present → no drift
+if len(ids) > 0 { return ids[0] }                            // gone → adopt one
+// Step 7c: delete every id != lastID → converge to one row.
+```
+WHY IT FAILS (id-drift duplicate-amplifier churn): LiteLLM allows multiple
+deployment rows per `model_name` (POST `/model/new` is NOT idempotent). The
+first-row read often returns a duplicate whose id != the tracked id → the
+vanish-probe reads "id drift" → clears the tracked id → CREATE branch → another
+`POST /model/new` → another duplicate row → the next probe is even more likely
+to mismatch → self-perpetuating. Prod saw `claude-opus-4-7` accumulate **1718
+rows over 9 days** and `ackstorm.default` **7186 rows in 5h** (the latter was a
+*router*-model storm, separately fixed in v0.7.10 by skipping router models in
+Step 7b). The fix is order-independent set-membership (Fix A) plus a best-effort
+prune of the extras keeping the tracked id (Fix B, metric
+`drift_corrected_total{domain=model,action=duplicate_pruned}`). Router models
+(`litellm_params.model` starts `auto_router/`) remain skipped — never pruned or
+probed. Operational check (should stay empty):
+```sql
+SELECT model_name, count(*) FROM "LiteLLM_ProxyModelTable"
+GROUP BY 1 HAVING count(*) > 1;
+```
+
 ## Repository-specific patterns
 
 - **E2E standing hydration = numbered kustomize phases**: the e2e cluster's
