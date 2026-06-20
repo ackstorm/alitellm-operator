@@ -61,11 +61,11 @@ func TestAllS10MetricNamesAreRegistered(t *testing.T) {
 
 // TestDriftCorrectedTotalLabelCombosArePreTouched — A5: every enumerated
 // {domain, action} label combo from spec §10's Label-value enums table is
-// pre-touched at init time so AC-O1 sees 12 lines on first scrape, even
+// pre-touched at init time so AC-O1 sees all lines on first scrape, even
 // before Phase 3 increments anything.
 //
-// domains ∈ {model, mcp, a2a, team} × actions ∈ {create_missing,
-// update_drifted, delete_vanished} = 12 combos.
+// domains ∈ {model, mcp, a2a, team, guardrail} × actions ∈ {create_missing,
+// update_drifted, delete_vanished, duplicate_pruned} = 20 combos.
 func TestDriftCorrectedTotalLabelCombosArePreTouched(t *testing.T) {
 	count := testutil.CollectAndCount(DriftCorrectedTotal, "drift_corrected_total")
 	if count < 12 {

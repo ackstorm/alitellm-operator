@@ -556,10 +556,14 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	//
 	// Cost unchanged: 1 GET /model/info per LiteLLMModel per safety
 	// re-list tick. At the 30m production interval = 2 calls/hour/CR.
+	// The id set fetched here (probedModelIDs) is reused by the Step 7c
+	// duplicate-prune block below, so both the vanish probe and the prune
+	// share that single GET — no second /model/info call per reconcile.
 	//
 	// Skipped on first reconcile (lastRendered.hash empty) — bootstrap
 	// CREATE runs via ModelID empty already. Skipped for router models
 	// (routerModel) — they are structurally invisible to GET /model/info.
+	var probedModelIDs []string
 	if !routerModel && model.Status.LastRendered.ModelID != "" && model.Status.LastRendered.Hash != "" {
 		clear, probeErr := probeVanishedResourceID(ctx,
 			model.Status.LastRendered.ModelID,
@@ -576,6 +580,9 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 				if err != nil {
 					return "", err
 				}
+				// Capture for reuse by the Step 7c duplicate-prune block —
+				// avoids a second GET /model/info on the same reconcile.
+				probedModelIDs = ids
 				last := model.Status.LastRendered.ModelID
 				for _, id := range ids {
 					if id == last {
@@ -607,21 +614,19 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	// next relist and never blocks the reconcile. Skipped for router models
 	// (structurally invisible to GET /model/info) and when no tracked id is
 	// pinned (nothing to keep — the create/adopt path handles that case).
-	if !routerModel && model.Status.LastRendered.ModelID != "" {
-		if ids, derr := snap.Client.GetModelIDsByName(ctx, model.Name); derr == nil && len(ids) > 1 {
-			keep := model.Status.LastRendered.ModelID
-			for _, id := range ids {
-				if id == keep {
-					continue
-				}
-				if delErr := snap.Client.DeleteModel(ctx, id); delErr != nil {
-					logger.V(1).Info("duplicate prune: delete failed (will retry next relist)",
-						"model", model.Name, "dupID", id, "err", delErr.Error())
-				} else {
-					logger.Info("duplicate prune: deleted extra deployment row",
-						"model", model.Name, "keptID", keep, "deletedID", id)
-					metrics.DriftCorrectedTotal.WithLabelValues("model", "duplicate_pruned").Inc()
-				}
+	if !routerModel && model.Status.LastRendered.ModelID != "" && len(probedModelIDs) > 1 {
+		keep := model.Status.LastRendered.ModelID
+		for _, id := range probedModelIDs {
+			if id == keep {
+				continue
+			}
+			if delErr := snap.Client.DeleteModel(ctx, id); delErr != nil {
+				logger.V(1).Info("duplicate prune: delete failed (will retry next relist)",
+					"model", model.Name, "dupID", id, "err", delErr.Error())
+			} else {
+				logger.Info("duplicate prune: deleted extra deployment row",
+					"model", model.Name, "keptID", keep, "deletedID", id)
+				metrics.DriftCorrectedTotal.WithLabelValues("model", "duplicate_pruned").Inc()
 			}
 		}
 	}
