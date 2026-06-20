@@ -263,10 +263,13 @@ var (
 		"probe",
 	}
 
-	// drift_corrected_total's domain × action — 5 × 3 = 15 combos
-	// (model, mcp, a2a, team, guardrail).
+	// drift_corrected_total's domain × action. `duplicate_pruned` is
+	// model-only in practice (LiteLLM allows multiple deployment rows per
+	// model_name; the Model safety-relist prunes the extras), but it is
+	// pre-touched across every domain for a uniform Cartesian enumeration —
+	// the extra non-model series are harmless zero-valued lines.
 	allDomains = []string{"model", "mcp", "a2a", "team", "guardrail"}
-	allActions = []string{"create_missing", "update_drifted", "delete_vanished"}
+	allActions = []string{"create_missing", "update_drifted", "delete_vanished", "duplicate_pruned"}
 
 	// reconcile_total{result}.
 	reconcileResults = []string{"success", "error", "requeued"}

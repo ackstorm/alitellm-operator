@@ -133,3 +133,52 @@ func (c *Client) GetModelInfoByName(ctx context.Context, name string) (*ModelInf
 	// The deletion-path fallback treats this as "entry already absent in LiteLLM".
 	return nil, nil
 }
+
+// GetModelIDsByName returns the model_info.id of EVERY row LiteLLM lists
+// under `name`. LiteLLM allows multiple deployments per model_name (POST
+// /model/new is NOT idempotent), so the safety-relist must reason about the
+// whole set — "does our tracked id still exist?" — rather than the first row
+// only. Resolving by first-row id is what drove the id-drift duplicate-
+// amplifier churn: a stray duplicate whose id != the tracked id was read as
+// "id drift", clearing the tracked id → CREATE → another duplicate row →
+// self-perpetuating (observed: 1718 rows for one model over 9 days). See
+// vanish_probe + model_controller Step 7b.
+//
+// Order follows LiteLLM's response and is NOT guaranteed stable. Empty ids
+// are skipped (defensive — a row with no model_info.id is not addressable
+// for delete/probe). Error handling mirrors GetModelInfoByName exactly:
+// 401 → typed *Auth401Error propagated; 404 OR empty data[] → (nil, nil)
+// (the name is simply absent, NOT an error); other 4xx/5xx/network →
+// propagated for the caller's classification.
+//
+// §9.1: only the name and status code are logged — no response body content.
+func (c *Client) GetModelIDsByName(ctx context.Context, name string) ([]string, error) {
+	path := "/model/info?model_name=" + url.QueryEscape(name)
+	raw, err := c.makeRequest(ctx, "GET", path, nil)
+	if err != nil {
+		// 401 — propagate the typed error for the §7.7 fast-path.
+		var auth401 *Auth401Error
+		if errors.As(err, &auth401) {
+			return nil, err
+		}
+		// 404 — name absent. Treated as "not found", NOT an error.
+		if IsNotFound(err) {
+			return nil, nil
+		}
+		// Other 4xx + 5xx + network — propagate for classification.
+		return nil, err
+	}
+	var list ModelListResponse
+	if err := json.Unmarshal(raw, &list); err != nil {
+		return nil, fmt.Errorf("litellm: decode GET /model/info?model_name: %w", err)
+	}
+	// Collect ALL exact-name matches (per OWN-01 per-name resolution),
+	// skipping rows with an empty id. nil result on no matches → "not found".
+	var ids []string
+	for i := range list.Data {
+		if list.Data[i].ModelName == name && list.Data[i].ModelInfo.ID != "" {
+			ids = append(ids, list.Data[i].ModelInfo.ID)
+		}
+	}
+	return ids, nil
+}

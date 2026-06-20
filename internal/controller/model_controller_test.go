@@ -2186,6 +2186,276 @@ func TestModel_HandManagedEntry_Untouched(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Duplicate-deployment churn (id-drift amplifier) — Fix A + Fix B
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TestSafetyRelist_DuplicateRows_NoChurn — Fix A amplifier regression.
+//
+// LiteLLM allows multiple deployment rows per model_name. When a duplicate row
+// exists but our tracked id is STILL PRESENT in the returned set, the safety-
+// relist must resolve by set-membership (order-independent) — NOT the first
+// row — and therefore must NOT clear the tracked id and must NOT recreate.
+//
+// This is the load-bearing regression test for the self-amplifying churn: the
+// pre-fix closure returned the FIRST row's id; with the duplicate listed first
+// (or simply != the tracked id) that read as "id drift" → clear → CREATE →
+// another duplicate → runaway. The assertions are the two that define "no
+// churn": ZERO additional POST /model/new and an UNCHANGED tracked modelID.
+func TestSafetyRelist_DuplicateRows_NoChurn(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetModels()
+	ensureNoModel(t, ctx, "dup-no-churn")
+	resetConnCacheSnapshot()
+	enableSuiteRelist(t)
+
+	ensureNoConnectionDefault(t, ctx)
+	connCR := connDefaultCR()
+	if err := k8sClient.Create(ctx, connCR); err != nil {
+		t.Fatalf("create LiteLLMConnection: %v", err)
+	}
+	t.Cleanup(func() {
+		mockServer.SetMode(mock.ModeHappy)
+		_ = k8sClient.Delete(context.Background(), connCR, &client.DeleteOptions{})
+		ensureNoModel(t, context.Background(), "dup-no-churn")
+		time.Sleep(50 * time.Millisecond)
+	})
+	connSnap := pollSnapshotReason(30*time.Second, reasonSynced)
+	if connSnap.Reason != reasonSynced {
+		t.Fatalf("LiteLLMConnection not Synced within 30s")
+	}
+
+	// 1. Create model; capture tracked id = ID1.
+	cr := modelSampleCR("dup-no-churn")
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create Model: %v", err)
+	}
+	m := pollModelCondition(t, ctx, "dup-no-churn", reasonSynced, 30*time.Second)
+	if m.Status.LastRendered.ModelID == "" {
+		t.Fatalf("Model not Synced within 30s; conditions=%+v", m.Status.Conditions)
+	}
+	id1 := m.Status.LastRendered.ModelID
+
+	// Reset recorded calls so we only count mutations from here on.
+	mockServer.ResetRecorded()
+	beforeNew := mockServer.MutationsByModelName("dup-no-churn")
+
+	// 2. A second deployment row appears under the same name (the stray
+	//    duplicate that drives the amplifier). Our tracked id ID1 still exists.
+	mockServer.AddDuplicateModelRow("dup-no-churn", "DUP-1")
+
+	// 3. Let several safety-relist ticks fire (accelerated cadence in envtest).
+	//    Fix B will prune DUP-1, but the load-bearing invariant under test
+	//    here is Fix A: ID1 must NOT churn and NO new row must be created.
+	time.Sleep(2 * time.Second)
+
+	// 4. Assert: ZERO additional POST /model/new for "dup-no-churn".
+	calls := mockServer.Recorded()
+	newCount := 0
+	for _, c := range calls {
+		if c.Method == http.MethodPost && c.Path == pathModelNew {
+			newCount++
+		}
+	}
+	if newCount != 0 {
+		t.Errorf("Fix A: expected 0 POST /model/new after duplicate row appeared, got %d (id-drift amplifier churn)", newCount)
+	}
+
+	// Defensive: the per-name mutation counter must not show any create either.
+	if afterNew := mockServer.MutationsByModelName("dup-no-churn"); afterNew > beforeNew+int64(len(mockServer.Recorded())) {
+		t.Logf("per-name mutations delta=%d (informational)", afterNew-beforeNew)
+	}
+
+	// 5. Assert: tracked modelID UNCHANGED.
+	key := client.ObjectKey{Name: "dup-no-churn", Namespace: WatchNamespace}
+	var after litellmv1alpha1.LiteLLMModel
+	if err := k8sClient.Get(ctx, key, &after); err != nil {
+		t.Fatalf("re-get model: %v", err)
+	}
+	if after.Status.LastRendered.ModelID != id1 {
+		t.Errorf("Fix A: tracked modelID CHURNED: was %q, now %q (want unchanged)", id1, after.Status.LastRendered.ModelID)
+	}
+}
+
+// TestSafetyRelist_IdGenuinelyGone_Adopts — Fix A genuine-drift path.
+//
+// If the tracked id is ABSENT from the returned set but ANOTHER row exists
+// under the name (e.g. an admin deleted our row and recreated one out of
+// band), the probe re-targets to the existing row (UPDATE adopt) — it must
+// NOT create a brand-new row. Set-membership says "ID1 gone" → adopt the only
+// remaining id.
+func TestSafetyRelist_IdGenuinelyGone_Adopts(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetModels()
+	ensureNoModel(t, ctx, "dup-adopt")
+	resetConnCacheSnapshot()
+	enableSuiteRelist(t)
+
+	ensureNoConnectionDefault(t, ctx)
+	connCR := connDefaultCR()
+	if err := k8sClient.Create(ctx, connCR); err != nil {
+		t.Fatalf("create LiteLLMConnection: %v", err)
+	}
+	t.Cleanup(func() {
+		mockServer.SetMode(mock.ModeHappy)
+		_ = k8sClient.Delete(context.Background(), connCR, &client.DeleteOptions{})
+		ensureNoModel(t, context.Background(), "dup-adopt")
+		time.Sleep(50 * time.Millisecond)
+	})
+	connSnap := pollSnapshotReason(30*time.Second, reasonSynced)
+	if connSnap.Reason != reasonSynced {
+		t.Fatalf("LiteLLMConnection not Synced within 30s")
+	}
+
+	// 1. Create "dup-adopt" → ID1.
+	cr := modelSampleCR("dup-adopt")
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create Model: %v", err)
+	}
+	m := pollModelCondition(t, ctx, "dup-adopt", reasonSynced, 30*time.Second)
+	if m.Status.LastRendered.ModelID == "" {
+		t.Fatalf("Model not Synced within 30s; conditions=%+v", m.Status.Conditions)
+	}
+	id1 := m.Status.LastRendered.ModelID
+
+	// 2. ID1 vanishes out of band; a DIFFERENT row "DUP-1" now holds the name.
+	mockServer.DeleteModelOutOfBand("dup-adopt") // removes the primary ID1 row
+	mockServer.AddDuplicateModelRow("dup-adopt", "DUP-1")
+	mockServer.ResetRecorded()
+
+	// 3. Reconcile via safety relist; the probe must re-target to DUP-1.
+	//    Wait until the tracked modelID becomes DUP-1 (adopt), bounded.
+	deadline := time.Now().Add(8 * time.Second)
+	key := client.ObjectKey{Name: "dup-adopt", Namespace: WatchNamespace}
+	var after litellmv1alpha1.LiteLLMModel
+	adopted := false
+	for time.Now().Before(deadline) {
+		if err := k8sClient.Get(ctx, key, &after); err == nil {
+			if after.Status.LastRendered.ModelID == "DUP-1" {
+				adopted = true
+				break
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// 4. Assert: status.modelID == "DUP-1" (adopted) AND no new row created.
+	if !adopted {
+		t.Errorf("Fix A: tracked modelID did not adopt the existing row; want DUP-1, got %q", after.Status.LastRendered.ModelID)
+	}
+	if after.Status.LastRendered.ModelID == id1 {
+		t.Errorf("Fix A: modelID still pinned to vanished id %q (probe did not detect genuine drift)", id1)
+	}
+	calls := mockServer.Recorded()
+	newCount := 0
+	for _, c := range calls {
+		if c.Method == http.MethodPost && c.Path == pathModelNew {
+			newCount++
+		}
+	}
+	if newCount != 0 {
+		t.Errorf("Fix A adopt: expected 0 POST /model/new (UPDATE re-target, not create), got %d", newCount)
+	}
+}
+
+// TestSafetyRelist_PrunesDuplicates — Fix B convergence.
+//
+// When the safety-relist sees >1 row for a name, it deletes the extras while
+// keeping the tracked id — converging the existing duplicate pollution back
+// to a single row. This is defense-in-depth: Fix A stops a stray duplicate
+// from amplifying; Fix B self-heals the rows that already accumulated.
+func TestSafetyRelist_PrunesDuplicates(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetModels()
+	ensureNoModel(t, ctx, "dup-prune")
+	resetConnCacheSnapshot()
+	enableSuiteRelist(t)
+
+	ensureNoConnectionDefault(t, ctx)
+	connCR := connDefaultCR()
+	if err := k8sClient.Create(ctx, connCR); err != nil {
+		t.Fatalf("create LiteLLMConnection: %v", err)
+	}
+	t.Cleanup(func() {
+		mockServer.SetMode(mock.ModeHappy)
+		_ = k8sClient.Delete(context.Background(), connCR, &client.DeleteOptions{})
+		ensureNoModel(t, context.Background(), "dup-prune")
+		time.Sleep(50 * time.Millisecond)
+	})
+	connSnap := pollSnapshotReason(30*time.Second, reasonSynced)
+	if connSnap.Reason != reasonSynced {
+		t.Fatalf("LiteLLMConnection not Synced within 30s")
+	}
+
+	// 1. Create "dup-prune" → ID1.
+	cr := modelSampleCR("dup-prune")
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create Model: %v", err)
+	}
+	m := pollModelCondition(t, ctx, "dup-prune", reasonSynced, 30*time.Second)
+	if m.Status.LastRendered.ModelID == "" {
+		t.Fatalf("Model not Synced within 30s; conditions=%+v", m.Status.Conditions)
+	}
+	id1 := m.Status.LastRendered.ModelID
+
+	// 2. Inject three duplicate rows (DUP-1..3).
+	mockServer.AddDuplicateModelRow("dup-prune", "DUP-1")
+	mockServer.AddDuplicateModelRow("dup-prune", "DUP-2")
+	mockServer.AddDuplicateModelRow("dup-prune", "DUP-3")
+	mockServer.ResetRecorded()
+
+	// 3. Reconcile via safety relist; the prune must converge to one row.
+	//    Wait until the by-name id set is exactly [ID1], bounded.
+	deadline := time.Now().Add(10 * time.Second)
+	var finalIDs []string
+	converged := false
+	for time.Now().Before(deadline) {
+		ids, err := connSnap.Client.GetModelIDsByName(ctx, "dup-prune")
+		if err == nil {
+			finalIDs = ids
+			if len(ids) == 1 && ids[0] == id1 {
+				converged = true
+				break
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// 4. Assert: only ID1 remains; deletes targeted DUP-1..3 (not ID1).
+	if !converged {
+		t.Errorf("Fix B: duplicate rows not converged to [%s]; got %v", id1, finalIDs)
+	}
+	// The tracked id must NOT have been deleted (still the primary entry).
+	if mockServer.GetModelID("dup-prune") != id1 {
+		t.Errorf("Fix B: prune deleted the tracked id; want primary still %q, got %q", id1, mockServer.GetModelID("dup-prune"))
+	}
+	// Exactly three POST /model/delete calls (one per duplicate).
+	calls := mockServer.Recorded()
+	deleteCount := 0
+	for _, c := range calls {
+		if c.Method == http.MethodPost && c.Path == pathModelDelete {
+			deleteCount++
+		}
+	}
+	if deleteCount != 3 {
+		t.Errorf("Fix B: expected 3 POST /model/delete (DUP-1..3), got %d", deleteCount)
+	}
+	// duplicate_pruned metric incremented (>=3 across the prune).
+	pruned := testutil.ToFloat64(metrics.DriftCorrectedTotal.WithLabelValues("model", "duplicate_pruned"))
+	if pruned < 3 {
+		t.Errorf("Fix B: drift_corrected_total{model,duplicate_pruned} = %.0f, want >= 3", pruned)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Task 2 — AC-S1 Redaction Canary
 // ─────────────────────────────────────────────────────────────────────────────
 

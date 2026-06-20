@@ -9,10 +9,16 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
 )
+
+// testModelName is the model_name reused across the GetModelInfoByName /
+// GetModelIDsByName tests. Extracted as a const so goconst stays quiet
+// (the literal appears in many comparison/argument positions).
+const testModelName = "my-model"
 
 // capturedRequest records the wire-level shape of a request the mock
 // server saw. Used by the path-string-verification tests to enforce
@@ -219,7 +225,7 @@ func TestCreateModelPath(t *testing.T) {
 func TestGetModelInfoByName_HappyPath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify the query param is correct.
-		if r.URL.Query().Get("model_name") != "my-model" {
+		if r.URL.Query().Get("model_name") != testModelName {
 			t.Errorf("expected model_name=my-model, got %q", r.URL.Query().Get("model_name"))
 		}
 		w.WriteHeader(200)
@@ -231,14 +237,14 @@ func TestGetModelInfoByName_HappyPath(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(t, srv.URL)
-	got, err := c.GetModelInfoByName(context.Background(), "my-model")
+	got, err := c.GetModelInfoByName(context.Background(), testModelName)
 	if err != nil {
 		t.Fatalf("GetModelInfoByName: unexpected error: %v", err)
 	}
 	if got == nil {
 		t.Fatal("GetModelInfoByName: want non-nil result, got nil")
 	}
-	if got.ModelName != "my-model" {
+	if got.ModelName != testModelName {
 		t.Errorf("ModelName: want my-model, got %q", got.ModelName)
 	}
 	if got.ModelInfo.ID != "uuid-1" {
@@ -265,7 +271,7 @@ func TestGetModelInfoByName_NotFound(t *testing.T) {
 			defer srv.Close()
 
 			c := newTestClient(t, srv.URL)
-			got, err := c.GetModelInfoByName(context.Background(), "my-model")
+			got, err := c.GetModelInfoByName(context.Background(), testModelName)
 			if err != nil {
 				t.Fatalf("GetModelInfoByName: unexpected error (want nil,nil for not-found): %v", err)
 			}
@@ -285,7 +291,7 @@ func TestGetModelInfoByName_401(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(t, srv.URL)
-	got, err := c.GetModelInfoByName(context.Background(), "my-model")
+	got, err := c.GetModelInfoByName(context.Background(), testModelName)
 	if got != nil {
 		t.Errorf("GetModelInfoByName: want nil result on 401, got %+v", got)
 	}
@@ -304,7 +310,7 @@ func TestGetModelInfoByName_5xx(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(t, srv.URL)
-	got, err := c.GetModelInfoByName(context.Background(), "my-model")
+	got, err := c.GetModelInfoByName(context.Background(), testModelName)
 	if err == nil {
 		t.Fatal("GetModelInfoByName: want error on 5xx, got nil")
 	}
@@ -334,12 +340,99 @@ func TestGetModelInfoByName_404ReturnsNilNil(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(t, srv.URL)
-	got, err := c.GetModelInfoByName(context.Background(), "my-model")
+	got, err := c.GetModelInfoByName(context.Background(), testModelName)
 	if err != nil {
 		t.Fatalf("GetModelInfoByName: want (nil, nil) on 404, got error: %v", err)
 	}
 	if got != nil {
 		t.Errorf("GetModelInfoByName: want nil result on 404, got %+v", got)
+	}
+}
+
+// TestGetModelIDsByName_ReturnsAllDuplicates — duplicate-row fix (Fix A).
+//
+// LiteLLM allows multiple deployment rows per model_name (POST /model/new is
+// NOT idempotent). The safety-relist must reason about the WHOLE set of ids
+// LiteLLM lists under a name — "is our tracked id still present?" — rather
+// than the first row only (which drives the id-drift duplicate-amplifier
+// churn). This asserts every exact-name match is collected, in response
+// order, and that rows for OTHER names are skipped.
+func TestGetModelIDsByName_ReturnsAllDuplicates(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("model_name") != testModelName {
+			t.Errorf("expected model_name=my-model, got %q", r.URL.Query().Get("model_name"))
+		}
+		w.WriteHeader(200)
+		// Three rows for "my-model" interleaved with an "other-model" row;
+		// the function must return [a b c] (skip the other-model row).
+		_, _ = w.Write([]byte(`{"data":[
+			{"model_id":"a","model_name":"my-model","litellm_params":{},"model_info":{"id":"a"}},
+			{"model_id":"b","model_name":"my-model","litellm_params":{},"model_info":{"id":"b"}},
+			{"model_id":"other","model_name":"other-model","litellm_params":{},"model_info":{"id":"other"}},
+			{"model_id":"c","model_name":"my-model","litellm_params":{},"model_info":{"id":"c"}}
+		]}`))
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv.URL)
+	ids, err := c.GetModelIDsByName(context.Background(), testModelName)
+	if err != nil {
+		t.Fatalf("GetModelIDsByName: unexpected error: %v", err)
+	}
+	if !reflect.DeepEqual(ids, []string{"a", "b", "c"}) {
+		t.Fatalf("GetModelIDsByName: want [a b c], got %v", ids)
+	}
+}
+
+// TestGetModelIDsByName_NotFound — empty data[] / no name match / 404 must
+// all resolve to (nil, nil) — NOT an error (mirrors GetModelInfoByName).
+func TestGetModelIDsByName_NotFound(t *testing.T) {
+	cases := []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{"empty_data", 200, `{"data":[]}`},
+		{"no_name_match", 200, `{"data":[{"model_id":"other","model_name":"other-model","litellm_params":{},"model_info":{"id":"other"}}]}`},
+		{"http_404", 404, `{"error":{"message":"model not found","type":"not_found","param":null,"code":"404"}}`},
+		{"empty_ids_skipped", 200, `{"data":[{"model_id":"","model_name":"my-model","litellm_params":{},"model_info":{"id":""}}]}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer srv.Close()
+
+			c := newTestClient(t, srv.URL)
+			ids, err := c.GetModelIDsByName(context.Background(), testModelName)
+			if err != nil {
+				t.Fatalf("GetModelIDsByName: want (nil, nil) for %s, got error: %v", tc.name, err)
+			}
+			if ids != nil {
+				t.Errorf("GetModelIDsByName: want nil ids for %s, got %v", tc.name, ids)
+			}
+		})
+	}
+}
+
+// TestGetModelIDsByName_401 — typed *Auth401Error propagated on 401.
+func TestGetModelIDsByName_401(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(401)
+		_, _ = w.Write([]byte(litellmAuth401Body))
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv.URL)
+	ids, err := c.GetModelIDsByName(context.Background(), testModelName)
+	if ids != nil {
+		t.Errorf("GetModelIDsByName: want nil ids on 401, got %v", ids)
+	}
+	var a *Auth401Error
+	if !errors.As(err, &a) {
+		t.Errorf("GetModelIDsByName: want *Auth401Error on 401, got %T: %v", err, err)
 	}
 }
 

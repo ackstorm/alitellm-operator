@@ -153,6 +153,37 @@ stored `infoHash` (pre-upgrade status) is backfilled silently — a model whose
 blob is already stale in LiteLLM needs a one-time manual recreate (delete the
 LiteLLM entry; the operator recreates it fresh via `POST /model/new`).
 
+### Duplicate deployment rows (id-drift churn)
+
+LiteLLM allows multiple deployment rows per `model_name` — `POST /model/new`
+is **not** idempotent. The safety re-list (existence probe, Step 7b) resolves
+"does our row still exist?" by checking whether the tracked `modelID` is
+**present in the full set** of rows LiteLLM lists under the name — an
+order-independent membership test — rather than reading the first row only.
+
+- Tracked id present → no drift, no mutation (even if duplicates exist).
+- Tracked id absent but another row exists → adopt it (`POST /model/update`
+  re-target), NOT a new create.
+- All rows gone → recreate (`create_missing`).
+
+When more than one row exists for a name, the operator prunes the extras on the
+relist tick — deleting every row except the tracked id — and increments
+`drift_corrected_total{domain=model,action=duplicate_pruned}` per deleted row.
+The prune is best-effort: a failed delete is retried on the next relist and
+never blocks the reconcile. Router models (`litellm_params.model` starting
+`auto_router/`) are exempt — they live in LiteLLM's in-memory router, are
+invisible to `GET /model/info`, and are never probed or pruned.
+
+Historical context: resolving by the first row (pre-fix) read any duplicate
+whose id differed from the tracked id as "id drift", clearing the tracked id →
+CREATE → another duplicate → self-amplifying churn (`claude-opus-4-7`
+accumulated 1718 rows over 9 days). To audit for residual duplicates:
+
+```sql
+SELECT model_name, count(*) FROM "LiteLLM_ProxyModelTable"
+GROUP BY 1 HAVING count(*) > 1;
+```
+
 ## Default access group
 
 If `spec.info.access_groups` is absent or empty, the operator injects the

@@ -174,9 +174,19 @@ type MockServer struct {
 	// reconciler can persist and re-use the UUID across reconciles.
 	mu                sync.Mutex
 	recorded          []RecordedCall
-	models            map[string]*modelEntry // keyed by model_name
+	models            map[string]*modelEntry // keyed by model_name (the operator-owned "primary" row)
 	modelSeq          atomic.Int64           // monotonically increasing UUID suffix
 	perModelMutations map[string]int64       // tracks mutation count per model_name
+
+	// dupModelRows holds EXTRA deployment rows injected for a model_name
+	// beyond the single primary entry in `models`, keyed by model_name →
+	// list of extra model_ids. LiteLLM allows multiple deployment rows per
+	// model_name (POST /model/new is NOT idempotent); the `models` map only
+	// models the one-row-per-name happy path, so this parallel store lets
+	// duplicate-row tests reproduce the id-drift churn condition. The
+	// GET /model/info?model_name= handler appends these rows; POST
+	// /model/delete removes a matching id from here too. Test-only.
+	dupModelRows map[string][]string
 
 	// lastModelInfo records the model_info sub-block of the most recent
 	// POST /model/new or /model/update for each model_name, so tests can
@@ -274,6 +284,7 @@ func NewServer(t *testing.T) *MockServer {
 		models:            make(map[string]*modelEntry),
 		perModelMutations: make(map[string]int64),
 		lastModelInfo:     make(map[string]map[string]any),
+		dupModelRows:      make(map[string][]string),
 		mcpServers:        make(map[string]*mcpEntry),
 		mcpByName:         make(map[string]string),
 		perMCPMutations:   make(map[string]int64),
@@ -332,6 +343,7 @@ func (m *MockServer) ResetModels() {
 	m.models = make(map[string]*modelEntry)
 	m.perModelMutations = make(map[string]int64)
 	m.lastModelInfo = make(map[string]map[string]any)
+	m.dupModelRows = make(map[string][]string)
 	m.mu.Unlock()
 }
 
@@ -660,6 +672,19 @@ func (m *MockServer) LastTeamBody(alias string) map[string]any {
 func (m *MockServer) AddHandManagedModel(name, id string) {
 	m.mu.Lock()
 	m.models[name] = &modelEntry{ModelID: id, ModelName: name}
+	m.mu.Unlock()
+}
+
+// AddDuplicateModelRow injects an EXTRA deployment row for an existing
+// model_name with a distinct model_id, simulating the LiteLLM duplicate-rows
+// state that drives the id-drift churn (POST /model/new is NOT idempotent, so
+// real LiteLLM accumulates multiple rows under one name). After this call,
+// GET /model/info?model_name=<name> returns the primary `models` entry PLUS
+// every injected duplicate row, and POST /model/delete {"id":<dupID>} removes
+// exactly that duplicate row. Test-only.
+func (m *MockServer) AddDuplicateModelRow(modelName, modelID string) {
+	m.mu.Lock()
+	m.dupModelRows[modelName] = append(m.dupModelRows[modelName], modelID)
 	m.mu.Unlock()
 }
 
@@ -1043,11 +1068,35 @@ func (m *MockServer) statefulBody(r *http.Request) []byte {
 		}
 		delID, _ := reqBody["id"].(string)
 		m.mu.Lock()
+		// Primary rows: delete the named entry whose id matches.
+		deleted := false
 		for name, e := range m.models {
 			if e.ModelID == delID {
 				delete(m.models, name)
 				m.perModelMutations[name]++
+				deleted = true
 				break
+			}
+		}
+		// Duplicate rows: a prune targets these extra ids. Remove exactly the
+		// matching id from whichever name's dup list holds it (duplicate-row
+		// convergence — Fix B). Counts as a mutation against that name.
+		if !deleted {
+			for name, dups := range m.dupModelRows {
+				for i, dupID := range dups {
+					if dupID == delID {
+						m.dupModelRows[name] = append(dups[:i], dups[i+1:]...)
+						if len(m.dupModelRows[name]) == 0 {
+							delete(m.dupModelRows, name)
+						}
+						m.perModelMutations[name]++
+						deleted = true
+						break
+					}
+				}
+				if deleted {
+					break
+				}
 			}
 		}
 		m.mu.Unlock()
@@ -1077,14 +1126,28 @@ func (m *MockServer) statefulBody(r *http.Request) []byte {
 			return []byte(`{"data":[]}`)
 		}
 		if modelName != "" {
-			// Filter by name.
+			// Filter by name. Real LiteLLM returns EVERY deployment row for a
+			// name (duplicates allowed); the mock mirrors that by emitting
+			// every injected duplicate row FIRST, then the primary `models`
+			// entry. Ordering the duplicates ahead of the tracked-id row
+			// reproduces the live id-drift trigger: a first-row read sees a
+			// dup id != the tracked id and (pre-fix) treats it as drift. The
+			// set-membership fix is order-independent, so this ordering is
+			// the adversarial case for the regression test.
+			rows := make([]string, 0, 1+len(m.dupModelRows[modelName]))
+			for _, dupID := range m.dupModelRows[modelName] {
+				rows = append(rows, fmt.Sprintf(
+					`{"model_id":%q,"model_name":%q,"litellm_params":{},"model_info":{"id":%q}}`,
+					dupID, modelName, dupID,
+				))
+			}
 			if e, ok := m.models[modelName]; ok {
-				return []byte(fmt.Sprintf(
-					`{"data":[{"model_id":%q,"model_name":%q,"litellm_params":{},"model_info":{"id":%q}}]}`,
+				rows = append(rows, fmt.Sprintf(
+					`{"model_id":%q,"model_name":%q,"litellm_params":{},"model_info":{"id":%q}}`,
 					e.ModelID, e.ModelName, e.ModelID,
 				))
 			}
-			return []byte(`{"data":[]}`)
+			return []byte(fmt.Sprintf(`{"data":[%s]}`, strings.Join(rows, ",")))
 		}
 		// No filter — return all models.
 		var entries []string

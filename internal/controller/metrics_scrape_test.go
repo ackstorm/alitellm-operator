@@ -85,7 +85,10 @@ func TestMetricsExposeS10Set(t *testing.T) {
 		}
 	}
 
-	// drift_corrected_total: all 12 enumerated label combos.
+	// drift_corrected_total: the full enumeration is now 5 domains ×
+	// 4 actions (incl. duplicate_pruned) = 20 combos. This loop spot-checks
+	// the original 12-combo subset (4 domains × 3 actions); the guardrail
+	// domain and duplicate_pruned action are covered by the pre-touch test.
 	driftDomains := []string{"model", "mcp", "a2a", "team"}
 	driftActions := []string{"create_missing", "update_drifted", "delete_vanished"}
 	for _, d := range driftDomains {
