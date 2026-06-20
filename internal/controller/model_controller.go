@@ -564,14 +564,30 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		clear, probeErr := probeVanishedResourceID(ctx,
 			model.Status.LastRendered.ModelID,
 			func(c context.Context) (string, error) {
-				entry, err := snap.Client.GetModelInfoByName(c, model.Name)
+				// Fix A: resolve by PRESENCE of the tracked id in the full set
+				// of rows LiteLLM lists under this name — NOT the first row.
+				// LiteLLM allows multiple deployment rows per model_name; the
+				// old first-row read treated any duplicate whose id != the
+				// tracked id as "id drift", clearing the tracked id → CREATE →
+				// another duplicate → self-amplifying churn (prod: 1718 rows
+				// for one model over 9 days). Set-membership is order-
+				// independent and duplicate-safe.
+				ids, err := snap.Client.GetModelIDsByName(c, model.Name)
 				if err != nil {
 					return "", err
 				}
-				if entry == nil {
-					return "", nil
+				last := model.Status.LastRendered.ModelID
+				for _, id := range ids {
+					if id == last {
+						return last, nil // tracked id still present → no drift
+					}
 				}
-				return entry.ModelInfo.ID, nil
+				if len(ids) > 0 {
+					// Tracked id gone but a row exists → genuine drift; adopt
+					// the existing row (UPDATE re-target, no new POST /model/new).
+					return ids[0], nil
+				}
+				return "", nil // vanished
 			},
 			r.Cache.InvalidateOn401, logger, "model")
 		if probeErr != nil {
