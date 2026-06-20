@@ -599,6 +599,33 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		// Hash left populated so firstReconcile=false → create_missing metric increments.
 	}
 
+	// ─── Step 7c: Fix B — converge duplicate deployment rows ────────────────
+	// LiteLLM allows multiple deployment rows per model_name (POST /model/new
+	// is NOT idempotent); historical id-drift churn (pre-Fix-A) left thousands
+	// of stray rows. When the relist sees >1 row for a name, delete the extras
+	// and keep the tracked id. Best-effort: a failed delete is retried on the
+	// next relist and never blocks the reconcile. Skipped for router models
+	// (structurally invisible to GET /model/info) and when no tracked id is
+	// pinned (nothing to keep — the create/adopt path handles that case).
+	if !routerModel && model.Status.LastRendered.ModelID != "" {
+		if ids, derr := snap.Client.GetModelIDsByName(ctx, model.Name); derr == nil && len(ids) > 1 {
+			keep := model.Status.LastRendered.ModelID
+			for _, id := range ids {
+				if id == keep {
+					continue
+				}
+				if delErr := snap.Client.DeleteModel(ctx, id); delErr != nil {
+					logger.V(1).Info("duplicate prune: delete failed (will retry next relist)",
+						"model", model.Name, "dupID", id, "err", delErr.Error())
+				} else {
+					logger.Info("duplicate prune: deleted extra deployment row",
+						"model", model.Name, "keptID", keep, "deletedID", id)
+					metrics.DriftCorrectedTotal.WithLabelValues("model", "duplicate_pruned").Inc()
+				}
+			}
+		}
+	}
+
 	// ─── Step 8: Hash-equal steady state (AC-R1) ───────────────────────────
 	if model.Status.LastRendered.Hash == currentRenderedHash &&
 		model.Status.LastRendered.ModelID != "" &&

@@ -2363,6 +2363,98 @@ func TestSafetyRelist_IdGenuinelyGone_Adopts(t *testing.T) {
 	}
 }
 
+// TestSafetyRelist_PrunesDuplicates — Fix B convergence.
+//
+// When the safety-relist sees >1 row for a name, it deletes the extras while
+// keeping the tracked id — converging the existing duplicate pollution back
+// to a single row. This is defense-in-depth: Fix A stops a stray duplicate
+// from amplifying; Fix B self-heals the rows that already accumulated.
+func TestSafetyRelist_PrunesDuplicates(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetModels()
+	ensureNoModel(t, ctx, "dup-prune")
+	resetConnCacheSnapshot()
+	enableSuiteRelist(t)
+
+	ensureNoConnectionDefault(t, ctx)
+	connCR := connDefaultCR()
+	if err := k8sClient.Create(ctx, connCR); err != nil {
+		t.Fatalf("create LiteLLMConnection: %v", err)
+	}
+	t.Cleanup(func() {
+		mockServer.SetMode(mock.ModeHappy)
+		_ = k8sClient.Delete(context.Background(), connCR, &client.DeleteOptions{})
+		ensureNoModel(t, context.Background(), "dup-prune")
+		time.Sleep(50 * time.Millisecond)
+	})
+	connSnap := pollSnapshotReason(30*time.Second, reasonSynced)
+	if connSnap.Reason != reasonSynced {
+		t.Fatalf("LiteLLMConnection not Synced within 30s")
+	}
+
+	// 1. Create "dup-prune" → ID1.
+	cr := modelSampleCR("dup-prune")
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create Model: %v", err)
+	}
+	m := pollModelCondition(t, ctx, "dup-prune", reasonSynced, 30*time.Second)
+	if m.Status.LastRendered.ModelID == "" {
+		t.Fatalf("Model not Synced within 30s; conditions=%+v", m.Status.Conditions)
+	}
+	id1 := m.Status.LastRendered.ModelID
+
+	// 2. Inject three duplicate rows (DUP-1..3).
+	mockServer.AddDuplicateModelRow("dup-prune", "DUP-1")
+	mockServer.AddDuplicateModelRow("dup-prune", "DUP-2")
+	mockServer.AddDuplicateModelRow("dup-prune", "DUP-3")
+	mockServer.ResetRecorded()
+
+	// 3. Reconcile via safety relist; the prune must converge to one row.
+	//    Wait until the by-name id set is exactly [ID1], bounded.
+	deadline := time.Now().Add(10 * time.Second)
+	var finalIDs []string
+	converged := false
+	for time.Now().Before(deadline) {
+		ids, err := connSnap.Client.GetModelIDsByName(ctx, "dup-prune")
+		if err == nil {
+			finalIDs = ids
+			if len(ids) == 1 && ids[0] == id1 {
+				converged = true
+				break
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// 4. Assert: only ID1 remains; deletes targeted DUP-1..3 (not ID1).
+	if !converged {
+		t.Errorf("Fix B: duplicate rows not converged to [%s]; got %v", id1, finalIDs)
+	}
+	// The tracked id must NOT have been deleted (still the primary entry).
+	if mockServer.GetModelID("dup-prune") != id1 {
+		t.Errorf("Fix B: prune deleted the tracked id; want primary still %q, got %q", id1, mockServer.GetModelID("dup-prune"))
+	}
+	// Exactly three POST /model/delete calls (one per duplicate).
+	calls := mockServer.Recorded()
+	deleteCount := 0
+	for _, c := range calls {
+		if c.Method == http.MethodPost && c.Path == pathModelDelete {
+			deleteCount++
+		}
+	}
+	if deleteCount != 3 {
+		t.Errorf("Fix B: expected 3 POST /model/delete (DUP-1..3), got %d", deleteCount)
+	}
+	// duplicate_pruned metric incremented (>=3 across the prune).
+	pruned := testutil.ToFloat64(metrics.DriftCorrectedTotal.WithLabelValues("model", "duplicate_pruned"))
+	if pruned < 3 {
+		t.Errorf("Fix B: drift_corrected_total{model,duplicate_pruned} = %.0f, want >= 3", pruned)
+	}
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Task 2 — AC-S1 Redaction Canary
 // ─────────────────────────────────────────────────────────────────────────────
