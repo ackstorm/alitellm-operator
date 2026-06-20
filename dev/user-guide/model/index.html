@@ -835,6 +835,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Drift detection + correction">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#duplicate-deployment-rows-id-drift-churn" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Duplicate deployment rows (id-drift churn)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1639,6 +1656,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Drift detection + correction">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#duplicate-deployment-rows-id-drift-churn" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Duplicate deployment rows (id-drift churn)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1866,6 +1900,32 @@ operator tracks <code>status.lastRendered.infoHash</code> (SHA-256 of the render
 stored <code>infoHash</code> (pre-upgrade status) is backfilled silently — a model whose
 blob is already stale in LiteLLM needs a one-time manual recreate (delete the
 LiteLLM entry; the operator recreates it fresh via <code>POST /model/new</code>).</p>
+<h3 id="duplicate-deployment-rows-id-drift-churn">Duplicate deployment rows (id-drift churn)<a class="headerlink" href="#duplicate-deployment-rows-id-drift-churn" title="Permanent link">&para;</a></h3>
+<p>LiteLLM allows multiple deployment rows per <code>model_name</code> — <code>POST /model/new</code>
+is <strong>not</strong> idempotent. The safety re-list (existence probe, Step 7b) resolves
+"does our row still exist?" by checking whether the tracked <code>modelID</code> is
+<strong>present in the full set</strong> of rows LiteLLM lists under the name — an
+order-independent membership test — rather than reading the first row only.</p>
+<ul>
+<li>Tracked id present → no drift, no mutation (even if duplicates exist).</li>
+<li>Tracked id absent but another row exists → adopt it (<code>POST /model/update</code>
+  re-target), NOT a new create.</li>
+<li>All rows gone → recreate (<code>create_missing</code>).</li>
+</ul>
+<p>When more than one row exists for a name, the operator prunes the extras on the
+relist tick — deleting every row except the tracked id — and increments
+<code>drift_corrected_total{domain=model,action=duplicate_pruned}</code> per deleted row.
+The prune is best-effort: a failed delete is retried on the next relist and
+never blocks the reconcile. Router models (<code>litellm_params.model</code> starting
+<code>auto_router/</code>) are exempt — they live in LiteLLM's in-memory router, are
+invisible to <code>GET /model/info</code>, and are never probed or pruned.</p>
+<p>Historical context: resolving by the first row (pre-fix) read any duplicate
+whose id differed from the tracked id as "id drift", clearing the tracked id →
+CREATE → another duplicate → self-amplifying churn (<code>claude-opus-4-7</code>
+accumulated 1718 rows over 9 days). To audit for residual duplicates:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">SELECT</span><span class="w"> </span><span class="n">model_name</span><span class="p">,</span><span class="w"> </span><span class="k">count</span><span class="p">(</span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="ss">&quot;LiteLLM_ProxyModelTable&quot;</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="k">GROUP</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="k">HAVING</span><span class="w"> </span><span class="k">count</span><span class="p">(</span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+</code></pre></div>
 <h2 id="default-access-group">Default access group<a class="headerlink" href="#default-access-group" title="Permanent link">&para;</a></h2>
 <p>If <code>spec.info.access_groups</code> is absent or empty, the operator injects the
 <code>DEFAULT_ACCESS_GROUP</code> value (default <code>default</code>; set the env var to <code>""</code> to
@@ -1877,11 +1937,11 @@ non-empty <code>access_groups</code> is never overridden.</p>
 overlay (the pinned <code>modelID</code>) and emits a Warning Event
 <code>reason=ProjectionOverride</code>. Do not set it.</p>
 <h2 id="status-what-to-read">Status: what to read<a class="headerlink" href="#status-what-to-read" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>mdl<span class="w"> </span>claude-sonnet-4-5<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.status.lastRendered}{&quot;\n&quot;}&#39;</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="c1"># {&quot;at&quot;:&quot;...&quot;,&quot;hash&quot;:&quot;abc...&quot;,&quot;infoHash&quot;:&quot;def...&quot;,&quot;infoKeys&quot;:[&quot;access_groups&quot;,&quot;description&quot;],&quot;modelID&quot;:&quot;&lt;uuid&gt;&quot;,&quot;paramsKeys&quot;:[&quot;api_base&quot;,&quot;api_key&quot;,&quot;model&quot;]}</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>kubectl<span class="w"> </span>get<span class="w"> </span>mdl<span class="w"> </span>claude-sonnet-4-5<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.status.conditions[?(@.type==&quot;Ready&quot;)]}{&quot;\n&quot;}&#39;</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="c1"># {&quot;type&quot;:&quot;Ready&quot;,&quot;status&quot;:&quot;True&quot;,&quot;reason&quot;:&quot;Synced&quot;}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>mdl<span class="w"> </span>claude-sonnet-4-5<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.status.lastRendered}{&quot;\n&quot;}&#39;</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="c1"># {&quot;at&quot;:&quot;...&quot;,&quot;hash&quot;:&quot;abc...&quot;,&quot;infoHash&quot;:&quot;def...&quot;,&quot;infoKeys&quot;:[&quot;access_groups&quot;,&quot;description&quot;],&quot;modelID&quot;:&quot;&lt;uuid&gt;&quot;,&quot;paramsKeys&quot;:[&quot;api_base&quot;,&quot;api_key&quot;,&quot;model&quot;]}</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>kubectl<span class="w"> </span>get<span class="w"> </span>mdl<span class="w"> </span>claude-sonnet-4-5<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.status.conditions[?(@.type==&quot;Ready&quot;)]}{&quot;\n&quot;}&#39;</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="c1"># {&quot;type&quot;:&quot;Ready&quot;,&quot;status&quot;:&quot;True&quot;,&quot;reason&quot;:&quot;Synced&quot;}</span>
 </code></pre></div>
 <p><code>Ready=False</code> reasons beyond the secret-related ones above:</p>
 <ul>
