@@ -8,17 +8,16 @@ import (
 	"testing"
 )
 
-// TestRegistry_HasFiveProviders asserts the Registry map exposes
-// constructors for ALL FIVE spec.type values (anthropic, bedrock, gemini,
-// kubeai, openai). Three are real in 04-03a; kubeai and bedrock are stubs
-// until 04-03b / 04-03c land. D-01 forbids any switch on spec.type outside
-// this map — so the integrity of the map keys IS the per-type dispatch
-// contract.
-func TestRegistry_HasFiveProviders(t *testing.T) {
-	if got := len(Registry); got != 5 {
-		t.Fatalf("Registry: expected 5 entries; got %d", got)
+// TestRegistry_HasSixProviders asserts the Registry map exposes
+// constructors for ALL SIX spec.type values (anthropic, bedrock,
+// elevenlabs, gemini, kubeai, openai). D-01 forbids any switch on
+// spec.type outside this map — so the integrity of the map keys IS the
+// per-type dispatch contract.
+func TestRegistry_HasSixProviders(t *testing.T) {
+	if got := len(Registry); got != 6 {
+		t.Fatalf("Registry: expected 6 entries; got %d", got)
 	}
-	for _, k := range []string{"anthropic", "bedrock", "gemini", "kubeai", "openai"} {
+	for _, k := range []string{"anthropic", "bedrock", "elevenlabs", "gemini", "kubeai", "openai"} {
 		if _, ok := Registry[k]; !ok {
 			t.Errorf("Registry: missing key %q", k)
 		}

@@ -40,9 +40,10 @@ func drainAndClose(body io.ReadCloser) {
 // bedrock uses aws-sdk-go-v2's own endpoint resolution; it does not
 // flow through this map.
 var defaultBaseURLs = map[string]string{
-	"anthropic": "https://api.anthropic.com/v1",
-	"gemini":    "https://generativelanguage.googleapis.com/v1beta",
-	"openai":    "https://api.openai.com/v1",
+	"anthropic":  "https://api.anthropic.com/v1",
+	"elevenlabs": "https://api.elevenlabs.io/v1",
+	"gemini":     "https://generativelanguage.googleapis.com/v1beta",
+	"openai":     "https://api.openai.com/v1",
 }
 
 // testBaseURLOverrides is populated ONLY through SetTestBaseURL in

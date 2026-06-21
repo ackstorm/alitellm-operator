@@ -43,11 +43,12 @@ var registryMu sync.RWMutex
 // 04-03c fills newBedrock with the aws-sdk-go-v2 ListFoundationModels
 // implementation; the registry is now COMPLETE — all 5 providers shipped.
 var Registry = map[string]func(ctx context.Context, cfg ProviderConfig) (Provider, error){
-	"anthropic": newAnthropic, // filled by 04-03a Task 2 (anthropic.go)
-	"bedrock":   newBedrock,   // filled by 04-03c (bedrock.go)
-	"gemini":    newGemini,    // filled by 04-03a Task 3 (gemini.go)
-	"kubeai":    newKubeAI,    // filled by 04-03b (kubeai.go)
-	"openai":    newOpenAI,    // filled by 04-03a Task 4 (openai.go)
+	"anthropic":  newAnthropic,  // filled by 04-03a Task 2 (anthropic.go)
+	"bedrock":    newBedrock,    // filled by 04-03c (bedrock.go)
+	"elevenlabs": newElevenLabs, // elevenlabs.go (hosted SaaS, bare-array /v1/models)
+	"gemini":     newGemini,     // filled by 04-03a Task 3 (gemini.go)
+	"kubeai":     newKubeAI,     // filled by 04-03b (kubeai.go)
+	"openai":     newOpenAI,     // filled by 04-03a Task 4 (openai.go)
 }
 
 // Lookup returns the constructor registered for providerType and a
@@ -85,4 +86,10 @@ func newGemini(ctx context.Context, cfg ProviderConfig) (Provider, error) {
 // to "openai" and newKubeAI will set it to "kubeai".
 func newOpenAI(ctx context.Context, cfg ProviderConfig) (Provider, error) {
 	return newOpenAIImpl(ctx, cfg)
+}
+
+// newElevenLabs is implemented in elevenlabs.go as newElevenLabsImpl;
+// this thin alias keeps the Registry map literal stable.
+func newElevenLabs(ctx context.Context, cfg ProviderConfig) (Provider, error) {
+	return newElevenLabsImpl(ctx, cfg)
 }
