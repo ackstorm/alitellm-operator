@@ -102,11 +102,12 @@ const (
 	// Provider type discriminators — match internal/providers wire labels.
 	// Locally re-declared (rather than imported) to avoid coupling controller
 	// switch statements to providers package internals.
-	providerTypeAnthropic = "anthropic"
-	providerTypeGemini    = "gemini"
-	providerTypeOpenAI    = "openai"
-	providerTypeBedrock   = "bedrock"
-	providerTypeKubeAI    = "kubeai"
+	providerTypeAnthropic  = "anthropic"
+	providerTypeGemini     = "gemini"
+	providerTypeOpenAI     = "openai"
+	providerTypeBedrock    = "bedrock"
+	providerTypeElevenLabs = "elevenlabs"
+	providerTypeKubeAI     = "kubeai"
 
 	// fieldOwner is the SSA field manager identity used by Discovery on
 	// every child LiteLLMModel write (D-06). Per the T-04-04-S1 mitigation in
@@ -422,6 +423,17 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		cfg.APIKey = key
 	case providerTypeOpenAI:
 		key, missing, err := r.resolveStringKey(ctx, md.Namespace, md.Spec.CredentialsSecretRef, "OPENAI_API_KEY")
+		if err != nil && !missing {
+			return ctrl.Result{}, err // transient → controller-runtime backoff
+		}
+		if missing {
+			res := r.writeReadyAndSource(ctx, &md, reasonSecretNotFound, err.Error())
+			res.RequeueAfter = connection.DefaultRequeueOnRejectedAfter
+			return res, nil
+		}
+		cfg.APIKey = key
+	case providerTypeElevenLabs:
+		key, missing, err := r.resolveStringKey(ctx, md.Namespace, md.Spec.CredentialsSecretRef, "ELEVENLABS_API_KEY")
 		if err != nil && !missing {
 			return ctrl.Result{}, err // transient → controller-runtime backoff
 		}

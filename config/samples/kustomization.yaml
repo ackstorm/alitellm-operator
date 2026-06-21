@@ -6,6 +6,7 @@ resources:
 # Phase 4 per-provider ModelDiscovery samples (plan 04-06)
 - modeldiscovery-anthropic.yaml
 - modeldiscovery-bedrock.yaml
+- modeldiscovery-elevenlabs.yaml
 - modeldiscovery-gemini.yaml
 - modeldiscovery-kubeai.yaml
 - modeldiscovery-openai.yaml

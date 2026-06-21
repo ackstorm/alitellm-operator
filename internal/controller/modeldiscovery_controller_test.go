@@ -261,7 +261,7 @@ func modeldiscoverySampleCR(name, providerType string) *litellmv1alpha1.LiteLLMM
 	}
 	// Per-type required fields per spec §6.3 CEL matrix.
 	switch providerType {
-	case "anthropic", "gemini", "openai":
+	case "anthropic", "gemini", "openai", "elevenlabs":
 		md.Spec.CredentialsSecretRef = &litellmv1alpha1.SecretObjectRef{
 			Name: name + "-creds",
 		}
@@ -353,6 +353,8 @@ func ensureCredentialSecret(t *testing.T, ctx context.Context, name, providerTyp
 		data["GEMINI_API_KEY"] = []byte("test-gemini")
 	case "openai":
 		data["OPENAI_API_KEY"] = []byte("sk-test-openai")
+	case "elevenlabs":
+		data["ELEVENLABS_API_KEY"] = []byte("xi-test-key")
 	case "bedrock":
 		data["AWS_ACCESS_KEY_ID"] = []byte("AKIATESTCANARY12345")
 		data["AWS_SECRET_ACCESS_KEY"] = []byte("test-secret")
@@ -488,6 +490,70 @@ func TestModelDiscovery_AC_MD_NORM1_BedrockColonNormalization(t *testing.T) {
 	}
 	if got, want := params["aws_region_name"], "us-east-1"; got != want {
 		t.Errorf("child.Spec.Params.aws_region_name: got %v, want %s (Bedrock overlay per D-06)", got, want)
+	}
+}
+
+// TestModelDiscovery_ElevenLabs_GeneratesChildren locks the elevenlabs
+// credential-resolution path: a spec.type=elevenlabs CR with a Secret
+// carrying ELEVENLABS_API_KEY must reach the child-generation step and
+// produce a LiteLLMModel whose spec.params.model maps the raw provider ID
+// verbatim to "elevenlabs/<id>" (MDISC-10). Uses RegisterTestProvider so
+// no live HTTP is involved.
+func TestModelDiscovery_ElevenLabs_GeneratesChildren(t *testing.T) {
+	ctx := context.Background()
+	const mdName = "elevenlabs"
+
+	ensureNoModelDiscovery(t, ctx, mdName)
+	t.Cleanup(func() { ensureNoModelDiscovery(t, context.Background(), mdName) })
+
+	// Inject a fake ElevenLabs provider returning two models without HTTP.
+	fake := newFakeProvider("elevenlabs", []providers.Candidate{
+		{ID: "eleven_multilingual_v2", DisplayName: "Eleven Multilingual v2"},
+		{ID: "scribe_v1", DisplayName: "Scribe v1"},
+	})
+	providers.RegisterTestProvider(t, "elevenlabs", fake)
+
+	// elevenlabs requires credentialsSecretRef with key ELEVENLABS_API_KEY.
+	ensureCredentialSecret(t, ctx, mdName+"-creds", "elevenlabs")
+
+	md := modeldiscoverySampleCR(mdName, "elevenlabs")
+	if err := k8sClient.Create(ctx, md); err != nil {
+		t.Fatalf("create ModelDiscovery: %v", err)
+	}
+
+	// Default prefix = lowercased(spec.type) = "elevenlabs"; the raw ID
+	// "eleven_multilingual_v2" normalizes (_ → -) to
+	// "eleven-multilingual-v2".
+	const wantChildName = "elevenlabs.eleven-multilingual-v2"
+
+	deadline := time.Now().Add(30 * time.Second)
+	var child litellmv1alpha1.LiteLLMModel
+	key := client.ObjectKey{Name: wantChildName, Namespace: WatchNamespace}
+	found := false
+	for time.Now().Before(deadline) {
+		if err := k8sClient.Get(ctx, key, &child); err == nil {
+			found = true
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !found {
+		var mdAfter litellmv1alpha1.LiteLLMModelDiscovery
+		_ = k8sClient.Get(ctx, client.ObjectKey{Name: mdName, Namespace: WatchNamespace}, &mdAfter)
+		c := apimeta.FindStatusCondition(mdAfter.Status.Conditions, conditionTypeReady)
+		t.Fatalf("child Model %q not created within 30s; Ready=%+v; failed=%+v",
+			wantChildName, c, mdAfter.Status.FailedCandidates)
+	}
+
+	// Verify spec.params.model preserves the RAW ID verbatim (MDISC-10).
+	var params map[string]any
+	if err := json.Unmarshal(child.Spec.Params.Raw, &params); err != nil {
+		t.Fatalf("decode child.Spec.Params: %v", err)
+	}
+	const wantModel = "elevenlabs/eleven_multilingual_v2"
+	if got := params["model"]; got != wantModel {
+		t.Errorf("child.Spec.Params.model: got %v, want %q (raw ID MUST be preserved verbatim per MDISC-10)",
+			got, wantModel)
 	}
 }
 
@@ -1057,7 +1123,7 @@ type simulatedProviderError struct {
 func (e *simulatedProviderError) Error() string { return e.msg }
 
 // TestModelDiscovery_Samples_CELAccept locks the Phase 4 sample-manifest
-// contract: each of the five per-provider sample
+// contract: each of the six per-provider sample
 // manifests in config/samples/modeldiscovery-*.yaml MUST survive the
 // CRD's CEL admission rules (api/litellm/v1alpha1/modeldiscovery_types.go
 // XValidation markers). Failure here means a user copying the sample
@@ -1099,6 +1165,7 @@ func TestModelDiscovery_Samples_CELAccept(t *testing.T) {
 	cases := []sampleCase{
 		{file: "modeldiscovery-anthropic.yaml"},
 		{file: "modeldiscovery-bedrock.yaml"},
+		{file: "modeldiscovery-elevenlabs.yaml"},
 		{file: "modeldiscovery-gemini.yaml"},
 		{file: "modeldiscovery-kubeai.yaml"},
 		{file: "modeldiscovery-openai.yaml"},
