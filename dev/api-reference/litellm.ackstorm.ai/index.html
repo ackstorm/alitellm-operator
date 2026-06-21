@@ -4394,11 +4394,11 @@ survive in LiteLLM.
 <p>LiteLLMModelDiscovery is the Schema for the litellmmodeldiscoveries API — the
 first Pipeline B CRD (spec §3.3 / §7.1, _FINALv3 two-pipeline model).
 A LiteLLMModelDiscovery CR points the operator at one upstream provider
-(anthropic, bedrock, gemini, kubeai, or openai) and reconciles
+(anthropic, bedrock, elevenlabs, gemini, kubeai, or openai) and reconciles
 discovered IDs into a fan-out of Kubernetes LiteLLMModel child CRs in
 WATCH_NAMESPACE. Discovery NEVER calls LiteLLM directly; each child
 reconciles into LiteLLM via the Phase 3 LiteLLMModel controller.</p>
-<p>The six CR-level XValidation rules above enforce the per-type
+<p>The seven CR-level XValidation rules above enforce the per-type
 required/forbidden field matrix from spec §6.3 (provider table) plus
 the MDISC-05 refresh-interval 1-minute floor. SEC-03 list-uniqueness
 for spec.secrets[].as is deferred to the child LiteLLMModel's runtime check
@@ -4407,6 +4407,7 @@ model_types.go:87-93 — reuse the same runtime check from).</p>
 <p>MDISC-22 — required Secret keys per provider are FIXED per spec §6.3:</p>
 <div class="highlight"><pre><span></span><code>anthropic: ANTHROPIC_API_KEY
 bedrock: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY (AWS_SESSION_TOKEN optional)
+elevenlabs: ELEVENLABS_API_KEY
 gemini: GEMINI_API_KEY (or GOOGLE_API_KEY per provider docs)
 openai: OPENAI_API_KEY
 kubeai: n/a (no credentialsSecretRef)
@@ -5314,8 +5315,8 @@ resource root via a +kubebuilder:validation:XValidation CEL rule
 <h4 id="modeldiscoveryspec">ModelDiscoverySpec<a class="headerlink" href="#modeldiscoveryspec" title="Permanent link">&para;</a></h4>
 <p>ModelDiscoverySpec defines the desired state of ModelDiscovery — the
 flat _FINALv3 shape (spec §6.3). One ModelDiscovery CR points the
-operator at a single upstream provider (anthropic, bedrock, gemini,
-kubeai, or openai) and generates a fan-out of Kubernetes Model child
+operator at a single upstream provider (anthropic, bedrock, elevenlabs,
+gemini, kubeai, or openai) and generates a fan-out of Kubernetes Model child
 CRs (Pipeline B per spec §3.3). Discovery NEVER calls LiteLLM directly;
 each generated child reconciles into LiteLLM via the Phase 3 Model
 controller (Pipeline A).</p>
@@ -5323,11 +5324,12 @@ controller (Pipeline A).</p>
 ModelDiscovery struct below) per spec §6.3 provider table:</p>
 <div class="highlight"><pre><span></span><code>anthropic — requires credentialsSecretRef; forbids region, baseUrl.
 bedrock — requires region; forbids baseUrl; credentialsSecretRef optional.
+elevenlabs — requires credentialsSecretRef; forbids region, baseUrl.
 gemini — requires credentialsSecretRef; forbids region, baseUrl.
 kubeai — requires baseUrl; forbids credentialsSecretRef, region.
 openai — requires credentialsSecretRef; baseUrl optional; forbids region.
 </code></pre></div>
-<p>MDISC-01 enforces spec.type ∈ {anthropic, bedrock, gemini, kubeai, openai}
+<p>MDISC-01 enforces spec.type ∈ {anthropic, bedrock, elevenlabs, gemini, kubeai, openai}
 at admission via the +kubebuilder:validation:Enum marker. MDISC-04
 (prefix), MDISC-05 (refresh.interval floor), MDISC-15 (credential
 surface), and MDISC-22/23 (propagation bags) are all schema-side.</p>
@@ -5347,7 +5349,7 @@ surface), and MDISC-22/23 (propagation bags) are all schema-side.</p>
 <td><code>type</code> <em>string</em></td>
 <td>Type discriminates the upstream provider. Enforced at admission via<br />the +kubebuilder:validation:Enum marker (MDISC-01). The reconciler<br />dispatches to internal/providers/<type>.go via the registry; per-type<br />branching outside the registry is prohibited (CONTEXT.md D-01).</td>
 <td></td>
-<td>Enum: [anthropic bedrock gemini kubeai openai] <br />Required: {} <br /></td>
+<td>Enum: [anthropic bedrock elevenlabs gemini kubeai openai] <br />Required: {} <br /></td>
 </tr>
 <tr>
 <td><code>prefix</code> <em>string</em></td>
@@ -5363,7 +5365,7 @@ surface), and MDISC-22/23 (propagation bags) are all schema-side.</p>
 </tr>
 <tr>
 <td><code>credentialsSecretRef</code> <em><a href="#secretobjectref">SecretObjectRef</a></em></td>
-<td>CredentialsSecretRef points to the Kubernetes Secret carrying the<br />upstream provider's API credentials. Required for anthropic, gemini,<br />openai; required-or-default-chain for bedrock; FORBIDDEN for kubeai<br />(the kubeai provider runs in-cluster without auth — see CONTEXT.md<br /><specifics> line 278). The Secret MUST reside in the same namespace<br />as the ModelDiscovery CR (no cross-namespace resolution in v1alpha1).<br />Required Secret keys per provider (spec §6.3 line 721-737 normative):<br />anthropic: ANTHROPIC_API_KEY<br />bedrock: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY (AWS_SESSION_TOKEN optional)<br />gemini: GEMINI_API_KEY (or GOOGLE_API_KEY)<br />openai: OPENAI_API_KEY<br />kubeai: n/a (no credentialsSecretRef)<br />MDISC-15 is non-negotiable: the credential material is operator-side<br />ONLY. The reconciler MUST NOT propagate any value from this Secret<br />into the generated child Model's spec.params / spec.info /<br />spec.secrets[]. Inference-time credentials flow via spec.secrets[]<br />(the propagation bag), NOT via this field.<br />Discovery uses NEW SecretObjectRef (single Name field) — NOT the<br />SecretKeyRef{Name, Key} used by LiteLLMConnection and Model. The<br />Secret keys are fixed per provider per the normative table above,<br />so the user does not pick a per-key lookup; only the Secret's name<br />is parameterized.</td>
+<td>CredentialsSecretRef points to the Kubernetes Secret carrying the<br />upstream provider's API credentials. Required for anthropic, gemini,<br />openai; required-or-default-chain for bedrock; FORBIDDEN for kubeai<br />(the kubeai provider runs in-cluster without auth — see CONTEXT.md<br /><specifics> line 278). The Secret MUST reside in the same namespace<br />as the ModelDiscovery CR (no cross-namespace resolution in v1alpha1).<br />Required Secret keys per provider (spec §6.3 line 721-737 normative):<br />anthropic: ANTHROPIC_API_KEY<br />bedrock: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY (AWS_SESSION_TOKEN optional)<br />elevenlabs: ELEVENLABS_API_KEY<br />gemini: GEMINI_API_KEY (or GOOGLE_API_KEY)<br />openai: OPENAI_API_KEY<br />kubeai: n/a (no credentialsSecretRef)<br />MDISC-15 is non-negotiable: the credential material is operator-side<br />ONLY. The reconciler MUST NOT propagate any value from this Secret<br />into the generated child Model's spec.params / spec.info /<br />spec.secrets[]. Inference-time credentials flow via spec.secrets[]<br />(the propagation bag), NOT via this field.<br />Discovery uses NEW SecretObjectRef (single Name field) — NOT the<br />SecretKeyRef{Name, Key} used by LiteLLMConnection and Model. The<br />Secret keys are fixed per provider per the normative table above,<br />so the user does not pick a per-key lookup; only the Secret's name<br />is parameterized.</td>
 <td></td>
 <td></td>
 </tr>
