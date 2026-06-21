@@ -9,8 +9,8 @@ import (
 
 // ModelDiscoverySpec defines the desired state of ModelDiscovery — the
 // flat _FINALv3 shape (spec §6.3). One ModelDiscovery CR points the
-// operator at a single upstream provider (anthropic, bedrock, gemini,
-// kubeai, or openai) and generates a fan-out of Kubernetes Model child
+// operator at a single upstream provider (anthropic, bedrock, elevenlabs,
+// gemini, kubeai, or openai) and generates a fan-out of Kubernetes Model child
 // CRs (Pipeline B per spec §3.3). Discovery NEVER calls LiteLLM directly;
 // each generated child reconciles into LiteLLM via the Phase 3 Model
 // controller (Pipeline A).
@@ -20,11 +20,12 @@ import (
 //
 //	anthropic — requires credentialsSecretRef; forbids region, baseUrl.
 //	bedrock — requires region; forbids baseUrl; credentialsSecretRef optional.
+//	elevenlabs — requires credentialsSecretRef; forbids region, baseUrl.
 //	gemini — requires credentialsSecretRef; forbids region, baseUrl.
 //	kubeai — requires baseUrl; forbids credentialsSecretRef, region.
 //	openai — requires credentialsSecretRef; baseUrl optional; forbids region.
 //
-// MDISC-01 enforces spec.type ∈ {anthropic, bedrock, gemini, kubeai, openai}
+// MDISC-01 enforces spec.type ∈ {anthropic, bedrock, elevenlabs, gemini, kubeai, openai}
 // at admission via the +kubebuilder:validation:Enum marker. MDISC-04
 // (prefix), MDISC-05 (refresh.interval floor), MDISC-15 (credential
 // surface), and MDISC-22/23 (propagation bags) are all schema-side.
@@ -35,7 +36,7 @@ type ModelDiscoverySpec struct {
 	// branching outside the registry is prohibited (CONTEXT.md D-01).
 	//
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum=anthropic;bedrock;gemini;kubeai;openai
+	// +kubebuilder:validation:Enum=anthropic;bedrock;elevenlabs;gemini;kubeai;openai
 	Type string `json:"type"`
 
 	// Prefix is the lowercase DNS-1123 segment prepended to each
@@ -88,6 +89,7 @@ type ModelDiscoverySpec struct {
 	// Required Secret keys per provider (spec §6.3 line 721-737 normative):
 	// anthropic: ANTHROPIC_API_KEY
 	// bedrock: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY (AWS_SESSION_TOKEN optional)
+	// elevenlabs: ELEVENLABS_API_KEY
 	// gemini: GEMINI_API_KEY (or GOOGLE_API_KEY)
 	// openai: OPENAI_API_KEY
 	// kubeai: n/a (no credentialsSecretRef)
@@ -513,6 +515,7 @@ type FailedCandidate struct {
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=".metadata.creationTimestamp"
 // +kubebuilder:validation:XValidation:rule="self.spec.type != 'anthropic' || (has(self.spec.credentialsSecretRef) && !has(self.spec.region) && !has(self.spec.baseUrl))",message="anthropic requires spec.credentialsSecretRef and forbids spec.region/spec.baseUrl"
 // +kubebuilder:validation:XValidation:rule="self.spec.type != 'bedrock' || (has(self.spec.region) && !has(self.spec.baseUrl))",message="bedrock requires spec.region and forbids spec.baseUrl"
+// +kubebuilder:validation:XValidation:rule="self.spec.type != 'elevenlabs' || (has(self.spec.credentialsSecretRef) && !has(self.spec.region) && !has(self.spec.baseUrl))",message="elevenlabs requires spec.credentialsSecretRef and forbids spec.region/spec.baseUrl"
 // +kubebuilder:validation:XValidation:rule="self.spec.type != 'gemini' || (has(self.spec.credentialsSecretRef) && !has(self.spec.region) && !has(self.spec.baseUrl))",message="gemini requires spec.credentialsSecretRef and forbids spec.region/spec.baseUrl"
 // +kubebuilder:validation:XValidation:rule="self.spec.type != 'kubeai' || (has(self.spec.baseUrl) && !has(self.spec.credentialsSecretRef) && !has(self.spec.region))",message="kubeai requires spec.baseUrl and forbids spec.credentialsSecretRef/spec.region"
 // +kubebuilder:validation:XValidation:rule="self.spec.type != 'openai' || (has(self.spec.credentialsSecretRef) && !has(self.spec.region))",message="openai requires spec.credentialsSecretRef and forbids spec.region"
@@ -522,12 +525,12 @@ type FailedCandidate struct {
 // LiteLLMModelDiscovery is the Schema for the litellmmodeldiscoveries API — the
 // first Pipeline B CRD (spec §3.3 / §7.1, _FINALv3 two-pipeline model).
 // A LiteLLMModelDiscovery CR points the operator at one upstream provider
-// (anthropic, bedrock, gemini, kubeai, or openai) and reconciles
+// (anthropic, bedrock, elevenlabs, gemini, kubeai, or openai) and reconciles
 // discovered IDs into a fan-out of Kubernetes LiteLLMModel child CRs in
 // WATCH_NAMESPACE. Discovery NEVER calls LiteLLM directly; each child
 // reconciles into LiteLLM via the Phase 3 LiteLLMModel controller.
 //
-// The six CR-level XValidation rules above enforce the per-type
+// The seven CR-level XValidation rules above enforce the per-type
 // required/forbidden field matrix from spec §6.3 (provider table) plus
 // the MDISC-05 refresh-interval 1-minute floor. SEC-03 list-uniqueness
 // for spec.secrets[].as is deferred to the child LiteLLMModel's runtime check
@@ -538,6 +541,7 @@ type FailedCandidate struct {
 //
 //	anthropic: ANTHROPIC_API_KEY
 //	bedrock: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY (AWS_SESSION_TOKEN optional)
+//	elevenlabs: ELEVENLABS_API_KEY
 //	gemini: GEMINI_API_KEY (or GOOGLE_API_KEY per provider docs)
 //	openai: OPENAI_API_KEY
 //	kubeai: n/a (no credentialsSecretRef)
