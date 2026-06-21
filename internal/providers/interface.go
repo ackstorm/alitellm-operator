@@ -28,7 +28,7 @@ type Candidate struct {
 // type-switches on the concrete provider.
 type Provider interface {
 	// Type returns the spec.type enum literal:
-	// "anthropic"|"bedrock"|"gemini"|"kubeai"|"openai".
+	// "anthropic"|"bedrock"|"elevenlabs"|"gemini"|"kubeai"|"openai".
 	// The reconciler uses this only for metrics labels — branching on
 	// it is the D-01 anti-pattern this package exists to prevent.
 	Type() string
@@ -53,6 +53,8 @@ type Provider interface {
 // - anthropic: requires APIKey, HTTPClient. BaseURL CEL-forbidden in
 // production (test-only override via SetTestBaseURL).
 // - gemini: requires APIKey, HTTPClient. BaseURL CEL-forbidden.
+// - elevenlabs: requires APIKey, HTTPClient. BaseURL CEL-forbidden in
+// production (test-only override via SetTestBaseURL / cfg.BaseURL).
 // - openai: requires APIKey, HTTPClient. BaseURL optional (used by
 // OpenAI-compatible providers — Together, vLLM, Groq, OpenRouter).
 // - kubeai: requires HTTPClient + BaseURL (CEL-required). APIKey
