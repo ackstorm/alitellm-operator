@@ -10,7 +10,7 @@ child reconciles into LiteLLM via the `LiteLLMModel` controller
 
 | Field                       | Required        | Notes                                                                                  |
 |-----------------------------|-----------------|----------------------------------------------------------------------------------------|
-| `spec.type`                 | yes             | Enum: `anthropic`, `bedrock`, `gemini`, `kubeai`, `openai`.                            |
+| `spec.type`                 | yes             | Enum: `anthropic`, `bedrock`, `elevenlabs`, `gemini`, `kubeai`, `openai`.              |
 | `spec.prefix`               | no              | DNS-1123 segment prepended to each child's `metadata.name`. Default: lowercased `spec.type`. |
 | `spec.credentialsSecretRef` | per-provider    | Secret holding upstream API key (operator-side ONLY — never propagated to children).   |
 | `spec.region`               | bedrock only    | AWS region. One region per CR (multi-region → multiple CRs).                           |
@@ -28,11 +28,12 @@ child reconciles into LiteLLM via the `LiteLLMModel` controller
 |-------------|-----------------------------|-------------------------------|---------------------------------------------------------------------------|
 | `anthropic` | `credentialsSecretRef`      | `region`, `baseUrl`           | `ANTHROPIC_API_KEY`                                                       |
 | `bedrock`   | `region`                    | `baseUrl`                     | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (+ optional `AWS_SESSION_TOKEN`) |
+| `elevenlabs`| `credentialsSecretRef`      | `region`, `baseUrl`           | `ELEVENLABS_API_KEY`                                                      |
 | `gemini`    | `credentialsSecretRef`      | `region`, `baseUrl`           | `GEMINI_API_KEY` (or `GOOGLE_API_KEY`)                                    |
 | `kubeai`    | `baseUrl`                   | `credentialsSecretRef`, `region` | none                                                                   |
 | `openai`    | `credentialsSecretRef`      | `region`                      | `OPENAI_API_KEY`                                                          |
 
-The five XValidation rules on the CRD enforce this matrix at admission.
+The six per-type XValidation rules on the CRD enforce this matrix at admission.
 
 ## Credential boundary (MDISC-15) — non-negotiable
 
@@ -147,6 +148,39 @@ spec:
 
 Works for vLLM, Together, Groq, OpenRouter, Anyscale — anything that
 implements OpenAI's `GET /v1/models` + chat-completions.
+
+## ElevenLabs — audio (TTS / STT)
+
+ElevenLabs is a hosted SaaS audio provider. Like `anthropic`/`gemini` it
+requires `credentialsSecretRef` and forbids `region`/`baseUrl` (single
+public endpoint). The reconciler calls `GET https://api.elevenlabs.io/v1/models`
+with the `xi-api-key` header and generates children with
+`spec.params.model: "elevenlabs/<raw-id>"`.
+
+```yaml
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMModelDiscovery
+metadata:
+  name: elevenlabs
+spec:
+  type: elevenlabs
+  prefix: elevenlabs
+  credentialsSecretRef: { name: elevenlabs-credentials }   # key: ELEVENLABS_API_KEY
+  secrets:
+    - { as: ELEVENLABS_API_KEY, secretRef: { name: elevenlabs-credentials, key: ELEVENLABS_API_KEY } }
+  params:
+    api_key: "{{ELEVENLABS_API_KEY}}"
+  filters:
+    include: [ "^eleven_.*_v2$", "^eleven_v3$", "^scribe_v1$" ]
+  refresh:
+    interval: 10m
+```
+
+`/v1/models` returns TTS, STT, and voice-conversion models mixed together;
+use `filters.include` to narrow. The discovery-time `credentialsSecretRef`
+key is operator-side only — the inference-time key for each child flows via
+`secrets[]` + `params.api_key` (MDISC-15 separation). The LiteLLM proxy must
+run with `STORE_MODEL_IN_DB=True` or each child's `POST /model/new` 500s.
 
 ## Filter order — include first, then exclude
 
