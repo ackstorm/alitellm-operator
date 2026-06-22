@@ -12,7 +12,7 @@ jobs:
     env:
       GOVULNCHECK_VERSION: v1.3.0
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 

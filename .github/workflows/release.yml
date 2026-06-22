@@ -63,7 +63,7 @@ jobs:
     needs: parse
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -96,7 +96,7 @@ jobs:
     env:
       LITELLM_IN_DEVTOOLS: '1'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: main
