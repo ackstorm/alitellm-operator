@@ -5,9 +5,11 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -16,6 +18,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/validation"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
@@ -57,6 +60,21 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// validateWatchNamespace rejects a WATCH_NAMESPACE that is not a single
+// valid Kubernetes namespace. The operator watches exactly ONE namespace
+// (cache.Options.DefaultNamespaces carries a single key); a comma- or
+// space-separated list is NOT supported and would otherwise be treated as
+// one literal namespace that matches nothing — silently watching no CRs.
+// Enforcing a DNS-1123 label fails fast on a list-looking value.
+func validateWatchNamespace(ns string) error {
+	if errs := validation.IsDNS1123Label(ns); len(errs) > 0 {
+		return fmt.Errorf("WATCH_NAMESPACE %q is not a single valid namespace "+
+			"(the operator watches exactly one namespace, not a list): %s",
+			ns, strings.Join(errs, "; "))
+	}
+	return nil
 }
 
 // envBool parses os.Getenv(key) as a bool ("1"/"true"/"yes" → true).
@@ -113,6 +131,10 @@ func main() {
 	// created in any other namespace is never observed by the operator
 	// (defense-in-depth above RBAC). Default "default" per spec §4.
 	watchNS := envOr("WATCH_NAMESPACE", "default")
+	if err := validateWatchNamespace(watchNS); err != nil {
+		setupLog.Error(err, "invalid WATCH_NAMESPACE; aborting")
+		os.Exit(1)
+	}
 	setupLog.Info("watch namespace configured", "namespace", watchNS)
 
 	// H5: parse LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL EXACTLY ONCE here and

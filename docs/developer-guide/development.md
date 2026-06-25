@@ -161,7 +161,7 @@ make mock-mode INSTANCE=openai-mock MODE=reject-401   # flip a mock's auth mode
 | `KUBEBUILDER_ASSETS`                     | Resolved by `scripts/dev.sh`; do not override.                  |
 | `IMG`                                    | Image tag for `make docker-load` (kind sideload). Default `alitellm-operator:e2e`. |
 | `LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL`| Override the vanish-probe cadence at operator runtime. Floor 5s. Useful for tightening drift recovery in dev. |
-| `WATCH_NAMESPACE`                        | Override the operator's watch namespace. Code fallback `default` when unset; the Helm chart sets it from `watchNamespace`, which defaults to the install namespace. |
+| `WATCH_NAMESPACE`                        | Override the operator's watch namespace (exactly one namespace, not a list — a comma/space-separated value is rejected at startup). Code fallback `default` when unset; the Helm chart sets it from `watchNamespace`, which defaults to the install namespace. |
 
 ## Where to read next
 
