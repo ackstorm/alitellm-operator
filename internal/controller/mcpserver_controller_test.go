@@ -1572,7 +1572,7 @@ func TestMCPServerReconciler_VanishDetection_OnOutOfBandDelete(t *testing.T) {
 		t.Errorf("post-vanish ServerID empty; want non-empty")
 	}
 	if final.Status.LastRendered.ServerID == originalServerID {
-		t.Logf("note: post-vanish ServerID == originalServerID (mock reused UUID); acceptable")
+		t.Logf("note: post-vanish ServerID == originalServerID; expected — CREATE arm re-pins server_id == sanitized name")
 	}
 }
 
