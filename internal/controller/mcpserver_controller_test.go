@@ -1576,6 +1576,92 @@ func TestMCPServerReconciler_VanishDetection_OnOutOfBandDelete(t *testing.T) {
 	}
 }
 
+// TestMCPServerReconciler_CreateUsesNameAsServerID — a freshly-created MCP
+// server (empty status → CREATE arm) MUST be sent to LiteLLM with
+// server_id == the sanitized server_name, and that value MUST be persisted
+// in status.lastRendered.ServerID (not a server-minted UUID). Mirrors the
+// Team team_id == metadata.name pattern. Verified live: LiteLLM 1.83.10
+// honors a caller-supplied server_id on POST /v1/mcp/server.
+func TestMCPServerReconciler_CreateUsesNameAsServerID(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetMCPServers()
+	ensureNoMCPServer(t, ctx, "mcp-pin-id-test")
+	resetConnCacheSnapshot()
+
+	cleanupConn := setupReadyConnectionMCP(t, ctx)
+	t.Cleanup(func() {
+		cleanupConn()
+		ensureNoMCPServer(t, context.Background(), "mcp-pin-id-test")
+	})
+
+	cr := mcpServerSampleCR("mcp-pin-id-test")
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create MCPServer: %v", err)
+	}
+
+	m := pollMCPServerCondition(t, ctx, "mcp-pin-id-test", reasonSynced, 30*time.Second)
+
+	wantID := litellm.SanitizeMCPServerName("mcp-pin-id-test", "")
+
+	// The POST /v1/mcp/server body MUST carry server_id == sanitized name.
+	body := mockServer.LastMCPBody(wantID)
+	if body == nil {
+		t.Fatalf("LastMCPBody(%q) is nil — mock did not capture POST body", wantID)
+	}
+	if id, _ := body["server_id"].(string); id != wantID {
+		t.Errorf("body.server_id: want sanitized name %q, got %v", wantID, body["server_id"])
+	}
+
+	// The persisted status serverID MUST equal the sanitized name, not a UUID.
+	if m.Status.LastRendered.ServerID != wantID {
+		t.Errorf("status.lastRendered.serverID: want %q, got %q", wantID, m.Status.LastRendered.ServerID)
+	}
+}
+
+// TestMCPServerReconciler_UpdateKeepsExistingServerID — an MCP server that
+// already exists in LiteLLM under a (pre-change) server-assigned UUID MUST
+// take the UPDATE arm and keep that UUID. The name-as-server_id change is
+// CREATE-only; it must never rewrite an existing server's identity.
+func TestMCPServerReconciler_UpdateKeepsExistingServerID(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetMCPServers()
+	ensureNoMCPServer(t, ctx, "mcp-keep-uuid-test")
+	resetConnCacheSnapshot()
+
+	cleanupConn := setupReadyConnectionMCP(t, ctx)
+	t.Cleanup(func() {
+		cleanupConn()
+		ensureNoMCPServer(t, context.Background(), "mcp-keep-uuid-test")
+	})
+
+	// Pre-seed LiteLLM with a hand-managed server under a minted UUID, as
+	// if it predated the name-as-id change.
+	wireName := litellm.SanitizeMCPServerName("mcp-keep-uuid-test", "")
+	preUUID := mockServer.AddHandManagedMCPServer(wireName, "https://example.com/mcp", "http")
+
+	cr := mcpServerSampleCR("mcp-keep-uuid-test")
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create MCPServer: %v", err)
+	}
+
+	m := pollMCPServerCondition(t, ctx, "mcp-keep-uuid-test", reasonSynced, 30*time.Second)
+
+	// Adoption → UPDATE arm: the server keeps its original UUID, NOT the name.
+	if m.Status.LastRendered.ServerID != preUUID {
+		t.Errorf("status.lastRendered.serverID: want preserved UUID %q, got %q",
+			preUUID, m.Status.LastRendered.ServerID)
+	}
+	if m.Status.LastRendered.ServerID == wireName {
+		t.Errorf("UPDATE arm leaked the name into server_id: got %q", wireName)
+	}
+}
+
 func TestMCPServer_DeletionPath_Deterministic4xx_OrphanDrains(t *testing.T) {
 	ctx := context.Background()
 	mockServer.SetMode(mock.ModeHappy)

@@ -20,8 +20,9 @@ identically — the controller does not branch on `ownerReferences`.
 After `kubectl apply`, expect:
 
 - `status.conditions[type=Ready].status=True` / `reason=Synced`.
-- `status.lastRendered.serverID` pinned with the LiteLLM-assigned
-  UUID. Used by the finalizer (`DELETE /v1/mcp/server/<serverID>`).
+- `status.lastRendered.serverID` pinned with the sanitized name on
+  CREATE (equals `server_name`; see "server_id assignment" below).
+  Used by the finalizer (`DELETE /v1/mcp/server/<serverID>`).
 - `status.lastRendered.hash` = SHA-256 of the rendered body.
 
 ## Minimal example
@@ -84,6 +85,38 @@ the operator stamps them from typed CR fields:
 ```
 server_id, server_name, alias, url, transport, spec_path
 ```
+
+## server_id assignment
+
+When the operator **creates a new** LiteLLM MCP server, it sets
+`server_id == server_name` (the sanitized `metadata.name`) instead of
+letting LiteLLM mint a random UUID. The value is persisted in
+`status.lastRendered.serverID` and surfaces verbatim in the LiteLLM
+UI / API. Verified against LiteLLM 1.83.10: `POST /v1/mcp/server` honors a
+caller-supplied `server_id`.
+
+This change is **CREATE-only**:
+
+- **New servers** (no existing record under the name) → `server_id =
+  sanitized server_name`.
+- **Existing servers** (adopted by name lookup, including pre-change
+  records under a server-assigned UUID) → take the UPDATE arm and **keep
+  their original UUID**. The operator never rewrites an existing server's
+  identity.
+
+Caveats:
+
+- **No automatic migration.** Existing UUID-keyed servers are not migrated.
+  To adopt the name-id, delete the record in LiteLLM once; the operator
+  recreates it via `POST /v1/mcp/server` with `server_id = server_name`.
+- **Cross-namespace name collision is unhandled by design.** `server_id`
+  derives from `metadata.name` with no namespace prefix (single-namespace
+  deployment assumed — the operator watches exactly one namespace). Two
+  `LiteLLMMCPServer` CRs sharing a name across namespaces would collide;
+  v1alpha1 does not guard against this.
+
+> A2A agents are **not** pinnable: LiteLLM 1.83.10 ignores a caller-supplied
+> `agent_id` on `POST /v1/agents` and always mints a UUID.
 
 ## Name sanitization (MCP-05)
 

@@ -610,6 +610,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		// CREATE stamps both created_by + updated_by.
 		ext.MCPInfo = stampMCPIdentity(ext.MCPInfo, true)
 		createReq := &litellm.MCPServerRequest{
+			ServerID:                  sanitizedName, // pin server_id == sanitized name (CREATE-only; LiteLLM 1.83.10 honors it)
 			ServerName:                sanitizedName,
 			Alias:                     sanitizedName, // alias = server_name per 1.83.10 (D-7.1-10)
 			URL:                       mcp.Spec.Endpoint,
@@ -655,11 +656,14 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				return ctrl.Result{RequeueAfter: recreateThrottleBackoff}, nil
 			}
 		}
-		result, err := snap.Client.CreateMCPServer(ctx, createReq)
+		_, err = snap.Client.CreateMCPServer(ctx, createReq)
 		if err != nil {
 			return r.classifyMutationError(ctx, &mcp, logger, err, "POST /v1/mcp/server")
 		}
-		newServerID = result.ServerID
+		// Pin to the value we supplied, not the create response — keeps
+		// status correct even if LiteLLM ever echoes a different id, and
+		// mirrors the Team team_id == metadata.name discipline.
+		newServerID = sanitizedName
 		// Phase 3 OWN-04 + Phase 5 : suppress create_missing on the
 		// very first reconcile (ObservedGeneration == 0) — the user's initial
 		// POST is not a "drift correction". On subsequent re-creates (after a

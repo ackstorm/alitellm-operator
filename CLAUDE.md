@@ -930,6 +930,19 @@ GROUP BY 1 HAVING count(*) > 1;
   unhandled by design (single-namespace assumption). User-facing docs:
   `docs/user-guide/team.md` § "team_id assignment".
 
+- **MCPServer `server_id` = sanitized `metadata.name` on CREATE only**
+  (`mcpserver_controller.go` CREATE arm): new LiteLLM MCP servers get
+  `server_id == server_name` (the sanitized name; `SanitizeMCPServerName`),
+  pinned in the `POST /v1/mcp/server` body and in
+  `status.lastRendered.ServerID` from the name, not the create response.
+  EXISTING servers (adopted via `resolveServerIDByName` → UPDATE arm) keep
+  their server-assigned UUID — CREATE-arm-only, never touch the UPDATE arm's
+  id. Verified live: LiteLLM 1.83.10 honors a caller-supplied `server_id`.
+  A2A `agent_id` is NOT pinnable — LiteLLM 1.83.10 ignores a supplied
+  `agent_id` on `POST /v1/agents` (`add_agent_to_db` never reads it; Prisma
+  mints the UUID), so `a2aagent_controller.go` keeps the server-minted id.
+  User-facing docs: `docs/user-guide/mcp-server.md` § "server_id assignment".
+
 - **Fuzz seed corpus** at `internal/<pkg>/testdata/fuzz/<TargetName>/`
   carries one entry per SEC regression test. Adding a new regression
   test? Add a matching corpus entry.
