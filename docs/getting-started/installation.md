@@ -91,7 +91,7 @@ The operator reads runtime config from a small env-var surface:
 
 | Variable                                    | Default     | Description                                                                                            |
 |---------------------------------------------|-------------|--------------------------------------------------------------------------------------------------------|
-| `WATCH_NAMESPACE`                           | `default` (raw manifest); Helm sets it from `watchNamespace`, which defaults to the install namespace | Single namespace the operator reconciles. Also pins the leader-election lease and `LiteLLMConnection/default`. |
+| `WATCH_NAMESPACE`                           | `default` (raw manifest); Helm sets it from `watchNamespace`, which defaults to the install namespace | Single namespace the operator reconciles — exactly one, not a list. A comma/space-separated value is rejected at startup (the operator aborts). Also pins the leader-election lease and `LiteLLMConnection/default`. |
 | `LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL`   | unset → `10m` | Vanish-probe cadence per reconciler kind. Floor `5s`; sub-floor values are rejected at startup.       |
 | `METRICS_BIND_ADDRESS`                      | `:8080`     | Prometheus metrics listener.                                                                           |
 | `HEALTH_PROBE_BIND_ADDRESS`                 | `:8081`     | controller-runtime healthz / readyz.                                                                   |

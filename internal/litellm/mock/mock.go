@@ -1354,8 +1354,15 @@ func (m *MockServer) statefulBody(r *http.Request) []byte {
 		serverName, _ := reqBody["server_name"].(string)
 		url, _ := reqBody["url"].(string)
 		transport, _ := reqBody["transport"].(string)
-		seq := m.mcpSeq.Add(1)
-		serverID := fmt.Sprintf("mock-mcp-server-id-%d", seq)
+		// Honor a caller-supplied server_id — LiteLLM 1.83.10 pins it on
+		// POST /v1/mcp/server (verified live, 201 echoes the value). Fall
+		// back to a minted UUID when absent, preserving behavior for
+		// hand-managed / legacy callers that send no server_id.
+		serverID, _ := reqBody["server_id"].(string)
+		if serverID == "" {
+			seq := m.mcpSeq.Add(1)
+			serverID = fmt.Sprintf("mock-mcp-server-id-%d", seq)
+		}
 
 		m.mu.Lock()
 		m.mcpServers[serverID] = &mcpEntry{
