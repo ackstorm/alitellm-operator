@@ -1868,7 +1868,7 @@ default, which matches <code>appVersion</code>):</p>
 <tr>
 <td><code>WATCH_NAMESPACE</code></td>
 <td><code>default</code> (raw manifest); Helm sets it from <code>watchNamespace</code>, which defaults to the install namespace</td>
-<td>Single namespace the operator reconciles. Also pins the leader-election lease and <code>LiteLLMConnection/default</code>.</td>
+<td>Single namespace the operator reconciles — exactly one, not a list. A comma/space-separated value is rejected at startup (the operator aborts). Also pins the leader-election lease and <code>LiteLLMConnection/default</code>.</td>
 </tr>
 <tr>
 <td><code>LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL</code></td>

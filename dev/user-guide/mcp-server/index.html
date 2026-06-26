@@ -883,6 +883,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#server_id-assignment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        server_id assignment
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#name-sanitization-mcp-05" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1631,6 +1642,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#server_id-assignment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        server_id assignment
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#name-sanitization-mcp-05" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1751,8 +1773,9 @@ identically — the controller does not branch on <code>ownerReferences</code>.<
 <p>After <code>kubectl apply</code>, expect:</p>
 <ul>
 <li><code>status.conditions[type=Ready].status=True</code> / <code>reason=Synced</code>.</li>
-<li><code>status.lastRendered.serverID</code> pinned with the LiteLLM-assigned
-  UUID. Used by the finalizer (<code>DELETE /v1/mcp/server/&lt;serverID&gt;</code>).</li>
+<li><code>status.lastRendered.serverID</code> pinned with the sanitized name on
+  CREATE (equals <code>server_name</code>; see "server_id assignment" below).
+  Used by the finalizer (<code>DELETE /v1/mcp/server/&lt;serverID&gt;</code>).</li>
 <li><code>status.lastRendered.hash</code> = SHA-256 of the rendered body.</li>
 </ul>
 <h2 id="minimal-example">Minimal example<a class="headerlink" href="#minimal-example" title="Permanent link">&para;</a></h2>
@@ -1804,6 +1827,37 @@ is forwarded:</p>
 the operator stamps them from typed CR fields:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>server_id, server_name, alias, url, transport, spec_path
 </code></pre></div>
+<h2 id="server_id-assignment">server_id assignment<a class="headerlink" href="#server_id-assignment" title="Permanent link">&para;</a></h2>
+<p>When the operator <strong>creates a new</strong> LiteLLM MCP server, it sets
+<code>server_id == server_name</code> (the sanitized <code>metadata.name</code>) instead of
+letting LiteLLM mint a random UUID. The value is persisted in
+<code>status.lastRendered.serverID</code> and surfaces verbatim in the LiteLLM
+UI / API. Verified against LiteLLM 1.83.10: <code>POST /v1/mcp/server</code> honors a
+caller-supplied <code>server_id</code>.</p>
+<p>This change is <strong>CREATE-only</strong>:</p>
+<ul>
+<li><strong>New servers</strong> (no existing record under the name) → <code>server_id =
+  sanitized server_name</code>.</li>
+<li><strong>Existing servers</strong> (adopted by name lookup, including pre-change
+  records under a server-assigned UUID) → take the UPDATE arm and <strong>keep
+  their original UUID</strong>. The operator never rewrites an existing server's
+  identity.</li>
+</ul>
+<p>Caveats:</p>
+<ul>
+<li><strong>No automatic migration.</strong> Existing UUID-keyed servers are not migrated.
+  To adopt the name-id, delete the record in LiteLLM once; the operator
+  recreates it via <code>POST /v1/mcp/server</code> with <code>server_id = server_name</code>.</li>
+<li><strong>Cross-namespace name collision is unhandled by design.</strong> <code>server_id</code>
+  derives from <code>metadata.name</code> with no namespace prefix (single-namespace
+  deployment assumed — the operator watches exactly one namespace). Two
+  <code>LiteLLMMCPServer</code> CRs sharing a name across namespaces would collide;
+  v1alpha1 does not guard against this.</li>
+</ul>
+<blockquote>
+<p>A2A agents are <strong>not</strong> pinnable: LiteLLM 1.83.10 ignores a caller-supplied
+<code>agent_id</code> on <code>POST /v1/agents</code> and always mints a UUID.</p>
+</blockquote>
 <h2 id="name-sanitization-mcp-05">Name sanitization (MCP-05)<a class="headerlink" href="#name-sanitization-mcp-05" title="Permanent link">&para;</a></h2>
 <p>LiteLLM rejects its own <code>MCP_TOOL_PREFIX_SEPARATOR</code> character inside
 <code>server_name</code> (HTTP 400 <code>"Server name cannot contain '&lt;sep&gt;'."</code>).
