@@ -14,7 +14,7 @@ child reconciles into LiteLLM via the `LiteLLMModel` controller
 | `spec.prefix`               | no              | DNS-1123 segment prepended to each child's `metadata.name`. Default: lowercased `spec.type`. |
 | `spec.credentialsSecretRef` | per-provider    | Secret holding upstream API key (operator-side ONLY — never propagated to children).   |
 | `spec.region`               | bedrock only    | AWS region. One region per CR (multi-region → multiple CRs).                           |
-| `spec.baseUrl`              | kubeai (req), openai (opt) | Provider HTTP endpoint. `kubeai` value also auto-overlays into each child's `api_base`. |
+| `spec.baseUrl`              | kubeai (req), openai (opt) | Provider HTTP endpoint. Any non-empty value auto-overlays into each child's `api_base` (so LiteLLM routes inference to the same endpoint models were discovered from). |
 | `spec.params`               | no              | Pass-through bag propagated VERBATIM into every child's `spec.params`.                 |
 | `spec.info`                 | no              | Pass-through bag propagated into every child's `spec.info`.                            |
 | `spec.secrets[]`            | no              | Substitution map propagated into every child's `spec.secrets[]` (NOT resolved here).   |
@@ -147,7 +147,10 @@ spec:
 ```
 
 Works for vLLM, Together, Groq, OpenRouter, Anyscale — anything that
-implements OpenAI's `GET /v1/models` + chat-completions.
+implements OpenAI's `GET /v1/models` + chat-completions. The reconciler
+overlays `api_base: <spec.baseUrl>` into each child's `spec.params`
+(user-supplied `api_base` wins on collision), so LiteLLM routes inference
+to the third-party endpoint instead of `api.openai.com`.
 
 ## ElevenLabs — audio (TTS / STT)
 

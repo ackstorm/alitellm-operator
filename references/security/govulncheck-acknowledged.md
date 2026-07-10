@@ -20,15 +20,20 @@ new reachable advisory must be:
 1. Fixed by patching the dependency or stdlib, OR
 2. Added below with a reviewer-approved justification.
 
-## Acknowledged advisories (0)
+## Acknowledged advisories (1)
 
 | # | OSV ID | CVE | Module | Symbol the operator touches | Fixed in | Justification |
 |---|--------|-----|--------|------------------------------|----------|---------------|
+| 1 | GO-2026-5856 | — | crypto/tls (stdlib) | generic TLS handshake via `http.Transport.RoundTrip` / `httptest.NewServer` (`internal/litellm/transport.go`, `internal/providers/elevenlabs.go`, mock server, test utils) | go1.26.5 | Encrypted Client Hello privacy leak in `crypto/tls`. The operator never configures ECH (`tls.Config.EncryptedClientHelloConfigList` is unset everywhere), so the leak path is not exercised; reachable only through ordinary outbound TLS. Fixed in go1.26.5 — accept as residual until the toolchain bump lands across the four pinned surfaces. |
 
-**Reachable count: 0.**
+**Reachable count: 1.**
 
 ## History
 
+- 2026-07-10: Acknowledged `GO-2026-5856` (crypto/tls Encrypted Client
+  Hello privacy leak, fixed in go1.26.5) as residual — the operator
+  never enables ECH, so the leak path is unreachable in practice; drop
+  this row when the toolchain is bumped to go1.26.5.
 - 2026-05-21: Bumped Go toolchain to 1.26.3 (via `toolchain go1.26.3`
   in `go.mod`) and `golang.org/x/net` to `v0.53.0`. Cleared the only
   remaining residual (`GO-2026-4918` — HTTP/2 `SETTINGS_MAX_FRAME_SIZE`

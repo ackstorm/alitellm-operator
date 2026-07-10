@@ -536,6 +536,27 @@ service DNS, so a blanket internal-deny would break the supported use case.
 RESIDUAL RISK: a namespaced user can still aim the operator's HTTP client at
 other internal/private services. A host-allowlist is intentionally deferred.
 
+### ❌ `type: openai` Discovery with a custom `baseUrl` routes inference to OpenAI
+```yaml
+spec:
+  type: openai
+  baseUrl: https://openrouter.ai/api/v1   # discovery LISTs models fine (347 found)
+  params:
+    api_key: "{{OPENROUTER_API_KEY}}"     # sk-or-v1***
+```
+Symptom: children go `Ready=Synced` but inference 401s —
+`OpenAIException - Incorrect API key provided: sk-or-v1*** . You can find
+your API key at https://platform.openai.com/...`. LiteLLM routed to
+`api.openai.com` with the OpenRouter key.
+✅ Fixed v0.7.19: `buildChildModel` overlays `api_base: <spec.baseUrl>` onto
+EVERY child when `spec.baseUrl` is non-empty (was kubeai-only). Empty baseUrl
+(plain OpenAI/Anthropic/Gemini) injects nothing → LiteLLM default endpoint.
+User-supplied `params.api_base` still wins. Pre-fix workaround (no new image):
+add `api_base: <baseUrl>` to `spec.params` by hand.
+WHY IT FAILED: baseUrl reached the LIST path (`baseURLFor`) but the child's
+`litellm_params` carried only `model: openai/<id>` + `api_key`, no `api_base`,
+so LiteLLM's openai provider fell back to `api.openai.com`.
+
 ### ❌ Master key over plaintext `http://` to a remote LiteLLM (M-SEC2)
 `spec.endpoint: http://api.example.com` sends the master key
 (`Authorization: Bearer`) in cleartext. By default the connection reconciler

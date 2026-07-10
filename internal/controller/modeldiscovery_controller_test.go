@@ -156,6 +156,59 @@ func TestBuildChildModel_KubeAIUserAPIBaseWins(t *testing.T) {
 	}
 }
 
+// TestBuildChildModel_OpenAICustomBaseURLOverlay asserts that a NON-kubeai
+// openai-compatible Discovery (OpenRouter, Together, Groq, vLLM) also gets
+// api_base = discovery.spec.baseUrl on every child. Regression: an
+// OpenRouter discovery listed 347 models but children had no api_base, so
+// LiteLLM routed inference to api.openai.com and the OpenRouter key 401'd
+// ("Incorrect API key provided: sk-or-v1***").
+func TestBuildChildModel_OpenAICustomBaseURLOverlay(t *testing.T) {
+	const baseURL = "https://openrouter.ai/api/v1"
+	md := &litellmv1alpha1.LiteLLMModelDiscovery{
+		ObjectMeta: metav1.ObjectMeta{Name: "openrouter-md", Namespace: "default", UID: "abcd"},
+		Spec: litellmv1alpha1.ModelDiscoverySpec{
+			Type:    "openai",
+			BaseURL: baseURL,
+			Params:  k8sruntime.RawExtension{Raw: []byte(`{"api_key":"{{OPENROUTER_API_KEY}}","rpm":60}`)},
+		},
+	}
+	child, err := buildChildModel(md, "openrouter-md-claude", "anthropic/claude-sonnet-5", "openai", "default")
+	if err != nil {
+		t.Fatalf("buildChildModel: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(child.Spec.Params.Raw, &decoded); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got, want := decoded["api_base"], baseURL; got != want {
+		t.Errorf("api_base overlay: got %v, want %s", got, want)
+	}
+}
+
+// TestBuildChildModel_NoBaseURLNoAPIBase asserts that a plain OpenAI
+// Discovery (no spec.baseUrl) injects NO api_base — LiteLLM falls back to
+// its own default endpoint. Guards the empty-baseUrl branch of the overlay.
+func TestBuildChildModel_NoBaseURLNoAPIBase(t *testing.T) {
+	md := &litellmv1alpha1.LiteLLMModelDiscovery{
+		ObjectMeta: metav1.ObjectMeta{Name: "openai-md", Namespace: "default", UID: "abcd"},
+		Spec: litellmv1alpha1.ModelDiscoverySpec{
+			Type:   "openai",
+			Params: k8sruntime.RawExtension{Raw: []byte(`{"api_key":"sk-x"}`)},
+		},
+	}
+	child, err := buildChildModel(md, "openai-md-gpt4o", "gpt-4o", "openai", "default")
+	if err != nil {
+		t.Fatalf("buildChildModel: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(child.Spec.Params.Raw, &decoded); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if _, present := decoded["api_base"]; present {
+		t.Errorf("api_base must be absent when spec.baseUrl empty, got %v", decoded["api_base"])
+	}
+}
+
 // TestBuildChildModel_BedrockOverlay ensures the Bedrock-only
 // `aws_region_name` typed-field overlay is merged on top of the user's
 // pass-through bag (verbatim from spec.params).

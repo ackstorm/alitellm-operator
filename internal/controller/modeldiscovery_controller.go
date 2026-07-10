@@ -987,13 +987,16 @@ func buildChildModel(
 	}
 	// FIX.txt H-2 (2026-05-22): kubeai requires api_base on every child so
 	// the LiteLLM proxy can route inference requests (hosted_vllm/<id>).
-	// Parallel to the bedrock spec.region → aws_region_name overlay above.
-	// Diverges from bedrock's overlay-wins precedence on purpose:
-	// user-supplied params.api_base is a legitimate routing override (e.g.
-	// pointing at a test sidecar), whereas bedrock's region is identity-
-	// bearing for the AWS API. Presence-check makes the precedence visible
-	// in the diff.
-	if md.Spec.Type == providerTypeKubeAI {
+	// Generalized (2026-07-10): ANY custom spec.baseUrl must land on the
+	// child as api_base — an openai-compatible endpoint (OpenRouter,
+	// Together, Groq, vLLM) discovers models against baseUrl but LiteLLM
+	// routes inference to api.openai.com unless api_base is pinned, so the
+	// provider key gets rejected there (issue: OpenRouter key → OpenAI 401).
+	// Parallel to the bedrock spec.region → aws_region_name overlay above,
+	// but presence-checked: user-supplied params.api_base is a legitimate
+	// routing override (e.g. a test sidecar) and wins. Empty baseUrl (plain
+	// OpenAI/Anthropic/Gemini) injects nothing → LiteLLM's own default.
+	if md.Spec.BaseURL != "" {
 		if _, userSet := paramsMap["api_base"]; !userSet {
 			paramsMap["api_base"] = md.Spec.BaseURL
 		}
