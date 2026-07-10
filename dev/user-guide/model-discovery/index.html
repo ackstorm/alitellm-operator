@@ -1854,7 +1854,7 @@ child reconciles into LiteLLM via the <code>LiteLLMModel</code> controller
 <tr>
 <td><code>spec.baseUrl</code></td>
 <td>kubeai (req), openai (opt)</td>
-<td>Provider HTTP endpoint. <code>kubeai</code> value also auto-overlays into each child's <code>api_base</code>.</td>
+<td>Provider HTTP endpoint. Any non-empty value auto-overlays into each child's <code>api_base</code> (so LiteLLM routes inference to the same endpoint models were discovered from).</td>
 </tr>
 <tr>
 <td><code>spec.params</code></td>
@@ -2027,7 +2027,10 @@ prefix translation — children land as <code>hosted_vllm/&lt;raw-id&gt;</code> 
 <a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">  </span><span class="nt">refresh</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> interval</span><span class="p">:</span><span class="w"> </span><span class="nv">10m</span><span class="w"> </span><span class="p p-Indicator">}</span>
 </code></pre></div>
 <p>Works for vLLM, Together, Groq, OpenRouter, Anyscale — anything that
-implements OpenAI's <code>GET /v1/models</code> + chat-completions.</p>
+implements OpenAI's <code>GET /v1/models</code> + chat-completions. The reconciler
+overlays <code>api_base: &lt;spec.baseUrl&gt;</code> into each child's <code>spec.params</code>
+(user-supplied <code>api_base</code> wins on collision), so LiteLLM routes inference
+to the third-party endpoint instead of <code>api.openai.com</code>.</p>
 <h2 id="elevenlabs-audio-tts-stt">ElevenLabs — audio (TTS / STT)<a class="headerlink" href="#elevenlabs-audio-tts-stt" title="Permanent link">&para;</a></h2>
 <p>ElevenLabs is a hosted SaaS audio provider. Like <code>anthropic</code>/<code>gemini</code> it
 requires <code>credentialsSecretRef</code> and forbids <code>region</code>/<code>baseUrl</code> (single
