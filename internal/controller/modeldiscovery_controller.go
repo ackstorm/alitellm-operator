@@ -347,6 +347,14 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 						"cascade-delete still draining %d child Model(s) past deadline; check finalizer state on the children",
 						len(owned.Items))
 				}
+				// Surface Ready=False/Deleting while children drain — a large
+				// discovery can take minutes and would otherwise read as Synced.
+				// Written once; skip if already set so the 5s requeue loop does
+				// not churn status/metrics.
+				if c := apimeta.FindStatusCondition(md.Status.Conditions, conditionTypeReady); c == nil || c.Status != metav1.ConditionFalse || c.Reason != reasonDeleting {
+					r.writeReady(ctx, &md, metav1.ConditionFalse, reasonDeleting,
+						fmt.Sprintf("cascade-delete draining %d child Model(s)", len(owned.Items)))
+				}
 				return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 			}
 			// All children drained. Discovery's finalizer issues NO
@@ -373,6 +381,21 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		// predicate filters metadata-only Update events. See
 		// mcpserverdiscovery_controller.go finalizer-add note.
 		return ctrl.Result{Requeue: true}, nil
+	}
+
+	// ─── Step 3: Syncing-on-entry write ────────────────────────────────────
+	// A fresh discovery (or a spec change) runs a provider.List + child-CR
+	// reconcile that can take minutes for a large provider. Surface
+	// Ready=False/Syncing BEFORE that work so `kubectl get` shows progress
+	// instead of an empty status (and a just-created CR reads Ready=False
+	// until its first sync completes). Guarded by ObservedGeneration so the
+	// periodic resync of an already-Synced CR does NOT flap Ready; the inner
+	// reason guard skips a redundant re-write (resourceVersion churn).
+	// Mirrors the Connection reconciler's Connecting-on-entry write (D-07).
+	if cur := apimeta.FindStatusCondition(md.Status.Conditions, conditionTypeReady); cur == nil || md.Status.ObservedGeneration != md.Generation {
+		if cur == nil || cur.Reason != reasonSyncing {
+			r.writeReady(ctx, &md, metav1.ConditionFalse, reasonSyncing, "discovering upstream models")
+		}
 	}
 
 	// ─── Step 4: Resolve credentials per spec.type ─────────────────────────

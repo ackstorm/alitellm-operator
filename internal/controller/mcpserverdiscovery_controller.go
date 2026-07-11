@@ -337,6 +337,23 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 						"cascade-delete still draining %d child MCPServer(s) past deadline; check finalizer state on the children",
 						len(owned.Items))
 				}
+				// Surface Ready=False/Deleting while children drain — a large
+				// discovery can take minutes and would otherwise read as Synced.
+				// Ready-only (no SourceReachable touch); written once, so the 5s
+				// requeue loop does not churn status.
+				if c := apimeta.FindStatusCondition(md.Status.Conditions, conditionTypeReady); c == nil || c.Status != metav1.ConditionFalse || c.Reason != reasonDeleting {
+					apimeta.SetStatusCondition(&md.Status.Conditions, metav1.Condition{
+						Type:               conditionTypeReady,
+						Status:             metav1.ConditionFalse,
+						Reason:             reasonDeleting,
+						Message:            fmt.Sprintf("cascade-delete draining %d child MCPServer(s)", len(owned.Items)),
+						ObservedGeneration: md.Generation,
+						LastTransitionTime: metav1.Now(),
+					})
+					if err := r.Status().Update(ctx, &md); err != nil {
+						logStatusUpdateErr(logger, err, "reason", reasonDeleting)
+					}
+				}
 				return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 			}
 			// All children drained. MSDisc finalizer issues NO LiteLLM
@@ -366,6 +383,31 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 		// finalizer adds are filtered → reconciler never returns to
 		// generate children. Explicit Requeue:true bypasses the predicate.
 		return ctrl.Result{Requeue: true}, nil
+	}
+
+	// ─── Syncing-on-entry write ────────────────────────────────────────────
+	// A fresh/changed MCP discovery runs a source list + child-CR reconcile
+	// that surfaces Ready=False/Syncing instead of an empty status until its
+	// first sync of the generation completes. Guarded by ObservedGeneration
+	// so a periodic resync of an already-Synced CR does not flap Ready; the
+	// inner reason guard skips a redundant re-write. Ready-only (no
+	// SourceReachable touch). Mirrors the ModelDiscovery Syncing-on-entry
+	// write and the Connection Connecting-on-entry write (D-07).
+	if cur := apimeta.FindStatusCondition(md.Status.Conditions, conditionTypeReady); cur == nil || md.Status.ObservedGeneration != md.Generation {
+		if cur == nil || cur.Reason != reasonSyncing {
+			apimeta.SetStatusCondition(&md.Status.Conditions, metav1.Condition{
+				Type:               conditionTypeReady,
+				Status:             metav1.ConditionFalse,
+				Reason:             reasonSyncing,
+				Message:            "discovering upstream MCP servers",
+				ObservedGeneration: md.Generation,
+				LastTransitionTime: metav1.Now(),
+			})
+			md.Status.ObservedGeneration = md.Generation
+			if err := r.Status().Update(ctx, &md); err != nil {
+				logStatusUpdateErr(logger, err, "reason", reasonSyncing)
+			}
+		}
 	}
 
 	// ─── Step 3: Source-reachable gate (MSDISC-06 / D-08) ──────────────────

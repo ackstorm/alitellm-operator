@@ -46,8 +46,17 @@ const connectionFinalizer = "litellm.ackstorm.ai/connection-cache-cleanup"
 // Status-condition Reason constants — §6.0 + §10 set, shared across all
 // CR-kind reconcilers. Single source of truth so goconst stays quiet.
 const (
-	reasonSynced             = "Synced"
-	reasonConnecting         = "Connecting"
+	reasonSynced     = "Synced"
+	reasonConnecting = "Connecting"
+	// reasonDeleting — DeletionTimestamp set, finalizer waiting on owned
+	// children to drain (a large discovery can take minutes). Surfaces
+	// Ready=False so `kubectl get` doesn't show a deleting CR as Synced.
+	reasonDeleting = "Deleting"
+	// reasonSyncing — discovery reconcile in progress (provider.List +
+	// child-CR generation, minutes for a large provider). Written on entry
+	// so a fresh/changed CR reads Ready=False/Syncing instead of an empty
+	// status until the first sync of the generation completes.
+	reasonSyncing            = "Syncing"
 	reasonAbsent             = "Absent"
 	reasonUnreachable        = "Unreachable"
 	reasonBadMasterKey       = "BadMasterKey"
