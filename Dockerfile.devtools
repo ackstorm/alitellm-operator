@@ -8,7 +8,7 @@
 #
 # Used by all four Phase 1 plans.
 
-FROM golang:1.26.4-bookworm
+FROM golang:1.26.5-bookworm
 
 # Use bash with pipefail for all RUN directives — abort on any failure in a
 # pipeline (e.g. `curl ... | tar ...`). POSIX sh swallows the curl exit code
