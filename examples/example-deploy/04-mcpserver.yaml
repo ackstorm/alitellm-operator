@@ -41,3 +41,6 @@ spec:
   # NewMCPServerRequest. Nested mcp_info follows spec §6.4 convention.
   params:
     description: "Exa search MCP"
+  # deletionPolicy: Delete   # block finalizer removal until LiteLLM acks the
+  #                          # delete; default Orphan leaves the LiteLLM entry
+  #                          # behind on CR delete

@@ -51,6 +51,10 @@ spec:
   # The operator's cluster-scoped read RBAC covers all namespaces listed.
   toolhive:
     namespaces: [default]
+    # kinds: [MCPServer]   # default {MCPServer, VirtualMCPServer}; narrow to one kind
+  # filters:
+  #   include:
+  #     - "^th-.*"   # RE2 against the generated child name (<prefix>-<source-name>)
   # Refresh interval — must be >= 1m (CEL floor, mirroring MDISC-05).
   refresh:
     interval: 1m

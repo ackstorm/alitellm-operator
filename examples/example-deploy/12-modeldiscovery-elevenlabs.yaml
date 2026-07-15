@@ -1,0 +1,59 @@
+---
+# Copyright 2026 ACKstorm.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# ElevenLabs provider (audio — TTS / STT).
+#
+# CEL rules exercised:
+#   - spec.type=elevenlabs matches the Enum constraint
+#   - credentialsSecretRef is REQUIRED for elevenlabs
+#   - region is FORBIDDEN for elevenlabs
+#   - baseUrl is FORBIDDEN for elevenlabs (hosted SaaS, single endpoint)
+#   - refresh.interval >= 1m (MDISC-05 floor)
+#
+# ElevenLabs /v1/models returns TTS, STT, and voice-conversion models all
+# mixed together. filters.include narrows to the v2/v3 TTS + scribe STT
+# models below; drop the filter to surface every model the account exposes.
+#
+# Required Secret: elevenlabs-credentials with key ELEVENLABS_API_KEY.
+# Create it imperatively:
+#
+#   kubectl create secret generic elevenlabs-credentials \
+#     --from-literal=ELEVENLABS_API_KEY=$REAL_KEY -n default
+#
+# Reconciler call: GET https://api.elevenlabs.io/v1/models
+# with the `xi-api-key: $ELEVENLABS_API_KEY` header.
+#
+# NOTE: the LiteLLM proxy must have STORE_MODEL_IN_DB=True or every child
+# model's POST /model/new 500s (see CLAUDE.md common failure modes).
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMModelDiscovery
+metadata:
+  name: elevenlabs-models
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  type: elevenlabs
+  credentialsSecretRef:
+    name: elevenlabs-credentials
+  secrets:
+    - as: ELEVENLABS_API_KEY
+      secretRef:
+        name: elevenlabs-credentials
+        key: ELEVENLABS_API_KEY
+  params:
+    api_key: "{{ELEVENLABS_API_KEY}}"
+  filters:
+    include:
+      - "^eleven_.*_v2$"
+      - "^eleven_v3$"
+      - "^scribe_v1$"
+  refresh:
+    interval: 10m

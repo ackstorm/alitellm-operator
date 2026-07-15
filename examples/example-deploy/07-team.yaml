@@ -79,3 +79,10 @@ spec:
   # fires per colliding key. spec.params is empty for the dogfood
   # team — kept for forward-compat with future pass-through keys.
   params: {}
+  # secrets declares the {{NAME}} placeholder substitution map for
+  # spec.params, same shape as the Model CR (see 02-model.yaml):
+  # secrets:
+  #   - as: SOME_TEAM_SECRET
+  #     secretRef:
+  #       name: some-team-secret
+  #       key: SOME_TEAM_SECRET

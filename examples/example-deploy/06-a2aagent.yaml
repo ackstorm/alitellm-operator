@@ -47,3 +47,6 @@ spec:
   # agent_name, agent_card_params, and the operator's structural overlays.
   params:
     timeout: 30
+  # deletionPolicy: Delete   # block finalizer removal until LiteLLM acks the
+  #                          # delete; default Orphan leaves the LiteLLM entry
+  #                          # behind on CR delete

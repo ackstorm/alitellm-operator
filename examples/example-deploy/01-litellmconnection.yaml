@@ -45,3 +45,7 @@ spec:
   # mcpToolPrefixSeparator: "-"   # default is "."; set "-" ONLY for a
   #                               # non-stock LiteLLM whose validator
   #                               # rejects "-" in server_name
+  # --- optional tuning (defaults shown) ---
+  # requeueOnRejectedAfter: "5m"   # retry cadence after a LiteLLM 4xx
+  # maxRequestsPerSecond: 5        # sustained outbound HTTP rate cap; 0 disables (not recommended)
+  # maxBurst: 10                   # token-bucket burst paired with maxRequestsPerSecond

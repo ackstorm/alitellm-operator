@@ -56,6 +56,11 @@ spec:
   guardrailName: credential-filter
   provider: litellm_content_filter
   mode: [pre_call]
+  # mode: [pre_call, post_call]   # multi-element: evaluate BOTH prompt and response
+  # policyTemplate: my-reusable-policy   # names a server-side rule bundle
+  #                                      # (Guardrail.policy_template); merged with
+  #                                      # litellm_params at evaluation time. Free-form —
+  #                                      # no CEL enum, must exist server-side already.
   defaultOn: true
   params:
     patterns:
