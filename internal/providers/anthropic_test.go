@@ -35,7 +35,7 @@ func TestAnthropic_FollowsPagination(t *testing.T) {
 	defer srv.Close()
 	SetTestBaseURL(t, "anthropic", srv.URL)
 
-	p, _ := newAnthropic(context.Background(), ProviderConfig{
+	p, _ := newAnthropicImpl(context.Background(), ProviderConfig{
 		Type: "anthropic", APIKey: canaryAnthropicKey, HTTPClient: srv.Client(),
 	})
 	got, err := p.List(context.Background())
@@ -57,7 +57,7 @@ func TestAnthropic_PageCapExhaustionErrors(t *testing.T) {
 	defer srv.Close()
 	SetTestBaseURL(t, "anthropic", srv.URL)
 
-	p, _ := newAnthropic(context.Background(), ProviderConfig{
+	p, _ := newAnthropicImpl(context.Background(), ProviderConfig{
 		Type: "anthropic", APIKey: canaryAnthropicKey, HTTPClient: srv.Client(),
 	})
 	if _, err := p.List(context.Background()); err == nil {
@@ -76,13 +76,13 @@ func TestAnthropic_HappyPath_ReturnsTwoCandidates(t *testing.T) {
 	defer srv.Close()
 	SetTestBaseURL(t, "anthropic", srv.URL)
 
-	p, err := newAnthropic(context.Background(), ProviderConfig{
+	p, err := newAnthropicImpl(context.Background(), ProviderConfig{
 		Type:       "anthropic",
 		APIKey:     canaryAnthropicKey,
 		HTTPClient: srv.Client(),
 	})
 	if err != nil {
-		t.Fatalf("newAnthropic returned err: %v", err)
+		t.Fatalf("newAnthropicImpl returned err: %v", err)
 	}
 	if p.Type() != "anthropic" { //nolint:goconst // wire-level provider discriminator asserted literally; providerTypeAnthropic const lives in anthropic.go
 		t.Fatalf("Type() = %q; want %q", p.Type(), "anthropic")
@@ -123,13 +123,13 @@ func TestAnthropic_Headers_AreSet(t *testing.T) {
 	defer srv.Close()
 	SetTestBaseURL(t, "anthropic", srv.URL)
 
-	p, err := newAnthropic(context.Background(), ProviderConfig{
+	p, err := newAnthropicImpl(context.Background(), ProviderConfig{
 		Type:       "anthropic",
 		APIKey:     canaryAnthropicKey,
 		HTTPClient: srv.Client(),
 	})
 	if err != nil {
-		t.Fatalf("newAnthropic err: %v", err)
+		t.Fatalf("newAnthropicImpl err: %v", err)
 	}
 	if _, err := p.List(context.Background()); err != nil {
 		t.Fatalf("List err: %v", err)
@@ -158,13 +158,13 @@ func TestAnthropic_401_ReturnsProviderAuthError(t *testing.T) {
 	defer srv.Close()
 	SetTestBaseURL(t, "anthropic", srv.URL)
 
-	p, err := newAnthropic(context.Background(), ProviderConfig{
+	p, err := newAnthropicImpl(context.Background(), ProviderConfig{
 		Type:       "anthropic",
 		APIKey:     canaryAnthropicKey,
 		HTTPClient: srv.Client(),
 	})
 	if err != nil {
-		t.Fatalf("newAnthropic err: %v", err)
+		t.Fatalf("newAnthropicImpl err: %v", err)
 	}
 	_, listErr := p.List(context.Background())
 	if listErr == nil {
@@ -190,7 +190,7 @@ func TestAnthropic_403_ReturnsProviderAuthError(t *testing.T) {
 	defer srv.Close()
 	SetTestBaseURL(t, "anthropic", srv.URL)
 
-	p, _ := newAnthropic(context.Background(), ProviderConfig{
+	p, _ := newAnthropicImpl(context.Background(), ProviderConfig{
 		Type: "anthropic", APIKey: canaryAnthropicKey, HTTPClient: srv.Client(),
 	})
 	_, listErr := p.List(context.Background())
@@ -211,7 +211,7 @@ func TestAnthropic_5xx_ReturnsPlainError(t *testing.T) {
 	defer srv.Close()
 	SetTestBaseURL(t, "anthropic", srv.URL)
 
-	p, _ := newAnthropic(context.Background(), ProviderConfig{
+	p, _ := newAnthropicImpl(context.Background(), ProviderConfig{
 		Type: "anthropic", APIKey: canaryAnthropicKey, HTTPClient: srv.Client(),
 	})
 	_, listErr := p.List(context.Background())
@@ -229,22 +229,22 @@ func TestAnthropic_5xx_ReturnsPlainError(t *testing.T) {
 // key — discovery is impossible without one, and silently failing
 // later at List would waste a reconcile cycle.
 func TestAnthropic_MissingAPIKey_ReturnsConstructorError(t *testing.T) {
-	_, err := newAnthropic(context.Background(), ProviderConfig{
+	_, err := newAnthropicImpl(context.Background(), ProviderConfig{
 		Type: "anthropic", APIKey: "", HTTPClient: http.DefaultClient,
 	})
 	if err == nil {
-		t.Fatal("newAnthropic with empty APIKey: want err; got nil")
+		t.Fatal("newAnthropicImpl with empty APIKey: want err; got nil")
 	}
 }
 
 // TestAnthropic_NilHTTPClient_ReturnsConstructorError mirrors the
 // missing-APIKey case — HTTPClient is required (D-02; manager owns it).
 func TestAnthropic_NilHTTPClient_ReturnsConstructorError(t *testing.T) {
-	_, err := newAnthropic(context.Background(), ProviderConfig{
+	_, err := newAnthropicImpl(context.Background(), ProviderConfig{
 		Type: "anthropic", APIKey: canaryAnthropicKey, HTTPClient: nil,
 	})
 	if err == nil {
-		t.Fatal("newAnthropic with nil HTTPClient: want err; got nil")
+		t.Fatal("newAnthropicImpl with nil HTTPClient: want err; got nil")
 	}
 }
 
@@ -258,7 +258,7 @@ func TestAnthropic_MalformedJSON_ReturnsPlainError(t *testing.T) {
 	defer srv.Close()
 	SetTestBaseURL(t, "anthropic", srv.URL)
 
-	p, _ := newAnthropic(context.Background(), ProviderConfig{
+	p, _ := newAnthropicImpl(context.Background(), ProviderConfig{
 		Type: "anthropic", APIKey: canaryAnthropicKey, HTTPClient: srv.Client(),
 	})
 	_, listErr := p.List(context.Background())
@@ -293,7 +293,7 @@ func TestAnthropic_CredentialCanary(t *testing.T) {
 	defer srv.Close()
 	SetTestBaseURL(t, "anthropic", srv.URL)
 
-	p, _ := newAnthropic(context.Background(), ProviderConfig{
+	p, _ := newAnthropicImpl(context.Background(), ProviderConfig{
 		Type: "anthropic", APIKey: canaryAnthropicKey, HTTPClient: srv.Client(),
 	})
 	cands, err := p.List(context.Background())
