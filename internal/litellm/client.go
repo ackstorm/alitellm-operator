@@ -9,40 +9,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
 	"golang.org/x/time/rate"
 )
-
-// authHeaderKind selects which HTTP header carries the master key.
-// empirically verified + Probe 8, both
-// `Authorization: Bearer` AND `x-litellm-api-key` are honored on
-// LiteLLM 1.83.10 across all 14 authenticated endpoints. The operator
-// defaults to `Authorization: Bearer` (spec §6.1-aligned).
-type authHeaderKind int
-
-const (
-	// AuthBearer sends `Authorization: Bearer <master-key>` — DEFAULT.
-	AuthBearer authHeaderKind = iota
-	// AuthXLiteLLMAPIKey sends `x-litellm-api-key: <master-key>`.
-	// Switch by setting LITELLM_OPERATOR_AUTH_HEADER=x-litellm-api-key
-	// at pod startup. Retained as an escape hatch in case LiteLLM 1.83.11+
-	// changes behavior.
-	AuthXLiteLLMAPIKey
-)
-
-// EnvAuthHeader is the operator-pod env var that overrides the default
-// auth header at startup. Accepted values:
-// - unset / empty / "authorization" / "bearer" → AuthBearer (default)
-// - "x-litellm-api-key" → AuthXLiteLLMAPIKey
-const EnvAuthHeader = "LITELLM_OPERATOR_AUTH_HEADER"
-
-// defaultAuthHeader is AuthBearer per spec §6.1 (both Bearer and
-// x-litellm-api-key forms work on LiteLLM 1.83.10; Bearer wins).
-const defaultAuthHeader = AuthBearer
 
 // Client is the operator's *http.Client wrapper for the LiteLLM REST
 // API. All per-domain helpers (model.go, team.go, mcp.go, agents.go,
@@ -52,7 +24,6 @@ type Client struct {
 	masterKey  string
 	httpClient *http.Client
 	log        logr.Logger
-	authHeader authHeaderKind
 	// limiter caps the sustained rate of outbound HTTP requests to
 	// LiteLLM (FIX2.txt MEDIUM-10, 2026-05-22). Nil → unlimited.
 	limiter *rate.Limiter
@@ -119,31 +90,11 @@ func NewClient(endpoint, masterKey string, log logr.Logger, opts ...ClientOption
 		masterKey:  masterKey,
 		httpClient: newHTTPClient(log),
 		log:        log,
-		authHeader: defaultAuthHeader,
-	}
-	switch strings.ToLower(os.Getenv(EnvAuthHeader)) {
-	case "x-litellm-api-key":
-		c.authHeader = AuthXLiteLLMAPIKey
-	case "", "authorization", "bearer":
-		c.authHeader = AuthBearer
-	default:
-		c.authHeader = AuthBearer
 	}
 	for _, opt := range opts {
 		opt(c)
 	}
 	return c
-}
-
-// setAuth attaches the master key to the request according to the
-// configured authHeader kind. Never logs the key (§9.1).
-func (c *Client) setAuth(req *http.Request) {
-	switch c.authHeader {
-	case AuthXLiteLLMAPIKey:
-		req.Header.Set("x-litellm-api-key", c.masterKey)
-	default:
-		req.Header.Set("Authorization", "Bearer "+c.masterKey)
-	}
 }
 
 // makeRequest is the central request path. Every per-domain helper
@@ -172,7 +123,7 @@ func (c *Client) makeRequest(ctx context.Context, method, path string, body any)
 	if err != nil {
 		return nil, fmt.Errorf("litellm: build %s %s: %w", method, path, err)
 	}
-	c.setAuth(req)
+	req.Header.Set("Authorization", "Bearer "+c.masterKey)
 	req.Header.Set("Accept", "application/json")
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")

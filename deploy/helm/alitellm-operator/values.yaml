@@ -83,9 +83,8 @@ safetyRelistInterval: ""
 #
 # Use safetyRelistInterval above for the most common knob; extraEnv is
 # the escape hatch for anything else (LITELLM_OPERATOR_LOG_LEVEL,
-# LITELLM_OPERATOR_AUTH_HEADER, LITELLM_OPERATOR_RECREATE_LIMIT_PER_MIN,
-# DEFAULT_ACCESS_GROUP, etc.). Production installs that want defaults can
-# leave this empty.
+# LITELLM_OPERATOR_RECREATE_LIMIT_PER_MIN, DEFAULT_ACCESS_GROUP, etc.).
+# Production installs that want defaults can leave this empty.
 #
 # DEFAULT_ACCESS_GROUP names the access group injected into a model's
 # model_info.access_groups when it declares none (default "default"; set ""
