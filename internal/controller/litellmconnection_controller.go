@@ -209,9 +209,8 @@ func (r *LiteLLMConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		if controllerutil.ContainsFinalizer(&conn, connectionFinalizer) {
 			// Cache invalidation — cache-only, never an API call.
 			r.Cache.Rebuild(connection.ConnectionSnapshot{
-				Ready:      false,
-				Reason:     "Absent",
-				Generation: conn.Generation,
+				Ready:  false,
+				Reason: "Absent",
 			})
 			// §10 one-hot gauge: clear all six labels, set "Absent" to 1.
 			for _, rk := range connectionReasonAll {
@@ -294,9 +293,8 @@ func (r *LiteLLMConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			// Pipeline A reconcilers); the terminal Rebuild later in
 			// this reconcile then publishes the final outcome.
 			r.Cache.Rebuild(connection.ConnectionSnapshot{
-				Ready:      false,
-				Reason:     reasonConnecting,
-				Generation: conn.Generation,
+				Ready:  false,
+				Reason: reasonConnecting,
 			})
 		}
 	}
@@ -315,9 +313,8 @@ func (r *LiteLLMConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 				logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
 			}
 			r.Cache.Rebuild(connection.ConnectionSnapshot{
-				Ready:      false,
-				Reason:     reasonSecretNotFound,
-				Generation: conn.Generation,
+				Ready:  false,
+				Reason: reasonSecretNotFound,
 			})
 			metrics.ReconcileTotal.WithLabelValues("LiteLLMConnection", "success").Inc()
 			// SecretNotFound is operator-action-required (not transient),
@@ -341,9 +338,8 @@ func (r *LiteLLMConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
 		}
 		r.Cache.Rebuild(connection.ConnectionSnapshot{
-			Ready:      false,
-			Reason:     reasonSecretNotFound,
-			Generation: conn.Generation,
+			Ready:  false,
+			Reason: reasonSecretNotFound,
 		})
 		metrics.ReconcileTotal.WithLabelValues("LiteLLMConnection", "success").Inc()
 		return ctrl.Result{}, nil
@@ -362,9 +358,8 @@ func (r *LiteLLMConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			logStatusUpdateErr(logger, werr, "reason", reasonInvalidEndpoint)
 		}
 		r.Cache.Rebuild(connection.ConnectionSnapshot{
-			Ready:      false,
-			Reason:     reasonInvalidEndpoint,
-			Generation: conn.Generation,
+			Ready:  false,
+			Reason: reasonInvalidEndpoint,
 		})
 		metrics.ReconcileTotal.WithLabelValues("LiteLLMConnection", "success").Inc()
 		return ctrl.Result{}, nil
@@ -382,9 +377,8 @@ func (r *LiteLLMConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 				logStatusUpdateErr(logger, werr, "reason", reasonInsecureEndpoint)
 			}
 			r.Cache.Rebuild(connection.ConnectionSnapshot{
-				Ready:      false,
-				Reason:     reasonInsecureEndpoint,
-				Generation: conn.Generation,
+				Ready:  false,
+				Reason: reasonInsecureEndpoint,
 			})
 			metrics.ReconcileTotal.WithLabelValues("LiteLLMConnection", "success").Inc()
 			return ctrl.Result{}, nil
@@ -444,9 +438,8 @@ func (r *LiteLLMConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			logStatusUpdateErr(logger, werr, "reason", "BadMasterKey")
 		}
 		r.Cache.Rebuild(connection.ConnectionSnapshot{
-			Ready:      false,
-			Reason:     "BadMasterKey",
-			Generation: conn.Generation,
+			Ready:  false,
+			Reason: "BadMasterKey",
 		})
 		// success label — the RECONCILER completed; the probe failure
 		// is the deterministic outcome, not a reconcile failure.
@@ -474,9 +467,8 @@ func (r *LiteLLMConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			logStatusUpdateErr(logger, werr, "reason", "Unreachable")
 		}
 		r.Cache.Rebuild(connection.ConnectionSnapshot{
-			Ready:      false,
-			Reason:     "Unreachable",
-			Generation: conn.Generation,
+			Ready:  false,
+			Reason: "Unreachable",
 		})
 		metrics.ReconcileTotal.WithLabelValues("LiteLLMConnection", "error").Inc()
 		logger.V(1).Info("probe: Unreachable; returning err for controller-runtime backoff", "error", probeErr)
@@ -521,7 +513,6 @@ func (r *LiteLLMConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		Ready:                  true,
 		Reason:                 reasonSynced,
 		Client:                 liteLLMClient,
-		Generation:             conn.Generation,
 		MCPToolPrefixSeparator: conn.Spec.MCPToolPrefixSeparator,
 		RequeueOnRejectedAfter: conn.Spec.RequeueOnRejectedAfter.Duration,
 	})

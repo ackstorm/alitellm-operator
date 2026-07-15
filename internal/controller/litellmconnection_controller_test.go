@@ -606,7 +606,7 @@ func TestConnection_GenChangeRebuildsCacheBeforeProbe(t *testing.T) {
 	}
 
 	// First Rebuild must be the Connecting-on-entry invalidation:
-	// Ready=false, Reason=Connecting, Client=nil, Generation=2.
+	// Ready=false, Reason=Connecting, Client=nil.
 	first := calls[0]
 	if first.Ready {
 		t.Errorf("first Rebuild Ready=true, want false (cache must invalidate before probe)")
@@ -616,9 +616,6 @@ func TestConnection_GenChangeRebuildsCacheBeforeProbe(t *testing.T) {
 	}
 	if first.Client != nil {
 		t.Errorf("first Rebuild Client=%p, want nil (stale client must not leak through probe window)", first.Client)
-	}
-	if first.Generation != 2 {
-		t.Errorf("first Rebuild Generation=%d, want 2 (new spec generation)", first.Generation)
 	}
 
 	// Terminal Rebuild must be SecretNotFound (Ready=false, Reason=SecretNotFound).

@@ -199,7 +199,7 @@ func main() {
 	// It remains in internal/controller/ as a test-only helper for the
 	// four Phase 1 envtests; controller-runtime's manager registry is
 	// independent of test-only types in the same package.
-	connCache := connection.NewCache(ctrl.Log.WithName("connection-cache"))
+	connCache := connection.NewCache()
 	if err := mgr.Add(connCache); err != nil {
 		setupLog.Error(err, "unable to add connection cache to manager")
 		os.Exit(1)

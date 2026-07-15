@@ -18,7 +18,7 @@ import (
 // the zero-value ConnectionSnapshot (Ready=false, Client=nil) — D-04
 // "do not mutate" gate.
 func TestNewCacheZeroValue(t *testing.T) {
-	c := NewCache(logr.Discard())
+	c := NewCache()
 	if c == nil {
 		t.Fatal("NewCache returned nil")
 	}
@@ -32,19 +32,16 @@ func TestNewCacheZeroValue(t *testing.T) {
 	if snap.Reason != "" {
 		t.Errorf("fresh cache Snapshot().Reason = %q, want \"\"", snap.Reason)
 	}
-	if snap.Generation != 0 {
-		t.Errorf("fresh cache Snapshot().Generation = %d, want 0", snap.Generation)
-	}
 }
 
 // TestRebuildSnapshotRoundtrip — Task 1 behavior 2.
 // Rebuild(snap) followed by Snapshot returns the same value (lock-free read).
 func TestRebuildSnapshotRoundtrip(t *testing.T) {
-	c := NewCache(logr.Discard())
-	in := ConnectionSnapshot{Ready: true, Reason: "Synced", Generation: 7}
+	c := NewCache()
+	in := ConnectionSnapshot{Ready: true, Reason: "Synced"}
 	c.Rebuild(in)
 	out := c.Snapshot()
-	if out.Ready != in.Ready || out.Reason != in.Reason || out.Generation != in.Generation {
+	if out.Ready != in.Ready || out.Reason != in.Reason {
 		t.Errorf("Snapshot() = %+v, want %+v", out, in)
 	}
 }
@@ -53,7 +50,7 @@ func TestRebuildSnapshotRoundtrip(t *testing.T) {
 // InvalidateOn401 called five times in tight succession sends only ONE
 // event on Channel (CAS storm gate per D-10).
 func TestInvalidateOn401StormGate(t *testing.T) {
-	c := NewCache(logr.Discard())
+	c := NewCache()
 	for i := 0; i < 5; i++ {
 		c.InvalidateOn401()
 	}
@@ -77,7 +74,7 @@ func TestInvalidateOn401StormGate(t *testing.T) {
 // After InvalidateOn401 then Rebuild, the storm gate resets — a subsequent
 // InvalidateOn401 sends a new event.
 func TestStormGateResetsOnRebuild(t *testing.T) {
-	c := NewCache(logr.Discard())
+	c := NewCache()
 	c.InvalidateOn401()
 	ch := c.Channel()
 	// Drain the first event.
@@ -102,7 +99,7 @@ func TestStormGateResetsOnRebuild(t *testing.T) {
 // Start(ctx) blocks until ctx is cancelled, then closes the channel and returns nil
 // (manager.Runnable contract).
 func TestStartBlocksUntilContextCancelled(t *testing.T) {
-	c := NewCache(logr.Discard())
+	c := NewCache()
 	ctx, cancel := context.WithCancel(context.Background())
 
 	done := make(chan error, 1)
@@ -150,7 +147,7 @@ func TestCacheSatisfiesInterface(t *testing.T) {
 // First Rebuild with Ready=true emits exactly ONE event on a Subscribe()
 // channel.
 func TestSubscribeEmitsOnInitialReady(t *testing.T) {
-	c := NewCache(logr.Discard())
+	c := NewCache()
 	sub := c.Subscribe()
 	c.Rebuild(ConnectionSnapshot{Ready: true, Reason: "Synced"})
 	select {
@@ -171,7 +168,7 @@ func TestSubscribeEmitsOnInitialReady(t *testing.T) {
 // Rebuild with Ready=false MUST NOT emit; subsequent Ready=true transitions
 // MUST emit.
 func TestSubscribeSilentOnNotReady(t *testing.T) {
-	c := NewCache(logr.Discard())
+	c := NewCache()
 	sub := c.Subscribe()
 	c.Rebuild(ConnectionSnapshot{Ready: false, Reason: "Connecting"})
 	select {
@@ -190,7 +187,7 @@ func TestSubscribeSilentOnNotReady(t *testing.T) {
 // TestSubscribeReFiresAfterReadyFlap — issue #44 close (PR #45 follow-up).
 // Ready=true → Ready=false → Ready=true MUST emit on both Ready=true events.
 func TestSubscribeReFiresAfterReadyFlap(t *testing.T) {
-	c := NewCache(logr.Discard())
+	c := NewCache()
 	sub := c.Subscribe()
 	c.Rebuild(ConnectionSnapshot{Ready: true})
 	<-sub // drain initial
@@ -207,7 +204,7 @@ func TestSubscribeReFiresAfterReadyFlap(t *testing.T) {
 // Cache.Start exit closes every Subscribe() channel so source.Channel
 // consumers see EOF.
 func TestSubscribeClosedOnShutdown(t *testing.T) {
-	c := NewCache(logr.Discard())
+	c := NewCache()
 	sub := c.Subscribe()
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -233,7 +230,7 @@ func TestSubscribeClosedOnShutdown(t *testing.T) {
 // panic (the emit path's closed-flag check + defer-recover keep operator
 // alive).
 func TestSubscribeAfterShutdownNoPanic(t *testing.T) {
-	c := NewCache(logr.Discard())
+	c := NewCache()
 	_ = c.Subscribe()
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -261,7 +258,7 @@ func TestSubscribeAfterShutdownNoPanic(t *testing.T) {
 // Team, GuardRail, ModelAlias) but the property under test is "every
 // subscriber receives every emit", not the count itself.
 func TestSubscribeFanOutToAllSubscribers(t *testing.T) {
-	c := NewCache(logr.Discard())
+	c := NewCache()
 	const n = 6
 	subs := make([]<-chan event.GenericEvent, n)
 	for i := range subs {
@@ -283,7 +280,7 @@ func TestSubscribeFanOutToAllSubscribers(t *testing.T) {
 // receive BOTH Ready=true emits (initial + post-flap recovery). Stress
 // case for the per-subscriber fan-out across multiple transitions.
 func TestSubscribeFanOutAcrossFlap(t *testing.T) {
-	c := NewCache(logr.Discard())
+	c := NewCache()
 	const n = 6
 	subs := make([]<-chan event.GenericEvent, n)
 	for i := range subs {
@@ -333,7 +330,7 @@ func TestCache_InvalidateOn401_AfterShutdown_NoPanic(t *testing.T) {
 		}
 	}()
 
-	cache := NewCache(logr.Discard())
+	cache := NewCache()
 	ctx, cancel := context.WithCancel(context.Background())
 
 	done := make(chan error, 1)
@@ -384,21 +381,18 @@ func TestCache_InvalidateOn401_BeforeStart_NoPanic(t *testing.T) {
 		}
 	}()
 
-	cache := NewCache(logr.Discard())
+	cache := NewCache()
 	cache.InvalidateOn401()
 }
 
-// TestCache_InvalidateOn401_PreservesGenerationAndClient_WR04 — Plan
-// 02-04 WR-04 close.
+// TestCache_InvalidateOn401_PreservesClient_WR04 — Plan 02-04 WR-04 close.
 //
 // Before this plan, InvalidateOn401's placeholder snapshot was
 // ConnectionSnapshot{Ready: false, Reason: "Unreachable"}, dropping
-// Generation and Client. Phase 3+ logic comparing snap.Generation against
-// observedConnectionGeneration would see a spurious zero in the one-
-// reconcile window between InvalidateOn401 and the next Rebuild.
+// Client.
 //
-// The fix preserves Generation + Client from the current snapshot and
-// uses Reason "BadMasterKey" (the §6.0 vocabulary entry matching a 401).
+// The fix preserves Client from the current snapshot and uses Reason
+// "BadMasterKey" (the §6.0 vocabulary entry matching a 401).
 //
 // Procedure:
 //
@@ -406,15 +400,14 @@ func TestCache_InvalidateOn401_BeforeStart_NoPanic(t *testing.T) {
 // 2. Construct a non-nil *litellm.Client via NewClient (no network call
 // happens — the client is just a struct that holds the endpoint).
 // 3. Seed the cache via Rebuild with a snapshot {Ready:true,
-// Reason:"Synced", Generation:42, Client:client}.
+// Reason:"Synced", Client:client}.
 // 4. Call InvalidateOn401.
 // 5. Read Snapshot. Assert:
 // - Ready == false (flipped)
 // - Reason == "BadMasterKey" (NOT "Unreachable" — WR-04 fix)
-// - Generation == 42 (PRESERVED — WR-04 fix)
 // - Client == client (PRESERVED, pointer identity — WR-04 fix)
-func TestCache_InvalidateOn401_PreservesGenerationAndClient_WR04(t *testing.T) {
-	cache := NewCache(logr.Discard())
+func TestCache_InvalidateOn401_PreservesClient_WR04(t *testing.T) {
+	cache := NewCache()
 
 	// Construct a non-nil sentinel *litellm.Client. No network call is
 	// issued by NewClient; the endpoint is only used at probe time.
@@ -424,10 +417,9 @@ func TestCache_InvalidateOn401_PreservesGenerationAndClient_WR04(t *testing.T) {
 	}
 
 	seed := ConnectionSnapshot{
-		Ready:      true,
-		Reason:     "Synced",
-		Generation: 42,
-		Client:     client,
+		Ready:  true,
+		Reason: "Synced",
+		Client: client,
 	}
 	cache.Rebuild(seed)
 
@@ -441,10 +433,6 @@ func TestCache_InvalidateOn401_PreservesGenerationAndClient_WR04(t *testing.T) {
 	if snap.Reason != "BadMasterKey" {
 		t.Errorf("WR-04 FAIL: snap.Reason = %q after InvalidateOn401(); want %q (§6.0 vocabulary entry for a 401 outcome)",
 			snap.Reason, "BadMasterKey")
-	}
-	if snap.Generation != 42 {
-		t.Errorf("WR-04 FAIL: Generation dropped after InvalidateOn401() (was 42, now %d) — Phase 3+ observedConnectionGeneration comparison will see a spurious zero",
-			snap.Generation)
 	}
 	if snap.Client != client {
 		t.Errorf("WR-04 FAIL: Client pointer changed after InvalidateOn401() (want pointer identity to seed Client) — dependents holding a *litellm.Client reference may break under the placeholder write")
@@ -490,7 +478,7 @@ func TestUsable(t *testing.T) {
 }
 
 func TestInvalidateOn401_RecoveryReEmits(t *testing.T) {
-	c := NewCache(logr.Discard())
+	c := NewCache()
 	sub := c.Subscribe()
 	c.Rebuild(ConnectionSnapshot{Ready: true, Reason: "Synced"})
 	<-sub // drain the initial false→true emit

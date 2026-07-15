@@ -345,7 +345,7 @@ func setupAndRun(m *testing.M) int {
 	// LiteLLMConnectionReconciler. Runs SIDE-BY-SIDE with the Phase 1
 	// NoOpReconciler — the 4 Phase 1 tests target Model CRs and the 4
 	// Phase 2 tests target LiteLLMConnection CRs, no conflict.
-	connCache = connection.NewCache(logr.Discard())
+	connCache = connection.NewCache()
 	if err := mgr.Add(connCache); err != nil {
 		fmt.Fprintf(os.Stderr, "mgr.Add(connCache): %v\n", err)
 		return 1
