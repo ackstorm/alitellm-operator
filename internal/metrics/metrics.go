@@ -68,37 +68,6 @@ func ReasonToReconcileResult(reason string) string {
 	}
 }
 
-// ReconcileDurationSeconds — spec §10: histogram labeled by kind.
-var ReconcileDurationSeconds = prometheus.NewHistogramVec(
-	prometheus.HistogramOpts{
-		Name:    "reconcile_duration_seconds",
-		Help:    "Reconcile duration by kind (§10).",
-		Buckets: prometheus.DefBuckets,
-	},
-	[]string{"kind"},
-)
-
-// LiteLLMAPIRequestDurationSeconds — spec §10: histogram labeled by
-// operation and status (2xx/4xx/5xx/error).
-var LiteLLMAPIRequestDurationSeconds = prometheus.NewHistogramVec(
-	prometheus.HistogramOpts{
-		Name:    "alitellm_api_request_duration_seconds",
-		Help:    "LiteLLM REST request duration by operation and status (§10).",
-		Buckets: prometheus.DefBuckets,
-	},
-	[]string{"operation", "status"},
-)
-
-// LiteLLMAPIErrorsTotal — spec §10: counter labeled by operation and
-// status (4xx/5xx/error).
-var LiteLLMAPIErrorsTotal = prometheus.NewCounterVec(
-	prometheus.CounterOpts{
-		Name: "alitellm_api_errors_total",
-		Help: "LiteLLM REST errors by operation and status (§10).",
-	},
-	[]string{"operation", "status"},
-)
-
 // DiscoveryRefreshTotal — spec §10: counter labeled by kind, source, result.
 // kind ∈ {ModelDiscovery, MCPServerDiscovery, A2AAgentDiscovery} (subset
 // of the overall kind enum that participates in discovery);
@@ -124,19 +93,6 @@ var DiscoveryGeneratedCount = prometheus.NewGaugeVec(
 		Help: "Count of K8s child Model CRs generated per discovery kind+source (§10).",
 	},
 	[]string{"kind", "source"},
-)
-
-// DiscoverySkippedTotal — spec §10: counter labeled by kind, reason.
-// reasons ∈ {ExplicitModelExists, Conflict, InvalidDiscoveredName,
-// EndpointUnknown, ExplicitMCPServerExists, InvalidTransport,
-// NameCollision}. `Conflict` (ADR-0001 alpha-last-wins among
-// Discoveries) replaced the prior `DuplicateDiscovery` value.
-var DiscoverySkippedTotal = prometheus.NewCounterVec(
-	prometheus.CounterOpts{
-		Name: "discovery_skipped_total",
-		Help: "Discovery items skipped, by kind and reason (§10).",
-	},
-	[]string{"kind", "reason"},
 )
 
 // DiscoveryFailedTotal — spec §10 / _FINALv3 (D-10): counter labeled by
@@ -254,15 +210,6 @@ var (
 		"anthropic", "bedrock", "gemini", "kubeai", "openai", "toolhive",
 	}
 
-	// LiteLLM REST operations (§10 operation label).
-	allOperations = []string{
-		"model_list", "model_new", "model_update", "model_delete",
-		"team_list", "team_new", "team_update", "team_delete",
-		"mcp_list", "mcp_new", "mcp_update", "mcp_delete",
-		"a2a_list", "a2a_new", "a2a_update", "a2a_delete",
-		"probe",
-	}
-
 	// drift_corrected_total's domain × action. `duplicate_pruned` is
 	// model-only in practice (LiteLLM allows multiple deployment rows per
 	// model_name; the Model safety-relist prunes the extras), but it is
@@ -274,22 +221,8 @@ var (
 	// reconcile_total{result}.
 	reconcileResults = []string{"success", "error", "requeued"}
 
-	// alitellm_api_request_duration_seconds{status}.
-	apiRequestStatuses = []string{"2xx", "4xx", "5xx", "error"}
-
-	// alitellm_api_errors_total{status}.
-	apiErrorStatuses = []string{"4xx", "5xx", "error"}
-
 	// discovery_refresh_total{result}.
 	discoveryRefreshResults = []string{"success", "error"}
-
-	// discovery_skipped_total{reason}. `Conflict` (ADR-0001) replaced
-	// `DuplicateDiscovery`.
-	discoverySkippedReasons = []string{
-		"ExplicitModelExists", "Conflict", "InvalidDiscoveredName",
-		"EndpointUnknown", "ExplicitMCPServerExists",
-		"InvalidTransport", "NameCollision",
-	}
 
 	// discovery_failed_total{reason} — _FINALv3 (D-10) narrowing: this
 	// enum was {LiteLLMRejected, LiteLLMUnavailable} before _FINALv3.
@@ -330,12 +263,8 @@ func init() {
 	// this registry on the /metrics endpoint.
 	ctrlmetrics.Registry.MustRegister(
 		ReconcileTotal,
-		ReconcileDurationSeconds,
-		LiteLLMAPIRequestDurationSeconds,
-		LiteLLMAPIErrorsTotal,
 		DiscoveryRefreshTotal,
 		DiscoveryGeneratedCount,
-		DiscoverySkippedTotal,
 		DiscoveryFailedTotal,
 		DriftCorrectedTotal,
 		ConnectionReady,
@@ -363,25 +292,6 @@ func init() {
 		}
 	}
 
-	// reconcile_duration_seconds{kind} — 7 combos.
-	for _, k := range allKinds {
-		ReconcileDurationSeconds.WithLabelValues(k)
-	}
-
-	// alitellm_api_request_duration_seconds{operation, status}.
-	for _, op := range allOperations {
-		for _, st := range apiRequestStatuses {
-			LiteLLMAPIRequestDurationSeconds.WithLabelValues(op, st)
-		}
-	}
-
-	// alitellm_api_errors_total{operation, status}.
-	for _, op := range allOperations {
-		for _, st := range apiErrorStatuses {
-			LiteLLMAPIErrorsTotal.WithLabelValues(op, st)
-		}
-	}
-
 	// discovery_refresh_total{kind, source, result}.
 	for _, k := range allKinds {
 		for _, s := range allSources {
@@ -398,13 +308,6 @@ func init() {
 	for _, k := range allKinds {
 		for _, s := range allSources {
 			DiscoveryGeneratedCount.WithLabelValues(k, s)
-		}
-	}
-
-	// discovery_skipped_total{kind, reason}.
-	for _, k := range allKinds {
-		for _, r := range discoverySkippedReasons {
-			DiscoverySkippedTotal.WithLabelValues(k, r)
 		}
 	}
 
