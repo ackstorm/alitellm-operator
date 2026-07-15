@@ -273,7 +273,7 @@ _qa-security: qa-lint
 	$(MAKE) qa-fuzz-short
 
 .PHONY: pre-push
-pre-push: ## Host-only — 17-gate pre-publication check (gitleaks + trufflehog + qa-lint + test-unit + SPDX + govulncheck + ...). Uses docker on host; do NOT call via ./scripts/dev.sh.
+pre-push: ## Host-only — 18-gate pre-publication check (gitleaks + trufflehog + qa-lint + test-unit + SPDX + govulncheck + ...). Uses docker on host; do NOT call via ./scripts/dev.sh.
 	./scripts/pre-push-check.sh
 
 .PHONY: verify

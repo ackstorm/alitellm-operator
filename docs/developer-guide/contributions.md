@@ -80,7 +80,7 @@ make operator-redeploy                          # hot-reload after code edit
 
 When done, `make cluster-down`; for a clean final gate, `make cluster-reset` then `make e2e-full`.
 
-## Pre-push gate (17 gates)
+## Pre-push gate (18 gates)
 
 `make pre-push` is HOST-ONLY (it spawns gitleaks/trufflehog
 containers on host docker — never via `./scripts/dev.sh`). Hard

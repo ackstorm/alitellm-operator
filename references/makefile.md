@@ -237,7 +237,7 @@ restart`, ~20s inner loop).
 ### Gates (no prefix) — context B (host-only)
 | Target | Description |
 |--------|-------------|
-| `pre-push` | 17-gate publication check (scanners + lint + unit + SPDX + govulncheck + …). Installed git hook. |
+| `pre-push` | 18-gate publication check (scanners + lint + unit + SPDX + govulncheck + …). Installed git hook. |
 | `verify` | `qa-lint` + `test-unit` + in-container `qa-security` + host `pre-push` — full gate bundle. |
 | `hooks` | Install the pre-push git hook (and remove any stale pre-commit hook). |
 

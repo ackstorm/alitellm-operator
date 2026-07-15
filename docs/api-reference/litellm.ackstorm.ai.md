@@ -1240,7 +1240,7 @@ MCP-05: LiteLLM rejects its `MCP_TOOL_PREFIX_SEPARATOR` env value inside
 `server_name` at `POST /v1/mcp/server` time (HTTP 400 "Server name
 cannot contain '<sep>'."). The MCPServer reconciler sanitizes the
 LiteLLM-side `server_name` and `alias` per the parent
-LiteLLMConnection's `spec.mcpToolPrefixSeparator` (default `-`), swapping
+LiteLLMConnection's `spec.mcpToolPrefixSeparator` (default `.`), swapping
 the configured separator for the opposite valid character (`-` ↔ `.`)
 via `litellm.SanitizeMCPServerName`. The K8s-side `metadata.name` is
 left untouched — the MCPServerDiscovery child name
