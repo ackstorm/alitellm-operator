@@ -134,9 +134,9 @@ func IndexTeamSecretRefs(o client.Object) []string {
 // iff tpm_limit non-null; key absent on the wire otherwise.
 // team_id is NOT a collision point — TeamSpec has no team_id field, and
 // the overlay is server-assigned on CREATE / pinned-by-status on UPDATE.
-// - Step 7: Build the merged body as map[string]any (NOT the typed
-// NewTeamRequest struct — its `,omitempty` JSON tags would drop nil
-// pointers and violate spec §6.7 line 1194's clearing-budget contract
+// - Step 7: Build the merged body as map[string]any (NOT a typed struct
+// with `,omitempty` JSON tags — that would drop nil pointers and violate
+// spec §6.7 line 1194's clearing-budget contract
 // which requires explicit null on absent max_budget / budget_duration —
 // and equivalently Feature 01 §2.1 for absent rpm_limit / tpm_limit).
 // Structural overlays applied AFTER copying paramsMap so they always
@@ -164,8 +164,8 @@ func IndexTeamSecretRefs(o client.Object) []string {
 // - NO synthetic LiteLLMTeam/default enqueue.
 // - NO comparison against LiteLLM response (Phase 3 D-01 — operator-side
 // hash only; the mock's POST /team/update returns `{}`, which is fine).
-// - NO typed NewTeamRequest body construction (spec §6.7 line 1194 — body
-// MUST be map[string]any to preserve JSON null for absent budget keys).
+// - NO typed body construction (spec §6.7 line 1194 — body MUST be
+// map[string]any to preserve JSON null for absent budget keys).
 type TeamReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme

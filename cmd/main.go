@@ -387,10 +387,9 @@ func main() {
 	// client-side exact-match filter in
 	// internal/litellm/team.go::ListTeamsByAlias.
 	// (b) absent-budget → JSON null wire form (body built as
-	// map[string]any → CreateTeamRaw/UpdateTeamRaw bypass of the
-	// typed NewTeamRequest struct, which would drop nil pointers
-	// via ,omitempty and violate spec §6.7 line 1194's clearing-
-	// budget contract).
+	// map[string]any via CreateTeamRaw/UpdateTeamRaw — a typed struct
+	// would drop nil pointers via ,omitempty and violate spec §6.7
+	// line 1194's clearing-budget contract).
 	// (c) three ProjectionOverride collision keys (team_alias,
 	// max_budget, budget_duration) — NOT four like A2A's D-05.
 	// Events RBAC marker INHERITED from the MCPServer reconciler

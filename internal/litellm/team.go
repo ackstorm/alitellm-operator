@@ -9,33 +9,6 @@ import (
 	"net/url"
 )
 
-// CreateTeam issues POST /team/new.
-func (c *Client) CreateTeam(ctx context.Context, req *NewTeamRequest) (*TeamListEntry, error) {
-	raw, err := c.makeRequest(ctx, "POST", "/team/new", req)
-	if err != nil {
-		return nil, err
-	}
-	var out TeamListEntry
-	if err := json.Unmarshal(raw, &out); err != nil {
-		return nil, fmt.Errorf("litellm: decode POST /team/new: %w", err)
-	}
-	return &out, nil
-}
-
-// UpdateTeam issues POST /team/update (POST — never the partial-update
-// verb; see Pitfall 2).
-func (c *Client) UpdateTeam(ctx context.Context, req *UpdateTeamRequest) (*TeamListEntry, error) {
-	raw, err := c.makeRequest(ctx, "POST", "/team/update", req)
-	if err != nil {
-		return nil, err
-	}
-	var out TeamListEntry
-	if err := json.Unmarshal(raw, &out); err != nil {
-		return nil, fmt.Errorf("litellm: decode POST /team/update: %w", err)
-	}
-	return &out, nil
-}
-
 // DeleteTeam issues POST /team/delete with body {"team_ids": [.]}.
 func (c *Client) DeleteTeam(ctx context.Context, teamIDs []string) error {
 	_, err := c.makeRequest(ctx, "POST", "/team/delete", &DeleteTeamRequest{TeamIDs: teamIDs})
@@ -44,14 +17,10 @@ func (c *Client) DeleteTeam(ctx context.Context, teamIDs []string) error {
 
 // CreateTeamRaw issues POST /team/new with a freeform map[string]any body.
 //
-// Used by the Team reconciler so the operator's "clearing
-// budget" wire contract (spec §6.7 line 1194: "the operator's POST
-// /team/update body always includes max_budget and budget_duration keys —
-// set to the configured value when present, or to null when absent") is
-// honored. The typed CreateTeam helper drops nil pointers via
-// `,omitempty` JSON tags — that violates the explicit-null requirement.
-// CreateTeamRaw bypasses the typed NewTeamRequest struct and posts the
-// caller-built body verbatim, preserving JSON null for absent budget keys.
+// The operator's "clearing budget" wire contract (spec §6.7 line 1194)
+// requires explicit JSON null for absent budget keys; a typed struct with
+// `,omitempty` tags would drop them, so the reconciler builds the body as
+// a map and posts it verbatim.
 //
 // On success, decodes the response into a (possibly sparse) *TeamListEntry.
 // LiteLLM's POST /team/new response carries team_id + team_alias +
