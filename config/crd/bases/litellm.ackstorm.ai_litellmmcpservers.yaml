@@ -351,18 +351,6 @@ spec:
                       hash indicates the MCPServer has not yet been successfully
                       reconciled.
                     type: string
-                  paramsKeys:
-                    description: |-
-                      ParamsKeys is the sorted list of top-level keys present in
-                      spec.params at the time of the last successful render. Per Phase 5
-                      D-01 (✓ verdict on Probe 10c — PUT IS wholesale-replace on
-                      1.83.10-stable), this field is informational only: the simple PUT
-                      update path does not need per-bag shrinkage detection. The field
-                      is retained for observability and forward-compat with any future
-                      downgrade path.
-                    items:
-                      type: string
-                    type: array
                   serverID:
                     description: |-
                       ServerID is the LiteLLM-assigned UUID (server_id) for this MCP

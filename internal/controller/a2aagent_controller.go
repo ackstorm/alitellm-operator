@@ -411,10 +411,6 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		mergedBody[k] = v
 	}
 	mergedBody["agent_name"] = a2a.Name
-	// M-B10: snapshot the USER-declared agentCard keys BEFORE the structural
-	// url overlay, so status.lastRendered.agentCardKeys reflects what the user
-	// set — not the operator-injected "url" the user never declared.
-	userAgentCardKeys := sortedKeys(agentCardMap)
 	// Apply the agent_card_params.url overlay to the agentCardMap before
 	// projecting it into mergedBody.
 	agentCardMap["url"] = a2a.Spec.Endpoint
@@ -565,11 +561,9 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// ─── Step 12: Update status on success ─────────────────────────────────
 	now := metav1.NewTime(time.Now())
 	a2a.Status.LastRendered = litellmv1alpha1.A2ALastRenderedStatus{
-		Hash:          currentRenderedHash,
-		ParamsKeys:    sortedKeys(paramsMap),
-		AgentCardKeys: userAgentCardKeys, // M-B10: pre-url-overlay snapshot
-		AgentID:       newAgentID,
-		At:            &now,
+		Hash:    currentRenderedHash,
+		AgentID: newAgentID,
+		At:      &now,
 	}
 	if err := r.writeStatus(ctx, &a2a, metav1.ConditionTrue, reasonSynced, "a2a agent registered"); err != nil {
 		logStatusUpdateErr(logger, err, "reason", reasonSynced)

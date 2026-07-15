@@ -255,9 +255,9 @@ type TeamSpec struct {
 // 06-04) issues `POST /team/delete` against the pinned `TeamID` directly,
 // without re-resolving by alias.
 //
-// `Hash` and `ParamsKeys` are informational on this path — `POST /team/update`
-// IS wholesale-replace per spec §5.1 (Q10), so no delete-and-recreate path
-// is committed in the Team reconciler. The fields are retained for
+// `Hash` is informational on this path — `POST /team/update` IS
+// wholesale-replace per spec §5.1 (Q10), so no delete-and-recreate path
+// is committed in the Team reconciler. The field is retained for
 // observability and forward-compat (mirrors the Phase 5 D-01 rationale).
 type TeamLastRenderedStatus struct {
 	// Hash is the SHA-256 hex of the RFC 8785-canonicalized merged
@@ -271,17 +271,6 @@ type TeamLastRenderedStatus struct {
 	//
 	// +optional
 	Hash string `json:"hash,omitempty"`
-
-	// ParamsKeys is the sorted list of top-level keys present in
-	// `spec.params` at the time of the last successful render.
-	// Informational only on this path — `POST /team/update` IS
-	// wholesale-replace per spec §5.1 (Q10), so the simple update path
-	// does not need per-bag shrinkage detection. The field is retained
-	// for observability and forward-compat with any future downgrade
-	// path.
-	//
-	// +optional
-	ParamsKeys []string `json:"paramsKeys,omitempty"`
 
 	// TeamID is the LiteLLM-assigned UUID (`team_id`) for this team
 	// entry. Pinned per Phase 3 D-04 + Phase 5 D-02 so the reconciler

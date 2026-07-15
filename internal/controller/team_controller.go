@@ -154,7 +154,7 @@ func IndexTeamSecretRefs(o client.Object) []string {
 // team_id in body — server-assigned). UPDATE arm: POST /team/update
 // via UpdateTeamRaw with team_id pinned in body. Wholesale-replace
 // per spec §5.1 Q10 — no delete-and-recreate path on LiteLLMTeam.
-// - Step 11: Update status (LastRendered.Hash / ParamsKeys / TeamID /
+// - Step 11: Update status (LastRendered.Hash / TeamID /
 // At + Ready=Synced) on success.
 //
 // Anti-patterns avoided (Phase 5 PATTERNS.md):
@@ -677,10 +677,9 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	// ─── Step 11: Update status on success ─────────────────────────────────
 	now := metav1.NewTime(time.Now())
 	team.Status.LastRendered = litellmv1alpha1.TeamLastRenderedStatus{
-		Hash:       currentRenderedHash,
-		ParamsKeys: sortedKeys(paramsMap),
-		TeamID:     newTeamID,
-		At:         &now,
+		Hash:   currentRenderedHash,
+		TeamID: newTeamID,
+		At:     &now,
 	}
 	if werr := r.writeStatus(ctx, &team, metav1.ConditionTrue, reasonSynced, "team registered"); werr != nil {
 		logStatusUpdateErr(logger, werr, "reason", reasonSynced)

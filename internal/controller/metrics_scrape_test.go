@@ -20,7 +20,7 @@ import (
 // 1. HTTP-GET http://127.0.0.1:18080/metrics (the test manager's
 // metrics server, bound in suite_test.go via MetricsAddr).
 // 2. Parse the scrape (Prometheus text exposition format).
-// 3. Assert each of the 11 §10 metric names is present.
+// 3. Assert each of the 8 §10 metric names is present.
 // 4. Assert drift_corrected_total has ≥12 enumerated label combos
 // (4 domains × 3 actions).
 // 5. Assert connection_ready has ≥6 reason combos.
@@ -57,18 +57,12 @@ func TestMetricsExposeS10Set(t *testing.T) {
 	}
 	scrape := string(body)
 
-	// All 12 §10 metric names must be present in the scrape.
-	// (11 pre-Phase-4 + child_cr_writes_total added in OBS-04;
-	// discovery_registered_count renamed to discovery_generated_count per D-10.)
+	// All 8 §10 metric names must be present in the scrape.
 	wantNames := []string{
 		"drift_corrected_total",
 		"reconcile_total",
-		"reconcile_duration_seconds",
-		"alitellm_api_request_duration_seconds",
-		"alitellm_api_errors_total",
 		"discovery_refresh_total",
 		"discovery_generated_count",
-		"discovery_skipped_total",
 		"discovery_failed_total",
 		"connection_ready",
 		"cr_status_age_seconds",

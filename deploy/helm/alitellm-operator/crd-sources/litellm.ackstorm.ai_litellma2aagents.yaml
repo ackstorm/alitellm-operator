@@ -333,16 +333,6 @@ spec:
                   state hash against `lastRendered.hash` to detect drift without
                   querying the LiteLLM API on every reconcile.
                 properties:
-                  agentCardKeys:
-                    description: |-
-                      AgentCardKeys is the sorted list of top-level keys present in
-                      spec.agentCard at the time of the last successful render.
-                      Phase 5 D-04 informational field — not load-bearing for
-                      shrinkage detection (Probe 7 ✓ — PUT IS wholesale-replace on
-                      A2A).
-                    items:
-                      type: string
-                    type: array
                   agentID:
                     description: |-
                       AgentID is the LiteLLM-assigned UUID (agent_id) for this A2A
@@ -368,15 +358,6 @@ spec:
                       agent_card_params.url}). An empty hash indicates the A2AAgent
                       has not yet been successfully reconciled.
                     type: string
-                  paramsKeys:
-                    description: |-
-                      ParamsKeys is the sorted list of top-level keys present in
-                      spec.params at the time of the last successful render. Phase 5
-                      D-04 informational field — not load-bearing for shrinkage
-                      detection (Probe 7 ✓ — PUT IS wholesale-replace on A2A).
-                    items:
-                      type: string
-                    type: array
                 type: object
               observedGeneration:
                 description: |-

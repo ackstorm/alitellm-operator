@@ -241,12 +241,6 @@ type GuardRailStatus struct {
 // /guardrails or PUT /guardrails/{guardrail_id}. Operator-side drift
 // source of truth — the reconciler compares the current desired hash
 // against Hash to decide whether a mutation is needed (D-01).
-//
-// ParamsKeys and InfoKeys carry the dotted-path keyset present at the
-// last successful render. If any key is removed from either bag
-// (persistedKeys \ desiredKeys is non-empty), the reconciler can take
-// the safer delete-and-recreate path rather than relying on PUT to
-// strip keys it never explicitly clears (D-02 pattern, same as Model).
 type GuardRailLastRenderedStatus struct {
 	// Hash is the SHA-256 hex of the RFC 8785-canonicalized
 	// post-substitution Guardrail body (top-level guardrail_name,
@@ -257,20 +251,6 @@ type GuardRailLastRenderedStatus struct {
 	//
 	// +optional
 	Hash string `json:"hash,omitempty"`
-
-	// ParamsKeys is the sorted list of dotted-path keys present in
-	// spec.params at the last successful render. Used for shrinkage
-	// detection (D-02).
-	//
-	// +optional
-	ParamsKeys []string `json:"paramsKeys,omitempty"`
-
-	// InfoKeys is the sorted list of dotted-path keys present in
-	// spec.info at the last successful render. Same shrinkage
-	// semantics as ParamsKeys.
-	//
-	// +optional
-	InfoKeys []string `json:"infoKeys,omitempty"`
 
 	// GuardrailID is the server-assigned UUID returned by POST
 	// /guardrails. The reconciler persists it here so subsequent PUT
