@@ -68,6 +68,22 @@ cache snapshot also carries `mcpToolPrefixSeparator`,
 `requeueOnRejectedAfter`, and the rate-limit knobs — dependents read
 the same values via the cache, not by re-reading the CR.
 
+### Enforcing HTTPS for remote endpoints
+
+By default a remote `http://` endpoint only logs a warning
+(`MasterKeyOverPlaintextHTTP`) — in-cluster `http://litellm.<ns>.svc`
+is the common, acceptable deployment. To hard-reject plaintext-HTTP
+remotes instead (`Ready=False`, `reason=InsecureEndpoint`, terminal
+until `spec.endpoint` is edited):
+
+```bash
+kubectl set env -n litellm-system deploy/alitellm-operator \
+  LITELLM_OPERATOR_REQUIRE_HTTPS_REMOTE=true
+```
+
+Loopback, `*.svc`, and bare service-name hosts are always classified
+in-cluster and exempt (see `litellm.ClassifyEndpointTransport`).
+
 ## See also
 
 - [Example on GitHub](https://github.com/ackstorm/alitellm-operator/tree/main/examples/example-deploy/01-litellmconnection.yaml)
