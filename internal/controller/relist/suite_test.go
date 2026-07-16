@@ -64,11 +64,11 @@ var (
 )
 
 // TestMain bootstraps a DEDICATED envtest + manager wiring ONLY the
-// connection + guardrail reconcilers and the guardrail SafetyRelistRunnable
-// (always-on — no Gate). Because this package runs in its own `go test`
-// process (scripts/run-envtest-packages.sh starts one process per
-// package), there is no neighbor-test contention: the relist over a single
-// guardrail CR recovers deterministically.
+// connection, guardrail, and MCPServer reconcilers and their
+// SafetyRelistRunnables (always-on — no Gate). Because this package runs
+// in its own `go test` process (scripts/run-envtest-packages.sh starts one
+// process per package), there is no neighbor-test contention: the relist
+// over a single CR recovers deterministically.
 func TestMain(m *testing.M) {
 	if os.Getenv("KUBEBUILDER_ASSETS") == "" {
 		if found := findEnvtestAssets(); found != "" {
@@ -201,6 +201,48 @@ func setupAndRun(m *testing.M) int {
 	}
 	if err := guardrailReconciler.SetupWithManager(mgr, guardrailSafetyRelistCh); err != nil {
 		fmt.Fprintf(os.Stderr, "SetupWithManager(GuardRail): %v\n", err)
+		return 1
+	}
+
+	// MCPServer field indexer + safety-relist runnable (always-on) +
+	// reconciler. Proves the Task 6 RequeueAfter → Runnable convergence
+	// actually recovers drift for a newly-converged kind (converged_relist_test.go).
+	if err := mgr.GetFieldIndexer().IndexField(
+		ctx,
+		&litellmv1alpha1.LiteLLMMCPServer{},
+		controller.MCPServerSecretRefIndexField,
+		controller.IndexMCPServerSecretRefs,
+	); err != nil {
+		fmt.Fprintf(os.Stderr, "IndexField(MCPServer secrets): %v\n", err)
+		return 1
+	}
+	mcpServerSafetyRelistCh := make(chan reconcile.Request, 256)
+	mcpServerSafetyRelist := &controller.SafetyRelistRunnable{
+		Client:       mgr.GetClient(),
+		Namespace:    WatchNamespace,
+		Interval:     100 * time.Millisecond,
+		Log:          logr.Discard(),
+		RequeueCh:    mcpServerSafetyRelistCh,
+		ListRequests: controller.ListMCPServerRequests,
+		LogLabel:     "mcpservers",
+		// Gate nil → always active. Safe here: only the relist tests run in
+		// this package, with a single MCPServer CR, so there is no flood.
+	}
+	if err := mgr.Add(mcpServerSafetyRelist); err != nil {
+		fmt.Fprintf(os.Stderr, "mgr.Add(mcpserver SafetyRelistRunnable): %v\n", err)
+		return 1
+	}
+	mcpServerReconciler := &controller.MCPServerReconciler{
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		Cache:             connCache,
+		Recorder:          mgr.GetEventRecorderFor("mcpserver-controller"),
+		Namespace:         WatchNamespace,
+		Log:               logr.Discard(),
+		ConnectionRebuilt: connCache.Subscribe(),
+	}
+	if err := mcpServerReconciler.SetupWithManager(mgr, mcpServerSafetyRelistCh); err != nil {
+		fmt.Fprintf(os.Stderr, "SetupWithManager(MCPServer): %v\n", err)
 		return 1
 	}
 

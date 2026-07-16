@@ -63,8 +63,10 @@ follows the same shape:
 7. Status update via `meta.SetStatusCondition` (`Ready`,
    `LiteLLMUnavailable`, `LiteLLMRejected`, `SecretNotFound`,
    `UnresolvedPlaceholder`, …).
-8. Requeue at `safetyRelistInterval` (default 10m; configurable per
-   process — see "Safety re-list" below).
+8. No requeue on return — the per-kind `SafetyRelistRunnable` (see
+   "Safety re-list" below) owns the periodic vanish-probe tick from
+   outside `Reconcile`, at `safetyRelistInterval` (default 10m,
+   configurable per process).
 
 The split between `internal/controller/` (k8s reconcile loop) and
 `internal/litellm/` (HTTP surface) is load-bearing: the request
@@ -114,14 +116,20 @@ supplies its own `lookup(id) (found bool, err error)`.
 
 ## Safety re-list
 
-`internal/controller/safety_relist.go`:
+`internal/controller/shared_helpers.go` (`SafetyRelistRunnable`) +
+`internal/controller/safety_relist.go` (env parsing):
 
-- Each Pipeline A controller requeues at
-  `<kind>SafetyRelistInterval` after a successful reconcile.
-- Vars (not consts) — overridable at process start by
-  `SetSafetyRelistIntervals(d)`.
+- Each of the five domain reconcilers (Model, Team, MCPServer,
+  A2AAgent, GuardRail) has exactly one `SafetyRelistRunnable` wired in
+  `cmd/main.go` — a `manager.Runnable` ticking on a `time.Ticker`
+  *outside* `Reconcile`, listing every CR of its kind and enqueueing
+  them. There are no `RequeueAfter` safety-relist paths: a requeue only
+  fires from the return site that carries it, so any early return would
+  silently lose the CR's periodic tick. The Runnable ticks regardless of
+  which branch a reconcile took.
 - `EnvSafetyRelistInterval = "LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL"`
-  → parsed at startup, validated against `SafetyRelistFloor = 5s`.
+  → parsed once at startup, validated against `SafetyRelistFloor = 5s`,
+  and the single resolved value sets every `Runnable.Interval`.
 - Helm: first-class `safetyRelistInterval` value on the operator chart
   (`deploy/helm/alitellm-operator/values.yaml`).
 

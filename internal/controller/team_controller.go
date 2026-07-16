@@ -53,18 +53,6 @@ const teamKind = "LiteLLMTeam"
 // (spec §6.7 / TEAM-07). Shared with the synthetic enqueue helper.
 const teamAliasDefault = "default"
 
-// teamSafetyRelistInterval bounds how often the Team controller
-// re-runs the Step 8b vanish-probe (LIST + name filter to detect
-// out-of-band /team/delete drift). Returned as RequeueAfter on every
-// successful reconcile. v0.4.5: introduced together with vanish
-// detection to recover from external LiteLLM resets / accidental
-// admin deletes without operator intervention. 5min matches the
-// MCPServer / Model cadence.
-// teamSafetyRelistInterval is package-level so cmd/main.go can override
-// via SetSafetyRelistIntervals (env-driven, Helm-exposed). Default 10m
-// (v0.4.7: matches MCPServer/Model/A2AAgent cadence).
-var teamSafetyRelistInterval = 10 * time.Minute
-
 // rateLimitTypeBestEffort is the only rpm_limit_type / tpm_limit_type
 // value supported by LiteLLM 1.83.10 (Feature 01 §2.1). Operator
 // hardcodes it whenever the corresponding *_limit is non-null.
@@ -547,9 +535,12 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		// Reached steady state — drop any recreate-churn history so a team
 		// that recovered is not throttled by stale counts.
 		r.Churn.Forget(req.NamespacedName)
-		// v0.4.5: periodic safety-relist requeue so the Step 8b vanish
-		// probe runs even when the CR spec is stable.
-		return ctrl.Result{RequeueAfter: withJitter(teamSafetyRelistInterval)}, nil
+		// No RequeueAfter: the per-kind SafetyRelistRunnable owns the periodic
+		// vanish-probe tick (cmd/main.go). A requeue here would only fire on
+		// the paths that happen to carry one — the Runnable fires regardless
+		// of which branch the reconcile took, which is the point of a safety
+		// net (issue #102).
+		return ctrl.Result{}, nil
 	}
 
 	// ─── Step 10: Branch CREATE vs UPDATE ─────────────────────────────────
@@ -696,8 +687,12 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	metrics.ReconcileTotal.WithLabelValues(teamKind, "success").Inc()
 	logger.V(1).Info("team reconciled", "teamID", newTeamID, "hash", currentRenderedHash)
 
-	// v0.4.5: periodic safety-relist requeue — see Step 8b rationale.
-	return ctrl.Result{RequeueAfter: withJitter(teamSafetyRelistInterval)}, nil
+	// No RequeueAfter: the per-kind SafetyRelistRunnable owns the periodic
+	// vanish-probe tick (cmd/main.go). A requeue here would only fire on
+	// the paths that happen to carry one — the Runnable fires regardless
+	// of which branch the reconcile took, which is the point of a safety
+	// net (issue #102).
+	return ctrl.Result{}, nil
 }
 
 // reconcileImplicitDefault is invoked from Step 1 when the synthetic
@@ -1338,4 +1333,21 @@ func (r *TeamReconciler) SetupWithManager(mgr ctrl.Manager, requeueCh ...chan re
 	}
 
 	return b.Complete(r)
+}
+
+// ListTeamRequests lists every LiteLLMTeam in namespace and returns their
+// reconcile.Requests. Feeds SafetyRelistRunnable.ListRequests — see
+// ListModelRequests for the shared contract.
+func ListTeamRequests(ctx context.Context, c client.Client, namespace string) ([]reconcile.Request, error) {
+	var list litellmv1alpha1.LiteLLMTeamList
+	if err := c.List(ctx, &list, client.InNamespace(namespace)); err != nil {
+		return nil, err
+	}
+	reqs := make([]reconcile.Request, 0, len(list.Items))
+	for i := range list.Items {
+		reqs = append(reqs, reconcile.Request{
+			NamespacedName: client.ObjectKeyFromObject(&list.Items[i]),
+		})
+	}
+	return reqs, nil
 }

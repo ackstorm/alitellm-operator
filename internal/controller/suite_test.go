@@ -190,6 +190,11 @@ var (
 	// inside a 5s poll window.
 	guardrailSafetyRelist   *SafetyRelistRunnable
 	guardrailSafetyRelistCh chan reconcile.Request
+
+	// MCPServer / A2AAgent safety-relist request channels (Runnables wired
+	// alongside their reconcilers below). Team reuses teamDefaultRequeueCh.
+	mcpSafetyRelistCh chan reconcile.Request
+	a2aSafetyRelistCh chan reconcile.Request
 )
 
 // TestMain is the envtest bootstrap. It starts a real etcd+kube-apiserver
@@ -445,6 +450,20 @@ func setupAndRun(m *testing.M) int {
 		fmt.Fprintf(os.Stderr, "IndexField(MCPServer secrets): %v\n", err)
 		return 1
 	}
+	mcpSafetyRelistCh = make(chan reconcile.Request, 256)
+	if err := mgr.Add(&SafetyRelistRunnable{
+		Client:       mgr.GetClient(),
+		Namespace:    WatchNamespace,
+		Interval:     100 * time.Millisecond,
+		Log:          logr.Discard(),
+		RequeueCh:    mcpSafetyRelistCh,
+		ListRequests: ListMCPServerRequests,
+		LogLabel:     "mcpservers",
+		Gate:         suiteRelistEnabled.Load,
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "mgr.Add(mcpserver SafetyRelistRunnable): %v\n", err)
+		return 1
+	}
 	mcpServerReconciler = &MCPServerReconciler{
 		Client:            mgr.GetClient(),
 		Scheme:            mgr.GetScheme(),
@@ -454,7 +473,7 @@ func setupAndRun(m *testing.M) int {
 		Log:               logr.Discard(),
 		ConnectionRebuilt: connCache.Subscribe(),
 	}
-	if err := mcpServerReconciler.SetupWithManager(mgr); err != nil {
+	if err := mcpServerReconciler.SetupWithManager(mgr, mcpSafetyRelistCh); err != nil {
 		fmt.Fprintf(os.Stderr, "SetupWithManager(MCPServer): %v\n", err)
 		return 1
 	}
@@ -470,6 +489,20 @@ func setupAndRun(m *testing.M) int {
 		fmt.Fprintf(os.Stderr, "IndexField(A2AAgent secrets): %v\n", err)
 		return 1
 	}
+	a2aSafetyRelistCh = make(chan reconcile.Request, 256)
+	if err := mgr.Add(&SafetyRelistRunnable{
+		Client:       mgr.GetClient(),
+		Namespace:    WatchNamespace,
+		Interval:     100 * time.Millisecond,
+		Log:          logr.Discard(),
+		RequeueCh:    a2aSafetyRelistCh,
+		ListRequests: ListA2AAgentRequests,
+		LogLabel:     "a2aagents",
+		Gate:         suiteRelistEnabled.Load,
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "mgr.Add(a2aagent SafetyRelistRunnable): %v\n", err)
+		return 1
+	}
 	a2aAgentReconciler = &A2AAgentReconciler{
 		Client:            mgr.GetClient(),
 		Scheme:            mgr.GetScheme(),
@@ -479,7 +512,7 @@ func setupAndRun(m *testing.M) int {
 		Log:               logr.Discard(),
 		ConnectionRebuilt: connCache.Subscribe(),
 	}
-	if err := a2aAgentReconciler.SetupWithManager(mgr); err != nil {
+	if err := a2aAgentReconciler.SetupWithManager(mgr, a2aSafetyRelistCh); err != nil {
 		fmt.Fprintf(os.Stderr, "SetupWithManager(A2AAgent): %v\n", err)
 		return 1
 	}
@@ -520,6 +553,20 @@ func setupAndRun(m *testing.M) int {
 	}
 	if err := mgr.Add(teamDefaultRunnable); err != nil {
 		fmt.Fprintf(os.Stderr, "mgr.Add(TeamDefaultRunnable): %v\n", err)
+		return 1
+	}
+
+	if err := mgr.Add(&SafetyRelistRunnable{
+		Client:       mgr.GetClient(),
+		Namespace:    WatchNamespace,
+		Interval:     100 * time.Millisecond,
+		Log:          logr.Discard(),
+		RequeueCh:    teamDefaultRequeueCh,
+		ListRequests: ListTeamRequests,
+		LogLabel:     "teams",
+		Gate:         suiteRelistEnabled.Load,
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "mgr.Add(team SafetyRelistRunnable): %v\n", err)
 		return 1
 	}
 

@@ -17,6 +17,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -25,6 +26,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 	"github.com/ackstorm/alitellm-operator/internal/connection"
@@ -43,18 +45,6 @@ const a2aAgentFinalizer = "a2aagents.litellm.ackstorm.ai/finalizer"
 
 // a2aAgentKind is the metric label for LiteLLMA2AAgent CRs.
 const a2aAgentKind = "LiteLLMA2AAgent"
-
-// a2aAgentSafetyRelistInterval bounds how often the A2AAgent controller
-// re-runs the Step 7b vanish-probe (LIST + name filter to detect
-// out-of-band /v1/agents/<id> drift). Returned as RequeueAfter on every
-// successful reconcile. v0.4.5: introduced together with vanish
-// detection to recover from external LiteLLM resets / admin deletes
-// without operator intervention. 5min matches the
-// MCPServer / Model / Team cadence.
-// a2aAgentSafetyRelistInterval is package-level so cmd/main.go can override
-// via SetSafetyRelistIntervals (env-driven, Helm-exposed). Default 10m
-// (v0.4.7: matches MCPServer/Model/Team cadence).
-var a2aAgentSafetyRelistInterval = 10 * time.Minute
 
 // A2AAgentSecretRefIndexField is the field indexer path registered in
 // cmd/main.go for reverse-mapping Secret names back to A2AAgents that
@@ -477,9 +467,12 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		// Reached steady state — drop any recreate-churn history so an agent
 		// that recovered is not throttled by stale counts.
 		r.Churn.Forget(req.NamespacedName)
-		// v0.4.5: periodic safety-relist requeue so Step 8b vanish probe
-		// runs even when the CR spec is stable.
-		return ctrl.Result{RequeueAfter: withJitter(a2aAgentSafetyRelistInterval)}, nil
+		// No RequeueAfter: the per-kind SafetyRelistRunnable owns the periodic
+		// vanish-probe tick (cmd/main.go). A requeue here would only fire on
+		// the paths that happen to carry one — the Runnable fires regardless
+		// of which branch the reconcile took, which is the point of a safety
+		// net (issue #102).
+		return ctrl.Result{}, nil
 	}
 
 	// ─── Step 10: Branch CREATE vs UPDATE (simple PUT — Probe 7 ✓) ────────
@@ -579,8 +572,12 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	metrics.ReconcileTotal.WithLabelValues(a2aAgentKind, "success").Inc()
 	logger.V(1).Info("a2a agent reconciled", "agentID", newAgentID, "hash", currentRenderedHash)
 
-	// v0.4.5: periodic safety-relist requeue — see Step 8b rationale.
-	return ctrl.Result{RequeueAfter: withJitter(a2aAgentSafetyRelistInterval)}, nil
+	// No RequeueAfter: the per-kind SafetyRelistRunnable owns the periodic
+	// vanish-probe tick (cmd/main.go). A requeue here would only fire on
+	// the paths that happen to carry one — the Runnable fires regardless
+	// of which branch the reconcile took, which is the point of a safety
+	// net (issue #102).
+	return ctrl.Result{}, nil
 }
 
 // buildAgentConfigFromMerged extracts the typed AgentConfig fields from the
@@ -755,9 +752,10 @@ func (r *A2AAgentReconciler) secretToA2AAgents(ctx context.Context, obj client.O
 // for placeholders in EITHER spec.params or spec.agentCard.
 //
 // Named("a2aagent") — controller registry name.
-// No Owns(.) and no safety re-list channel — Phase 5 may add
-// these if cross-CR vanish detection requires them (Phase 7 dogfood gate).
-func (r *A2AAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
+// No Owns(.) — Phase 5 may add if cross-CR vanish detection requires it
+// (Phase 7 dogfood gate). safetyRelistCh wires the SafetyRelistRunnable
+// (cmd/main.go).
+func (r *A2AAgentReconciler) SetupWithManager(mgr ctrl.Manager, safetyRelistCh ...chan reconcile.Request) error {
 	if r.Churn == nil {
 		r.Churn = newChurnGuard()
 	}
@@ -783,6 +781,29 @@ func (r *A2AAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if src := ConnectionRebuiltSource(r.ConnectionRebuilt, r.connectionToA2AAgents); src != nil {
 		b = b.WatchesRawSource(src)
 	}
+
+	if len(safetyRelistCh) > 0 && safetyRelistCh[0] != nil {
+		ch := safetyRelistCh[0]
+		b = b.WatchesRawSource(source.TypedFunc[reconcile.Request](
+			func(ctx context.Context, q workqueue.TypedRateLimitingInterface[reconcile.Request]) error {
+				go func() {
+					for {
+						select {
+						case <-ctx.Done():
+							return
+						case req, ok := <-ch:
+							if !ok {
+								return
+							}
+							q.Add(req)
+						}
+					}
+				}()
+				return nil
+			},
+		))
+	}
+
 	return b.Complete(r)
 }
 
@@ -800,4 +821,21 @@ func stampA2AIdentity(cfg *litellm.AgentConfig, includeCreatedBy bool) {
 		cfg.AgentCardParams["created_by"] = identity.Operator()
 	}
 	cfg.AgentCardParams["updated_by"] = identity.Operator()
+}
+
+// ListA2AAgentRequests lists every LiteLLMA2AAgent in namespace and returns
+// their reconcile.Requests. Feeds SafetyRelistRunnable.ListRequests — see
+// ListModelRequests for the shared contract.
+func ListA2AAgentRequests(ctx context.Context, c client.Client, namespace string) ([]reconcile.Request, error) {
+	var list litellmv1alpha1.LiteLLMA2AAgentList
+	if err := c.List(ctx, &list, client.InNamespace(namespace)); err != nil {
+		return nil, err
+	}
+	reqs := make([]reconcile.Request, 0, len(list.Items))
+	for i := range list.Items {
+		reqs = append(reqs, reconcile.Request{
+			NamespacedName: client.ObjectKeyFromObject(&list.Items[i]),
+		})
+	}
+	return reqs, nil
 }

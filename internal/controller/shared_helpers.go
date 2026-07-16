@@ -194,12 +194,15 @@ func writeStatusWithRetry[T client.Object](
 
 // SafetyRelistRunnable is the §7.6 safety re-list runnable shared by the model
 // and guardrail controllers. On each Interval tick it lists all CRs of one
-// kind in Namespace (via ListRequests) and non-blockingly enqueues their
-// reconcile.Requests on RequeueCh (a full channel skips the item — the next
-// tick retries). REL-02: uses a time.Ticker inside a manager.Runnable, never
-// RequeueAfter. Replaces the byte-identical ModelSafetyRelistRunnable and
-// GuardRailSafetyRelistRunnable; only ListRequests (the kind-specific list)
-// and LogLabel differ.
+// kind in Namespace (via ListRequests) and
+// enqueues their reconcile.Requests on RequeueCh. The send blocks until the
+// consumer drains or ctx is cancelled — never drops. A silent drop here is
+// invisible drift (the safety net skipping the very CR it exists to catch),
+// and the consumer installed by SetupWithManager only does a non-blocking
+// q.Add, so it drains continuously and the block is transient. REL-02: uses
+// a time.Ticker inside a manager.Runnable, never RequeueAfter. Replaces the
+// byte-identical ModelSafetyRelistRunnable and GuardRailSafetyRelistRunnable;
+// only ListRequests (the kind-specific list) and LogLabel differ.
 type SafetyRelistRunnable struct {
 	Client    client.Client
 	Namespace string
@@ -240,8 +243,8 @@ func (r *SafetyRelistRunnable) Start(ctx context.Context) error {
 			for _, req := range reqs {
 				select {
 				case r.RequeueCh <- req:
-				default:
-					// Channel full — skip this item; retried on next tick.
+				case <-ctx.Done():
+					return nil
 				}
 			}
 			r.Log.V(1).Info("safety re-list: enqueued", "kind", r.LogLabel, "count", len(reqs))
