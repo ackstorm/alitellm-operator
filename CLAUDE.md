@@ -716,6 +716,29 @@ NOTE: local envtest on a resource-starved host can fail at suite SETUP
 (`WaitForCacheSync: did not sync within 30s`) or mass ~30s poll-timeouts
 — that is environmental host starvation, NOT a code regression; verify on
 CI's Envtest job, which is the reliable signal.
+- **Widening the shared `suiteRelistEnabled` gate to more kinds widens this
+  same contamination surface.** The relist-runnable-convergence work (2026-07-16,
+  issue #102 follow-up) added Team/MCPServer/A2AAgent `SafetyRelistRunnable`s to
+  the suite, gated by the SAME `suiteRelistEnabled` atomic as Model/GuardRail
+  (Task 5 instruction: "carry the same Gate or they reintroduce the flake").
+  Consequence: the 4 existing `enableSuiteRelist(t)` call sites in
+  `model_controller_test.go` now ALSO activate Team/MCPServer/A2AAgent relist
+  ticks for their duration, not just Model/GuardRail — any CR left standing at
+  that moment (notably the near-permanent `Team/default`) gets re-listed and
+  re-enqueued too. Confirmed via a direct baseline diff (same `make test-full`
+  invocation on the commit immediately before this work): `TestConnectionFinalizerAddRemove_CONN_09`
+  (exact-match `mockServer.Mutations()` assertion) fails on UNMODIFIED code
+  too — this class of exact-count/anti-storm assertion against ~300 sequential
+  tests sharing one apiserver + one mock was already fragile before this
+  change. `TestConnectionProbeLoop_BadMasterKey` (previously in the "removed
+  by the #74 gating fix" pair above) was also observed failing post-change —
+  plausible mechanism: a backlogged Team/MCP/A2A relist reconcile still
+  draining from an earlier `enableSuiteRelist(t)` window hits a 401 during a
+  LATER test's `Mode401` window and calls `Cache.InvalidateOn401`, triggering
+  an extra `/key/health` probe. Not chased further — this is the SAME accepted
+  trade-off as the Non-Goals "tick spread" note in the relist-convergence plan
+  (per-kind gates were explicitly out of scope); `make e2e-full` against a
+  real cluster is the decisive gate, not a local `-race` full-package run.
 
 ### ❌ Steady-state early-return that skips the Ready-condition heal
 ```go
@@ -923,6 +946,20 @@ GROUP BY 1 HAVING count(*) > 1;
 ```
 
 ## Repository-specific patterns
+
+- **Periodic drift detection = `SafetyRelistRunnable`, never `RequeueAfter`.**
+  Each of the five domain reconcilers (Model, Team, MCPServer, A2AAgent,
+  GuardRail) has exactly one `SafetyRelistRunnable` in `cmd/main.go`, ticking
+  at `LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL` (default 10m). Reconcilers
+  return bare `ctrl.Result{}, nil` — there are no `RequeueAfter` safety-relist
+  paths and no `withJitter`. WHY: a `RequeueAfter` only fires from the return
+  site that carries it, so any early return silently loses the CR's periodic
+  tick (the #102 failure family). The Runnable ticks from outside `Reconcile`
+  and cannot be defeated by a branch nobody anticipated. Adding a new domain
+  reconciler? Add its `List<Kind>Requests` + a Runnable in `cmd/main.go` + a
+  **gated** one in `suite_test.go` (`Gate: suiteRelistEnabled.Load` — ungated
+  suite runnables are the #74 contention flake). Do NOT reach for
+  `RequeueAfter`.
 
 - **E2E standing hydration = numbered kustomize phases**: the e2e cluster's
   *standing* state (namespaces, helm values, mock backends, master-key Secret,
