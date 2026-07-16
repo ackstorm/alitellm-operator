@@ -167,3 +167,51 @@ func TestSafetyRelistRunnable_EnqueueIsLossless(t *testing.T) {
 		}
 	}
 }
+
+// TestListRequests_CoversEveryKind — each List*Requests must return one
+// reconcile.Request per CR of its kind in the namespace. These feed the
+// SafetyRelistRunnable; a kind missing from the list is a kind with no
+// safety net.
+func TestListRequests_CoversEveryKind(t *testing.T) {
+	ctx := context.Background()
+
+	team := teamSampleCR("relist-team")
+	mcp := mcpServerSampleCR("relist-mcp")
+	a2a := a2aSampleCR("relist-a2a")
+
+	for _, o := range []client.Object{team, mcp, a2a} {
+		if err := k8sClient.Create(ctx, o); err != nil && !apierrors.IsAlreadyExists(err) {
+			t.Fatalf("create %T: %v", o, err)
+		}
+		o := o
+		t.Cleanup(func() {
+			o.SetFinalizers(nil)
+			_ = k8sClient.Update(context.Background(), o)
+			_ = k8sClient.Delete(context.Background(), o)
+		})
+	}
+
+	cases := []struct {
+		name string
+		fn   func(context.Context, client.Client, string) ([]reconcile.Request, error)
+		want string
+	}{
+		{"teams", ListTeamRequests, "relist-team"},
+		{"mcpservers", ListMCPServerRequests, "relist-mcp"},
+		{"a2aagents", ListA2AAgentRequests, "relist-a2a"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			reqs, err := tc.fn(ctx, k8sClient, WatchNamespace)
+			if err != nil {
+				t.Fatalf("%s: %v", tc.name, err)
+			}
+			for _, r := range reqs {
+				if r.Name == tc.want && r.Namespace == WatchNamespace {
+					return
+				}
+			}
+			t.Fatalf("%s: %q not in %v", tc.name, tc.want, reqs)
+		})
+	}
+}

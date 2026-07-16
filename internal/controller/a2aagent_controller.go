@@ -801,3 +801,20 @@ func stampA2AIdentity(cfg *litellm.AgentConfig, includeCreatedBy bool) {
 	}
 	cfg.AgentCardParams["updated_by"] = identity.Operator()
 }
+
+// ListA2AAgentRequests lists every LiteLLMA2AAgent in namespace and returns
+// their reconcile.Requests. Feeds SafetyRelistRunnable.ListRequests — see
+// ListModelRequests for the shared contract.
+func ListA2AAgentRequests(ctx context.Context, c client.Client, namespace string) ([]reconcile.Request, error) {
+	var list litellmv1alpha1.LiteLLMA2AAgentList
+	if err := c.List(ctx, &list, client.InNamespace(namespace)); err != nil {
+		return nil, err
+	}
+	reqs := make([]reconcile.Request, 0, len(list.Items))
+	for i := range list.Items {
+		reqs = append(reqs, reconcile.Request{
+			NamespacedName: client.ObjectKeyFromObject(&list.Items[i]),
+		})
+	}
+	return reqs, nil
+}

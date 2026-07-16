@@ -1339,3 +1339,20 @@ func (r *TeamReconciler) SetupWithManager(mgr ctrl.Manager, requeueCh ...chan re
 
 	return b.Complete(r)
 }
+
+// ListTeamRequests lists every LiteLLMTeam in namespace and returns their
+// reconcile.Requests. Feeds SafetyRelistRunnable.ListRequests — see
+// ListModelRequests for the shared contract.
+func ListTeamRequests(ctx context.Context, c client.Client, namespace string) ([]reconcile.Request, error) {
+	var list litellmv1alpha1.LiteLLMTeamList
+	if err := c.List(ctx, &list, client.InNamespace(namespace)); err != nil {
+		return nil, err
+	}
+	reqs := make([]reconcile.Request, 0, len(list.Items))
+	for i := range list.Items {
+		reqs = append(reqs, reconcile.Request{
+			NamespacedName: client.ObjectKeyFromObject(&list.Items[i]),
+		})
+	}
+	return reqs, nil
+}

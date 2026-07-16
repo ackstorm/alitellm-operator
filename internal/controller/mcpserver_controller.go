@@ -874,9 +874,10 @@ func (r *MCPServerReconciler) secretToMCPServers(ctx context.Context, obj client
 //     so per-status-write Updates would only add reconcile noise.
 //
 // Named("mcpserver") — controller registry name (Phase 5 PATTERNS.md L506).
-// No Owns(.) and no safety re-list channel — Phase 5 may add
-// these if cross-CR vanish detection requires them (Phase 7 dogfood gate).
-func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager) error {
+// No Owns(.) — Phase 5 may add if cross-CR vanish detection requires it
+// (Phase 7 dogfood gate). safetyRelistCh wires the SafetyRelistRunnable
+// (cmd/main.go).
+func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager, safetyRelistCh ...chan reconcile.Request) error {
 	if r.Churn == nil {
 		r.Churn = newChurnGuard()
 	}
@@ -965,4 +966,21 @@ func stampMCPIdentity(mcpInfo map[string]any, includeCreatedBy bool) map[string]
 	}
 	mcpInfo["updated_by"] = identity.Operator()
 	return mcpInfo
+}
+
+// ListMCPServerRequests lists every LiteLLMMCPServer in namespace and returns
+// their reconcile.Requests. Feeds SafetyRelistRunnable.ListRequests — see
+// ListModelRequests for the shared contract.
+func ListMCPServerRequests(ctx context.Context, c client.Client, namespace string) ([]reconcile.Request, error) {
+	var list litellmv1alpha1.LiteLLMMCPServerList
+	if err := c.List(ctx, &list, client.InNamespace(namespace)); err != nil {
+		return nil, err
+	}
+	reqs := make([]reconcile.Request, 0, len(list.Items))
+	for i := range list.Items {
+		reqs = append(reqs, reconcile.Request{
+			NamespacedName: client.ObjectKeyFromObject(&list.Items[i]),
+		})
+	}
+	return reqs, nil
 }
