@@ -435,6 +435,17 @@ func (r *GuardRailReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if persistedID != "" &&
 		gr.Status.LastRendered.Hash == currentHash &&
 		gr.Status.ObservedGeneration == gr.Generation {
+		// Stale-status heal — see model_controller.go Step 8 for the
+		// connection-flap rationale. Same shape.
+		if ready := apimeta.FindStatusCondition(gr.Status.Conditions, conditionTypeReady); ready == nil ||
+			ready.Status != metav1.ConditionTrue || ready.Reason != reasonSynced {
+			if err := r.writeStatus(ctx, &gr, metav1.ConditionTrue, reasonSynced, "guardrail registered"); err != nil {
+				if apierrors.IsConflict(err) {
+					return ctrl.Result{}, nil
+				}
+				return ctrl.Result{}, err
+			}
+		}
 		metrics.CRStatusAgeTracker.RecordSuccess(guardrailKind, gr.Name)
 		// Refresh PoolSize on steady-state too — sibling membership may
 		// have changed without a spec edit (a sibling CR was added).

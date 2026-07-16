@@ -717,6 +717,41 @@ NOTE: local envtest on a resource-starved host can fail at suite SETUP
 — that is environmental host starvation, NOT a code regression; verify on
 CI's Envtest job, which is the reliable signal.
 
+### ❌ Steady-state early-return that skips the Ready-condition heal
+```go
+// Step 9 (guardrail, pre-fix):
+if persistedID != "" && lastRendered.Hash == currentHash &&
+    status.ObservedGeneration == gr.Generation {
+    return ctrl.Result{}, nil   // never rewrites a stale Ready=False
+}
+```
+Symptom (#102): a CR sits `Ready=False, reason=LiteLLMUnavailable`,
+`message: LiteLLMConnection/default not Ready (reason: Connecting)` with a
+frozen `lastTransitionTime` for weeks, while the entry is live and healthy in
+LiteLLM. Reconciles fire on every event (`result="success"`, no requeue) and
+change nothing. Looks like the connection cache is not-Usable for this one
+kind — it is not; the reconcile passes the connection gate and returns from
+the steady-state block.
+✅ Heal the condition inside the steady-state block before returning:
+```go
+if ready := apimeta.FindStatusCondition(gr.Status.Conditions, conditionTypeReady); ready == nil ||
+    ready.Status != metav1.ConditionTrue || ready.Reason != reasonSynced {
+    if err := r.writeStatus(ctx, &gr, metav1.ConditionTrue, reasonSynced, "guardrail registered"); err != nil {
+        if apierrors.IsConflict(err) { return ctrl.Result{}, nil }
+        return ctrl.Result{}, err
+    }
+}
+```
+WHY IT FAILS: the Step 4 connection-gate `writeStatus` stamps
+`observedGeneration = generation` along with `Ready=False`, and leaves
+`lastRendered` (hash + id) intact. Once the connection recovers, all three
+steady-state predicates hold, so the reconciler short-circuits and never
+re-enters the CREATE/UPDATE branch where the terminal `Ready=True` write
+lives. Self-perpetuating: nothing but a spec edit or delete+recreate clears
+it, and operator restarts do not. All five domain reconcilers (model,
+mcpserver, team, a2aagent, guardrail) now carry this heal — **any new
+steady-state short-circuit MUST include it.**
+
 ### ❌ LiteLLM proxy without `STORE_MODEL_IN_DB` → every Model 500s
 ```yaml
 status:

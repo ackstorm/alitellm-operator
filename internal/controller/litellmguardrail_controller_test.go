@@ -877,3 +877,68 @@ func TestGuardRail_SteadyState_IncrementsReconcileTotal(t *testing.T) {
 	}
 	t.Errorf("reconcile_total{guardrail,success} did not increment on the steady-state path (before=%v)", before)
 }
+
+// TestGuardRail_SteadyState_HealsStaleReadyFalse — issue #102.
+//
+// A transient connection flap makes Step 4 write Ready=False /
+// LiteLLMUnavailable while status.lastRendered (hash + guardrailID) stays
+// populated and observedGeneration is stamped == generation. Once the
+// connection recovers, every later reconcile short-circuits at the Step 9
+// steady-state check, which never re-enters the CREATE/UPDATE branch where
+// Step 10 writes Ready=True — so the stale False lingers forever (32 days in
+// the reported case) even though the guardrail is live in LiteLLM.
+//
+// The four sibling reconcilers (model/mcpserver/team/a2aagent) already heal
+// this in their steady-state block; the guardrail must match.
+func TestGuardRail_SteadyState_HealsStaleReadyFalse(t *testing.T) {
+	ctx := context.Background()
+	name := "gr-stale-heal"
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetGuardrails()
+	ensureNoGuardrailCR(t, ctx, name)
+	t.Cleanup(func() { ensureNoGuardrailCR(t, context.Background(), name) })
+	ensureLiteLLMConnectionDefault(t, ctx)
+	readyConnectionForTest(t)
+
+	cr := guardrailReconcilerSampleCR(name)
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create guardrail: %v", err)
+	}
+	synced := pollGuardrailCondition(t, ctx, name, reasonSynced)
+	if synced.Status.LastRendered.GuardrailID == "" || synced.Status.LastRendered.Hash == "" {
+		t.Fatalf("precondition: lastRendered not populated: %#v", synced.Status.LastRendered)
+	}
+
+	// Poison the Ready condition exactly the way a Step-4 connection-gate
+	// write does: False/LiteLLMUnavailable, lastRendered untouched,
+	// observedGeneration == generation.
+	key := client.ObjectKey{Name: name, Namespace: WatchNamespace}
+	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var fresh litellmv1alpha1.LiteLLMGuardRail
+		if err := k8sClient.Get(ctx, key, &fresh); err != nil {
+			return err
+		}
+		apimeta.SetStatusCondition(&fresh.Status.Conditions, metav1.Condition{
+			Type:               conditionTypeReady,
+			Status:             metav1.ConditionFalse,
+			Reason:             reasonLiteLLMUnavailable,
+			Message:            "LiteLLMConnection/default not Ready (reason: Connecting)",
+			ObservedGeneration: fresh.Generation,
+		})
+		fresh.Status.ObservedGeneration = fresh.Generation
+		return k8sClient.Status().Update(ctx, &fresh)
+	}); err != nil {
+		t.Fatalf("poison status: %v", err)
+	}
+
+	// The status write itself re-enqueues (no generation predicate on the
+	// For() watch); the steady-state path must heal the condition back.
+	healed := pollGuardrailCondition(t, ctx, name, reasonSynced)
+	if c := apimeta.FindStatusCondition(healed.Status.Conditions, conditionTypeReady); c == nil || c.Status != metav1.ConditionTrue {
+		t.Fatalf("Ready condition not healed: got %#v want True/Synced", c)
+	}
+	if healed.Status.LastRendered.GuardrailID != synced.Status.LastRendered.GuardrailID {
+		t.Errorf("heal must not recreate the LiteLLM row: guardrailID %q -> %q",
+			synced.Status.LastRendered.GuardrailID, healed.Status.LastRendered.GuardrailID)
+	}
+}
