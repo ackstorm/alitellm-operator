@@ -768,6 +768,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="What the operator does">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#enforcing-https-for-remote-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enforcing HTTPS for remote endpoints
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1584,6 +1601,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="What the operator does">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#enforcing-https-for-remote-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enforcing HTTPS for remote endpoints
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1719,6 +1753,17 @@ reads (echoed as <code>LiteLLMUnavailable</code> when <code>False</code>). The C
 cache snapshot also carries <code>mcpToolPrefixSeparator</code>,
 <code>requeueOnRejectedAfter</code>, and the rate-limit knobs — dependents read
 the same values via the cache, not by re-reading the CR.</p>
+<h3 id="enforcing-https-for-remote-endpoints">Enforcing HTTPS for remote endpoints<a class="headerlink" href="#enforcing-https-for-remote-endpoints" title="Permanent link">&para;</a></h3>
+<p>By default a remote <code>http://</code> endpoint only logs a warning
+(<code>MasterKeyOverPlaintextHTTP</code>) — in-cluster <code>http://litellm.&lt;ns&gt;.svc</code>
+is the common, acceptable deployment. To hard-reject plaintext-HTTP
+remotes instead (<code>Ready=False</code>, <code>reason=InsecureEndpoint</code>, terminal
+until <code>spec.endpoint</code> is edited):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>kubectl<span class="w"> </span><span class="nb">set</span><span class="w"> </span>env<span class="w"> </span>-n<span class="w"> </span>litellm-system<span class="w"> </span>deploy/alitellm-operator<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nv">LITELLM_OPERATOR_REQUIRE_HTTPS_REMOTE</span><span class="o">=</span><span class="nb">true</span>
+</code></pre></div>
+<p>Loopback, <code>*.svc</code>, and bare service-name hosts are always classified
+in-cluster and exempt (see <code>litellm.ClassifyEndpointTransport</code>).</p>
 <h2 id="see-also">See also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="https://github.com/ackstorm/alitellm-operator/tree/main/examples/example-deploy/01-litellmconnection.yaml">Example on GitHub</a></li>

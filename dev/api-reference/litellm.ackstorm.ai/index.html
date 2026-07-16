@@ -3019,9 +3019,8 @@ persistence); documented in spec/DEFECTS-1.82.6.md row
 <code>DEF-§6.4/§6.6-ID-PERSIST</code>.</p>
 <p><code>PUT /v1/agents/{agent_id}</code> IS wholesale-replace per Phase 1 Probe 7
 (verified on 1.82.6; not impacted by the Prisma defect that gated
-MCP's PUT semantics). <code>AgentCardKeys</code> is therefore informational
-only — no shrinkage delete-and-recreate path is committed for
-A2AAgent.</p>
+MCP's PUT semantics) — no shrinkage delete-and-recreate path is
+committed for A2AAgent.</p>
 <p><em>Appears in:</em>
 - <a href="#a2aagentstatus">A2AAgentStatus</a></p>
 <table>
@@ -3037,18 +3036,6 @@ A2AAgent.</p>
 <tr>
 <td><code>hash</code> <em>string</em></td>
 <td>Hash is the SHA-256 hex of the RFC 8785–canonicalized merged<br />post-substitution body (spec.params merged with spec.agentCard<br />and structural overlays {agent_name, agent_card_params,<br />agent_card_params.url}). An empty hash indicates the A2AAgent<br />has not yet been successfully reconciled.</td>
-<td></td>
-<td></td>
-</tr>
-<tr>
-<td><code>paramsKeys</code> <em>string array</em></td>
-<td>ParamsKeys is the sorted list of top-level keys present in<br />spec.params at the time of the last successful render. Phase 5<br />D-04 informational field — not load-bearing for shrinkage<br />detection (Probe 7 ✓ — PUT IS wholesale-replace on A2A).</td>
-<td></td>
-<td></td>
-</tr>
-<tr>
-<td><code>agentCardKeys</code> <em>string array</em></td>
-<td>AgentCardKeys is the sorted list of top-level keys present in<br />spec.agentCard at the time of the last successful render.<br />Phase 5 D-04 informational field — not load-bearing for<br />shrinkage detection (Probe 7 ✓ — PUT IS wholesale-replace on<br />A2A).</td>
 <td></td>
 <td></td>
 </tr>
@@ -3200,11 +3187,6 @@ state that was last successfully applied to LiteLLM via POST
 /guardrails or PUT /guardrails/{guardrail_id}. Operator-side drift
 source of truth — the reconciler compares the current desired hash
 against Hash to decide whether a mutation is needed (D-01).</p>
-<p>ParamsKeys and InfoKeys carry the dotted-path keyset present at the
-last successful render. If any key is removed from either bag
-(persistedKeys \ desiredKeys is non-empty), the reconciler can take
-the safer delete-and-recreate path rather than relying on PUT to
-strip keys it never explicitly clears (D-02 pattern, same as Model).</p>
 <p><em>Appears in:</em>
 - <a href="#guardrailstatus">GuardRailStatus</a></p>
 <table>
@@ -3220,18 +3202,6 @@ strip keys it never explicitly clears (D-02 pattern, same as Model).</p>
 <tr>
 <td><code>hash</code> <em>string</em></td>
 <td>Hash is the SHA-256 hex of the RFC 8785-canonicalized<br />post-substitution Guardrail body (top-level guardrail_name,<br />guardrail_info, policy_template, plus litellm_params) — minus<br />server-assigned fields (guardrail_id, created_at, updated_at).<br />An empty hash means the CR has not yet been successfully<br />reconciled.</td>
-<td></td>
-<td></td>
-</tr>
-<tr>
-<td><code>paramsKeys</code> <em>string array</em></td>
-<td>ParamsKeys is the sorted list of dotted-path keys present in<br />spec.params at the last successful render. Used for shrinkage<br />detection (D-02).</td>
-<td></td>
-<td></td>
-</tr>
-<tr>
-<td><code>infoKeys</code> <em>string array</em></td>
-<td>InfoKeys is the sorted list of dotted-path keys present in<br />spec.info at the last successful render. Same shrinkage<br />semantics as ParamsKeys.</td>
 <td></td>
 <td></td>
 </tr>
@@ -5010,11 +4980,9 @@ in-memory name filter on first reconcile) then reads from status
 thereafter. Diverges from spec §6.4 (silent on persistence); documented
 in spec/DEFECTS-1.82.6.md row <code>DEF-§6.4/§6.6-ID-PERSIST</code>.</p>
 <p>Per Phase 5 D-01, the Probe 10c verdict on LiteLLM 1.83.10-stable is ✓
-(PUT /v1/mcp/server IS wholesale-replace). <code>ParamsKeys</code> is therefore
-informational only on this path — it is recorded for observability /
-the create→update boundary but is NOT load-bearing for shrinkage
-detection (no delete-and-recreate path is committed in the MCPServer
-reconciler — see 05-CONTEXT.md D-01 "If positive" branch).</p>
+(PUT /v1/mcp/server IS wholesale-replace) — no delete-and-recreate path
+is committed in the MCPServer reconciler (see 05-CONTEXT.md D-01 "If
+positive" branch).</p>
 <p><em>Appears in:</em>
 - <a href="#mcpserverstatus">MCPServerStatus</a></p>
 <table>
@@ -5030,12 +4998,6 @@ reconciler — see 05-CONTEXT.md D-01 "If positive" branch).</p>
 <tr>
 <td><code>hash</code> <em>string</em></td>
 <td>Hash is the SHA-256 hex of the RFC 8785–canonicalized merged<br />post-substitution body (spec.params merged with structural<br />overlays {server_name, url, transport}). <code>server_name</code> in this<br />overlay is the LiteLLM-side sanitized name per MCP-05 (the<br /><code>litellm.SanitizeMCPServerName</code> rewrite of metadata.name driven by<br />the parent Connection's spec.mcpToolPrefixSeparator). An empty<br />hash indicates the MCPServer has not yet been successfully<br />reconciled.</td>
-<td></td>
-<td></td>
-</tr>
-<tr>
-<td><code>paramsKeys</code> <em>string array</em></td>
-<td>ParamsKeys is the sorted list of top-level keys present in<br />spec.params at the time of the last successful render. Per Phase 5<br />D-01 (✓ verdict on Probe 10c — PUT IS wholesale-replace on<br />1.83.10-stable), this field is informational only: the simple PUT<br />update path does not need per-bag shrinkage detection. The field<br />is retained for observability and forward-compat with any future<br />downgrade path.</td>
 <td></td>
 <td></td>
 </tr>
@@ -5126,7 +5088,7 @@ empirically validated by Probe 10c on 1.83.10-stable per Phase 5 plan
 <code>server_name</code> at <code>POST /v1/mcp/server</code> time (HTTP 400 "Server name
 cannot contain '<sep>'."). The MCPServer reconciler sanitizes the
 LiteLLM-side <code>server_name</code> and <code>alias</code> per the parent
-LiteLLMConnection's <code>spec.mcpToolPrefixSeparator</code> (default <code>-</code>), swapping
+LiteLLMConnection's <code>spec.mcpToolPrefixSeparator</code> (default <code>.</code>), swapping
 the configured separator for the opposite valid character (<code>-</code> ↔ <code>.</code>)
 via <code>litellm.SanitizeMCPServerName</code>. The K8s-side <code>metadata.name</code> is
 left untouched — the MCPServerDiscovery child name
@@ -5801,9 +5763,9 @@ the reconciler resolves the LiteLLM-assigned <code>team_id</code> UUID once (via
 then reads from status thereafter. The finalizer DELETE path (plan
 06-04) issues <code>POST /team/delete</code> against the pinned <code>TeamID</code> directly,
 without re-resolving by alias.</p>
-<p><code>Hash</code> and <code>ParamsKeys</code> are informational on this path — <code>POST /team/update</code>
-IS wholesale-replace per spec §5.1 (Q10), so no delete-and-recreate path
-is committed in the Team reconciler. The fields are retained for
+<p><code>Hash</code> is informational on this path — <code>POST /team/update</code> IS
+wholesale-replace per spec §5.1 (Q10), so no delete-and-recreate path
+is committed in the Team reconciler. The field is retained for
 observability and forward-compat (mirrors the Phase 5 D-01 rationale).</p>
 <p><em>Appears in:</em>
 - <a href="#teamstatus">TeamStatus</a></p>
@@ -5820,12 +5782,6 @@ observability and forward-compat (mirrors the Phase 5 D-01 rationale).</p>
 <tr>
 <td><code>hash</code> <em>string</em></td>
 <td>Hash is the SHA-256 hex of the RFC 8785-canonicalized merged<br />post-substitution body (<code>spec.params</code> merged with the seven operator<br />overlays <code>\{team_alias, max_budget, budget_duration, rpm_limit,&lt;br /&gt;tpm_limit, rpm_limit_type, tpm_limit_type\}</code> — the two <code>*_type</code> keys<br />are conditional-add per Feature 01 §2.1, so the hash incorporates<br />5–7 overlay keys depending on which <code>*_limit</code> leaves are non-nil).<br />An empty hash indicates the Team has not yet been successfully<br />reconciled (Phase 3 D-01, Phase 5 D-03).</td>
-<td></td>
-<td></td>
-</tr>
-<tr>
-<td><code>paramsKeys</code> <em>string array</em></td>
-<td>ParamsKeys is the sorted list of top-level keys present in<br /><code>spec.params</code> at the time of the last successful render.<br />Informational only on this path — <code>POST /team/update</code> IS<br />wholesale-replace per spec §5.1 (Q10), so the simple update path<br />does not need per-bag shrinkage detection. The field is retained<br />for observability and forward-compat with any future downgrade<br />path.</td>
 <td></td>
 <td></td>
 </tr>
