@@ -138,12 +138,11 @@ func main() {
 	setupLog.Info("watch namespace configured", "namespace", watchNS)
 
 	// H5: parse LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL EXACTLY ONCE here and
-	// thread the resolved value to every consumer — the four reconciler
-	// package vars (via SetSafetyRelistIntervals) AND the three relist
-	// Runnables (Model, Team, GuardRail) below. Default 10m
-	// (DefaultSafetyRelistInterval); 5s floor; invalid input aborts startup.
-	// Accepts any time.ParseDuration string. Reasoning + floor justification
-	// in internal/controller/safety_relist.go.
+	// thread the resolved value to every consumer — the five relist Runnables
+	// (Model, Team, MCPServer, A2AAgent, GuardRail) and TeamDefaultRunnable
+	// below. Default 10m (DefaultSafetyRelistInterval); 5s floor; invalid
+	// input aborts startup. Accepts any time.ParseDuration string. Reasoning +
+	// floor justification in internal/controller/safety_relist.go.
 	relistInterval, err := controller.ResolvedSafetyRelistInterval(os.Getenv(controller.EnvSafetyRelistInterval))
 	if err != nil {
 		setupLog.Error(err, "invalid safety-relist interval override; aborting")
@@ -330,6 +329,19 @@ func main() {
 		setupLog.Error(err, "unable to register MCPServer secrets field indexer")
 		os.Exit(1)
 	}
+	mcpSafetyRelistCh := make(chan reconcile.Request, 256)
+	if err := mgr.Add(&controller.SafetyRelistRunnable{
+		Client:       mgr.GetClient(),
+		Namespace:    watchNS,
+		Interval:     relistInterval,
+		Log:          ctrl.Log.WithName("mcpserver-safety-relist"),
+		RequeueCh:    mcpSafetyRelistCh,
+		ListRequests: controller.ListMCPServerRequests,
+		LogLabel:     "mcpservers",
+	}); err != nil {
+		setupLog.Error(err, "unable to add mcpserver SafetyRelistRunnable")
+		os.Exit(1)
+	}
 	if err := (&controller.MCPServerReconciler{
 		Client:            mgr.GetClient(),
 		Scheme:            mgr.GetScheme(),
@@ -340,7 +352,7 @@ func main() {
 		BootEvents:        bootSweep.MCPServerEvents,
 		ConnectionRebuilt: connCache.Subscribe(),
 		RecreateLimit:     controller.ResolveRecreateLimitPerMin(os.Getenv(controller.EnvRecreateLimitPerMin)),
-	}).SetupWithManager(mgr); err != nil {
+	}).SetupWithManager(mgr, mcpSafetyRelistCh); err != nil {
 		setupLog.Error(err, "unable to set up MCPServer reconciler")
 		os.Exit(1)
 	}
@@ -363,6 +375,19 @@ func main() {
 		setupLog.Error(err, "unable to register A2AAgent secrets field indexer")
 		os.Exit(1)
 	}
+	a2aSafetyRelistCh := make(chan reconcile.Request, 256)
+	if err := mgr.Add(&controller.SafetyRelistRunnable{
+		Client:       mgr.GetClient(),
+		Namespace:    watchNS,
+		Interval:     relistInterval,
+		Log:          ctrl.Log.WithName("a2aagent-safety-relist"),
+		RequeueCh:    a2aSafetyRelistCh,
+		ListRequests: controller.ListA2AAgentRequests,
+		LogLabel:     "a2aagents",
+	}); err != nil {
+		setupLog.Error(err, "unable to add a2aagent SafetyRelistRunnable")
+		os.Exit(1)
+	}
 	if err := (&controller.A2AAgentReconciler{
 		Client:            mgr.GetClient(),
 		Scheme:            mgr.GetScheme(),
@@ -373,7 +398,7 @@ func main() {
 		BootEvents:        bootSweep.A2AAgentEvents,
 		ConnectionRebuilt: connCache.Subscribe(),
 		RecreateLimit:     controller.ResolveRecreateLimitPerMin(os.Getenv(controller.EnvRecreateLimitPerMin)),
-	}).SetupWithManager(mgr); err != nil {
+	}).SetupWithManager(mgr, a2aSafetyRelistCh); err != nil {
 		setupLog.Error(err, "unable to set up A2AAgent reconciler")
 		os.Exit(1)
 	}
@@ -426,6 +451,23 @@ func main() {
 	}
 	if err := mgr.Add(teamDefaultRunnable); err != nil {
 		setupLog.Error(err, "unable to add TeamDefaultRunnable to manager")
+		os.Exit(1)
+	}
+
+	// Team safety-relist. Shares teamDefaultRequeueCh with TeamDefaultRunnable:
+	// two producers, one channel, one consumer goroutine (installed by
+	// TeamReconciler.SetupWithManager) that q.Add()s everything. A second
+	// channel would need a second variadic slot for no benefit.
+	if err := mgr.Add(&controller.SafetyRelistRunnable{
+		Client:       mgr.GetClient(),
+		Namespace:    watchNS,
+		Interval:     relistInterval,
+		Log:          ctrl.Log.WithName("team-safety-relist"),
+		RequeueCh:    teamDefaultRequeueCh,
+		ListRequests: controller.ListTeamRequests,
+		LogLabel:     "teams",
+	}); err != nil {
+		setupLog.Error(err, "unable to add team SafetyRelistRunnable")
 		os.Exit(1)
 	}
 
