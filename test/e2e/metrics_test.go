@@ -12,17 +12,13 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-// AC-O1: the operator's /metrics endpoint exposes the 12 metric names
+// AC-O1: the operator's /metrics endpoint exposes the 8 metric names
 // from spec §10 (regardless of value). Pulled from the cluster-internal
 // metrics service via a one-shot curl pod.
 var expectedMetricNames = []string{
 	"reconcile_total",
-	"reconcile_duration_seconds",
-	"alitellm_api_request_duration_seconds",
-	"alitellm_api_errors_total",
 	"discovery_refresh_total",
 	"discovery_generated_count",
-	"discovery_skipped_total",
 	"discovery_failed_total",
 	"child_cr_writes_total",
 	"drift_corrected_total",
@@ -37,7 +33,7 @@ var expectedMetricNames = []string{
 // surface inside a Helm-deployed cluster.
 var _ = Describe("Metrics AC-O1", func() {
 
-	It("/metrics exposes all 12 spec §10 metric names", func() {
+	It("/metrics exposes all 8 spec §10 metric names", func() {
 		helpRE := regexp.MustCompile(`(?m)^# HELP (\S+)`)
 		// curlPodBody retries past the kubectl-run attach race (which can
 		// drop the body to empty); accept once the exposition carries at

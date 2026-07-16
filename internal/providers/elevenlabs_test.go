@@ -28,11 +28,11 @@ func TestElevenLabs_HappyPath(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p, err := newElevenLabs(context.Background(), ProviderConfig{
+	p, err := newElevenLabsImpl(context.Background(), ProviderConfig{
 		Type: "elevenlabs", APIKey: canaryElevenLabsKey, BaseURL: srv.URL, HTTPClient: srv.Client(),
 	})
 	if err != nil {
-		t.Fatalf("newElevenLabs err: %v", err)
+		t.Fatalf("newElevenLabsImpl err: %v", err)
 	}
 	if got := p.Type(); got != "elevenlabs" { //nolint:goconst // wire-level provider discriminator asserted literally across elevenlabs_test cases
 		t.Fatalf("Type() = %q; want elevenlabs", got)
@@ -67,7 +67,7 @@ func TestElevenLabs_HappyPath(t *testing.T) {
 // constructor synchronously rejects an empty APIKey (CEL requires
 // credentialsSecretRef; this is the in-process backstop).
 func TestElevenLabs_MissingAPIKey_ReturnsConstructorError(t *testing.T) {
-	_, err := newElevenLabs(context.Background(), ProviderConfig{
+	_, err := newElevenLabsImpl(context.Background(), ProviderConfig{
 		Type: "elevenlabs", APIKey: "", HTTPClient: http.DefaultClient,
 	})
 	if err == nil {
@@ -78,7 +78,7 @@ func TestElevenLabs_MissingAPIKey_ReturnsConstructorError(t *testing.T) {
 // TestElevenLabs_NilHTTPClient_ReturnsConstructorError verifies the
 // universal HTTPClient gate.
 func TestElevenLabs_NilHTTPClient_ReturnsConstructorError(t *testing.T) {
-	_, err := newElevenLabs(context.Background(), ProviderConfig{
+	_, err := newElevenLabsImpl(context.Background(), ProviderConfig{
 		Type: "elevenlabs", APIKey: canaryElevenLabsKey, HTTPClient: nil,
 	})
 	if err == nil {
@@ -93,11 +93,11 @@ func TestElevenLabs_401_ReturnsProviderAuthError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p, err := newElevenLabs(context.Background(), ProviderConfig{
+	p, err := newElevenLabsImpl(context.Background(), ProviderConfig{
 		Type: "elevenlabs", APIKey: canaryElevenLabsKey, BaseURL: srv.URL, HTTPClient: srv.Client(),
 	})
 	if err != nil {
-		t.Fatalf("newElevenLabs err: %v", err)
+		t.Fatalf("newElevenLabsImpl err: %v", err)
 	}
 	_, listErr := p.List(context.Background())
 	var target *ProviderAuthError
@@ -116,11 +116,11 @@ func TestElevenLabs_5xx_ReturnsPlainError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p, err := newElevenLabs(context.Background(), ProviderConfig{
+	p, err := newElevenLabsImpl(context.Background(), ProviderConfig{
 		Type: "elevenlabs", APIKey: canaryElevenLabsKey, BaseURL: srv.URL, HTTPClient: srv.Client(),
 	})
 	if err != nil {
-		t.Fatalf("newElevenLabs err: %v", err)
+		t.Fatalf("newElevenLabsImpl err: %v", err)
 	}
 	_, listErr := p.List(context.Background())
 	if listErr == nil {
@@ -141,11 +141,11 @@ func TestElevenLabs_CredentialCanary(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p, err := newElevenLabs(context.Background(), ProviderConfig{
+	p, err := newElevenLabsImpl(context.Background(), ProviderConfig{
 		Type: "elevenlabs", APIKey: canaryElevenLabsKey, BaseURL: srv.URL, HTTPClient: srv.Client(),
 	})
 	if err != nil {
-		t.Fatalf("newElevenLabs err: %v", err)
+		t.Fatalf("newElevenLabsImpl err: %v", err)
 	}
 	_, listErr := p.List(context.Background())
 	if listErr == nil {

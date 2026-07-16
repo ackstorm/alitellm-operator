@@ -485,8 +485,6 @@ func (r *GuardRailReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// ─── Step 10: Persist status ───────────────────────────────────────────
 	gr.Status.LastRendered = litellmv1alpha1.GuardRailLastRenderedStatus{
 		Hash:               currentHash,
-		ParamsKeys:         sortedKeys(paramsMap),
-		InfoKeys:           sortedKeys(infoMap),
 		GuardrailID:        persistedID,
 		DefinitionLocation: litellm.GuardrailDefinitionLocationDB,
 		PoolSize:           poolSize,

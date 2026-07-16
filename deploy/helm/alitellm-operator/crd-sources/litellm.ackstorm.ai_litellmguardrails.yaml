@@ -441,22 +441,6 @@ spec:
                       An empty hash means the CR has not yet been successfully
                       reconciled.
                     type: string
-                  infoKeys:
-                    description: |-
-                      InfoKeys is the sorted list of dotted-path keys present in
-                      spec.info at the last successful render. Same shrinkage
-                      semantics as ParamsKeys.
-                    items:
-                      type: string
-                    type: array
-                  paramsKeys:
-                    description: |-
-                      ParamsKeys is the sorted list of dotted-path keys present in
-                      spec.params at the last successful render. Used for shrinkage
-                      detection (D-02).
-                    items:
-                      type: string
-                    type: array
                   poolSize:
                     description: |-
                       PoolSize is the number of LiteLLMGuardRail CRs sharing

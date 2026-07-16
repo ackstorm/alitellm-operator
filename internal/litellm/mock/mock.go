@@ -1165,8 +1165,8 @@ func (m *MockServer) statefulBody(r *http.Request) []byte {
 	// reconciler's "clearing budget" semantics (spec §6.7 line 1194):
 	// POST /team/new and POST /team/update accept JSON null for
 	// max_budget and budget_duration; the operator builds these bodies
-	// as map[string]any (bypassing the typed NewTeamRequest struct's
-	// `,omitempty` drop) and the mock preserves the explicit nil values
+	// as map[string]any (avoiding a typed struct's `,omitempty` drop)
+	// and the mock preserves the explicit nil values
 	// in m.teams[id].LastBody for envtest assertions.
 	//
 	// POST /team/delete — body {"team_ids": [.]} per OpenAPI.

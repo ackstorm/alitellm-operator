@@ -23,12 +23,8 @@ import (
 func TestAllS10MetricNamesAreRegistered(t *testing.T) {
 	want := []string{
 		"reconcile_total",
-		"reconcile_duration_seconds",
-		"alitellm_api_request_duration_seconds",
-		"alitellm_api_errors_total",
 		"discovery_refresh_total",
 		"discovery_generated_count",
-		"discovery_skipped_total",
 		"discovery_failed_total",
 		"drift_corrected_total",
 		"connection_ready",
@@ -96,18 +92,14 @@ func TestReconcileTotalResultsPreTouched(t *testing.T) {
 // initialized by init before any consumer (Phase 3+) imports the package.
 func TestVarsAreNonNil(t *testing.T) {
 	checks := map[string]prometheus.Collector{
-		"ReconcileTotal":                   ReconcileTotal,
-		"ReconcileDurationSeconds":         ReconcileDurationSeconds,
-		"LiteLLMAPIRequestDurationSeconds": LiteLLMAPIRequestDurationSeconds,
-		"LiteLLMAPIErrorsTotal":            LiteLLMAPIErrorsTotal,
-		"DiscoveryRefreshTotal":            DiscoveryRefreshTotal,
-		"DiscoveryGeneratedCount":          DiscoveryGeneratedCount,
-		"DiscoverySkippedTotal":            DiscoverySkippedTotal,
-		"DiscoveryFailedTotal":             DiscoveryFailedTotal,
-		"DriftCorrectedTotal":              DriftCorrectedTotal,
-		"ConnectionReady":                  ConnectionReady,
-		"CRStatusAgeTracker":               CRStatusAgeTracker,
-		"ChildCRWritesTotal":               ChildCRWritesTotal,
+		"ReconcileTotal":          ReconcileTotal,
+		"DiscoveryRefreshTotal":   DiscoveryRefreshTotal,
+		"DiscoveryGeneratedCount": DiscoveryGeneratedCount,
+		"DiscoveryFailedTotal":    DiscoveryFailedTotal,
+		"DriftCorrectedTotal":     DriftCorrectedTotal,
+		"ConnectionReady":         ConnectionReady,
+		"CRStatusAgeTracker":      CRStatusAgeTracker,
+		"ChildCRWritesTotal":      ChildCRWritesTotal,
 	}
 	for name, c := range checks {
 		if c == nil {
@@ -135,27 +127,25 @@ func TestNoUnexpectedMetricNamesInS10Surface(t *testing.T) {
 		t.Fatalf("Registry.Gather: %v", err)
 	}
 	s10 := map[string]bool{
-		"reconcile_total": true, "reconcile_duration_seconds": true,
-		"alitellm_api_request_duration_seconds": true, "alitellm_api_errors_total": true,
+		"reconcile_total":         true,
 		"discovery_refresh_total": true, "discovery_generated_count": true,
-		"discovery_skipped_total": true, "discovery_failed_total": true,
-		"drift_corrected_total": true, "connection_ready": true,
+		"discovery_failed_total": true,
+		"drift_corrected_total":  true, "connection_ready": true,
 		"cr_status_age_seconds": true, "child_cr_writes_total": true,
 	}
-	// Sanity: at least all 12 §10 metric names exist in the gathered set
-	// (11 pre-Phase-4 + child_cr_writes_total added in OBS-04).
+	// Sanity: at least all 8 §10 metric names exist in the gathered set.
 	hits := 0
 	for _, mf := range mfs {
 		if s10[mf.GetName()] {
 			hits++
 		}
 	}
-	if hits < 12 {
+	if hits < 8 {
 		var names []string
 		for _, mf := range mfs {
 			names = append(names, mf.GetName())
 		}
-		t.Errorf("§10 metric hits: want >= 12, got %d (gathered: %s)", hits, strings.Join(names, ","))
+		t.Errorf("§10 metric hits: want >= 8, got %d (gathered: %s)", hits, strings.Join(names, ","))
 	}
 }
 

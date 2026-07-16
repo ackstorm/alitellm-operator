@@ -402,11 +402,11 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 	}
 	// FIX5 H-1: drop reserved structural keys from paramsMap BEFORE
-	// substitution / hash / extraction so downstream state (hash,
-	// status.lastRendered.ParamsKeys, the extracted struct) is consistent.
-	// Reserved keys (server_id, server_name, alias, url, transport,
-	// spec_path) are stamped from the CR — a user-supplied value here
-	// would be a hijack vector, so we ignore the bag entries silently.
+	// substitution / hash / extraction so downstream state (hash, the
+	// extracted struct) is consistent. Reserved keys (server_id,
+	// server_name, alias, url, transport, spec_path) are stamped from
+	// the CR — a user-supplied value here would be a hijack vector, so
+	// we ignore the bag entries silently.
 	for k := range reservedMCPParamKeys {
 		delete(paramsMap, k)
 	}
@@ -721,10 +721,9 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// ─── Step 11: Update status on success ─────────────────────────────────
 	now := metav1.NewTime(time.Now())
 	mcp.Status.LastRendered = litellmv1alpha1.MCPServerLastRenderedStatus{
-		Hash:       currentRenderedHash,
-		ParamsKeys: sortedKeys(paramsMap),
-		ServerID:   newServerID,
-		At:         &now,
+		Hash:     currentRenderedHash,
+		ServerID: newServerID,
+		At:       &now,
 	}
 	if err := r.writeStatus(ctx, &mcp, metav1.ConditionTrue, reasonSynced, "mcp server registered"); err != nil {
 		logStatusUpdateErr(logger, err, "reason", reasonSynced)

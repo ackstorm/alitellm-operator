@@ -25,9 +25,9 @@ const mutatedSentinel = "mutated"
 
 // TestGuardRail_DeepCopy_RoundTrip exercises DeepCopy across every
 // slice and pointer-typed field (DefaultOn, Mode, Secrets, Conditions,
-// ParamsKeys, InfoKeys, At) and asserts that mutating the copy never
-// reaches back to the source — i.e. that controller-gen produced a
-// real deep copy, not a shallow alias.
+// At) and asserts that mutating the copy never reaches back to the
+// source — i.e. that controller-gen produced a real deep copy, not a
+// shallow alias.
 func TestGuardRail_DeepCopy_RoundTrip(t *testing.T) {
 	defaultOn := true
 	at := metav1.NewTime(time.Date(2026, 5, 23, 12, 0, 0, 0, time.UTC))
@@ -59,8 +59,6 @@ func TestGuardRail_DeepCopy_RoundTrip(t *testing.T) {
 			},
 			LastRendered: GuardRailLastRenderedStatus{
 				Hash:               "deadbeef",
-				ParamsKeys:         []string{"api_base", "api_key"},
-				InfoKeys:           []string{"description"},
 				GuardrailID:        "01HXG5...",
 				DefinitionLocation: "db",
 				PoolSize:           2,
@@ -110,12 +108,6 @@ func TestGuardRail_DeepCopy_RoundTrip(t *testing.T) {
 	dst.Spec.Secrets[0].As = "MUTATED"
 	if src.Spec.Secrets[0].As == "MUTATED" {
 		t.Error("Spec.Secrets[0].As: mutating dst altered src")
-	}
-
-	// --- LastRendered.ParamsKeys slice independence
-	dst.Status.LastRendered.ParamsKeys[0] = mutatedSentinel
-	if src.Status.LastRendered.ParamsKeys[0] == mutatedSentinel {
-		t.Error("LastRendered.ParamsKeys: mutating dst altered src")
 	}
 
 	// --- LastRendered.At pointer independence (metav1.Time is a struct,
@@ -290,29 +282,5 @@ func TestGuardRailList_DeepCopy_RoundTrip(t *testing.T) {
 	}
 	if obj := (&src.Items[0]).DeepCopyObject(); obj == nil {
 		t.Error("LiteLLMGuardRail.DeepCopyObject returned nil")
-	}
-}
-
-// TestGuardRail_LastRenderedStatus_Independence asserts that the
-// status sub-struct's slice fields (ParamsKeys, InfoKeys) deep-copy
-// cleanly even when nil (regression: a stray reused-slice append on
-// the source would leak into dst if controller-gen mishandled the
-// nil case).
-func TestGuardRail_LastRenderedStatus_Independence(t *testing.T) {
-	src := &LiteLLMGuardRail{
-		Status: GuardRailStatus{
-			LastRendered: GuardRailLastRenderedStatus{
-				Hash:       "cafebabe",
-				ParamsKeys: nil,
-				InfoKeys:   []string{"description"},
-			},
-		},
-	}
-	dst := src.DeepCopy()
-	if dst.Status.LastRendered.ParamsKeys != nil {
-		t.Errorf("ParamsKeys: nil source should yield nil dst, got %#v", dst.Status.LastRendered.ParamsKeys)
-	}
-	if len(dst.Status.LastRendered.InfoKeys) != 1 || dst.Status.LastRendered.InfoKeys[0] != "description" {
-		t.Errorf("InfoKeys: got %#v want [description]", dst.Status.LastRendered.InfoKeys)
 	}
 }

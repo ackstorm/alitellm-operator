@@ -708,7 +708,7 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			failed = append(failed, litellmv1alpha1.FailedCandidate{
 				Name:    childName,
 				Reason:  "ChildCRWriteFailed",
-				Message: sanitizeError(classifyErr),
+				Message: classifyErr.Error(),
 			})
 			continue
 		}
@@ -761,7 +761,7 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 					failed = append(failed, litellmv1alpha1.FailedCandidate{
 						Name:    childName,
 						Reason:  "ChildCRWriteFailed",
-						Message: sanitizeError(classifyErr),
+						Message: classifyErr.Error(),
 					})
 					continue
 				}
@@ -798,13 +798,12 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			// → error. Other apierrors (NotFound on a Patch—admission
 			// bug; Forbidden—RBAC bug) flow here too and are surfaced
 			// as ChildCRWriteFailed with the apiserver's error string.
-			_ = transientApierror(applyErr) // documented seam — the result label is "error" for ALL non-AlreadyExists apply errors
 			metrics.ChildCRWritesTotal.WithLabelValues(modelDiscoveryKind, action, "error").Inc()
 			metrics.DiscoveryFailedTotal.WithLabelValues(modelDiscoveryKind, "ChildCRWriteFailed").Inc()
 			failed = append(failed, litellmv1alpha1.FailedCandidate{
 				Name:    childName,
 				Reason:  "ChildCRWriteFailed",
-				Message: sanitizeError(applyErr),
+				Message: applyErr.Error(),
 			})
 			continue
 		}
@@ -949,25 +948,6 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		"failed", len(failed),
 		"requeueAfter", md.Spec.Refresh.Interval.Duration)
 	return ctrl.Result{RequeueAfter: md.Spec.Refresh.Interval.Duration}, nil
-}
-
-// transientApierror classifies the OBS-04 result label per CONTEXT.md
-// `<specifics>` line 283. Currently the reconciler emits result="error"
-// for ALL apply failures (including AlreadyExists, which will
-// promote to K8s-native conflict resolution). The classifier is retained
-// here as documentation of the future split:
-//
-//	transient apierrors → result=error (transient/retryable)
-//	non-transient → result=error (deterministic — write-blocked)
-//
-// Both cases currently bucket under "error". introduces a
-// "conflict" label value (or reuses "error" with an additional reason
-// field on FailedCandidate) — TBD by that plan's design.
-func transientApierror(err error) bool {
-	return apierrors.IsServerTimeout(err) ||
-		apierrors.IsTooManyRequests(err) ||
-		apierrors.IsServiceUnavailable(err) ||
-		apierrors.IsConflict(err)
 }
 
 // buildChildModel constructs the desired child LiteLLMModel object that will be
@@ -1391,32 +1371,6 @@ func ownedByThisDiscovery(child *litellmv1alpha1.LiteLLMModel, parent *litellmv1
 		}
 	}
 	return false
-}
-
-// sanitizeError is the defense-in-depth seam for status-message redaction.
-// The K8s apiserver does NOT echo credential material in its error
-// responses (it never sees the upstream provider's API key — only the
-// operator code resolves Secrets), so for v1alpha1 this helper simply
-// returns the apiserver's error string verbatim. The seam is reserved
-// for future surfaces where credential fragments could in principle
-// reach status (e.g. a future provider that proxies through the
-// apiserver as a webhook).
-//
-// Mirrors the Bedrock-side `sanitizeAWSError` pattern from —
-// same shape, different scope. Kept here as a single chokepoint so a
-// future redaction policy (regex strip of `sk-.`, `AKIA.`, etc.)
-// applies uniformly to every status surface that calls it.
-//
-// Calling pattern: every err string that lands in
-// FailedCandidate.Message or SkippedCandidate.Message MUST go through
-// this helper (the linter / canary test enforces this in CI — see
-// `TestModelDiscovery_AC_S1_NoCredentialLeak` planned in Phase 4
-// validation).
-func sanitizeError(err error) string {
-	if err == nil {
-		return ""
-	}
-	return err.Error()
 }
 
 // ownedByDiscovery is the T-04-05-T1 defense for vanish detection:

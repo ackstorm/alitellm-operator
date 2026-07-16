@@ -1416,10 +1416,9 @@ func TestModel_ConnectionRoundTrip_AC_C4(t *testing.T) {
 	// Now directly rebuild to not-Ready. The cache is exclusively owned by
 	// this test from this point on (no running probe loop).
 	connCache.Rebuild(connection.ConnectionSnapshot{
-		Ready:      false,
-		Reason:     "BadMasterKey",
-		Generation: 1,
-		Client:     savedClient,
+		Ready:  false,
+		Reason: "BadMasterKey",
+		Client: savedClient,
 	})
 
 	// Trigger a Model reconcile via annotation patch. Retry on 409 because
@@ -1481,10 +1480,9 @@ func TestModel_ConnectionRoundTrip_AC_C4(t *testing.T) {
 	// Step 4: Directly rebuild cache to Ready=Synced.
 	// No connection reconciler is running (CR was deleted), so this state is stable.
 	connCache.Rebuild(connection.ConnectionSnapshot{
-		Ready:      true,
-		Reason:     "Synced",
-		Generation: 2,
-		Client:     savedClient,
+		Ready:  true,
+		Reason: "Synced",
+		Client: savedClient,
 	})
 
 	// Trigger reconcile via SPEC change — a new spec.params key forces a

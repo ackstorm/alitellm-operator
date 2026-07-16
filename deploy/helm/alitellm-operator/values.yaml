@@ -83,9 +83,8 @@ safetyRelistInterval: ""
 #
 # Use safetyRelistInterval above for the most common knob; extraEnv is
 # the escape hatch for anything else (LITELLM_OPERATOR_LOG_LEVEL,
-# LITELLM_OPERATOR_AUTH_HEADER, LITELLM_OPERATOR_RECREATE_LIMIT_PER_MIN,
-# DEFAULT_ACCESS_GROUP, etc.). Production installs that want defaults can
-# leave this empty.
+# LITELLM_OPERATOR_RECREATE_LIMIT_PER_MIN, DEFAULT_ACCESS_GROUP, etc.).
+# Production installs that want defaults can leave this empty.
 #
 # DEFAULT_ACCESS_GROUP names the access group injected into a model's
 # model_info.access_groups when it declares none (default "default"; set ""
@@ -97,6 +96,11 @@ safetyRelistInterval: ""
 #       value: "debug"
 #     - name: DEFAULT_ACCESS_GROUP
 #       value: "default"
+#     # Hard-reject a plaintext http:// endpoint on a REMOTE LiteLLM
+#     # (in-cluster *.svc / loopback endpoints stay exempt). Default:
+#     # warn-only log marker MasterKeyOverPlaintextHTTP.
+#     - name: LITELLM_OPERATOR_REQUIRE_HTTPS_REMOTE
+#       value: "true"
 extraEnv: []
 # resources: manager container resource requests and limits.
 #

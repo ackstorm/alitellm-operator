@@ -120,58 +120,6 @@ type ModelDeleteRequest struct {
 	ID string `json:"id"`
 }
 
-// NewTeamRequest is the POST /team/new request body. Mirrors the
-// OpenAPI schema's optional fields; callers populate only what they need.
-//
-// *LimitType fields are informational; controller builds body via
-// map[string]any to preserve JSON null semantics (see team_controller.go
-// Step 7). These fields exist for symmetry with TPMLimit/RPMLimit and for
-// forward-compat with any future caller that constructs the wire body via
-// the typed struct.
-type NewTeamRequest struct {
-	TeamAlias      string         `json:"team_alias,omitempty"`
-	TeamID         string         `json:"team_id,omitempty"`
-	OrganizationID string         `json:"organization_id,omitempty"`
-	Admins         []string       `json:"admins,omitempty"`
-	Members        []string       `json:"members,omitempty"`
-	Metadata       map[string]any `json:"metadata,omitempty"`
-	TPMLimit       *int           `json:"tpm_limit,omitempty"`
-	TPMLimitType   *string        `json:"tpm_limit_type,omitempty"`
-	RPMLimit       *int           `json:"rpm_limit,omitempty"`
-	RPMLimitType   *string        `json:"rpm_limit_type,omitempty"`
-	MaxBudget      *float64       `json:"max_budget,omitempty"`
-	BudgetDuration string         `json:"budget_duration,omitempty"`
-	Models         []string       `json:"models,omitempty"`
-	Blocked        *bool          `json:"blocked,omitempty"`
-	Tags           []string       `json:"tags,omitempty"`
-	Extra          map[string]any `json:"-"`
-}
-
-// UpdateTeamRequest is the POST /team/update request body. team_id is
-// required by the OpenAPI schema.
-//
-// *LimitType fields are informational; controller builds body via
-// map[string]any to preserve JSON null semantics (see team_controller.go
-// Step 7). These fields exist for symmetry with TPMLimit/RPMLimit and for
-// forward-compat with any future caller that constructs the wire body via
-// the typed struct.
-type UpdateTeamRequest struct {
-	TeamID         string         `json:"team_id"`
-	TeamAlias      string         `json:"team_alias,omitempty"`
-	OrganizationID string         `json:"organization_id,omitempty"`
-	Metadata       map[string]any `json:"metadata,omitempty"`
-	TPMLimit       *int           `json:"tpm_limit,omitempty"`
-	TPMLimitType   *string        `json:"tpm_limit_type,omitempty"`
-	RPMLimit       *int           `json:"rpm_limit,omitempty"`
-	RPMLimitType   *string        `json:"rpm_limit_type,omitempty"`
-	MaxBudget      *float64       `json:"max_budget,omitempty"`
-	BudgetDuration string         `json:"budget_duration,omitempty"`
-	Models         []string       `json:"models,omitempty"`
-	Blocked        *bool          `json:"blocked,omitempty"`
-	Tags           []string       `json:"tags,omitempty"`
-	Extra          map[string]any `json:"-"`
-}
-
 // DeleteTeamRequest is the POST /team/delete request body.
 type DeleteTeamRequest struct {
 	TeamIDs []string `json:"team_ids"`

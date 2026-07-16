@@ -12,9 +12,9 @@ import (
 	"testing"
 )
 
-// TestUpdateTeamUsesPostNotPatch — same Pitfall 2 enforcement at the
+// TestUpdateTeamRawUsesPostNotPatch — same Pitfall 2 enforcement at the
 // team.go layer. POST /team/update — never PATCH.
-func TestUpdateTeamUsesPostNotPatch(t *testing.T) {
+func TestUpdateTeamRawUsesPostNotPatch(t *testing.T) {
 	var captured []capturedRequest
 	srv := httptest.NewServer(captureMock(t, &captured, func(i int, w http.ResponseWriter) {
 		w.WriteHeader(200)
@@ -23,12 +23,12 @@ func TestUpdateTeamUsesPostNotPatch(t *testing.T) {
 	defer srv.Close()
 
 	c := newTestClient(t, srv.URL)
-	_, err := c.UpdateTeam(context.Background(), &UpdateTeamRequest{TeamID: "t1", TeamAlias: "alpha"})
+	_, err := c.UpdateTeamRaw(context.Background(), map[string]any{"team_id": "t1", "team_alias": "alpha"})
 	if err != nil {
-		t.Fatalf("UpdateTeam: %v", err)
+		t.Fatalf("UpdateTeamRaw: %v", err)
 	}
 	if len(captured) != 1 || captured[0].Method != "POST" || captured[0].Path != "/team/update" {
-		t.Errorf("UpdateTeam: want POST /team/update, got %+v", captured)
+		t.Errorf("UpdateTeamRaw: want POST /team/update, got %+v", captured)
 	}
 }
 
@@ -267,10 +267,10 @@ func TestTeamHelpers401Propagation(t *testing.T) {
 		}
 	}
 
-	_, err := c.CreateTeam(context.Background(), &NewTeamRequest{TeamAlias: "x"})
-	check("CreateTeam", err)
-	_, err = c.UpdateTeam(context.Background(), &UpdateTeamRequest{TeamID: "x"})
-	check("UpdateTeam", err)
+	_, err := c.CreateTeamRaw(context.Background(), map[string]any{"team_alias": "x"})
+	check("CreateTeamRaw", err)
+	_, err = c.UpdateTeamRaw(context.Background(), map[string]any{"team_id": "x"})
+	check("UpdateTeamRaw", err)
 	err = c.DeleteTeam(context.Background(), []string{"x"})
 	check("DeleteTeam", err)
 	_, err = c.ListTeamsByAlias(context.Background(), "x")

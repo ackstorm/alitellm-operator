@@ -33,11 +33,11 @@ func TestGemini_HappyPath_StripsModelsPrefix(t *testing.T) {
 	defer srv.Close()
 	SetTestBaseURL(t, "gemini", srv.URL)
 
-	p, err := newGemini(context.Background(), ProviderConfig{
+	p, err := newGeminiImpl(context.Background(), ProviderConfig{
 		Type: "gemini", APIKey: canaryGeminiKey, HTTPClient: srv.Client(),
 	})
 	if err != nil {
-		t.Fatalf("newGemini err: %v", err)
+		t.Fatalf("newGeminiImpl err: %v", err)
 	}
 	if p.Type() != "gemini" {
 		t.Fatalf("Type() = %q; want gemini", p.Type())
@@ -76,7 +76,7 @@ func TestGemini_KeyInHeaderNotQuery(t *testing.T) {
 	defer srv.Close()
 	SetTestBaseURL(t, "gemini", srv.URL)
 
-	p, _ := newGemini(context.Background(), ProviderConfig{
+	p, _ := newGeminiImpl(context.Background(), ProviderConfig{
 		Type: "gemini", APIKey: canaryGeminiKey, HTTPClient: srv.Client(),
 	})
 	if _, err := p.List(context.Background()); err != nil {
@@ -103,7 +103,7 @@ func TestGemini_TransportError_NoKeyLeak(t *testing.T) {
 	SetTestBaseURL(t, "gemini", srv.URL)
 	srv.Close() // force connection-refused transport error
 
-	p, err := newGemini(context.Background(), ProviderConfig{
+	p, err := newGeminiImpl(context.Background(), ProviderConfig{
 		Type: "gemini", APIKey: canaryGeminiKey, HTTPClient: srv.Client(),
 	})
 	if err != nil {
@@ -133,7 +133,7 @@ func TestGemini_FollowsNextPageToken(t *testing.T) {
 	defer srv.Close()
 	SetTestBaseURL(t, "gemini", srv.URL)
 
-	p, _ := newGemini(context.Background(), ProviderConfig{
+	p, _ := newGeminiImpl(context.Background(), ProviderConfig{
 		Type: "gemini", APIKey: canaryGeminiKey, HTTPClient: srv.Client(),
 	})
 	got, err := p.List(context.Background())
@@ -159,7 +159,7 @@ func TestGemini_PageCapExhaustionErrors(t *testing.T) {
 	defer srv.Close()
 	SetTestBaseURL(t, "gemini", srv.URL)
 
-	p, _ := newGemini(context.Background(), ProviderConfig{
+	p, _ := newGeminiImpl(context.Background(), ProviderConfig{
 		Type: "gemini", APIKey: canaryGeminiKey, HTTPClient: srv.Client(),
 	})
 	if _, err := p.List(context.Background()); err == nil {
@@ -177,7 +177,7 @@ func TestGemini_401_ReturnsProviderAuthError(t *testing.T) {
 	defer srv.Close()
 	SetTestBaseURL(t, "gemini", srv.URL)
 
-	p, _ := newGemini(context.Background(), ProviderConfig{
+	p, _ := newGeminiImpl(context.Background(), ProviderConfig{
 		Type: "gemini", APIKey: canaryGeminiKey, HTTPClient: srv.Client(),
 	})
 	_, listErr := p.List(context.Background())
@@ -199,7 +199,7 @@ func TestGemini_403_ReturnsProviderAuthError(t *testing.T) {
 	defer srv.Close()
 	SetTestBaseURL(t, "gemini", srv.URL)
 
-	p, _ := newGemini(context.Background(), ProviderConfig{
+	p, _ := newGeminiImpl(context.Background(), ProviderConfig{
 		Type: "gemini", APIKey: canaryGeminiKey, HTTPClient: srv.Client(),
 	})
 	_, listErr := p.List(context.Background())
@@ -218,7 +218,7 @@ func TestGemini_5xx_ReturnsPlainError(t *testing.T) {
 	defer srv.Close()
 	SetTestBaseURL(t, "gemini", srv.URL)
 
-	p, _ := newGemini(context.Background(), ProviderConfig{
+	p, _ := newGeminiImpl(context.Background(), ProviderConfig{
 		Type: "gemini", APIKey: canaryGeminiKey, HTTPClient: srv.Client(),
 	})
 	_, listErr := p.List(context.Background())
@@ -234,7 +234,7 @@ func TestGemini_5xx_ReturnsPlainError(t *testing.T) {
 // TestGemini_MissingAPIKey_ReturnsConstructorError verifies the
 // constructor rejects empty APIKey synchronously.
 func TestGemini_MissingAPIKey_ReturnsConstructorError(t *testing.T) {
-	_, err := newGemini(context.Background(), ProviderConfig{
+	_, err := newGeminiImpl(context.Background(), ProviderConfig{
 		Type: "gemini", APIKey: "", HTTPClient: http.DefaultClient,
 	})
 	if err == nil {
@@ -245,7 +245,7 @@ func TestGemini_MissingAPIKey_ReturnsConstructorError(t *testing.T) {
 // TestGemini_NilHTTPClient_ReturnsConstructorError verifies HTTPClient
 // is required.
 func TestGemini_NilHTTPClient_ReturnsConstructorError(t *testing.T) {
-	_, err := newGemini(context.Background(), ProviderConfig{
+	_, err := newGeminiImpl(context.Background(), ProviderConfig{
 		Type: "gemini", APIKey: canaryGeminiKey, HTTPClient: nil,
 	})
 	if err == nil {
@@ -268,7 +268,7 @@ func TestGemini_CredentialCanary(t *testing.T) {
 	defer srv.Close()
 	SetTestBaseURL(t, "gemini", srv.URL)
 
-	p, _ := newGemini(context.Background(), ProviderConfig{
+	p, _ := newGeminiImpl(context.Background(), ProviderConfig{
 		Type: "gemini", APIKey: canaryGeminiKey, HTTPClient: srv.Client(),
 	})
 	cands, err := p.List(context.Background())

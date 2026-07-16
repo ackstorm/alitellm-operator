@@ -119,42 +119,6 @@ func TestProbeConnectionPathIsKeyHealth(t *testing.T) {
 	}
 }
 
-// TestAuthHeaderOverrideViaEnv — the LITELLM_OPERATOR_AUTH_HEADER env
-// var switches the auth header from Authorization: Bearer to
-// x-litellm-api-key. Documents the escape hatch.
-func TestAuthHeaderOverrideViaEnv(t *testing.T) {
-	t.Setenv(EnvAuthHeader, "x-litellm-api-key")
-
-	var (
-		mu             sync.Mutex
-		gotAuth        string
-		gotXLitellmKey string
-	)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		gotAuth = r.Header.Get("Authorization")
-		gotXLitellmKey = r.Header.Get("x-litellm-api-key")
-		mu.Unlock()
-		w.WriteHeader(200)
-		_, _ = w.Write([]byte(`{"data":[]}`))
-	}))
-	defer srv.Close()
-
-	c := newTestClient(t, srv.URL)
-	if _, err := c.ProbeConnection(context.Background()); err != nil {
-		t.Fatalf("ProbeConnection: %v", err)
-	}
-
-	mu.Lock()
-	defer mu.Unlock()
-	if gotAuth != "" {
-		t.Errorf("Authorization header should be empty when override set, got %q", gotAuth)
-	}
-	if gotXLitellmKey != testMasterKey {
-		t.Errorf("x-litellm-api-key: want %q, got %q", testMasterKey, gotXLitellmKey)
-	}
-}
-
 // TestMakeRequestDefersDrainAndClose — REL-04 reinforcement at the
 // Client.makeRequest layer. The proper proxy for "drain+close success
 // on every code path" is HTTP keepalive reuse: if the response body is

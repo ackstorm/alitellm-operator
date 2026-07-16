@@ -451,8 +451,8 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 		list, err := informer.List(ctx, toolhive.MCPServerGVK)
 		if err != nil {
 			r.writeBothConditions(ctx, &md,
-				metav1.ConditionFalse, "SourceUnreachable", sanitizeError(err),
-				metav1.ConditionFalse, "Unreachable", sanitizeError(err))
+				metav1.ConditionFalse, "SourceUnreachable", err.Error(),
+				metav1.ConditionFalse, "Unreachable", err.Error())
 			logger.V(1).Info("ToolHive List(MCPServer) failed; D-09 atomic refresh — children untouched",
 				"error", err)
 			return ctrl.Result{}, err
@@ -465,8 +465,8 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 		list, err := informer.List(ctx, toolhive.VirtualMCPServerGVK)
 		if err != nil {
 			r.writeBothConditions(ctx, &md,
-				metav1.ConditionFalse, "SourceUnreachable", sanitizeError(err),
-				metav1.ConditionFalse, "Unreachable", sanitizeError(err))
+				metav1.ConditionFalse, "SourceUnreachable", err.Error(),
+				metav1.ConditionFalse, "Unreachable", err.Error())
 			logger.V(1).Info("ToolHive List(VirtualMCPServer) failed; D-09 atomic refresh — children untouched",
 				"error", err)
 			return ctrl.Result{}, err
@@ -718,7 +718,7 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 			failed = append(failed, litellmv1alpha1.MCPServerFailedCandidate{
 				Name:    c.childName,
 				Reason:  "ChildCRWriteFailed",
-				Message: sanitizeError(classifyErr),
+				Message: classifyErr.Error(),
 			})
 			continue
 		}
@@ -747,7 +747,7 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 					failed = append(failed, litellmv1alpha1.MCPServerFailedCandidate{
 						Name:    c.childName,
 						Reason:  "ChildCRWriteFailed",
-						Message: sanitizeError(classifyErr2),
+						Message: classifyErr2.Error(),
 					})
 					continue
 				}
@@ -771,7 +771,7 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 			failed = append(failed, litellmv1alpha1.MCPServerFailedCandidate{
 				Name:    c.childName,
 				Reason:  "ChildCRWriteFailed",
-				Message: sanitizeError(applyErr),
+				Message: applyErr.Error(),
 			})
 			continue
 		}

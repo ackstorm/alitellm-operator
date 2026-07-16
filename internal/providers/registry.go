@@ -34,21 +34,13 @@ var registryMu sync.RWMutex
 // D-01: this is the ONLY place per-type branching is permitted. The
 // reconciler MUST call Registry[md.Spec.Type](ctx, cfg) directly; any
 // switch on spec.type outside this file is a regression.
-//
-// 04-03a fills newAnthropic, newGemini, newOpenAI (HTTP providers with
-// shared scaffolding). 04-03b fills newKubeAI as a thin constructor that
-// returns *openaiProvider with typeLabel="kubeai" (KubeAI is OpenAI
-// wire-format with two divergences: baseUrl required, apiKey optional —
-// handled by typeLabel parameterization rather than a separate struct).
-// 04-03c fills newBedrock with the aws-sdk-go-v2 ListFoundationModels
-// implementation; the registry is now COMPLETE — all 5 providers shipped.
 var Registry = map[string]func(ctx context.Context, cfg ProviderConfig) (Provider, error){
-	"anthropic":  newAnthropic,  // filled by 04-03a Task 2 (anthropic.go)
-	"bedrock":    newBedrock,    // filled by 04-03c (bedrock.go)
-	"elevenlabs": newElevenLabs, // elevenlabs.go (hosted SaaS, bare-array /v1/models)
-	"gemini":     newGemini,     // filled by 04-03a Task 3 (gemini.go)
-	"kubeai":     newKubeAI,     // filled by 04-03b (kubeai.go)
-	"openai":     newOpenAI,     // filled by 04-03a Task 4 (openai.go)
+	"anthropic":  newAnthropicImpl,
+	"bedrock":    newBedrock,
+	"elevenlabs": newElevenLabsImpl,
+	"gemini":     newGeminiImpl,
+	"kubeai":     newKubeAI,
+	"openai":     newOpenAIImpl,
 }
 
 // Lookup returns the constructor registered for providerType and a
@@ -60,36 +52,4 @@ func Lookup(providerType string) (func(ctx context.Context, cfg ProviderConfig) 
 	defer registryMu.RUnlock()
 	ctor, ok := Registry[providerType]
 	return ctor, ok
-}
-
-// The constructors below are thin aliases that keep the Registry map literal
-// stable while each provider's real implementation (new<Provider>Impl) lives
-// in its own {anthropic,gemini,openai}.go file. They are NOT stubs.
-
-// newAnthropic is implemented in anthropic.go as newAnthropicImpl; this
-// thin alias keeps the Registry map literal stable while letting the
-// real implementation live in its own file.
-func newAnthropic(ctx context.Context, cfg ProviderConfig) (Provider, error) {
-	return newAnthropicImpl(ctx, cfg)
-}
-
-// newGemini is implemented in gemini.go as newGeminiImpl; thin alias
-// keeps the Registry map literal stable.
-func newGemini(ctx context.Context, cfg ProviderConfig) (Provider, error) {
-	return newGeminiImpl(ctx, cfg)
-}
-
-// newOpenAI is implemented in openai.go as newOpenAIImpl; thin alias
-// keeps the Registry map literal stable. Per the user-mandated
-// reshape (memory: kubeai-openai-consolidation), the underlying
-// *openaiProvider struct carries a typeLabel field; newOpenAI sets it
-// to "openai" and newKubeAI will set it to "kubeai".
-func newOpenAI(ctx context.Context, cfg ProviderConfig) (Provider, error) {
-	return newOpenAIImpl(ctx, cfg)
-}
-
-// newElevenLabs is implemented in elevenlabs.go as newElevenLabsImpl;
-// this thin alias keeps the Registry map literal stable.
-func newElevenLabs(ctx context.Context, cfg ProviderConfig) (Provider, error) {
-	return newElevenLabsImpl(ctx, cfg)
 }

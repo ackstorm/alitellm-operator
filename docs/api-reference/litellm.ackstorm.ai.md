@@ -114,9 +114,8 @@ persistence); documented in spec/DEFECTS-1.82.6.md row
 
 `PUT /v1/agents/{agent_id}` IS wholesale-replace per Phase 1 Probe 7
 (verified on 1.82.6; not impacted by the Prisma defect that gated
-MCP's PUT semantics). `AgentCardKeys` is therefore informational
-only — no shrinkage delete-and-recreate path is committed for
-A2AAgent.
+MCP's PUT semantics) — no shrinkage delete-and-recreate path is
+committed for A2AAgent.
 
 
 
@@ -126,8 +125,6 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `hash` _string_ | Hash is the SHA-256 hex of the RFC 8785–canonicalized merged<br />post-substitution body (spec.params merged with spec.agentCard<br />and structural overlays \{agent_name, agent_card_params,<br />agent_card_params.url\}). An empty hash indicates the A2AAgent<br />has not yet been successfully reconciled. |  |  |
-| `paramsKeys` _string array_ | ParamsKeys is the sorted list of top-level keys present in<br />spec.params at the time of the last successful render. Phase 5<br />D-04 informational field — not load-bearing for shrinkage<br />detection (Probe 7 ✓ — PUT IS wholesale-replace on A2A). |  |  |
-| `agentCardKeys` _string array_ | AgentCardKeys is the sorted list of top-level keys present in<br />spec.agentCard at the time of the last successful render.<br />Phase 5 D-04 informational field — not load-bearing for<br />shrinkage detection (Probe 7 ✓ — PUT IS wholesale-replace on<br />A2A). |  |  |
 | `agentID` _string_ | AgentID is the LiteLLM-assigned UUID (agent_id) for this A2A<br />agent entry. Pinned per Phase 5 D-02 so the reconciler can call<br />`DELETE /v1/agents/<agent_id>` directly on the finalizer path<br />without re-resolving by name. On first reconcile, resolved from<br />the POST /v1/agents response body's `agent_id` field.<br />Diverges from spec §6.6: documented in<br />spec/DEFECTS-1.82.6.md row `DEF-§6.4/§6.6-ID-PERSIST`. |  |  |
 | `at` _[Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#time-v1-meta)_ | At is the timestamp of the last SUCCESSFUL render (NOT every<br />reconcile attempt — transient failures do not update this field). |  |  |
 
@@ -222,12 +219,6 @@ state that was last successfully applied to LiteLLM via POST
 source of truth — the reconciler compares the current desired hash
 against Hash to decide whether a mutation is needed (D-01).
 
-ParamsKeys and InfoKeys carry the dotted-path keyset present at the
-last successful render. If any key is removed from either bag
-(persistedKeys \ desiredKeys is non-empty), the reconciler can take
-the safer delete-and-recreate path rather than relying on PUT to
-strip keys it never explicitly clears (D-02 pattern, same as Model).
-
 
 
 _Appears in:_
@@ -236,8 +227,6 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `hash` _string_ | Hash is the SHA-256 hex of the RFC 8785-canonicalized<br />post-substitution Guardrail body (top-level guardrail_name,<br />guardrail_info, policy_template, plus litellm_params) — minus<br />server-assigned fields (guardrail_id, created_at, updated_at).<br />An empty hash means the CR has not yet been successfully<br />reconciled. |  |  |
-| `paramsKeys` _string array_ | ParamsKeys is the sorted list of dotted-path keys present in<br />spec.params at the last successful render. Used for shrinkage<br />detection (D-02). |  |  |
-| `infoKeys` _string array_ | InfoKeys is the sorted list of dotted-path keys present in<br />spec.info at the last successful render. Same shrinkage<br />semantics as ParamsKeys. |  |  |
 | `guardrailID` _string_ | GuardrailID is the server-assigned UUID returned by POST<br />/guardrails. The reconciler persists it here so subsequent PUT<br />and DELETE calls can address the row directly without an extra<br />GET /v2/guardrails/list lookup. Empty until the first<br />successful create. |  |  |
 | `definitionLocation` _string_ | DefinitionLocation mirrors LiteLLM's<br />guardrail_definition_location enum: "db" for rows created via<br />POST /guardrails (operator-addressable), or "config" for rows<br />loaded from the LiteLLM config file (NOT addressable via the<br />CRUD API). When "config" the reconciler MUST NOT attempt<br />mutation; instead it sets Ready=False,<br />reason=ConflictsWithConfigGuardrail. |  |  |
 | `poolSize` _integer_ | PoolSize is the number of LiteLLMGuardRail CRs sharing<br />spec.guardrailName on the owning connection at the time of the<br />last successful render (load-balancing pool member count, for<br />observability). |  |  |
@@ -1174,11 +1163,9 @@ thereafter. Diverges from spec §6.4 (silent on persistence); documented
 in spec/DEFECTS-1.82.6.md row `DEF-§6.4/§6.6-ID-PERSIST`.
 
 Per Phase 5 D-01, the Probe 10c verdict on LiteLLM 1.83.10-stable is ✓
-(PUT /v1/mcp/server IS wholesale-replace). `ParamsKeys` is therefore
-informational only on this path — it is recorded for observability /
-the create→update boundary but is NOT load-bearing for shrinkage
-detection (no delete-and-recreate path is committed in the MCPServer
-reconciler — see 05-CONTEXT.md D-01 "If positive" branch).
+(PUT /v1/mcp/server IS wholesale-replace) — no delete-and-recreate path
+is committed in the MCPServer reconciler (see 05-CONTEXT.md D-01 "If
+positive" branch).
 
 
 
@@ -1188,7 +1175,6 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `hash` _string_ | Hash is the SHA-256 hex of the RFC 8785–canonicalized merged<br />post-substitution body (spec.params merged with structural<br />overlays \{server_name, url, transport\}). `server_name` in this<br />overlay is the LiteLLM-side sanitized name per MCP-05 (the<br />`litellm.SanitizeMCPServerName` rewrite of metadata.name driven by<br />the parent Connection's spec.mcpToolPrefixSeparator). An empty<br />hash indicates the MCPServer has not yet been successfully<br />reconciled. |  |  |
-| `paramsKeys` _string array_ | ParamsKeys is the sorted list of top-level keys present in<br />spec.params at the time of the last successful render. Per Phase 5<br />D-01 (✓ verdict on Probe 10c — PUT IS wholesale-replace on<br />1.83.10-stable), this field is informational only: the simple PUT<br />update path does not need per-bag shrinkage detection. The field<br />is retained for observability and forward-compat with any future<br />downgrade path. |  |  |
 | `serverID` _string_ | ServerID is the LiteLLM-assigned UUID (server_id) for this MCP<br />server entry. Pinned per Phase 5 D-02 so the reconciler can call<br />`DELETE /v1/mcp/server/<server_id>` directly on the finalizer<br />path without re-resolving by name. On first reconcile, resolved<br />via `GET /v1/mcp/server` + in-memory filter on the LiteLLM-side<br />sanitized name (MCP-05; the rewrite of metadata.name driven by<br />the parent Connection's spec.mcpToolPrefixSeparator).<br />Diverges from spec §6.4: documented in<br />spec/DEFECTS-1.82.6.md row `DEF-§6.4/§6.6-ID-PERSIST`. |  |  |
 | `at` _[Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#time-v1-meta)_ | At is the timestamp of the last SUCCESSFUL render (NOT every<br />reconcile attempt — transient failures do not update this field). |  |  |
 
@@ -1254,7 +1240,7 @@ MCP-05: LiteLLM rejects its `MCP_TOOL_PREFIX_SEPARATOR` env value inside
 `server_name` at `POST /v1/mcp/server` time (HTTP 400 "Server name
 cannot contain '<sep>'."). The MCPServer reconciler sanitizes the
 LiteLLM-side `server_name` and `alias` per the parent
-LiteLLMConnection's `spec.mcpToolPrefixSeparator` (default `-`), swapping
+LiteLLMConnection's `spec.mcpToolPrefixSeparator` (default `.`), swapping
 the configured separator for the opposite valid character (`-` ↔ `.`)
 via `litellm.SanitizeMCPServerName`. The K8s-side `metadata.name` is
 left untouched — the MCPServerDiscovery child name
@@ -1683,9 +1669,9 @@ then reads from status thereafter. The finalizer DELETE path (plan
 06-04) issues `POST /team/delete` against the pinned `TeamID` directly,
 without re-resolving by alias.
 
-`Hash` and `ParamsKeys` are informational on this path — `POST /team/update`
-IS wholesale-replace per spec §5.1 (Q10), so no delete-and-recreate path
-is committed in the Team reconciler. The fields are retained for
+`Hash` is informational on this path — `POST /team/update` IS
+wholesale-replace per spec §5.1 (Q10), so no delete-and-recreate path
+is committed in the Team reconciler. The field is retained for
 observability and forward-compat (mirrors the Phase 5 D-01 rationale).
 
 
@@ -1696,7 +1682,6 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `hash` _string_ | Hash is the SHA-256 hex of the RFC 8785-canonicalized merged<br />post-substitution body (`spec.params` merged with the seven operator<br />overlays `\{team_alias, max_budget, budget_duration, rpm_limit,<br />tpm_limit, rpm_limit_type, tpm_limit_type\}` — the two `*_type` keys<br />are conditional-add per Feature 01 §2.1, so the hash incorporates<br />5–7 overlay keys depending on which `*_limit` leaves are non-nil).<br />An empty hash indicates the Team has not yet been successfully<br />reconciled (Phase 3 D-01, Phase 5 D-03). |  |  |
-| `paramsKeys` _string array_ | ParamsKeys is the sorted list of top-level keys present in<br />`spec.params` at the time of the last successful render.<br />Informational only on this path — `POST /team/update` IS<br />wholesale-replace per spec §5.1 (Q10), so the simple update path<br />does not need per-bag shrinkage detection. The field is retained<br />for observability and forward-compat with any future downgrade<br />path. |  |  |
 | `teamID` _string_ | TeamID is the LiteLLM-assigned UUID (`team_id`) for this team<br />entry. Pinned per Phase 3 D-04 + Phase 5 D-02 so the reconciler<br />can call `POST /team/delete` (with body `\{"team_ids": [.]\}`)<br />directly on the finalizer path without re-resolving by alias. On<br />first reconcile, resolved via `ListTeamsByAlias` + smallest-<br />`team_id` duplicate rule from spec §7.1.<br />Diverges from spec §6.7 (silent on persistence — the spec says<br />"the operator resolves the LiteLLM team ID by alias" on deletion;<br />pinning saves the list call). Documented in<br />`spec/DEFECTS-1.82.6.md` row `DEF-§6.4/§6.6-ID-PERSIST` (Team is<br />the third member of the ID-pin family). |  |  |
 | `at` _[Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#time-v1-meta)_ | At is the timestamp of the last SUCCESSFUL render (NOT every<br />reconcile attempt — transient failures do not update this field). |  |  |
 

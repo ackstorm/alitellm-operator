@@ -16,7 +16,6 @@ import (
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 	"github.com/ackstorm/alitellm-operator/internal/connection"
@@ -60,7 +59,7 @@ func TestModelAliasReconciler_ConnectionNotReady_WritesLiteLLMUnavailable(t *tes
 	r := &ModelAliasReconciler{
 		Client:    cli,
 		Scheme:    scheme,
-		Cache:     connection.NewCache(zap.New()),
+		Cache:     connection.NewCache(),
 		Recorder:  record.NewFakeRecorder(8),
 		Namespace: "default",
 		Log:       ctrl.Log.WithName("test"),
@@ -147,7 +146,7 @@ func TestModelAliasReconciler_FinalizerAddedToAliveCR(t *testing.T) {
 	r := &ModelAliasReconciler{
 		Client:    cli,
 		Scheme:    scheme,
-		Cache:     connection.NewCache(zap.New()),
+		Cache:     connection.NewCache(),
 		Recorder:  record.NewFakeRecorder(8),
 		Namespace: "default",
 		Log:       ctrl.Log.WithName("test"),

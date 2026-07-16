@@ -26,11 +26,11 @@ func TestOpenAI_HappyPath_DefaultBaseURL(t *testing.T) {
 	defer srv.Close()
 	SetTestBaseURL(t, "openai", srv.URL)
 
-	p, err := newOpenAI(context.Background(), ProviderConfig{
+	p, err := newOpenAIImpl(context.Background(), ProviderConfig{
 		Type: "openai", APIKey: canaryOpenAIKey, HTTPClient: srv.Client(),
 	})
 	if err != nil {
-		t.Fatalf("newOpenAI err: %v", err)
+		t.Fatalf("newOpenAIImpl err: %v", err)
 	}
 	if p.Type() != "openai" { //nolint:goconst // wire-level provider discriminator asserted literally across openai_test cases
 		t.Fatalf("Type() = %q; want openai", p.Type())
@@ -63,11 +63,11 @@ func TestOpenAI_OpenAICompatBaseURL(t *testing.T) {
 	defer srv.Close()
 	// Do NOT call SetTestBaseURL — cfg.BaseURL wins over override.
 
-	p, err := newOpenAI(context.Background(), ProviderConfig{
+	p, err := newOpenAIImpl(context.Background(), ProviderConfig{
 		Type: "openai", APIKey: canaryOpenAIKey, BaseURL: srv.URL, HTTPClient: srv.Client(),
 	})
 	if err != nil {
-		t.Fatalf("newOpenAI err: %v", err)
+		t.Fatalf("newOpenAIImpl err: %v", err)
 	}
 	cands, err := p.List(context.Background())
 	if err != nil {
@@ -90,7 +90,7 @@ func TestOpenAI_BearerHeader_IsSet(t *testing.T) {
 	defer srv.Close()
 	SetTestBaseURL(t, "openai", srv.URL)
 
-	p, _ := newOpenAI(context.Background(), ProviderConfig{
+	p, _ := newOpenAIImpl(context.Background(), ProviderConfig{
 		Type: "openai", APIKey: canaryOpenAIKey, HTTPClient: srv.Client(),
 	})
 	if _, err := p.List(context.Background()); err != nil {
@@ -102,12 +102,12 @@ func TestOpenAI_BearerHeader_IsSet(t *testing.T) {
 	}
 }
 
-// TestOpenAI_MissingAPIKey_ReturnsConstructorError verifies newOpenAI
+// TestOpenAI_MissingAPIKey_ReturnsConstructorError verifies newOpenAIImpl
 // rejects empty APIKey synchronously. (Note: although List will
 // later be reused by KubeAI with empty APIKey, the OPENAI constructor
 // still requires the key — see openai.go.)
 func TestOpenAI_MissingAPIKey_ReturnsConstructorError(t *testing.T) {
-	_, err := newOpenAI(context.Background(), ProviderConfig{
+	_, err := newOpenAIImpl(context.Background(), ProviderConfig{
 		Type: "openai", APIKey: "", HTTPClient: http.DefaultClient,
 	})
 	if err == nil {
@@ -117,7 +117,7 @@ func TestOpenAI_MissingAPIKey_ReturnsConstructorError(t *testing.T) {
 
 // TestOpenAI_NilHTTPClient_ReturnsConstructorError verifies HTTPClient required.
 func TestOpenAI_NilHTTPClient_ReturnsConstructorError(t *testing.T) {
-	_, err := newOpenAI(context.Background(), ProviderConfig{
+	_, err := newOpenAIImpl(context.Background(), ProviderConfig{
 		Type: "openai", APIKey: canaryOpenAIKey, HTTPClient: nil,
 	})
 	if err == nil {
@@ -134,7 +134,7 @@ func TestOpenAI_401_ReturnsProviderAuthError(t *testing.T) {
 	defer srv.Close()
 	SetTestBaseURL(t, "openai", srv.URL)
 
-	p, _ := newOpenAI(context.Background(), ProviderConfig{
+	p, _ := newOpenAIImpl(context.Background(), ProviderConfig{
 		Type: "openai", APIKey: canaryOpenAIKey, HTTPClient: srv.Client(),
 	})
 	_, listErr := p.List(context.Background())
@@ -155,7 +155,7 @@ func TestOpenAI_403_ReturnsProviderAuthError(t *testing.T) {
 	defer srv.Close()
 	SetTestBaseURL(t, "openai", srv.URL)
 
-	p, _ := newOpenAI(context.Background(), ProviderConfig{
+	p, _ := newOpenAIImpl(context.Background(), ProviderConfig{
 		Type: "openai", APIKey: canaryOpenAIKey, HTTPClient: srv.Client(),
 	})
 	_, listErr := p.List(context.Background())
@@ -173,7 +173,7 @@ func TestOpenAI_5xx_ReturnsPlainError(t *testing.T) {
 	defer srv.Close()
 	SetTestBaseURL(t, "openai", srv.URL)
 
-	p, _ := newOpenAI(context.Background(), ProviderConfig{
+	p, _ := newOpenAIImpl(context.Background(), ProviderConfig{
 		Type: "openai", APIKey: canaryOpenAIKey, HTTPClient: srv.Client(),
 	})
 	_, listErr := p.List(context.Background())
@@ -197,7 +197,7 @@ func TestOpenAI_CredentialCanary(t *testing.T) {
 	defer srv.Close()
 	SetTestBaseURL(t, "openai", srv.URL)
 
-	p, _ := newOpenAI(context.Background(), ProviderConfig{
+	p, _ := newOpenAIImpl(context.Background(), ProviderConfig{
 		Type: "openai", APIKey: canaryOpenAIKey, HTTPClient: srv.Client(),
 	})
 	cands, err := p.List(context.Background())
@@ -226,7 +226,7 @@ func TestOpenAI_CredentialCanary(t *testing.T) {
 }
 
 // TestOpenAI_TypeLabel_DefaultsToOpenAI asserts the deviation contract:
-// newOpenAI produces an *openaiProvider whose typeLabel="openai", so
+// newOpenAIImpl produces an *openaiProvider whose typeLabel="openai", so
 // Type returns "openai". This is the property will
 // exploit — its newKubeAI will construct an *openaiProvider with
 // typeLabel="kubeai" so Type returns "kubeai" (memory:
@@ -239,16 +239,16 @@ func TestOpenAI_TypeLabel_DefaultsToOpenAI(t *testing.T) {
 	defer srv.Close()
 	SetTestBaseURL(t, "openai", srv.URL)
 
-	p, err := newOpenAI(context.Background(), ProviderConfig{
+	p, err := newOpenAIImpl(context.Background(), ProviderConfig{
 		Type: "openai", APIKey: canaryOpenAIKey, HTTPClient: srv.Client(),
 	})
 	if err != nil {
-		t.Fatalf("newOpenAI err: %v", err)
+		t.Fatalf("newOpenAIImpl err: %v", err)
 	}
 	// White-box: cast to *openaiProvider and assert typeLabel field.
 	concrete, ok := p.(*openaiProvider)
 	if !ok {
-		t.Fatalf("newOpenAI returned %T; want *openaiProvider", p)
+		t.Fatalf("newOpenAIImpl returned %T; want *openaiProvider", p)
 	}
 	if concrete.typeLabel != "openai" {
 		t.Errorf("typeLabel = %q; want openai", concrete.typeLabel)
@@ -264,7 +264,7 @@ func TestOpenAI_TypeLabel_DefaultsToOpenAI(t *testing.T) {
 // header is set ONLY when apiKey != "". This lets the same List
 // be reusable from newKubeAI (which will instantiate
 // *openaiProvider with typeLabel="kubeai" + empty apiKey for unauth
-// in-cluster KubeAI). newOpenAI itself still requires apiKey at
+// in-cluster KubeAI). newOpenAIImpl itself still requires apiKey at
 // constructor level — so we test the conditional by mutating the
 // struct field directly via the white-box path.
 func TestOpenAI_AuthorizationHeader_ConditionalOnAPIKey(t *testing.T) {
@@ -283,7 +283,7 @@ func TestOpenAI_AuthorizationHeader_ConditionalOnAPIKey(t *testing.T) {
 	SetTestBaseURL(t, "openai", srv.URL)
 	SetTestBaseURL(t, "kubeai", srv.URL)
 
-	// Build a provider directly (bypassing newOpenAI's apiKey
+	// Build a provider directly (bypassing newOpenAIImpl's apiKey
 	// validation) to exercise the empty-apiKey path that	// newKubeAI will use.
 	p := &openaiProvider{
 		apiKey:     "",

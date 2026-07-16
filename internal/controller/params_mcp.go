@@ -69,10 +69,10 @@ var reservedMCPParamKeys = map[string]struct{}{
 // extractMCPParams pulls every modeled top-level field out of paramsMap.
 // Reserved structural keys (see reservedMCPParamKeys) are dropped by the
 // caller (mcpserver_controller.go, right after json.Unmarshal) BEFORE
-// the hash and ParamsKeys are computed, so they never reach this
-// function. This function is therefore safe to read any key without
-// re-checking the deny-list. Unknown keys are silently ignored in
-// v0.3.1 (LOW-5 deferred).
+// the hash is computed, so they never reach this function. This
+// function is therefore safe to read any key without re-checking the
+// deny-list. Unknown keys are silently ignored in v0.3.1 (LOW-5
+// deferred).
 func extractMCPParams(p map[string]any) extractedMCPParams {
 	out := extractedMCPParams{}
 	if p == nil {

@@ -7,7 +7,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 )
 
@@ -81,25 +80,15 @@ type Cache struct {
 	// not-Ready INTO Ready. Steady-state probe ticks (Ready→Ready,
 	// Connecting→Connecting) generate no churn on dependent reconcilers.
 	lastReady atomic.Bool
-
-	// log is the per-cache logger. Reserved for future diagnostic use; the
-	// hot paths (Snapshot / Rebuild / InvalidateOn401) intentionally do
-	// not log to avoid alloc + lock contention.
-	log logr.Logger
 }
 
 // NewCache constructs a *Cache with an empty (nil) snapshot pointer and a
 // cap=1 event channel. No probe has yet completed; Snapshot on the
 // returned Cache returns the zero-value ConnectionSnapshot (D-04 "do not
-// mutate" signal). Task 2's reconciler calls Rebuild on its
-// first reconcile to populate the cache.
-func NewCache(log logr.Logger) *Cache {
+// mutate" signal).
+func NewCache() *Cache {
 	return &Cache{
-		ch:  make(chan event.GenericEvent, 1),
-		log: log,
-		// snapshot: zero-value atomic.Pointer — Load returns nil until
-		// the first Rebuild. Snapshot handles the nil case explicitly.
-		// rebuiltSubs: nil — Subscribe() lazy-appends on each call.
+		ch: make(chan event.GenericEvent, 1),
 	}
 }
 
@@ -110,7 +99,7 @@ func NewCache(log logr.Logger) *Cache {
 // ConnectionSnapshot struct is stack-allocated by the caller). When no
 // probe has completed yet, the zero-value ConnectionSnapshot{} is
 // returned — the universal "do not mutate" signal per D-04 (Ready=false,
-// Client=nil, Reason="", Generation=0).
+// Client=nil, Reason="").
 //
 // Safe for arbitrary concurrent callers: Phase 3+ reconcilers may call
 // this from many goroutines simultaneously.
@@ -202,12 +191,10 @@ func (c *Cache) emitRebuilt() {
 // fails (gate already raised), this is a duplicate caller in the same
 // storm and we return without side effects.
 // 3. If the swap succeeded, load the current snapshot and construct a
-// placeholder PRESERVING Generation + Client (WR-04). Only Ready
-// flips to false and Reason becomes "BadMasterKey" — the §6.0
-// vocabulary entry matching a 401 outcome. Phase 3+ logic comparing
-// snap.Generation against observedConnectionGeneration no longer
-// sees a spurious zero. The next Connecting-on-entry write (D-07)
-// overwrites this placeholder when the reconciler re-probes.
+// placeholder PRESERVING Client (WR-04). Only Ready flips to false and
+// Reason becomes "BadMasterKey" — the §6.0 vocabulary entry matching a
+// 401 outcome. The next Connecting-on-entry write (D-07) overwrites
+// this placeholder when the reconciler re-probes.
 // 4. Non-blocking send on c.ch via select default. Combined with the
 // cap=1 channel buffer and the CAS gate, a 401-storm across N CRs
 // produces AT MOST ONE enqueued probe per invalidation cycle. The
@@ -228,16 +215,15 @@ func (c *Cache) InvalidateOn401() {
 		return
 	}
 	if c.invalidated.CompareAndSwap(false, true) {
-		// WR-04: preserve Generation and Client across the 401
-		// placeholder. Loading the current snapshot via atomic.Pointer
-		// is the same lock-free read Snapshot uses; this is the hot
-		// path so we accept the small extra dereference.
+		// WR-04: preserve Client across the 401 placeholder. Loading the
+		// current snapshot via atomic.Pointer is the same lock-free read
+		// Snapshot uses; this is the hot path so we accept the small
+		// extra dereference.
 		placeholder := ConnectionSnapshot{
 			Ready:  false,
 			Reason: "BadMasterKey",
 		}
 		if cur := c.snapshot.Load(); cur != nil {
-			placeholder.Generation = cur.Generation
 			placeholder.Client = cur.Client
 		}
 		c.lastReady.Store(false) // so a subsequent Ready Rebuild is a real false→true edge that re-fires emitRebuilt

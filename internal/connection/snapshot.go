@@ -30,7 +30,7 @@ import (
 // # Zero-value semantics (D-04)
 //
 // The zero value ConnectionSnapshot{} has Ready=false, Reason="",
-// Client=nil, Generation=0. This is the universal "do not mutate"
+// Client=nil. This is the universal "do not mutate"
 // signal — whether the CR is absent, deleted, mid-probe, Unreachable,
 // BadMasterKey, or SecretNotFound. Dependents need only check
 // `snap.Ready` to gate any LiteLLM mutation call; the Reason field
@@ -89,14 +89,6 @@ type ConnectionSnapshot struct {
 	// the Client's internal *http.Client and redacting RoundTripper are
 	// already concurrency-safe.
 	Client *litellm.Client
-
-	// Generation is the metadata.generation of the LiteLLMConnection CR
-	// the snapshot was built from. Dependents may compare against their
-	// own status.observedConnectionGeneration to detect a fresh
-	// connection rebuild (not required for v1alpha1 — surfaced here so
-	// reconciler can set it correctly and Phase 3+ can
-	// rely on the field existing).
-	Generation int64
 
 	// MCPToolPrefixSeparator mirrors LiteLLM's `MCP_TOOL_PREFIX_SEPARATOR`
 	// env var on the target instance (LiteLLMConnection.spec.

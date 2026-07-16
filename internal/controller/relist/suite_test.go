@@ -146,7 +146,7 @@ func setupAndRun(m *testing.M) int {
 	}
 
 	// Connection cache + reconciler so the connection gate flips Ready.
-	connCache = connection.NewCache(logr.Discard())
+	connCache = connection.NewCache()
 	if err := mgr.Add(connCache); err != nil {
 		fmt.Fprintf(os.Stderr, "mgr.Add(connCache): %v\n", err)
 		return 1

@@ -39,7 +39,7 @@ import (
 // `server_name` at `POST /v1/mcp/server` time (HTTP 400 "Server name
 // cannot contain '<sep>'."). The MCPServer reconciler sanitizes the
 // LiteLLM-side `server_name` and `alias` per the parent
-// LiteLLMConnection's `spec.mcpToolPrefixSeparator` (default `-`), swapping
+// LiteLLMConnection's `spec.mcpToolPrefixSeparator` (default `.`), swapping
 // the configured separator for the opposite valid character (`-` ↔ `.`)
 // via `litellm.SanitizeMCPServerName`. The K8s-side `metadata.name` is
 // left untouched — the MCPServerDiscovery child name
@@ -185,11 +185,9 @@ type MCPServerStatus struct {
 // in spec/DEFECTS-1.82.6.md row `DEF-§6.4/§6.6-ID-PERSIST`.
 //
 // Per Phase 5 D-01, the Probe 10c verdict on LiteLLM 1.83.10-stable is ✓
-// (PUT /v1/mcp/server IS wholesale-replace). `ParamsKeys` is therefore
-// informational only on this path — it is recorded for observability /
-// the create→update boundary but is NOT load-bearing for shrinkage
-// detection (no delete-and-recreate path is committed in the MCPServer
-// reconciler — see 05-CONTEXT.md D-01 "If positive" branch).
+// (PUT /v1/mcp/server IS wholesale-replace) — no delete-and-recreate path
+// is committed in the MCPServer reconciler (see 05-CONTEXT.md D-01 "If
+// positive" branch).
 type MCPServerLastRenderedStatus struct {
 	// Hash is the SHA-256 hex of the RFC 8785–canonicalized merged
 	// post-substitution body (spec.params merged with structural
@@ -202,17 +200,6 @@ type MCPServerLastRenderedStatus struct {
 	//
 	// +optional
 	Hash string `json:"hash,omitempty"`
-
-	// ParamsKeys is the sorted list of top-level keys present in
-	// spec.params at the time of the last successful render. Per Phase 5
-	// D-01 (✓ verdict on Probe 10c — PUT IS wholesale-replace on
-	// 1.83.10-stable), this field is informational only: the simple PUT
-	// update path does not need per-bag shrinkage detection. The field
-	// is retained for observability and forward-compat with any future
-	// downgrade path.
-	//
-	// +optional
-	ParamsKeys []string `json:"paramsKeys,omitempty"`
 
 	// ServerID is the LiteLLM-assigned UUID (server_id) for this MCP
 	// server entry. Pinned per Phase 5 D-02 so the reconciler can call

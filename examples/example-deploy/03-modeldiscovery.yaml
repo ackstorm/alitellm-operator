@@ -221,10 +221,9 @@ spec:
   type: kubeai
   prefix: kubeai
   baseUrl: http://kubeai.kubeai.svc/openai/v1
-  # KubeAI typically has no authentication when running in-cluster.
-  # Provide an empty credentials Secret if your install requires one.
-  credentialsSecretRef:
-    name: kubeai-credentials
+  # KubeAI typically has no authentication when running in-cluster, and
+  # the CEL rule on spec.type=kubeai FORBIDS credentialsSecretRef (and
+  # spec.region) outright — only spec.baseUrl is accepted for this type.
   params:
     rpm: 25
     timeout: 300

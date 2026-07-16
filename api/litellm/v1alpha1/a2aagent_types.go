@@ -189,9 +189,8 @@ type A2AAgentStatus struct {
 //
 // `PUT /v1/agents/{agent_id}` IS wholesale-replace per Phase 1 Probe 7
 // (verified on 1.82.6; not impacted by the Prisma defect that gated
-// MCP's PUT semantics). `AgentCardKeys` is therefore informational
-// only — no shrinkage delete-and-recreate path is committed for
-// A2AAgent.
+// MCP's PUT semantics) — no shrinkage delete-and-recreate path is
+// committed for A2AAgent.
 type A2ALastRenderedStatus struct {
 	// Hash is the SHA-256 hex of the RFC 8785–canonicalized merged
 	// post-substitution body (spec.params merged with spec.agentCard
@@ -201,23 +200,6 @@ type A2ALastRenderedStatus struct {
 	//
 	// +optional
 	Hash string `json:"hash,omitempty"`
-
-	// ParamsKeys is the sorted list of top-level keys present in
-	// spec.params at the time of the last successful render. Phase 5
-	// D-04 informational field — not load-bearing for shrinkage
-	// detection (Probe 7 ✓ — PUT IS wholesale-replace on A2A).
-	//
-	// +optional
-	ParamsKeys []string `json:"paramsKeys,omitempty"`
-
-	// AgentCardKeys is the sorted list of top-level keys present in
-	// spec.agentCard at the time of the last successful render.
-	// Phase 5 D-04 informational field — not load-bearing for
-	// shrinkage detection (Probe 7 ✓ — PUT IS wholesale-replace on
-	// A2A).
-	//
-	// +optional
-	AgentCardKeys []string `json:"agentCardKeys,omitempty"`
 
 	// AgentID is the LiteLLM-assigned UUID (agent_id) for this A2A
 	// agent entry. Pinned per Phase 5 D-02 so the reconciler can call
