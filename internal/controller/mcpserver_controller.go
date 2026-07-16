@@ -17,6 +17,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -26,6 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 	"github.com/ackstorm/alitellm-operator/internal/connection"
@@ -908,6 +910,29 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager, safetyRelistCh 
 	if src := ConnectionRebuiltSource(r.ConnectionRebuilt, r.connectionToMCPServers); src != nil {
 		b = b.WatchesRawSource(src)
 	}
+
+	if len(safetyRelistCh) > 0 && safetyRelistCh[0] != nil {
+		ch := safetyRelistCh[0]
+		b = b.WatchesRawSource(source.TypedFunc[reconcile.Request](
+			func(ctx context.Context, q workqueue.TypedRateLimitingInterface[reconcile.Request]) error {
+				go func() {
+					for {
+						select {
+						case <-ctx.Done():
+							return
+						case req, ok := <-ch:
+							if !ok {
+								return
+							}
+							q.Add(req)
+						}
+					}
+				}()
+				return nil
+			},
+		))
+	}
+
 	return b.Complete(r)
 }
 

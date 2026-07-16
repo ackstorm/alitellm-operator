@@ -17,6 +17,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -25,6 +26,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 	"github.com/ackstorm/alitellm-operator/internal/connection"
@@ -755,9 +757,10 @@ func (r *A2AAgentReconciler) secretToA2AAgents(ctx context.Context, obj client.O
 // for placeholders in EITHER spec.params or spec.agentCard.
 //
 // Named("a2aagent") — controller registry name.
-// No Owns(.) and no safety re-list channel — Phase 5 may add
-// these if cross-CR vanish detection requires them (Phase 7 dogfood gate).
-func (r *A2AAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
+// No Owns(.) — Phase 5 may add if cross-CR vanish detection requires it
+// (Phase 7 dogfood gate). safetyRelistCh wires the SafetyRelistRunnable
+// (cmd/main.go).
+func (r *A2AAgentReconciler) SetupWithManager(mgr ctrl.Manager, safetyRelistCh ...chan reconcile.Request) error {
 	if r.Churn == nil {
 		r.Churn = newChurnGuard()
 	}
@@ -783,6 +786,29 @@ func (r *A2AAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if src := ConnectionRebuiltSource(r.ConnectionRebuilt, r.connectionToA2AAgents); src != nil {
 		b = b.WatchesRawSource(src)
 	}
+
+	if len(safetyRelistCh) > 0 && safetyRelistCh[0] != nil {
+		ch := safetyRelistCh[0]
+		b = b.WatchesRawSource(source.TypedFunc[reconcile.Request](
+			func(ctx context.Context, q workqueue.TypedRateLimitingInterface[reconcile.Request]) error {
+				go func() {
+					for {
+						select {
+						case <-ctx.Done():
+							return
+						case req, ok := <-ch:
+							if !ok {
+								return
+							}
+							q.Add(req)
+						}
+					}
+				}()
+				return nil
+			},
+		))
+	}
+
 	return b.Complete(r)
 }
 
