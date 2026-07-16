@@ -3,8 +3,16 @@
 package controller
 
 import (
+	"context"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/go-logr/logr"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 // TestResolvedSafetyRelistInterval — H5: the single resolver main.go calls
@@ -116,5 +124,46 @@ func TestSetSafetyRelistIntervals_ZeroIsNoop(t *testing.T) {
 	SetSafetyRelistIntervals(-1 * time.Second)
 	if mcpSafetyRelistInterval != 13*time.Minute {
 		t.Errorf("negative-noop: want 13m preserved, got %v", mcpSafetyRelistInterval)
+	}
+}
+
+// TestSafetyRelistRunnable_EnqueueIsLossless — the tick loop must not drop
+// items when RequeueCh is full. ListRequests yields its batch exactly once,
+// so any dropped item is never re-offered and the receive below times out.
+func TestSafetyRelistRunnable_EnqueueIsLossless(t *testing.T) {
+	reqs := []reconcile.Request{
+		{NamespacedName: types.NamespacedName{Name: "a", Namespace: "ns"}},
+		{NamespacedName: types.NamespacedName{Name: "b", Namespace: "ns"}},
+		{NamespacedName: types.NamespacedName{Name: "c", Namespace: "ns"}},
+	}
+	var served atomic.Bool
+	ch := make(chan reconcile.Request, 1) // cap 1 < len(reqs): forces the full-channel path
+
+	r := &SafetyRelistRunnable{
+		Interval:  10 * time.Millisecond,
+		Log:       logr.Discard(),
+		RequeueCh: ch,
+		ListRequests: func(_ context.Context, _ client.Client, _ string) ([]reconcile.Request, error) {
+			if served.CompareAndSwap(false, true) {
+				return reqs, nil
+			}
+			return nil, nil
+		},
+		LogLabel: "test",
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = r.Start(ctx) }()
+
+	got := map[string]bool{}
+	deadline := time.After(5 * time.Second)
+	for len(got) < len(reqs) {
+		select {
+		case req := <-ch:
+			got[req.Name] = true
+		case <-deadline:
+			t.Fatalf("lossy enqueue: got %d/%d requests (%v)", len(got), len(reqs), got)
+		}
 	}
 }
