@@ -3,9 +3,6 @@
 package controller
 
 import (
-	"math/rand"
-	"time"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -64,25 +61,6 @@ func mapsEqual(a, b map[string]string) bool {
 		}
 	}
 	return true
-}
-
-// withJitter adds up to 10% random jitter on top of base. Used to
-// stagger periodic safety-relist requeues so the operator doesn't
-// wake every CR exactly at the same wall-clock tick (115 Models +
-// 26 MCPServers wakingsimultaneously hammers LiteLLM uniformly,
-// even though the system can tolerate it).
-//
-// Non-cryptographic randomness is sufficient — this is load
-// spreading, not security.
-func withJitter(base time.Duration) time.Duration {
-	// M-B5: rand.Int63n panics when its argument is <= 0. For 0 < base < 10ns,
-	// int64(base/10) truncates to 0, so guard on base < 10 (folds the old
-	// base <= 0 case) and return base unchanged — there is nothing to jitter.
-	if base < 10 {
-		return base
-	}
-	jitter := time.Duration(rand.Int63n(int64(base / 10))) //nolint:gosec // load-spreading, not security
-	return base + jitter
 }
 
 // connectionReadyTransition fires on a LiteLLMConnection event for any

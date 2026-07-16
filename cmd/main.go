@@ -148,7 +148,6 @@ func main() {
 		setupLog.Error(err, "invalid safety-relist interval override; aborting")
 		os.Exit(1)
 	}
-	controller.SetSafetyRelistIntervals(relistInterval)
 	setupLog.Info("safety-relist interval resolved",
 		"env", controller.EnvSafetyRelistInterval, "interval", relistInterval)
 

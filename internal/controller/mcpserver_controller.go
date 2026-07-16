@@ -45,25 +45,6 @@ import (
 // from etcd.
 const mcpServerFinalizer = "mcpservers.litellm.ackstorm.ai/finalizer"
 
-// mcpSafetyRelistInterval bounds how often the MCPServer controller
-// re-runs the Step 7 safety-relist (probe LiteLLM by name + clear
-// stale ServerID on out-of-band deletion). Returned as RequeueAfter
-// on every successful reconcile. Pre-v0.4.3 the Owns watch on
-// Discovery children fired on every status / managedFields event
-// (effectively continuous polling) so safety-relist swept ~5x/sec;
-// the v0.4.3 predicate filter (generation-only) stopped that, so we
-// re-introduce explicit periodic polling here at a sane cadence.
-// 5min matches the dominant Discovery refresh-interval; bumps to
-// LiteLLM API drift get corrected within ~5min worst-case.
-// mcpSafetyRelistInterval is package-level so cmd/main.go can override
-// it at startup via SetSafetyRelistIntervals (env-driven, Helm-exposed).
-// Default 10m (raised from 5m in v0.4.7: production fleet sizes don't
-// need sub-10m drift detection — every CR also fires immediately on
-// spec edits + Connection-ready transitions + Secret rotations, so
-// safety-relist is only the floor for purely external state divergence).
-// NOT for runtime mutation — set once before reconcilers start.
-var mcpSafetyRelistInterval = 10 * time.Minute
-
 // mcpServerKind is the metric label for LiteLLMMCPServer CRs.
 const mcpServerKind = "LiteLLMMCPServer"
 
@@ -284,11 +265,12 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			logStatusUpdateErr(logger, err, "reason", reasonLiteLLMUnavailable)
 		}
 		metrics.ReconcileTotal.WithLabelValues(mcpServerKind, "success").Inc()
-		// Periodic safety relist on soft-fail path: connectionReadyTransition
-		// re-enqueues on Connection recovery, but the safety-relist cadence
-		// is the floor so a missed transition still recovers (review #1
-		// "Issue 2" + review #2 §3).
-		return ctrl.Result{RequeueAfter: withJitter(mcpSafetyRelistInterval)}, nil
+		// No RequeueAfter: the per-kind SafetyRelistRunnable owns the periodic
+		// vanish-probe tick (cmd/main.go). A requeue here would only fire on
+		// the paths that happen to carry one — the Runnable fires regardless
+		// of which branch the reconcile took, which is the point of a safety
+		// net (issue #102).
+		return ctrl.Result{}, nil
 	}
 
 	// ─── Conflict resolution (alpha-last-wins, sanitization-aware) ───────
@@ -558,16 +540,12 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		// Reached steady state — drop any recreate-churn history so a server
 		// that recovered is not throttled by stale counts.
 		r.Churn.Forget(req.NamespacedName)
-		// Periodic safety-relist requeue: with Owns predicate filtering
-		// to generation-changes only (v0.4.3), the child no longer
-		// reconciles on Discovery refresh ticks. Out-of-band LiteLLM
-		// API deletions would never reach the safety-relist sweep in
-		// Step 7. RequeueAfter ensures the controller self-ticks at a
-		// known interval so drift detection still fires. Overrides the
-		// pre-v0.4.3 REL-02 "event-driven only" intent — the OWN watch
-		// was the de-facto polling channel; we re-introduce explicit
-		// periodic requeue now that the watch is properly filtered.
-		return ctrl.Result{RequeueAfter: withJitter(mcpSafetyRelistInterval)}, nil
+		// No RequeueAfter: the per-kind SafetyRelistRunnable owns the periodic
+		// vanish-probe tick (cmd/main.go). A requeue here would only fire on
+		// the paths that happen to carry one — the Runnable fires regardless
+		// of which branch the reconcile took, which is the point of a safety
+		// net (issue #102).
+		return ctrl.Result{}, nil
 	}
 
 	// ─── Step 9: Branch CREATE vs UPDATE (simple PUT — verdict ✓) ─────────
@@ -741,8 +719,12 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	metrics.ReconcileTotal.WithLabelValues(mcpServerKind, "success").Inc()
 	logger.V(1).Info("mcp server reconciled", "serverID", newServerID, "hash", currentRenderedHash)
 
-	// Periodic safety-relist requeue — see Step 8 rationale.
-	return ctrl.Result{RequeueAfter: withJitter(mcpSafetyRelistInterval)}, nil
+	// No RequeueAfter: the per-kind SafetyRelistRunnable owns the periodic
+	// vanish-probe tick (cmd/main.go). A requeue here would only fire on
+	// the paths that happen to carry one — the Runnable fires regardless
+	// of which branch the reconcile took, which is the point of a safety
+	// net (issue #102).
+	return ctrl.Result{}, nil
 }
 
 // resolveServerIDByName re-resolves a LiteLLMMCPServer's LiteLLM server_id

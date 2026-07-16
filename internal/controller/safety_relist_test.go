@@ -81,52 +81,6 @@ func TestParseSafetyRelistInterval_Malformed(t *testing.T) {
 	}
 }
 
-// TestSetSafetyRelistIntervals_SetsAllFour — single setter updates the
-// four package-level vars. Restore defaults after to avoid bleed-through
-// to other tests in the package.
-func TestSetSafetyRelistIntervals_SetsAllFour(t *testing.T) {
-	origMCP := mcpSafetyRelistInterval
-	origModel := modelSafetyRelistInterval
-	origTeam := teamSafetyRelistInterval
-	origA2A := a2aAgentSafetyRelistInterval
-	t.Cleanup(func() {
-		mcpSafetyRelistInterval = origMCP
-		modelSafetyRelistInterval = origModel
-		teamSafetyRelistInterval = origTeam
-		a2aAgentSafetyRelistInterval = origA2A
-	})
-
-	SetSafetyRelistIntervals(7 * time.Minute)
-
-	for name, got := range map[string]time.Duration{
-		"mcp":   mcpSafetyRelistInterval,
-		"model": modelSafetyRelistInterval,
-		"team":  teamSafetyRelistInterval,
-		"a2a":   a2aAgentSafetyRelistInterval,
-	} {
-		if got != 7*time.Minute {
-			t.Errorf("%s: want 7m, got %v", name, got)
-		}
-	}
-}
-
-// TestSetSafetyRelistIntervals_ZeroIsNoop — zero / negative keep
-// existing values (signals "no override" path from ParseSafetyRelistInterval).
-func TestSetSafetyRelistIntervals_ZeroIsNoop(t *testing.T) {
-	origMCP := mcpSafetyRelistInterval
-	t.Cleanup(func() { mcpSafetyRelistInterval = origMCP })
-
-	mcpSafetyRelistInterval = 13 * time.Minute
-	SetSafetyRelistIntervals(0)
-	if mcpSafetyRelistInterval != 13*time.Minute {
-		t.Errorf("zero-noop: want 13m preserved, got %v", mcpSafetyRelistInterval)
-	}
-	SetSafetyRelistIntervals(-1 * time.Second)
-	if mcpSafetyRelistInterval != 13*time.Minute {
-		t.Errorf("negative-noop: want 13m preserved, got %v", mcpSafetyRelistInterval)
-	}
-}
-
 // TestSafetyRelistRunnable_EnqueueIsLossless — the tick loop must not drop
 // items when RequeueCh is full. ListRequests yields its batch exactly once,
 // so any dropped item is never re-offered and the receive below times out.
@@ -183,7 +137,6 @@ func TestListRequests_CoversEveryKind(t *testing.T) {
 		if err := k8sClient.Create(ctx, o); err != nil && !apierrors.IsAlreadyExists(err) {
 			t.Fatalf("create %T: %v", o, err)
 		}
-		o := o
 		t.Cleanup(func() {
 			o.SetFinalizers(nil)
 			_ = k8sClient.Update(context.Background(), o)

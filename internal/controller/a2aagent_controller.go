@@ -46,18 +46,6 @@ const a2aAgentFinalizer = "a2aagents.litellm.ackstorm.ai/finalizer"
 // a2aAgentKind is the metric label for LiteLLMA2AAgent CRs.
 const a2aAgentKind = "LiteLLMA2AAgent"
 
-// a2aAgentSafetyRelistInterval bounds how often the A2AAgent controller
-// re-runs the Step 7b vanish-probe (LIST + name filter to detect
-// out-of-band /v1/agents/<id> drift). Returned as RequeueAfter on every
-// successful reconcile. v0.4.5: introduced together with vanish
-// detection to recover from external LiteLLM resets / admin deletes
-// without operator intervention. 5min matches the
-// MCPServer / Model / Team cadence.
-// a2aAgentSafetyRelistInterval is package-level so cmd/main.go can override
-// via SetSafetyRelistIntervals (env-driven, Helm-exposed). Default 10m
-// (v0.4.7: matches MCPServer/Model/Team cadence).
-var a2aAgentSafetyRelistInterval = 10 * time.Minute
-
 // A2AAgentSecretRefIndexField is the field indexer path registered in
 // cmd/main.go for reverse-mapping Secret names back to A2AAgents that
 // reference them (Phase 3 D-06 pattern carry-forward for SEC-09 rotation
@@ -479,9 +467,12 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		// Reached steady state — drop any recreate-churn history so an agent
 		// that recovered is not throttled by stale counts.
 		r.Churn.Forget(req.NamespacedName)
-		// v0.4.5: periodic safety-relist requeue so Step 8b vanish probe
-		// runs even when the CR spec is stable.
-		return ctrl.Result{RequeueAfter: withJitter(a2aAgentSafetyRelistInterval)}, nil
+		// No RequeueAfter: the per-kind SafetyRelistRunnable owns the periodic
+		// vanish-probe tick (cmd/main.go). A requeue here would only fire on
+		// the paths that happen to carry one — the Runnable fires regardless
+		// of which branch the reconcile took, which is the point of a safety
+		// net (issue #102).
+		return ctrl.Result{}, nil
 	}
 
 	// ─── Step 10: Branch CREATE vs UPDATE (simple PUT — Probe 7 ✓) ────────
@@ -581,8 +572,12 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	metrics.ReconcileTotal.WithLabelValues(a2aAgentKind, "success").Inc()
 	logger.V(1).Info("a2a agent reconciled", "agentID", newAgentID, "hash", currentRenderedHash)
 
-	// v0.4.5: periodic safety-relist requeue — see Step 8b rationale.
-	return ctrl.Result{RequeueAfter: withJitter(a2aAgentSafetyRelistInterval)}, nil
+	// No RequeueAfter: the per-kind SafetyRelistRunnable owns the periodic
+	// vanish-probe tick (cmd/main.go). A requeue here would only fire on
+	// the paths that happen to carry one — the Runnable fires regardless
+	// of which branch the reconcile took, which is the point of a safety
+	// net (issue #102).
+	return ctrl.Result{}, nil
 }
 
 // buildAgentConfigFromMerged extracts the typed AgentConfig fields from the

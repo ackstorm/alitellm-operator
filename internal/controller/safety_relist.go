@@ -9,8 +9,8 @@ import (
 
 // EnvSafetyRelistInterval is the operator-pod env var that overrides the
 // default safety-relist cadence (10 minutes — DefaultSafetyRelistInterval)
-// shared by the MCPServer, Model, Team, and A2AAgent reconcilers AND the
-// three relist Runnables (Model, Team, GuardRail). Accepts any
+// shared by the five per-kind relist Runnables (Model, Team, MCPServer,
+// A2AAgent, GuardRail) and TeamDefaultRunnable. Accepts any
 // time.ParseDuration string ("10s", "1m", "30m", "1h"). Empty / unset →
 // DefaultSafetyRelistInterval.
 //
@@ -28,19 +28,19 @@ const EnvSafetyRelistInterval = "LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL"
 const SafetyRelistFloor = 5 * time.Second
 
 // DefaultSafetyRelistInterval is the canonical safety-relist cadence used
-// when LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL is unset. Shared by the four
-// reconciler RequeueAfter paths AND the three relist Runnables (Model,
-// Team, GuardRail) so one env knob yields one cadence everywhere. Matches
-// the *_controller.go package-var defaults.
+// when LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL is unset. Shared by all five
+// per-kind relist Runnables so one env knob yields one cadence everywhere.
+// There are no longer any RequeueAfter safety-relist paths — the Runnable
+// is the single mechanism (issue #102 follow-up).
 const DefaultSafetyRelistInterval = 10 * time.Minute
 
 // ResolvedSafetyRelistInterval parses the env override, applying the 5s
 // floor, and falls back to DefaultSafetyRelistInterval when unset. Use the
-// single returned value for BOTH SetSafetyRelistIntervals and every
-// Runnable.Interval — there must be exactly one parse of this env var
-// (H5: cmd/main.go previously parsed it a second time, with a different
-// floor and a different invalid-input fallback, and two of the three
-// runnables ignored it entirely and hardcoded 30m).
+// single returned value for every Runnable.Interval — there must be
+// exactly one parse of this env var (H5: cmd/main.go previously parsed it
+// a second time, with a different floor and a different invalid-input
+// fallback, and two of the three runnables ignored it entirely and
+// hardcoded 30m).
 func ResolvedSafetyRelistInterval(raw string) (time.Duration, error) {
 	d, err := ParseSafetyRelistInterval(raw)
 	if err != nil {
@@ -68,28 +68,4 @@ func ParseSafetyRelistInterval(raw string) (time.Duration, error) {
 		return 0, fmt.Errorf("%s=%q below floor %s", EnvSafetyRelistInterval, raw, SafetyRelistFloor)
 	}
 	return d, nil
-}
-
-// SetSafetyRelistIntervals overrides the package-level safety-relist
-// vars for MCPServer / Model / Team / A2AAgent reconcilers. Call ONCE
-// at startup, BEFORE any reconciler begins running. Concurrent or
-// post-start calls are not race-safe (the package vars are read without
-// locks from hot paths to keep the Reconcile loop allocation-free).
-//
-// d <= 0 is a no-op (callers should pass the parsed env value;
-// ParseSafetyRelistInterval returns 0 on unset to signal "keep defaults").
-//
-// NOTE: GuardRail is intentionally NOT covered here. The guardrail
-// reconciler has no RequeueAfter safety-relist path (it relies on the
-// BootSweeper relist + watch events), so there is no guardrail interval
-// var to set. Do not add one without also adding the reconciler-side
-// requeue.
-func SetSafetyRelistIntervals(d time.Duration) {
-	if d <= 0 {
-		return
-	}
-	mcpSafetyRelistInterval = d
-	modelSafetyRelistInterval = d
-	teamSafetyRelistInterval = d
-	a2aAgentSafetyRelistInterval = d
 }

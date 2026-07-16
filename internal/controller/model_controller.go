@@ -45,17 +45,6 @@ import (
 // removes the model entry from LiteLLM before the CR is fully removed from etcd.
 const modelFinalizer = "models.litellm.ackstorm.ai/finalizer"
 
-// modelSafetyRelistInterval bounds how often the Model controller
-// re-runs the Step 7 safety-relist (probe LiteLLM by name + clear
-// stale ModelID on out-of-band deletion). Returned as RequeueAfter
-// on every successful reconcile. See mcpserver_controller.go for the
-// v0.4.3 Owns-predicate rationale that necessitates this explicit
-// polling cadence.
-// modelSafetyRelistInterval is package-level so cmd/main.go can override
-// via SetSafetyRelistIntervals (env-driven, Helm-exposed). Default 10m
-// (v0.4.7: matches MCPServer/Team/A2AAgent cadence).
-var modelSafetyRelistInterval = 10 * time.Minute
-
 // modelKind is the metric label for LiteLLMModel CRs.
 const modelKind = "LiteLLMModel"
 
@@ -383,11 +372,12 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			logStatusUpdateErr(logger, err, "reason", reasonLiteLLMUnavailable)
 		}
 		metrics.ReconcileTotal.WithLabelValues(modelKind, "success").Inc()
-		// Periodic safety relist on soft-fail path: connectionReadyTransition
-		// re-enqueues on Connection recovery, but the safety-relist cadence
-		// is the floor so a missed transition still recovers (review #1
-		// "Issue 2" + review #2 §3).
-		return ctrl.Result{RequeueAfter: withJitter(modelSafetyRelistInterval)}, nil
+		// No RequeueAfter: the per-kind SafetyRelistRunnable owns the periodic
+		// vanish-probe tick (cmd/main.go). A requeue here would only fire on
+		// the paths that happen to carry one — the Runnable fires regardless
+		// of which branch the reconcile took, which is the point of a safety
+		// net (issue #102).
+		return ctrl.Result{}, nil
 	}
 
 	// ─── Step 3.5: SEC-03 uniqueness of spec.secrets[].as values ──────────
@@ -657,11 +647,12 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		// Reached steady state — drop any recreate-churn history so a model
 		// that recovered is not throttled by stale counts.
 		r.Churn.Forget(key)
-		// Periodic safety-relist requeue — see mcpserver_controller.go
-		// mcpSafetyRelistInterval rationale (post v0.4.3 Owns predicate
-		// filter, children no longer reconcile on Discovery refresh
-		// ticks; explicit polling restores out-of-band drift detection).
-		return ctrl.Result{RequeueAfter: withJitter(modelSafetyRelistInterval)}, nil
+		// No RequeueAfter: the per-kind SafetyRelistRunnable owns the periodic
+		// vanish-probe tick (cmd/main.go). A requeue here would only fire on
+		// the paths that happen to carry one — the Runnable fires regardless
+		// of which branch the reconcile took, which is the point of a safety
+		// net (issue #102).
+		return ctrl.Result{}, nil
 	}
 
 	// ─── Step 9: Branch CREATE vs UPDATE (or delete-and-recreate per D-02) ──
@@ -916,8 +907,12 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	metrics.ReconcileTotal.WithLabelValues(modelKind, "success").Inc()
 	logger.V(1).Info("model reconciled", "modelID", newModelID, "hash", currentRenderedHash)
 
-	// Periodic safety-relist requeue — see modelSafetyRelistInterval.
-	return ctrl.Result{RequeueAfter: withJitter(modelSafetyRelistInterval)}, nil
+	// No RequeueAfter: the per-kind SafetyRelistRunnable owns the periodic
+	// vanish-probe tick (cmd/main.go). A requeue here would only fire on
+	// the paths that happen to carry one — the Runnable fires regardless
+	// of which branch the reconcile took, which is the point of a safety
+	// net (issue #102).
+	return ctrl.Result{}, nil
 }
 
 // classifyMutationError handles the §7.7 error classification for LiteLLM
