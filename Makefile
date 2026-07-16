@@ -93,6 +93,30 @@ doctor: ## Fast local preflight: docker, devtools image, socket, cache paths, in
 shell: ## Interactive shell inside the devtools container.
 	./scripts/dev.sh bash
 
+.PHONY: clean-cache
+clean-cache: ## Remove ./.gocache, unlocking Go's read-only modcache first. Host-only; re-created on next dev.sh use.
+	@if [ ! -e .gocache ]; then echo "No ./.gocache here — nothing to clean."; exit 0; fi
+	@echo "Unlocking read-only Go modcache dirs under ./.gocache ..."
+	@chmod -R u+w .gocache 2>/dev/null || true
+	rm -rf .gocache
+	@echo "Removed ./.gocache (re-created on next ./scripts/dev.sh use)."
+
+.PHONY: clean
+clean: clean-cache ## Remove all build artifacts: bin/, dist/, coverage profiles, testbin/, and ./.gocache. Host-only.
+	rm -rf bin dist testbin cover-unit.out cover-envtest.out
+	@echo "Removed bin/ dist/ testbin/ cover*.out (tool + service binaries re-fetched/rebuilt on next make)."
+
+.PHONY: clean-docker
+clean-docker: ## Reclaim docker disk: prune ALL build cache + DANGLING images only. Safe with a cluster up. Host-only.
+	@command -v docker >/dev/null 2>&1 || { echo "docker not on PATH — nothing to prune."; exit 0; }
+	@echo "Pruning docker build cache (all) + dangling images — active containers/tagged images/volumes untouched ..."
+	docker builder prune -af
+	docker image prune -f
+	@echo "Reclaimed build cache + dangling images."
+
+.PHONY: clear
+clear: clean-cache clean-docker ## Reclaim BOTH ./.gocache and docker disk. Host-only; clean-cache + clean-docker combined.
+
 ##@ Development
 
 # NOTE: paths is scoped to ./api/... and ./internal/... (NOT the kubebuilder
