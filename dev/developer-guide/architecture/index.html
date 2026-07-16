@@ -1804,8 +1804,10 @@ follows the same shape:</p>
 <li>Status update via <code>meta.SetStatusCondition</code> (<code>Ready</code>,
    <code>LiteLLMUnavailable</code>, <code>LiteLLMRejected</code>, <code>SecretNotFound</code>,
    <code>UnresolvedPlaceholder</code>, …).</li>
-<li>Requeue at <code>safetyRelistInterval</code> (default 10m; configurable per
-   process — see "Safety re-list" below).</li>
+<li>No requeue on return — the per-kind <code>SafetyRelistRunnable</code> (see
+   "Safety re-list" below) owns the periodic vanish-probe tick from
+   outside <code>Reconcile</code>, at <code>safetyRelistInterval</code> (default 10m,
+   configurable per process).</li>
 </ol>
 <p>The split between <code>internal/controller/</code> (k8s reconcile loop) and
 <code>internal/litellm/</code> (HTTP surface) is load-bearing: the request
@@ -1848,14 +1850,20 @@ the next safety re-list interval; the cache only batches probes.</p>
 <p>Used by MCPServer, Team, A2AAgent, Model. Closure-based — each caller
 supplies its own <code>lookup(id) (found bool, err error)</code>.</p>
 <h2 id="safety-re-list">Safety re-list<a class="headerlink" href="#safety-re-list" title="Permanent link">&para;</a></h2>
-<p><code>internal/controller/safety_relist.go</code>:</p>
+<p><code>internal/controller/shared_helpers.go</code> (<code>SafetyRelistRunnable</code>) +
+<code>internal/controller/safety_relist.go</code> (env parsing):</p>
 <ul>
-<li>Each Pipeline A controller requeues at
-  <code>&lt;kind&gt;SafetyRelistInterval</code> after a successful reconcile.</li>
-<li>Vars (not consts) — overridable at process start by
-  <code>SetSafetyRelistIntervals(d)</code>.</li>
+<li>Each of the five domain reconcilers (Model, Team, MCPServer,
+  A2AAgent, GuardRail) has exactly one <code>SafetyRelistRunnable</code> wired in
+  <code>cmd/main.go</code> — a <code>manager.Runnable</code> ticking on a <code>time.Ticker</code>
+  <em>outside</em> <code>Reconcile</code>, listing every CR of its kind and enqueueing
+  them. There are no <code>RequeueAfter</code> safety-relist paths: a requeue only
+  fires from the return site that carries it, so any early return would
+  silently lose the CR's periodic tick. The Runnable ticks regardless of
+  which branch a reconcile took.</li>
 <li><code>EnvSafetyRelistInterval = "LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL"</code>
-  → parsed at startup, validated against <code>SafetyRelistFloor = 5s</code>.</li>
+  → parsed once at startup, validated against <code>SafetyRelistFloor = 5s</code>,
+  and the single resolved value sets every <code>Runnable.Interval</code>.</li>
 <li>Helm: first-class <code>safetyRelistInterval</code> value on the operator chart
   (<code>deploy/helm/alitellm-operator/values.yaml</code>).</li>
 </ul>
