@@ -8,9 +8,10 @@ budget and RPM/TPM rate limits, projected via
 overlay indirection. Two-level naming is intentionally NOT supported in
 v1alpha1.
 
-The operator does NOT manage team membership, models allow-list, or
-object permissions. Those are delegated to an external identity / user-
-management system; see [Out of Scope](../index.md) in the home page.
+The operator does NOT manage team membership (delegated to external identity).
+Models allow-list and object permissions ARE managed via the typed
+`spec.permission` block (see below); when that block is absent they remain
+raw `spec.params` passthrough.
 
 ## Quick reference
 
@@ -146,6 +147,80 @@ SILENTLY — it does NOT emit a `ProjectionOverride` Warning Event.
 Setting any of these inside `spec.params` is silently overridden and
 emits a `reason=ProjectionOverride` Warning Event per colliding key.
 Use the typed `spec.budget` / `spec.rateLimits` sub-blocks instead.
+
+## Resource permissions — `spec.permission`
+
+`spec.permission` is a typed, operator-MANAGED block that controls which
+models, MCP servers, and A2A agents a team may use. When present, the
+operator OWNS the projected LiteLLM `models` and `object_permission` fields —
+out-of-band UI edits to them do NOT survive reconciliation.
+
+```yaml
+spec:
+  permission:
+    models:      ["gpt-4o"]        # specific model names
+    modelGroups: ["anthropic"]     # model access-group names (merged into models)
+    mcpServers:  ["hindsight"]     # specific MCP server names/aliases
+    mcpGroups:   ["team-a"]        # MCP access-group names
+    agents:      ["planner"]       # A2A agent NAMES (resolved to UUIDs by the operator)
+    agentGroups: ["grp-a"]         # A2A agent access-group names (see no-op note)
+```
+
+Projection to LiteLLM:
+
+| CR field       | LiteLLM target                              |
+|----------------|---------------------------------------------|
+| `models` + `modelGroups` | top-level `team.models` (one merged list) |
+| `mcpServers`   | `object_permission.mcp_servers`             |
+| `mcpGroups`    | `object_permission.mcp_access_groups`       |
+| `agents`       | `object_permission.agents` (name→UUID resolved) |
+| `agentGroups`  | `object_permission.agent_access_groups` (**no-op**, see below) |
+
+**Agent name resolution.** LiteLLM enforces `object_permission.agents` on
+agent `agent_id` UUIDs and silently ignores names. The operator resolves each
+name via `GET /v1/agents`. If a referenced agent is not yet registered (the
+`LiteLLMA2AAgent` CR has not reconciled), the team is parked
+`Ready=False, reason=AgentNotFound` (listing the missing names) and requeued —
+it recovers automatically once the agent appears.
+
+**`agentGroups` is a no-op.** LiteLLM 1.83.10 has no API to tag an agent into
+an access group, so `object_permission.agent_access_groups` is never enforced.
+The field is retained for forward-compat; the operator emits a Warning
+`AgentGroupsNoOp` Event when it is non-empty.
+
+**Empty vs absent.** An absent `spec.permission` block leaves any raw
+`spec.params.models` / `spec.params.object_permission` untouched (passthrough).
+A present block with an empty sublist (`agents: []`) omits that key entirely —
+an empty allowed list means "allow all" in LiteLLM, so it is never sent as
+`[]`. Because of this, an empty block cannot CLEAR a stale out-of-band
+`object_permission`; remove it in LiteLLM once, or supply a non-empty block.
+
+**Precedence.** With `spec.permission` present, any `models` or
+`object_permission` key inside `spec.params` is dropped and a
+`ProjectionOverride` Warning Event fires — the typed block always wins.
+
+### Migration from `spec.params.object_permission`
+
+Teams currently using `spec.params.object_permission` (or
+`spec.params.models`) continue to work unchanged as long as `spec.permission`
+is absent. To adopt the typed block, move each value:
+
+```yaml
+# before
+spec:
+  params:
+    models: ["gpt-4o"]
+    object_permission:
+      mcp_servers: ["hindsight"]
+# after
+spec:
+  permission:
+    models:     ["gpt-4o"]
+    mcpServers: ["hindsight"]
+```
+
+Note that `object_permission.agents` in the old form required raw UUIDs; the
+new `spec.permission.agents` takes human-friendly NAMES instead.
 
 ## `Team/default` carve-out
 

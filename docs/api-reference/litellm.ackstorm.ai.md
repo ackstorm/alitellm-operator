@@ -1514,6 +1514,60 @@ _Appears in:_
 | `lastRendered` _[LastRenderedStatus](#lastrenderedstatus)_ | LastRendered is the operator-side drift source of truth (D-01, D-07).<br />It records the post-substitution rendered state that was last<br />successfully applied to LiteLLM. The reconciler compares the current<br />desired state hash against lastRendered.hash to detect drift without<br />querying the LiteLLM API (bypassing Probe 4a/4b encrypted-response<br />issues — see spec/DEFECTS-1.82.6.md). |  |  |
 
 
+#### PermissionSpec
+
+
+
+PermissionSpec is the optional typed resource-permission sub-block on
+TeamSpec. Unlike the pre-existing `spec.params` passthrough, this block is
+operator-MANAGED and reconciled: the operator OWNS the projected LiteLLM
+`team.models` and `object_permission` fields whenever this block is
+present, so out-of-band UI edits to those fields do NOT survive
+reconciliation (see the TEAM-03/TEAM-04 note on TeamSpec).
+
+Modeled as a pointer at the TeamSpec level (`Permission *PermissionSpec`)
+so whole-block absence (nil) is distinguishable from a present-but-empty
+block. Absent block → the operator manages nothing here and the raw
+`spec.params.models` / `spec.params.object_permission` (if any) pass
+through unchanged (migration path). Present block → the operator projects
+every non-empty sublist and deletes any colliding `spec.params` key
+(emitting a ProjectionOverride Event).
+
+Empty-vs-absent per sublist: a nil or empty sublist contributes NOTHING to
+the projection (it is omitted, not sent as `[]`). An empty allowed list
+means "allow all" in LiteLLM (get_allowed_agents), so omitting is both
+equivalent on the wire and safe against a lock-to-zero misread.
+
+Projection to LiteLLM (verified empirically against LiteLLM 1.83.10):
+  - Models + ModelGroups → merged into the top-level `models` list (LiteLLM
+    accepts specific model names AND model-access-group names mixed there).
+  - McpServers → object_permission.mcp_servers (LiteLLM resolves name→id).
+  - McpGroups  → object_permission.mcp_access_groups.
+  - Agents     → object_permission.agents. LiteLLM enforces on agent_id
+    UUIDs and SILENTLY IGNORES names, so the operator resolves each name to
+    its agent_id via GET /v1/agents before projecting. An unresolved name
+    (A2A agent not registered yet) requeues the Team with
+    reason=AgentNotFound rather than hard-failing.
+  - AgentGroups → object_permission.agent_access_groups. DEAD FIELD in
+    LiteLLM 1.83.10 (no API tags an agent into a group), retained for
+    forward-compat; the reconciler emits a Warning/AgentGroupsNoOp Event
+    when this sublist is non-empty.
+
+
+
+_Appears in:_
+- [TeamSpec](#teamspec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `models` _string array_ | Models is the list of specific LiteLLM model NAMES this team may use.<br />Merged with ModelGroups into the single top-level `models` list. |  |  |
+| `modelGroups` _string array_ | ModelGroups is the list of model ACCESS-GROUP names this team may use.<br />Merged with Models into the single top-level `models` list. |  |  |
+| `mcpServers` _string array_ | McpServers is the list of specific MCP server NAMES (aliases) this team<br />may use. Projected onto object_permission.mcp_servers; LiteLLM resolves<br />names to server ids automatically. |  |  |
+| `mcpGroups` _string array_ | McpGroups is the list of MCP access-group names this team may use.<br />Projected onto object_permission.mcp_access_groups. |  |  |
+| `agents` _string array_ | Agents is the list of A2A agent NAMES (human-friendly) this team may<br />use. The operator resolves each name to its agent_id UUID via<br />GET /v1/agents before projecting onto object_permission.agents — LiteLLM<br />enforces on UUIDs and ignores names. An unresolved name requeues the<br />Team (reason=AgentNotFound). |  |  |
+| `agentGroups` _string array_ | AgentGroups is the list of A2A agent access-group names. Projected onto<br />object_permission.agent_access_groups for forward-compat, but this is a<br />NO-OP in LiteLLM 1.83.10 (the API never tags an agent into a group). The<br />reconciler emits a Warning/AgentGroupsNoOp Event when this is non-empty. |  |  |
+
+
 #### RateLimitsSpec
 
 
@@ -1708,9 +1762,14 @@ TEAM-03: TeamSpec carries EXACTLY four fields — `Budget`,
 `RateLimits`, `Params`, `Secrets` — and explicitly omits the
 following Go-level fields that `_FINALv3` removed from earlier
 scaffolds (spec changelog lines 37–38):
-- any resource-allowlist field projecting to LiteLLM `models` /
-`object_permission.*`: runtime resource gating is delegated to an
-external system at the per-Environment level, NOT on the Team. Spec §6.7.
+- resource gating projecting to LiteLLM `models` and
+`object_permission.*` is now MANAGED via the typed `spec.permission`
+sub-block (see PermissionSpec). This REVERSES the original _FINALv3
+delegation: when `spec.permission` is present the operator OWNS those
+LiteLLM fields, so out-of-band UI edits to `models` / `object_permission`
+do NOT survive reconciliation. When the block is ABSENT the original
+delegated/passthrough behavior is preserved (raw `spec.params.models` /
+`spec.params.object_permission` forward unchanged).
 - any team-membership field projecting to LiteLLM
 `members_with_roles`: user-to-team assignment is delegated to an
 external system, not represented in GitOps. Spec §6.7 "Semantics".
@@ -1728,11 +1787,12 @@ TEAM-04: `spec.params` is a JSON pass-through bag
 `tpm_limit`, `rpm_limit_type`, `tpm_limit_type`) WIN over
 `spec.params` per spec §5.1 + Feature 01 §2.1 (typed-field overlay
 tier) — collisions emit a `reason=ProjectionOverride` Event from the
-reconciler (06-02 + Phase 10). Unmanaged top-level fields
-(`members_with_roles`, `models`, `object_permission`) are still
-unmanaged if the user puts them inside `params`; LiteLLM accepts them on
-create, the operator does not enumerate or revert them on subsequent
-reconciles.
+reconciler (06-02 + Phase 10). `members_with_roles` remains unmanaged if
+placed inside `params`. `models` and `object_permission` inside `params`
+are ALSO passthrough-unmanaged ONLY when `spec.permission` is absent; when
+`spec.permission` is present the operator deletes those params keys
+(ProjectionOverride Event) and owns the projected values (see
+PermissionSpec).
 
 `spec.secrets[]` is the standard substitution map (§5.2, Phase 3 D-05)
 shared with Model / MCPServer / A2AAgent; same `{{NAME}}` placeholder
@@ -1767,6 +1827,7 @@ _Appears in:_
 | --- | --- | --- | --- |
 | `budget` _[BudgetSpec](#budgetspec)_ | Budget is the optional budget sub-block. Modeled as `*BudgetSpec`<br />(pointer) so the reconciler can distinguish whole-block absence<br />from an empty `BudgetSpec\{\}`. When absent, the reconciler emits<br />`max_budget: null` AND `budget_duration: null` on the<br />`POST /team/update` body (spec §6.7 "Clearing budget"). |  |  |
 | `rateLimits` _[RateLimitsSpec](#ratelimitsspec)_ | RateLimits is the optional rate-limits sub-block (per Feature 01 §1,<br />parallel to `spec.budget`). Modeled as `*RateLimitsSpec` (pointer)<br />so the reconciler can distinguish whole-block absence from an empty<br />`RateLimitsSpec\{\}`. When absent (whole-block or empty-struct —<br />mirrors Budget §6.7 precedent), the reconciler emits `rpm_limit:<br />null` AND `tpm_limit: null` on the `POST /team/update` body AND<br />OMITS both `rpm_limit_type` and `tpm_limit_type` keys (Feature 01<br />§2.1). The `*_type` keys are hardcoded to `best_effort_throughput`<br />by the operator whenever the corresponding `*_limit` is non-null —<br />they are never exposed as CR fields (Feature 01 §1.2, §1.3). |  |  |
+| `permission` _[PermissionSpec](#permissionspec)_ | Permission is the optional typed, operator-MANAGED resource-permission<br />sub-block (see PermissionSpec). When present, the operator OWNS the<br />projected LiteLLM `models` and `object_permission` fields and deletes any<br />colliding `spec.params.models` / `spec.params.object_permission` key<br />(emitting a ProjectionOverride Event). When absent, those raw params keys<br />pass through unchanged (migration path). Modeled as a pointer so<br />whole-block absence is distinguishable from an empty block. |  |  |
 | `params` _[RawExtension](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#rawextension-runtime-pkg)_ | Params is a pass-through bag of fields forwarded verbatim to the<br />LiteLLM `POST /team/new` / `POST /team/update` body at the top<br />level of `NewTeamRequest`. Any JSON object is accepted<br />(x-kubernetes-preserve-unknown-fields: true). String-typed leaf<br />values may contain `\{\{NAME\}\}` placeholders resolved from<br />`spec.secrets[]` before the body reaches LiteLLM (§5.2, Phase 3<br />D-05). Non-string leaves are forwarded unchanged (Phase 3 SEC-02<br />carry-forward).<br />The operator NEVER adds, defaults, or removes keys inside this bag<br />— the user's declared keyset IS the desired state. The operator's<br />seven structural overlays (`team_alias`, `max_budget`,<br />`budget_duration`, `rpm_limit`, `tpm_limit`, `rpm_limit_type`,<br />`tpm_limit_type`) ALWAYS win over `spec.params` per spec §5.1 +<br />Feature 01 §2.1; if the user sets any of those keys inside `params`,<br />the reconciler emits a per-key `reason=ProjectionOverride` Event<br />after the merge (worst-case 7 events on one reconcile).<br />On each reconcile, the rendered post-substitution body is hashed<br />(SHA-256) and compared against `status.lastRendered.hash` to detect<br />drift without polling LiteLLM (Phase 3 D-01). |  |  |
 | `secrets` _[SecretSubstitution](#secretsubstitution) array_ | Secrets is the substitution map for resolving `\{\{NAME\}\}`<br />placeholders in `spec.params` string-typed leaves (§5.2, Phase 3<br />D-05). Each entry maps an uppercase NAME (the `as` field) to a<br />Kubernetes Secret key (`secretRef`). Placeholders in the bag are<br />replaced with the resolved plaintext value before the body is<br />forwarded to LiteLLM. Secret material NEVER appears in logs,<br />Events, or `status.conditions[].message` (§9.1, AC-S1 — exercised<br />in envtest redaction canaries).<br />SEC-03 uniqueness of `spec.secrets[].as` values is enforced as a<br />runtime check in the Team reconciler (same pattern as Model plan<br />03-06 and MCPServer — CEL list-uniqueness was deferred<br />to v1beta1). |  |  |
 | `deletionPolicy` _string_ | DeletionPolicy controls finalizer behavior when the LiteLLM-side<br />DELETE cannot be confirmed (LiteLLM unavailable, 401, transient<br />error already retried). Defaults to "Orphan" to preserve REL-06<br />anti-storm: the CR is freed even if the LiteLLM entry may linger.<br />"Delete" blocks finalizer removal until the LiteLLM-side ack<br />succeeds, suitable for GitOps users who must not see "synced"<br />while a backend resource still exists.<br />Annotation override (`litellm.ackstorm.ai/deletion-policy-override`)<br />takes precedence over this field for runtime break-glass without a<br />spec mutation. | Orphan | Enum: [Orphan Delete] <br /> |

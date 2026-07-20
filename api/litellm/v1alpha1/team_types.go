@@ -186,9 +186,14 @@ type PermissionSpec struct {
 // `RateLimits`, `Params`, `Secrets` — and explicitly omits the
 // following Go-level fields that `_FINALv3` removed from earlier
 // scaffolds (spec changelog lines 37–38):
-// - any resource-allowlist field projecting to LiteLLM `models` /
-// `object_permission.*`: runtime resource gating is delegated to an
-// external system at the per-Environment level, NOT on the Team. Spec §6.7.
+// - resource gating projecting to LiteLLM `models` and
+// `object_permission.*` is now MANAGED via the typed `spec.permission`
+// sub-block (see PermissionSpec). This REVERSES the original _FINALv3
+// delegation: when `spec.permission` is present the operator OWNS those
+// LiteLLM fields, so out-of-band UI edits to `models` / `object_permission`
+// do NOT survive reconciliation. When the block is ABSENT the original
+// delegated/passthrough behavior is preserved (raw `spec.params.models` /
+// `spec.params.object_permission` forward unchanged).
 // - any team-membership field projecting to LiteLLM
 // `members_with_roles`: user-to-team assignment is delegated to an
 // external system, not represented in GitOps. Spec §6.7 "Semantics".
@@ -206,11 +211,12 @@ type PermissionSpec struct {
 // `tpm_limit`, `rpm_limit_type`, `tpm_limit_type`) WIN over
 // `spec.params` per spec §5.1 + Feature 01 §2.1 (typed-field overlay
 // tier) — collisions emit a `reason=ProjectionOverride` Event from the
-// reconciler (06-02 + Phase 10). Unmanaged top-level fields
-// (`members_with_roles`, `models`, `object_permission`) are still
-// unmanaged if the user puts them inside `params`; LiteLLM accepts them on
-// create, the operator does not enumerate or revert them on subsequent
-// reconciles.
+// reconciler (06-02 + Phase 10). `members_with_roles` remains unmanaged if
+// placed inside `params`. `models` and `object_permission` inside `params`
+// are ALSO passthrough-unmanaged ONLY when `spec.permission` is absent; when
+// `spec.permission` is present the operator deletes those params keys
+// (ProjectionOverride Event) and owns the projected values (see
+// PermissionSpec).
 //
 // `spec.secrets[]` is the standard substitution map (§5.2, Phase 3 D-05)
 // shared with Model / MCPServer / A2AAgent; same `{{NAME}}` placeholder

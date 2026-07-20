@@ -945,6 +945,23 @@ SELECT model_name, count(*) FROM "LiteLLM_ProxyModelTable"
 GROUP BY 1 HAVING count(*) > 1;
 ```
 
+### ❌ Team `spec.permission.agents` uses UUIDs, or team stuck `AgentNotFound`
+```yaml
+spec:
+  permission:
+    agents: ["3f9c-uuid-..."]   # WRONG — pass the human NAME, not the UUID
+```
+✅ `spec.permission.agents` takes A2A agent NAMES; the operator resolves them
+to `agent_id` UUIDs via `GET /v1/agents` (LiteLLM enforces `object_permission.agents`
+on UUIDs and silently ignores names). If a name isn't registered yet the team
+parks `Ready=False, reason=AgentNotFound` and requeues — create the
+`LiteLLMA2AAgent` CR first (ordering dependency), it self-heals. `spec.permission.agentGroups`
+projects to `object_permission.agent_access_groups` but is a NO-OP in LiteLLM
+1.83.10 (no API tags an agent into a group) — a `AgentGroupsNoOp` Warning Event
+is emitted. WHY: `object_permission.agents` matches on `agent_id`; a name yields
+ZERO agents. Absent `spec.permission` block → raw `spec.params.{models,object_permission}`
+passthrough is preserved (migration path).
+
 ## Repository-specific patterns
 
 - **Periodic drift detection = `SafetyRelistRunnable`, never `RequeueAfter`.**

@@ -72,6 +72,16 @@ spec:
   rateLimits:
     rpm: 6000
     tpm: 1000000
+  # Typed, operator-MANAGED resource permissions. When present the operator
+  # OWNS the projected LiteLLM `models` + `object_permission` fields (out-of-band
+  # UI edits do not survive). agents take human-friendly NAMES (resolved to
+  # agent_id UUIDs via GET /v1/agents); agentGroups is a forward-compat no-op.
+  # permission:
+  #   models:      ["gpt-4o"]
+  #   modelGroups: ["anthropic"]
+  #   mcpServers:  ["hindsight"]
+  #   mcpGroups:   ["team-a"]
+  #   agents:      ["planner"]
   # Pass-through bag — operator's 7 structural overlays
   # (team_alias, max_budget, budget_duration, rpm_limit, tpm_limit,
   # rpm_limit_type, tpm_limit_type) plus team_id ALL win over
