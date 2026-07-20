@@ -90,6 +90,84 @@ type RateLimitsSpec struct {
 	TPM *int32 `json:"tpm,omitempty"`
 }
 
+// PermissionSpec is the optional typed resource-permission sub-block on
+// TeamSpec. Unlike the pre-existing `spec.params` passthrough, this block is
+// operator-MANAGED and reconciled: the operator OWNS the projected LiteLLM
+// `team.models` and `object_permission` fields whenever this block is
+// present, so out-of-band UI edits to those fields do NOT survive
+// reconciliation (see the TEAM-03/TEAM-04 note on TeamSpec).
+//
+// Modeled as a pointer at the TeamSpec level (`Permission *PermissionSpec`)
+// so whole-block absence (nil) is distinguishable from a present-but-empty
+// block. Absent block → the operator manages nothing here and the raw
+// `spec.params.models` / `spec.params.object_permission` (if any) pass
+// through unchanged (migration path). Present block → the operator projects
+// every non-empty sublist and deletes any colliding `spec.params` key
+// (emitting a ProjectionOverride Event).
+//
+// Empty-vs-absent per sublist: a nil or empty sublist contributes NOTHING to
+// the projection (it is omitted, not sent as `[]`). An empty allowed list
+// means "allow all" in LiteLLM (get_allowed_agents), so omitting is both
+// equivalent on the wire and safe against a lock-to-zero misread.
+//
+// Projection to LiteLLM (verified empirically against LiteLLM 1.83.10):
+//   - Models + ModelGroups → merged into the top-level `models` list (LiteLLM
+//     accepts specific model names AND model-access-group names mixed there).
+//   - McpServers → object_permission.mcp_servers (LiteLLM resolves name→id).
+//   - McpGroups  → object_permission.mcp_access_groups.
+//   - Agents     → object_permission.agents. LiteLLM enforces on agent_id
+//     UUIDs and SILENTLY IGNORES names, so the operator resolves each name to
+//     its agent_id via GET /v1/agents before projecting. An unresolved name
+//     (A2A agent not registered yet) requeues the Team with
+//     reason=AgentNotFound rather than hard-failing.
+//   - AgentGroups → object_permission.agent_access_groups. DEAD FIELD in
+//     LiteLLM 1.83.10 (no API tags an agent into a group), retained for
+//     forward-compat; the reconciler emits a Warning/AgentGroupsNoOp Event
+//     when this sublist is non-empty.
+type PermissionSpec struct {
+	// Models is the list of specific LiteLLM model NAMES this team may use.
+	// Merged with ModelGroups into the single top-level `models` list.
+	//
+	// +optional
+	Models []string `json:"models,omitempty"`
+
+	// ModelGroups is the list of model ACCESS-GROUP names this team may use.
+	// Merged with Models into the single top-level `models` list.
+	//
+	// +optional
+	ModelGroups []string `json:"modelGroups,omitempty"`
+
+	// McpServers is the list of specific MCP server NAMES (aliases) this team
+	// may use. Projected onto object_permission.mcp_servers; LiteLLM resolves
+	// names to server ids automatically.
+	//
+	// +optional
+	McpServers []string `json:"mcpServers,omitempty"`
+
+	// McpGroups is the list of MCP access-group names this team may use.
+	// Projected onto object_permission.mcp_access_groups.
+	//
+	// +optional
+	McpGroups []string `json:"mcpGroups,omitempty"`
+
+	// Agents is the list of A2A agent NAMES (human-friendly) this team may
+	// use. The operator resolves each name to its agent_id UUID via
+	// GET /v1/agents before projecting onto object_permission.agents — LiteLLM
+	// enforces on UUIDs and ignores names. An unresolved name requeues the
+	// Team (reason=AgentNotFound).
+	//
+	// +optional
+	Agents []string `json:"agents,omitempty"`
+
+	// AgentGroups is the list of A2A agent access-group names. Projected onto
+	// object_permission.agent_access_groups for forward-compat, but this is a
+	// NO-OP in LiteLLM 1.83.10 (the API never tags an agent into a group). The
+	// reconciler emits a Warning/AgentGroupsNoOp Event when this is non-empty.
+	//
+	// +optional
+	AgentGroups []string `json:"agentGroups,omitempty"`
+}
+
 // TeamSpec defines the desired state of Team per spec §6.7 (`_FINALv3` shape).
 //
 // TEAM-01: a user can declare a Team CR that projects a LiteLLM team alias
@@ -180,6 +258,17 @@ type TeamSpec struct {
 	//
 	// +optional
 	RateLimits *RateLimitsSpec `json:"rateLimits,omitempty"`
+
+	// Permission is the optional typed, operator-MANAGED resource-permission
+	// sub-block (see PermissionSpec). When present, the operator OWNS the
+	// projected LiteLLM `models` and `object_permission` fields and deletes any
+	// colliding `spec.params.models` / `spec.params.object_permission` key
+	// (emitting a ProjectionOverride Event). When absent, those raw params keys
+	// pass through unchanged (migration path). Modeled as a pointer so
+	// whole-block absence is distinguishable from an empty block.
+	//
+	// +optional
+	Permission *PermissionSpec `json:"permission,omitempty"`
 
 	// Params is a pass-through bag of fields forwarded verbatim to the
 	// LiteLLM `POST /team/new` / `POST /team/update` body at the top

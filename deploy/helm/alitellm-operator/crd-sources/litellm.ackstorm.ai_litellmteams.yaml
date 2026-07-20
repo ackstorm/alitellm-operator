@@ -224,6 +224,65 @@ spec:
                   drift without polling LiteLLM (Phase 3 D-01).
                 type: object
                 x-kubernetes-preserve-unknown-fields: true
+              permission:
+                description: |-
+                  Permission is the optional typed, operator-MANAGED resource-permission
+                  sub-block (see PermissionSpec). When present, the operator OWNS the
+                  projected LiteLLM `models` and `object_permission` fields and deletes any
+                  colliding `spec.params.models` / `spec.params.object_permission` key
+                  (emitting a ProjectionOverride Event). When absent, those raw params keys
+                  pass through unchanged (migration path). Modeled as a pointer so
+                  whole-block absence is distinguishable from an empty block.
+                properties:
+                  agentGroups:
+                    description: |-
+                      AgentGroups is the list of A2A agent access-group names. Projected onto
+                      object_permission.agent_access_groups for forward-compat, but this is a
+                      NO-OP in LiteLLM 1.83.10 (the API never tags an agent into a group). The
+                      reconciler emits a Warning/AgentGroupsNoOp Event when this is non-empty.
+                    items:
+                      type: string
+                    type: array
+                  agents:
+                    description: |-
+                      Agents is the list of A2A agent NAMES (human-friendly) this team may
+                      use. The operator resolves each name to its agent_id UUID via
+                      GET /v1/agents before projecting onto object_permission.agents — LiteLLM
+                      enforces on UUIDs and ignores names. An unresolved name requeues the
+                      Team (reason=AgentNotFound).
+                    items:
+                      type: string
+                    type: array
+                  mcpGroups:
+                    description: |-
+                      McpGroups is the list of MCP access-group names this team may use.
+                      Projected onto object_permission.mcp_access_groups.
+                    items:
+                      type: string
+                    type: array
+                  mcpServers:
+                    description: |-
+                      McpServers is the list of specific MCP server NAMES (aliases) this team
+                      may use. Projected onto object_permission.mcp_servers; LiteLLM resolves
+                      names to server ids automatically.
+                    items:
+                      type: string
+                    type: array
+                  modelGroups:
+                    description: |-
+                      ModelGroups is the list of model ACCESS-GROUP names this team may use.
+                      Merged with Models into the single top-level `models` list.
+                    items:
+                      type: string
+                    type: array
+                  models:
+                    description: |-
+                      Models is the list of specific LiteLLM model NAMES this team may use.
+                      Merged with ModelGroups into the single top-level `models` list.
+                    items:
+                      type: string
+                    type: array
+                type: object
               rateLimits:
                 description: |-
                   RateLimits is the optional rate-limits sub-block (per Feature 01 §1,
