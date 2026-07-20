@@ -3042,3 +3042,90 @@ func TestTeamPermission_AbsentBlockPassesParamsThrough(t *testing.T) {
 		t.Errorf("body.models: want passthrough [passthrough-model], got %v", body["models"])
 	}
 }
+
+// TestTeamPermission_ShrinkToEmptyRevokes is the security regression for the
+// v0.7.25 fix: when a permission sublist is emptied, the outgoing /team/update
+// body MUST carry that field as [] (an explicit LiteLLM clear), NOT omit it.
+// LiteLLM's per-field merge keeps an OMITTED field's stale value, so omission
+// silently fails to revoke (CR Ready=Synced while access persists). Covers
+// both a non-empty shrink (drop one item) and a shrink-to-empty (clear a
+// field) in the same transition.
+func TestTeamPermission_ShrinkToEmptyRevokes(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetTeams()
+	mockServer.ResetAgents()
+	teamReconciler.ResetImplicitDefaultCache()
+	ensureNoTeam(t, ctx, "team-perm-shrink")
+	resetConnCacheSnapshot()
+
+	cleanupConn := setupReadyConnectionTeam(t, ctx)
+	t.Cleanup(func() {
+		cleanupConn()
+		ensureNoTeam(t, context.Background(), "team-perm-shrink")
+	})
+
+	cr := teamSampleCR("team-perm-shrink")
+	cr.Spec.Permission = &litellmv1alpha1.PermissionSpec{
+		McpServers: []string{"a", "b"},
+		McpGroups:  []string{"g1"},
+	}
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create Team: %v", err)
+	}
+	pollTeamCondition(t, ctx, "team-perm-shrink", reasonSynced, 30*time.Second)
+
+	// Transition: drop "b" from mcpServers (non-empty shrink) AND empty
+	// mcpGroups (shrink-to-empty).
+	key := client.ObjectKey{Name: "team-perm-shrink", Namespace: WatchNamespace}
+	var fresh litellmv1alpha1.LiteLLMTeam
+	if err := k8sClient.Get(ctx, key, &fresh); err != nil {
+		t.Fatalf("get Team: %v", err)
+	}
+	fresh.Spec.Permission = &litellmv1alpha1.PermissionSpec{
+		McpServers: []string{"a"},
+		McpGroups:  []string{},
+	}
+	if err := k8sClient.Update(ctx, &fresh); err != nil {
+		t.Fatalf("update Team: %v", err)
+	}
+
+	// Poll until the /team/update body reflects the shrink (mcp_servers len 1).
+	var op map[string]any
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		if body := mockServer.LastTeamBody("team-perm-shrink"); body != nil {
+			if o, ok := body["object_permission"].(map[string]any); ok {
+				if mcp, _ := o["mcp_servers"].([]any); len(mcp) == 1 {
+					op = o
+					break
+				}
+			}
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	if op == nil {
+		t.Fatalf("timed out waiting for shrunk /team/update body")
+	}
+
+	// Non-empty shrink: "b" gone.
+	if mcp, _ := op["mcp_servers"].([]any); len(mcp) != 1 || mcp[0] != "a" {
+		t.Errorf("mcp_servers: want [a] (b revoked), got %v", op["mcp_servers"])
+	}
+	// Shrink-to-empty: the field MUST be present as [] — the security assertion.
+	grp, present := op["mcp_access_groups"]
+	if !present {
+		t.Error("mcp_access_groups ABSENT from /team/update body — an emptied field must be sent as [] to revoke; omitting it lets LiteLLM keep the stale grant")
+	} else if g, _ := grp.([]any); len(g) != 0 {
+		t.Errorf("mcp_access_groups: want [] (cleared), got %v", grp)
+	}
+	// Untouched sub-fields are still emitted as [] (always-emit contract).
+	if _, ok := op["agents"]; !ok {
+		t.Error("agents ABSENT — always-emit contract requires it present as []")
+	}
+	if _, ok := op["agent_access_groups"]; !ok {
+		t.Error("agent_access_groups ABSENT — always-emit contract requires it present as []")
+	}
+}
