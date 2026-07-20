@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -399,6 +400,24 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			"tpm_limit_type")
 	}
 
+	// ─── Step 6b: spec.permission owns models + object_permission ─────────
+	//
+	// When the typed permission block is present the operator OWNS the LiteLLM
+	// `models` and `object_permission` fields (TEAM-03/TEAM-04 reversal). Any
+	// same-named key in spec.params is dropped and a ProjectionOverride Event
+	// fires — the typed block always wins. Absent block → params passthrough
+	// is untouched (migration path).
+	if team.Spec.Permission != nil {
+		for _, key := range []string{"models", "object_permission"} {
+			if _, collides := paramsMap[key]; collides {
+				r.Recorder.Eventf(&team, corev1.EventTypeWarning, eventReasonProjectionOverride,
+					"key %q overridden by typed-field projection (operator overlays spec.permission)",
+					key)
+				delete(paramsMap, key)
+			}
+		}
+	}
+
 	// ─── Step 7: Build merged body as map[string]any ──────────────────────
 	//
 	// Start with a copy of paramsMap, then overlay the operator's
@@ -466,6 +485,56 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		blocked, isBool := v.(bool)
 		if isBool && !blocked {
 			delete(body, "blocked")
+		}
+	}
+
+	// ─── Step 7b: Project spec.permission onto the body ───────────────────
+	//
+	// Applied BEFORE the Step 8 hash so the projected models + object_permission
+	// participate in drift detection and CREATE/UPDATE routing automatically.
+	// Resolves A2A agent names → agent_id UUIDs (LiteLLM ignores names).
+	if perm := team.Spec.Permission; perm != nil {
+		// Build the name→UUID map only when agents are actually referenced.
+		// ponytail: GET /v1/agents runs per reconcile when agents are set;
+		// cache it if it ever shows up in a profile (Teams reconcile rarely).
+		var agentNameToID map[string]string
+		if len(perm.Agents) > 0 {
+			agents, aerr := snap.Client.ListAgents(ctx)
+			if aerr != nil && !errors.Is(aerr, litellm.ErrNotFound) {
+				return r.classifyMutationError(ctx, &team, logger, aerr, "GET /v1/agents")
+			}
+			// ErrNotFound → zero agents registered → empty map → all names
+			// missing → AgentNotFound requeue below.
+			agentNameToID = make(map[string]string, len(agents))
+			for _, a := range agents {
+				agentNameToID[a.AgentName] = a.AgentID
+			}
+		}
+
+		models, objectPermission, missing := projectPermission(perm, agentNameToID)
+		if len(missing) > 0 {
+			msg := fmt.Sprintf("spec.permission.agents not yet registered in LiteLLM: %s",
+				strings.Join(missing, ", "))
+			if werr := r.writeStatus(ctx, &team, metav1.ConditionFalse, reasonAgentNotFound, msg); werr != nil {
+				logStatusUpdateErr(logger, werr, "reason", reasonAgentNotFound)
+			}
+			metrics.ReconcileTotal.WithLabelValues(teamKind, "success").Inc()
+			// Ordering dependency with LiteLLMA2AAgent CRs — requeue like
+			// SecretNotFound rather than hard-fail.
+			return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
+		}
+
+		if len(models) > 0 {
+			body["models"] = models
+		}
+		if len(objectPermission) > 0 {
+			body["object_permission"] = objectPermission
+		}
+
+		if len(perm.AgentGroups) > 0 {
+			r.Recorder.Eventf(&team, corev1.EventTypeWarning, eventReasonAgentGroupsNoOp,
+				"spec.permission.agentGroups projects to object_permission.agent_access_groups, "+
+					"but LiteLLM 1.83.10 never writes that field (no API tags an agent into a group) — no-op")
 		}
 	}
 

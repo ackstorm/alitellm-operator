@@ -73,6 +73,11 @@ const (
 	// LITELLM_OPERATOR_REQUIRE_HTTPS_REMOTE=true; otherwise it is a warning
 	// log and the probe proceeds.
 	reasonInsecureEndpoint = "InsecureEndpoint"
+	// reasonAgentNotFound — a spec.permission.agents entry names an A2A
+	// agent that GET /v1/agents does not (yet) list. Non-terminal: the
+	// Team is requeued (ordering dependency with LiteLLMA2AAgent CRs),
+	// mirroring reasonSecretNotFound.
+	reasonAgentNotFound = "AgentNotFound"
 )
 
 // EnvRequireHTTPSRemote, when "true", upgrades the M-SEC2 plaintext-http
@@ -88,6 +93,10 @@ const conditionTypeLoggingHealthy = "LoggingHealthy"
 // Single source of truth so goconst stays quiet across reconcilers.
 const (
 	eventReasonProjectionOverride = "ProjectionOverride"
+	// eventReasonAgentGroupsNoOp — spec.permission.agentGroups is non-empty.
+	// It projects to object_permission.agent_access_groups for forward-compat
+	// but is a NO-OP in LiteLLM 1.83.10 (no API tags an agent into a group).
+	eventReasonAgentGroupsNoOp = "AgentGroupsNoOp"
 )
 
 // connNotReadyUnreachableMsg is the human-readable substring assertion
