@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`LiteLLMModelDiscovery.spec.litellmProvider`** — optional override for the
+  LiteLLM `custom_llm_provider` prefix stamped on each generated child's
+  `litellm_params.model` (the pricing / cost-tracking key). Decouples *how*
+  models are discovered (`spec.type`, OpenAI wire shape) from *which* provider
+  LiteLLM bills them under. Enables correct cost tracking for OpenAI-compatible
+  gateways (OpenRouter, Together, Groq, vLLM) without a new provider `type`.
+  CEL-restricted to `spec.type: openai`. Changing it updates existing children
+  in place (`POST /model/update`), never recreates.
+
 ### Changed
 - **BREAKING (observability): Prometheus metric prefix renamed
   `litellm_` → `alitellm_`.** The operator-owned metrics that carried

@@ -570,6 +570,14 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		// "hosted_vllm" (not "kubeai"). All other types map verbatim.
 		litellmProvider = "hosted_vllm"
 	}
+	if md.Spec.LitellmProvider != "" {
+		// Override the type-derived provider with the explicit pricing-prefix
+		// provider (e.g. openrouter). Only the litellm_params.model prefix / cost
+		// key changes -- the child NAME still derives from spec.type/spec.prefix,
+		// so this updates children in place (POST /model/update), never recreates.
+		// CEL restricts the override to spec.type=openai.
+		litellmProvider = md.Spec.LitellmProvider
+	}
 
 	// ─── Steps 8.5: Enumerate existing children + adoption recognition (04-06) ────
 	// Single label-selector list reused for BOTH adoption-recognition AND

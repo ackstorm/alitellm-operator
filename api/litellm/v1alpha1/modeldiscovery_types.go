@@ -25,6 +25,11 @@ import (
 //	kubeai — requires baseUrl; forbids credentialsSecretRef, region.
 //	openai — requires credentialsSecretRef; baseUrl optional; forbids region.
 //
+// spec.litellmProvider (optional; spec.type=openai only) overrides the LiteLLM
+// pricing-prefix provider used for cost tracking (default: derived from
+// spec.type) — e.g. `openrouter` to bill discovered models under OpenRouter's
+// cost table without a new provider type. See the LitellmProvider field doc.
+//
 // MDISC-01 enforces spec.type ∈ {anthropic, bedrock, elevenlabs, gemini, kubeai, openai}
 // at admission via the +kubebuilder:validation:Enum marker. MDISC-04
 // (prefix), MDISC-05 (refresh.interval floor), MDISC-15 (credential
@@ -38,6 +43,24 @@ type ModelDiscoverySpec struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Enum=anthropic;bedrock;elevenlabs;gemini;kubeai;openai
 	Type string `json:"type"`
+
+	// LitellmProvider overrides the LiteLLM custom_llm_provider used to build
+	// each child's litellm_params.model prefix (`<provider>/<rawID>`), which
+	// determines the pricing / cost-tracking key. When empty (default) the
+	// provider is derived from spec.type (kubeai -> hosted_vllm; all others
+	// verbatim). Set it to bill discovered models under an OpenAI-compatible
+	// gateway's pricing -- e.g. litellmProvider=openrouter with type=openai and
+	// baseUrl=https://openrouter.ai/api/v1 stamps `openrouter/<rawID>` so LiteLLM
+	// applies OpenRouter's cost table. Only the pricing prefix changes; the child
+	// CR NAME still derives from spec.type/spec.prefix, so switching this on an
+	// existing Discovery updates children in place (POST /model/update) rather
+	// than recreating them. Restricted by CEL to spec.type=openai (the only
+	// OpenAI-compatible discovery wire shape).
+	//
+	// +optional
+	// +kubebuilder:validation:Pattern=`^[a-z0-9_]+$`
+	// +kubebuilder:validation:MaxLength=40
+	LitellmProvider string `json:"litellmProvider,omitempty"`
 
 	// Prefix is the lowercase DNS-1123 segment prepended to each
 	// discovered ID when generating the child Model's metadata.name
@@ -519,6 +542,7 @@ type FailedCandidate struct {
 // +kubebuilder:validation:XValidation:rule="self.spec.type != 'gemini' || (has(self.spec.credentialsSecretRef) && !has(self.spec.region) && !has(self.spec.baseUrl))",message="gemini requires spec.credentialsSecretRef and forbids spec.region/spec.baseUrl"
 // +kubebuilder:validation:XValidation:rule="self.spec.type != 'kubeai' || (has(self.spec.baseUrl) && !has(self.spec.credentialsSecretRef) && !has(self.spec.region))",message="kubeai requires spec.baseUrl and forbids spec.credentialsSecretRef/spec.region"
 // +kubebuilder:validation:XValidation:rule="self.spec.type != 'openai' || (has(self.spec.credentialsSecretRef) && !has(self.spec.region))",message="openai requires spec.credentialsSecretRef and forbids spec.region"
+// +kubebuilder:validation:XValidation:rule="!has(self.spec.litellmProvider) || self.spec.type == 'openai'",message="spec.litellmProvider override is only allowed with spec.type=openai"
 // +kubebuilder:validation:XValidation:rule="duration(self.spec.refresh.interval) >= duration('1m')",message="spec.refresh.interval must be >= 1m"
 // +kubebuilder:validation:XValidation:rule="!(has(self.spec.disablePrefix) && self.spec.disablePrefix) || !has(self.spec.prefix)",message="spec.prefix and spec.disablePrefix are mutually exclusive"
 
