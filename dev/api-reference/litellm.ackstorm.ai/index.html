@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
     
     
       
@@ -31,7 +31,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
       
         
         <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -1887,6 +1887,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#permissionspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PermissionSpec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#ratelimitsspec" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2749,6 +2760,17 @@
     <span class="md-ellipsis">
       
         ModelStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#permissionspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PermissionSpec
       
     </span>
   </a>
@@ -5557,6 +5579,88 @@ spec version.</p>
 </tr>
 </tbody>
 </table>
+<h4 id="permissionspec">PermissionSpec<a class="headerlink" href="#permissionspec" title="Permanent link">&para;</a></h4>
+<p>PermissionSpec is the optional typed resource-permission sub-block on
+TeamSpec. Unlike the pre-existing <code>spec.params</code> passthrough, this block is
+operator-MANAGED and reconciled: the operator OWNS the projected LiteLLM
+<code>team.models</code> and <code>object_permission</code> fields whenever this block is
+present, so out-of-band UI edits to those fields do NOT survive
+reconciliation (see the TEAM-03/TEAM-04 note on TeamSpec).</p>
+<p>Modeled as a pointer at the TeamSpec level (<code>Permission *PermissionSpec</code>)
+so whole-block absence (nil) is distinguishable from a present-but-empty
+block. Absent block → the operator manages nothing here and the raw
+<code>spec.params.models</code> / <code>spec.params.object_permission</code> (if any) pass
+through unchanged (migration path). Present block → the operator projects
+every non-empty sublist and deletes any colliding <code>spec.params</code> key
+(emitting a ProjectionOverride Event).</p>
+<p>Empty-vs-absent per sublist: a nil or empty sublist contributes NOTHING to
+the projection (it is omitted, not sent as <code>[]</code>). An empty allowed list
+means "allow all" in LiteLLM (get_allowed_agents), so omitting is both
+equivalent on the wire and safe against a lock-to-zero misread.</p>
+<p>Projection to LiteLLM (verified empirically against LiteLLM 1.83.10):
+  - Models + ModelGroups → merged into the top-level <code>models</code> list (LiteLLM
+    accepts specific model names AND model-access-group names mixed there).
+  - McpServers → object_permission.mcp_servers (LiteLLM resolves name→id).
+  - McpGroups  → object_permission.mcp_access_groups.
+  - Agents     → object_permission.agents. LiteLLM enforces on agent_id
+    UUIDs and SILENTLY IGNORES names, so the operator resolves each name to
+    its agent_id via GET /v1/agents before projecting. An unresolved name
+    (A2A agent not registered yet) requeues the Team with
+    reason=AgentNotFound rather than hard-failing.
+  - AgentGroups → object_permission.agent_access_groups. DEAD FIELD in
+    LiteLLM 1.83.10 (no API tags an agent into a group), retained for
+    forward-compat; the reconciler emits a Warning/AgentGroupsNoOp Event
+    when this sublist is non-empty.</p>
+<p><em>Appears in:</em>
+- <a href="#teamspec">TeamSpec</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>models</code> <em>string array</em></td>
+<td>Models is the list of specific LiteLLM model NAMES this team may use.<br />Merged with ModelGroups into the single top-level <code>models</code> list.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>modelGroups</code> <em>string array</em></td>
+<td>ModelGroups is the list of model ACCESS-GROUP names this team may use.<br />Merged with Models into the single top-level <code>models</code> list.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>mcpServers</code> <em>string array</em></td>
+<td>McpServers is the list of specific MCP server NAMES (aliases) this team<br />may use. Projected onto object_permission.mcp_servers; LiteLLM resolves<br />names to server ids automatically.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>mcpGroups</code> <em>string array</em></td>
+<td>McpGroups is the list of MCP access-group names this team may use.<br />Projected onto object_permission.mcp_access_groups.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>agents</code> <em>string array</em></td>
+<td>Agents is the list of A2A agent NAMES (human-friendly) this team may<br />use. The operator resolves each name to its agent_id UUID via<br />GET /v1/agents before projecting onto object_permission.agents — LiteLLM<br />enforces on UUIDs and ignores names. An unresolved name requeues the<br />Team (reason=AgentNotFound).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>agentGroups</code> <em>string array</em></td>
+<td>AgentGroups is the list of A2A agent access-group names. Projected onto<br />object_permission.agent_access_groups for forward-compat, but this is a<br />NO-OP in LiteLLM 1.83.10 (the API never tags an agent into a group). The<br />reconciler emits a Warning/AgentGroupsNoOp Event when this is non-empty.</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
 <h4 id="ratelimitsspec">RateLimitsSpec<a class="headerlink" href="#ratelimitsspec" title="Permanent link">&para;</a></h4>
 <p>RateLimitsSpec is the optional sub-block on TeamSpec that carries the LiteLLM
 team RPM/TPM rate limits (per Feature 01 §1). It MUST be modeled as a
@@ -5815,9 +5919,14 @@ LiteLLM fields by emitting explicit nulls in the <code>POST /team/update</code> 
 <code>RateLimits</code>, <code>Params</code>, <code>Secrets</code> — and explicitly omits the
 following Go-level fields that <code>_FINALv3</code> removed from earlier
 scaffolds (spec changelog lines 37–38):
-- any resource-allowlist field projecting to LiteLLM <code>models</code> /
-<code>object_permission.*</code>: runtime resource gating is delegated to an
-external system at the per-Environment level, NOT on the Team. Spec §6.7.
+- resource gating projecting to LiteLLM <code>models</code> and
+<code>object_permission.*</code> is now MANAGED via the typed <code>spec.permission</code>
+sub-block (see PermissionSpec). This REVERSES the original _FINALv3
+delegation: when <code>spec.permission</code> is present the operator OWNS those
+LiteLLM fields, so out-of-band UI edits to <code>models</code> / <code>object_permission</code>
+do NOT survive reconciliation. When the block is ABSENT the original
+delegated/passthrough behavior is preserved (raw <code>spec.params.models</code> /
+<code>spec.params.object_permission</code> forward unchanged).
 - any team-membership field projecting to LiteLLM
 <code>members_with_roles</code>: user-to-team assignment is delegated to an
 external system, not represented in GitOps. Spec §6.7 "Semantics".
@@ -5834,11 +5943,12 @@ spec §5.1 + §7.4.
 <code>tpm_limit</code>, <code>rpm_limit_type</code>, <code>tpm_limit_type</code>) WIN over
 <code>spec.params</code> per spec §5.1 + Feature 01 §2.1 (typed-field overlay
 tier) — collisions emit a <code>reason=ProjectionOverride</code> Event from the
-reconciler (06-02 + Phase 10). Unmanaged top-level fields
-(<code>members_with_roles</code>, <code>models</code>, <code>object_permission</code>) are still
-unmanaged if the user puts them inside <code>params</code>; LiteLLM accepts them on
-create, the operator does not enumerate or revert them on subsequent
-reconciles.</p>
+reconciler (06-02 + Phase 10). <code>members_with_roles</code> remains unmanaged if
+placed inside <code>params</code>. <code>models</code> and <code>object_permission</code> inside <code>params</code>
+are ALSO passthrough-unmanaged ONLY when <code>spec.permission</code> is absent; when
+<code>spec.permission</code> is present the operator deletes those params keys
+(ProjectionOverride Event) and owns the projected values (see
+PermissionSpec).</p>
 <p><code>spec.secrets[]</code> is the standard substitution map (§5.2, Phase 3 D-05)
 shared with Model / MCPServer / A2AAgent; same <code>{{NAME}}</code> placeholder
 semantics inside <code>params</code> string-typed leaves.</p>
@@ -5881,6 +5991,12 @@ path for non-default teams, keyed on <code>status.lastRendered.teamID</code>.</p
 <tr>
 <td><code>rateLimits</code> <em><a href="#ratelimitsspec">RateLimitsSpec</a></em></td>
 <td>RateLimits is the optional rate-limits sub-block (per Feature 01 §1,<br />parallel to <code>spec.budget</code>). Modeled as <code>*RateLimitsSpec</code> (pointer)<br />so the reconciler can distinguish whole-block absence from an empty<br /><code>RateLimitsSpec\{\}</code>. When absent (whole-block or empty-struct —<br />mirrors Budget §6.7 precedent), the reconciler emits <code>rpm_limit:&lt;br /&gt;null</code> AND <code>tpm_limit: null</code> on the <code>POST /team/update</code> body AND<br />OMITS both <code>rpm_limit_type</code> and <code>tpm_limit_type</code> keys (Feature 01<br />§2.1). The <code>*_type</code> keys are hardcoded to <code>best_effort_throughput</code><br />by the operator whenever the corresponding <code>*_limit</code> is non-null —<br />they are never exposed as CR fields (Feature 01 §1.2, §1.3).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>permission</code> <em><a href="#permissionspec">PermissionSpec</a></em></td>
+<td>Permission is the optional typed, operator-MANAGED resource-permission<br />sub-block (see PermissionSpec). When present, the operator OWNS the<br />projected LiteLLM <code>models</code> and <code>object_permission</code> fields and deletes any<br />colliding <code>spec.params.models</code> / <code>spec.params.object_permission</code> key<br />(emitting a ProjectionOverride Event). When absent, those raw params keys<br />pass through unchanged (migration path). Modeled as a pointer so<br />whole-block absence is distinguishable from an empty block.</td>
 <td></td>
 <td></td>
 </tr>
@@ -6013,7 +6129,7 @@ Phase 5 D-03 (nested <code>lastRendered</code> substruct).</p>
       <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "search.share", "content.code.copy", "content.code.annotate"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"alias": true, "default": "latest", "provider": "mike"}}</script>
     
     
-      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
       
     
   </body>
