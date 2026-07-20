@@ -105,10 +105,17 @@ type RateLimitsSpec struct {
 // every non-empty sublist and deletes any colliding `spec.params` key
 // (emitting a ProjectionOverride Event).
 //
-// Empty-vs-absent per sublist: a nil or empty sublist contributes NOTHING to
-// the projection (it is omitted, not sent as `[]`). An empty allowed list
-// means "allow all" in LiteLLM (get_allowed_agents), so omitting is both
-// equivalent on the wire and safe against a lock-to-zero misread.
+// Empty-vs-absent: an ABSENT block (`Permission == nil`) means the operator
+// manages nothing here (raw `spec.params` passthrough preserved). A PRESENT
+// block means the operator OWNS `models` and ALL FOUR `object_permission`
+// sub-fields and emits every one on the wire UNCONDITIONALLY — a sublist you
+// leave empty is sent as an explicit `[]` (a clear), NEVER omitted. This is
+// security-critical: LiteLLM's POST /team/update merges per-field on the
+// persistent object_permission row, so an OMITTED field keeps its stale value
+// — omitting a shrunk-to-empty list silently fails to revoke access. The
+// operator therefore faithfully renders the CR's declared state (`[]` clears,
+// a populated list replaces); it does not second-guess LiteLLM's enforcement
+// of an empty grant.
 //
 // Projection to LiteLLM (verified empirically against LiteLLM 1.83.10):
 //   - Models + ModelGroups → merged into the top-level `models` list (LiteLLM

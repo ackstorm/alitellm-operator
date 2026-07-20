@@ -524,12 +524,15 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
 		}
 
-		if len(models) > 0 {
-			body["models"] = models
-		}
-		if len(objectPermission) > 0 {
-			body["object_permission"] = objectPermission
-		}
+		// ALWAYS-EMIT (security-critical): with a present permission block the
+		// operator OWNS `models` + `object_permission` wholesale and MUST send
+		// both unconditionally — projectPermission returns non-nil slices so an
+		// emptied field serializes as `[]` (an explicit LiteLLM clear). A `len>0`
+		// guard here (or an omitted key) lets LiteLLM's per-field /team/update
+		// merge keep the STALE value → silent revocation failure. See
+		// projectPermission's ALWAYS-EMIT contract.
+		body["models"] = models
+		body["object_permission"] = objectPermission
 
 		if len(perm.AgentGroups) > 0 {
 			r.Recorder.Eventf(&team, corev1.EventTypeWarning, eventReasonAgentGroupsNoOp,

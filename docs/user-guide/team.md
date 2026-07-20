@@ -190,10 +190,14 @@ The field is retained for forward-compat; the operator emits a Warning
 
 **Empty vs absent.** An absent `spec.permission` block leaves any raw
 `spec.params.models` / `spec.params.object_permission` untouched (passthrough).
-A present block with an empty sublist (`agents: []`) omits that key entirely —
-an empty allowed list means "allow all" in LiteLLM, so it is never sent as
-`[]`. Because of this, an empty block cannot CLEAR a stale out-of-band
-`object_permission`; remove it in LiteLLM once, or supply a non-empty block.
+A **present** block makes the operator OWN `models` and all four
+`object_permission` sub-fields: every one is sent to LiteLLM on each update,
+and a sublist you leave empty is sent as an explicit `[]` (a clear), never
+omitted. Shrinking a list — including down to empty (`mcpServers: []`, or
+removing the last agent) — therefore **does** revoke access. This is
+security-critical: LiteLLM's `POST /team/update` merges per-field on the
+persistent `object_permission` row, so an *omitted* field keeps its stale
+value; the operator always emits `[]` so a revocation is never silently lost.
 
 **Precedence.** With `spec.permission` present, any `models` or
 `object_permission` key inside `spec.params` is dropped and a

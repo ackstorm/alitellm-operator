@@ -962,6 +962,33 @@ is emitted. WHY: `object_permission.agents` matches on `agent_id`; a name yields
 ZERO agents. Absent `spec.permission` block → raw `spec.params.{models,object_permission}`
 passthrough is preserved (migration path).
 
+### ❌ Emptying a `spec.permission` list silently fails to revoke (pre-v0.7.25)
+```yaml
+# before → object_permission.mcp_servers = [hindsight]
+spec:
+  permission:
+    mcpServers: [hindsight]
+# after  → user removes it, expecting revocation
+spec:
+  permission:
+    mcpServers: []            # or drops the key entirely
+```
+Symptom (≤ v0.7.24): CR goes `Ready=Synced`, but LiteLLM STILL grants
+`hindsight`. Silent authorization leak — the operator’s drift hash cannot catch
+it (the gap is entirely LiteLLM-side, invisible to the operator).
+✅ Fixed v0.7.25: with `spec.permission` present the operator emits `models`
+AND all four `object_permission` sub-fields UNCONDITIONALLY on every
+`/team/update` — an emptied sublist is sent as `[]` (an explicit clear), never
+omitted, never `null`. `projectPermission` returns non-nil slices; the Step 7b
+body assignment has no `len>0` guard.
+WHY IT FAILED: `POST /team/update` MERGES per-field on the persistent
+`object_permission` row (same `object_permission_id` across updates) — a
+present field is replaced, `[]` clears it, but an OMITTED field keeps its STALE
+value (verified on LiteLLM 1.83.10: dropping a key left it unchanged; sending
+`[]` cleared it). Non-empty shrinks (`[a,b]→[a]`) were always safe (the field
+was sent); only shrink-to-empty / last-item-removal leaked. `null` is treated
+as absent by the merge too, so the field must serialize as `[]`, not `null`.
+
 ## Repository-specific patterns
 
 - **Periodic drift detection = `SafetyRelistRunnable`, never `RequeueAfter`.**
