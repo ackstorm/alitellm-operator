@@ -96,8 +96,12 @@ spec:
               baseUrl.\n\tgemini — requires credentialsSecretRef; forbids region,
               baseUrl.\n\tkubeai — requires baseUrl; forbids credentialsSecretRef,
               region.\n\topenai — requires credentialsSecretRef; baseUrl optional;
-              forbids region.\n\nMDISC-01 enforces spec.type ∈ {anthropic, bedrock,
-              elevenlabs, gemini, kubeai, openai}\nat admission via the +kubebuilder:validation:Enum
+              forbids region.\n\nspec.litellmProvider (optional; spec.type=openai
+              only) overrides the LiteLLM\npricing-prefix provider used for cost tracking
+              (default: derived from\nspec.type) — e.g. `openrouter` to bill discovered
+              models under OpenRouter's\ncost table without a new provider type. See
+              the LitellmProvider field doc.\n\nMDISC-01 enforces spec.type ∈ {anthropic,
+              bedrock, elevenlabs, gemini, kubeai, openai}\nat admission via the +kubebuilder:validation:Enum
               marker. MDISC-04\n(prefix), MDISC-05 (refresh.interval floor), MDISC-15
               (credential\nsurface), and MDISC-22/23 (propagation bags) are all schema-side."
             properties:
@@ -232,6 +236,23 @@ spec:
                   child's reconcile.
                 type: object
                 x-kubernetes-preserve-unknown-fields: true
+              litellmProvider:
+                description: |-
+                  LitellmProvider overrides the LiteLLM custom_llm_provider used to build
+                  each child's litellm_params.model prefix (`<provider>/<rawID>`), which
+                  determines the pricing / cost-tracking key. When empty (default) the
+                  provider is derived from spec.type (kubeai -> hosted_vllm; all others
+                  verbatim). Set it to bill discovered models under an OpenAI-compatible
+                  gateway's pricing -- e.g. litellmProvider=openrouter with type=openai and
+                  baseUrl=https://openrouter.ai/api/v1 stamps `openrouter/<rawID>` so LiteLLM
+                  applies OpenRouter's cost table. Only the pricing prefix changes; the child
+                  CR NAME still derives from spec.type/spec.prefix, so switching this on an
+                  existing Discovery updates children in place (POST /model/update) rather
+                  than recreating them. Restricted by CEL to spec.type=openai (the only
+                  OpenAI-compatible discovery wire shape).
+                maxLength: 40
+                pattern: ^[a-z0-9_]+$
+                type: string
               params:
                 description: |-
                   Params is a pass-through bag of fields propagated VERBATIM into
@@ -668,6 +689,8 @@ spec:
         - message: openai requires spec.credentialsSecretRef and forbids spec.region
           rule: self.spec.type != 'openai' || (has(self.spec.credentialsSecretRef)
             && !has(self.spec.region))
+        - message: spec.litellmProvider override is only allowed with spec.type=openai
+          rule: '!has(self.spec.litellmProvider) || self.spec.type == ''openai'''
         - message: spec.refresh.interval must be >= 1m
           rule: duration(self.spec.refresh.interval) >= duration('1m')
         - message: spec.prefix and spec.disablePrefix are mutually exclusive

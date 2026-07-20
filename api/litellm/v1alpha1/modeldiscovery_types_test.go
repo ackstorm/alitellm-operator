@@ -31,8 +31,9 @@ func TestModelDiscovery_DeepCopy_RoundTrip(t *testing.T) {
 			Namespace: "default",
 		},
 		Spec: ModelDiscoverySpec{
-			Type:   "anthropic",
-			Prefix: "anthropic",
+			Type:            "anthropic",
+			Prefix:          "anthropic",
+			LitellmProvider: "openrouter", // CEL (type=openai only) is not exercised by a pure DeepCopy test
 			CredentialsSecretRef: &SecretObjectRef{
 				Name: "anthropic-credentials",
 			},
@@ -92,6 +93,9 @@ func TestModelDiscovery_DeepCopy_RoundTrip(t *testing.T) {
 	// --- scalar field equality
 	if dst.Spec.Type != src.Spec.Type {
 		t.Errorf("Spec.Type: got %q want %q", dst.Spec.Type, src.Spec.Type)
+	}
+	if dst.Spec.LitellmProvider != src.Spec.LitellmProvider {
+		t.Errorf("Spec.LitellmProvider: got %q want %q", dst.Spec.LitellmProvider, src.Spec.LitellmProvider)
 	}
 	if dst.Spec.Prefix != src.Spec.Prefix {
 		t.Errorf("Spec.Prefix: got %q want %q", dst.Spec.Prefix, src.Spec.Prefix)

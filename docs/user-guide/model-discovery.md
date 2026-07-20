@@ -15,6 +15,7 @@ child reconciles into LiteLLM via the `LiteLLMModel` controller
 | `spec.credentialsSecretRef` | per-provider    | Secret holding upstream API key (operator-side ONLY — never propagated to children).   |
 | `spec.region`               | bedrock only    | AWS region. One region per CR (multi-region → multiple CRs).                           |
 | `spec.baseUrl`              | kubeai (req), openai (opt) | Provider HTTP endpoint. Any non-empty value auto-overlays into each child's `api_base` (so LiteLLM routes inference to the same endpoint models were discovered from). |
+| `spec.litellmProvider`      | no (openai only) | Overrides the LiteLLM pricing-prefix provider stamped on each child's `litellm_params.model` (default: derived from `spec.type`). E.g. `openrouter` to bill under OpenRouter's cost table. CEL-restricted to `type: openai`. |
 | `spec.params`               | no              | Pass-through bag propagated VERBATIM into every child's `spec.params`.                 |
 | `spec.info`                 | no              | Pass-through bag propagated into every child's `spec.info`.                            |
 | `spec.secrets[]`            | no              | Substitution map propagated into every child's `spec.secrets[]` (NOT resolved here).   |
@@ -151,6 +152,31 @@ implements OpenAI's `GET /v1/models` + chat-completions. The reconciler
 overlays `api_base: <spec.baseUrl>` into each child's `spec.params`
 (user-supplied `api_base` wins on collision), so LiteLLM routes inference
 to the third-party endpoint instead of `api.openai.com`.
+
+### Correct cost tracking — `spec.litellmProvider`
+
+By default a `type: openai` Discovery stamps `openai/<id>` on every child's
+`litellm_params.model`, so LiteLLM bills them under OpenAI's price table even
+when they actually run on a third-party gateway. Set `spec.litellmProvider`
+to the gateway's LiteLLM provider name so the pricing prefix (and thus the
+cost table) matches:
+
+```yaml
+spec:
+  type: openai
+  baseUrl: https://openrouter.ai/api/v1
+  litellmProvider: openrouter        # children stamp `openrouter/<id>`
+  credentialsSecretRef: { name: openrouter-api-key }
+  refresh: { interval: 10m }
+```
+
+Only the pricing prefix on `litellm_params.model` changes — the child CR
+NAME still derives from `spec.type`/`spec.prefix`, so enabling this on an
+existing Discovery updates the children **in place** (`POST /model/update`),
+never recreates them, and LiteLLM applies the new cost table on the next
+request (cost is computed per-request from the live `litellm_params.model`).
+Valid provider names follow `^[a-z0-9_]+$` (e.g. `openrouter`, `together_ai`,
+`groq`, `hosted_vllm`). The field is CEL-restricted to `type: openai`.
 
 ## ElevenLabs — audio (TTS / STT)
 

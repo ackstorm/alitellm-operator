@@ -299,6 +299,24 @@ func (f *fakeProvider) setError(err error) {
 // is 1 minute (the MDISC-05 CEL floor); tests that need tighter cadence
 // either trigger reconciles via touching the CR or use the bedrock test
 // path where the cadence doesn't matter for first-reconcile assertions.
+// pollChildModel waits up to timeout for the generated child LiteLLMModel
+// named childName to appear in WatchNamespace and returns it (fails the test
+// on timeout).
+func pollChildModel(t *testing.T, ctx context.Context, childName string, timeout time.Duration) *litellmv1alpha1.LiteLLMModel {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	key := client.ObjectKey{Name: childName, Namespace: WatchNamespace}
+	var child litellmv1alpha1.LiteLLMModel
+	for time.Now().Before(deadline) {
+		if err := k8sClient.Get(ctx, key, &child); err == nil {
+			return &child
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("child Model %q not created within %s", childName, timeout)
+	return nil
+}
+
 func modeldiscoverySampleCR(name, providerType string) *litellmv1alpha1.LiteLLMModelDiscovery {
 	md := &litellmv1alpha1.LiteLLMModelDiscovery{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1931,4 +1949,99 @@ func TestModelDiscovery_SecretDeleted_ClearsSourceReachable(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	t.Fatal("after secret deletion: want SourceReachable=False AND Ready reason=SecretNotFound")
+}
+
+// TestModelDiscovery_LitellmProviderOverride verifies spec.litellmProvider
+// overrides the type-derived provider in the child's litellm_params.model
+// pricing prefix. type=openai + litellmProvider=openrouter → child model
+// "openrouter/<rawID>". The child NAME still derives from spec.type (prefix
+// "openai"), proving the override is a pricing-only change (update-in-place,
+// not recreate).
+func TestModelDiscovery_LitellmProviderOverride(t *testing.T) {
+	ctx := context.Background()
+	const mdName = "openrouter-md"
+
+	ensureNoModelDiscovery(t, ctx, mdName)
+	t.Cleanup(func() { ensureNoModelDiscovery(t, context.Background(), mdName) })
+
+	fake := newFakeProvider("openai", []providers.Candidate{
+		{ID: "gpt-4o", DisplayName: "GPT-4o"},
+	})
+	providers.RegisterTestProvider(t, "openai", fake)
+	ensureCredentialSecret(t, ctx, mdName+"-creds", "openai")
+
+	md := modeldiscoverySampleCR(mdName, "openai")
+	md.Spec.BaseURL = "https://openrouter.ai/api/v1"
+	md.Spec.LitellmProvider = "openrouter"
+	if err := k8sClient.Create(ctx, md); err != nil {
+		t.Fatalf("create ModelDiscovery (openai + litellmProvider=openrouter): %v", err)
+	}
+
+	// Child NAME uses the type-derived prefix ("openai"), NOT the override.
+	const wantChildName = "openai.gpt-4o"
+	child := pollChildModel(t, ctx, wantChildName, 30*time.Second)
+
+	var params map[string]any
+	if err := json.Unmarshal(child.Spec.Params.Raw, &params); err != nil {
+		t.Fatalf("decode child spec.params: %v", err)
+	}
+	if got, want := params["model"], "openrouter/gpt-4o"; got != want {
+		t.Errorf("child litellm_params.model: got %v, want %q (override → openrouter pricing prefix)", got, want)
+	}
+}
+
+// TestModelDiscovery_LitellmProviderAbsent_NoRegression pins the default:
+// with no spec.litellmProvider, a type=openai Discovery still stamps
+// "openai/<rawID>" (the pre-feature behavior).
+func TestModelDiscovery_LitellmProviderAbsent_NoRegression(t *testing.T) {
+	ctx := context.Background()
+	const mdName = "openai-default-md"
+
+	ensureNoModelDiscovery(t, ctx, mdName)
+	t.Cleanup(func() { ensureNoModelDiscovery(t, context.Background(), mdName) })
+
+	fake := newFakeProvider("openai", []providers.Candidate{
+		{ID: "gpt-4o", DisplayName: "GPT-4o"},
+	})
+	providers.RegisterTestProvider(t, "openai", fake)
+	ensureCredentialSecret(t, ctx, mdName+"-creds", "openai")
+
+	md := modeldiscoverySampleCR(mdName, "openai") // no LitellmProvider
+	if err := k8sClient.Create(ctx, md); err != nil {
+		t.Fatalf("create ModelDiscovery (openai, no override): %v", err)
+	}
+
+	child := pollChildModel(t, ctx, "openai.gpt-4o", 30*time.Second)
+	var params map[string]any
+	if err := json.Unmarshal(child.Spec.Params.Raw, &params); err != nil {
+		t.Fatalf("decode child spec.params: %v", err)
+	}
+	if got, want := params["model"], "openai/gpt-4o"; got != want {
+		t.Errorf("child litellm_params.model: got %v, want %q (default = spec.type)", got, want)
+	}
+}
+
+// TestModelDiscovery_LitellmProvider_CELRejectNonOpenAI locks the CEL guard:
+// spec.litellmProvider is only allowed with spec.type=openai. A non-openai
+// type carrying the field is rejected at admission before any reconcile.
+func TestModelDiscovery_LitellmProvider_CELRejectNonOpenAI(t *testing.T) {
+	ctx := context.Background()
+	const mdName = "override-nonopenai"
+
+	ensureNoModelDiscovery(t, ctx, mdName)
+	t.Cleanup(func() { ensureNoModelDiscovery(t, context.Background(), mdName) })
+
+	md := modeldiscoverySampleCR(mdName, "anthropic")
+	md.Spec.LitellmProvider = "openrouter" // forbidden with type != openai
+
+	err := k8sClient.Create(ctx, md)
+	if err == nil {
+		t.Fatalf("Create should be rejected: litellmProvider with type=anthropic")
+	}
+	if !apierrors.IsInvalid(err) {
+		t.Fatalf("expected Invalid (CEL) admission error, got %T: %v", err, err)
+	}
+	if !strings.Contains(err.Error(), "only allowed with spec.type=openai") {
+		t.Errorf("error should name the CEL rule; got: %v", err)
+	}
 }
