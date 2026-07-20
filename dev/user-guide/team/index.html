@@ -1996,10 +1996,14 @@ The field is retained for forward-compat; the operator emits a Warning
 <code>AgentGroupsNoOp</code> Event when it is non-empty.</p>
 <p><strong>Empty vs absent.</strong> An absent <code>spec.permission</code> block leaves any raw
 <code>spec.params.models</code> / <code>spec.params.object_permission</code> untouched (passthrough).
-A present block with an empty sublist (<code>agents: []</code>) omits that key entirely —
-an empty allowed list means "allow all" in LiteLLM, so it is never sent as
-<code>[]</code>. Because of this, an empty block cannot CLEAR a stale out-of-band
-<code>object_permission</code>; remove it in LiteLLM once, or supply a non-empty block.</p>
+A <strong>present</strong> block makes the operator OWN <code>models</code> and all four
+<code>object_permission</code> sub-fields: every one is sent to LiteLLM on each update,
+and a sublist you leave empty is sent as an explicit <code>[]</code> (a clear), never
+omitted. Shrinking a list — including down to empty (<code>mcpServers: []</code>, or
+removing the last agent) — therefore <strong>does</strong> revoke access. This is
+security-critical: LiteLLM's <code>POST /team/update</code> merges per-field on the
+persistent <code>object_permission</code> row, so an <em>omitted</em> field keeps its stale
+value; the operator always emits <code>[]</code> so a revocation is never silently lost.</p>
 <p><strong>Precedence.</strong> With <code>spec.permission</code> present, any <code>models</code> or
 <code>object_permission</code> key inside <code>spec.params</code> is dropped and a
 <code>ProjectionOverride</code> Warning Event fires — the typed block always wins.</p>
