@@ -2843,3 +2843,202 @@ func TestTeamReconciler_AC_T3_DeleteConnectionUnavailable(t *testing.T) {
 			newMutations)
 	}
 }
+
+// ──────────────────────────────────────────────────────────────────────────
+// spec.permission projection tests
+// ──────────────────────────────────────────────────────────────────────────
+
+// TestTeamPermission_ProjectsModelsAndMcp — a present permission block with
+// models/modelGroups/mcpServers/mcpGroups projects onto the top-level `models`
+// list and `object_permission` on the POST /team/new body.
+func TestTeamPermission_ProjectsModelsAndMcp(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetTeams()
+	mockServer.ResetAgents()
+	teamReconciler.ResetImplicitDefaultCache()
+	ensureNoTeam(t, ctx, "team-perm-models")
+	resetConnCacheSnapshot()
+
+	cleanupConn := setupReadyConnectionTeam(t, ctx)
+	t.Cleanup(func() {
+		cleanupConn()
+		ensureNoTeam(t, context.Background(), "team-perm-models")
+	})
+
+	cr := teamSampleCR("team-perm-models")
+	cr.Spec.Permission = &litellmv1alpha1.PermissionSpec{
+		Models:      []string{"gpt-4o"},
+		ModelGroups: []string{"anthropic"},
+		McpServers:  []string{"hindsight"},
+		McpGroups:   []string{"team-a"},
+	}
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create Team: %v", err)
+	}
+
+	pollTeamCondition(t, ctx, "team-perm-models", reasonSynced, 30*time.Second)
+	body := mockServer.LastTeamBody("team-perm-models")
+	if body == nil {
+		t.Fatalf("LastTeamBody nil")
+	}
+	models, _ := body["models"].([]any)
+	if len(models) != 2 {
+		t.Errorf("body.models: want [gpt-4o anthropic], got %v", body["models"])
+	}
+	op, ok := body["object_permission"].(map[string]any)
+	if !ok {
+		t.Fatalf("body.object_permission: want map, got %T (%v)", body["object_permission"], body["object_permission"])
+	}
+	if mcp, _ := op["mcp_servers"].([]any); len(mcp) != 1 || mcp[0] != "hindsight" {
+		t.Errorf("object_permission.mcp_servers: got %v", op["mcp_servers"])
+	}
+	if grp, _ := op["mcp_access_groups"].([]any); len(grp) != 1 || grp[0] != "team-a" {
+		t.Errorf("object_permission.mcp_access_groups: got %v", op["mcp_access_groups"])
+	}
+}
+
+// TestTeamPermission_ResolvesAgentNamesToUUIDs — agent NAMES in the block are
+// resolved to agent_id UUIDs (via GET /v1/agents) on the projected body.
+func TestTeamPermission_ResolvesAgentNamesToUUIDs(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetTeams()
+	mockServer.ResetAgents()
+	teamReconciler.ResetImplicitDefaultCache()
+	ensureNoTeam(t, ctx, "team-perm-agents")
+	resetConnCacheSnapshot()
+
+	// Register the agent in the mock so GET /v1/agents resolves it.
+	agentID := mockServer.AddHandManagedAgent("planner")
+
+	cleanupConn := setupReadyConnectionTeam(t, ctx)
+	t.Cleanup(func() {
+		cleanupConn()
+		ensureNoTeam(t, context.Background(), "team-perm-agents")
+	})
+
+	cr := teamSampleCR("team-perm-agents")
+	cr.Spec.Permission = &litellmv1alpha1.PermissionSpec{Agents: []string{"planner"}}
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create Team: %v", err)
+	}
+
+	pollTeamCondition(t, ctx, "team-perm-agents", reasonSynced, 30*time.Second)
+	body := mockServer.LastTeamBody("team-perm-agents")
+	op, ok := body["object_permission"].(map[string]any)
+	if !ok {
+		t.Fatalf("object_permission: want map, got %T", body["object_permission"])
+	}
+	agents, _ := op["agents"].([]any)
+	if len(agents) != 1 || agents[0] != agentID {
+		t.Errorf("object_permission.agents: want [%s] (resolved UUID), got %v", agentID, op["agents"])
+	}
+}
+
+// TestTeamPermission_AgentNotFoundRequeues — an agent name absent from
+// GET /v1/agents parks the Team Ready=False/AgentNotFound (no /team/new).
+func TestTeamPermission_AgentNotFoundRequeues(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetTeams()
+	mockServer.ResetAgents()
+	teamReconciler.ResetImplicitDefaultCache()
+	ensureNoTeam(t, ctx, "team-perm-ghost")
+	resetConnCacheSnapshot()
+
+	cleanupConn := setupReadyConnectionTeam(t, ctx)
+	t.Cleanup(func() {
+		cleanupConn()
+		ensureNoTeam(t, context.Background(), "team-perm-ghost")
+	})
+
+	cr := teamSampleCR("team-perm-ghost")
+	cr.Spec.Permission = &litellmv1alpha1.PermissionSpec{Agents: []string{"ghost"}}
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create Team: %v", err)
+	}
+
+	tm := pollTeamCondition(t, ctx, "team-perm-ghost", reasonAgentNotFound, 30*time.Second)
+	c := apimeta.FindStatusCondition(tm.Status.Conditions, conditionTypeReady)
+	if c == nil || c.Status != metav1.ConditionFalse || c.Reason != reasonAgentNotFound {
+		t.Fatalf("Ready condition: want False/AgentNotFound, got %+v", c)
+	}
+	if got := mockServer.MutationsByTeamAlias("team-perm-ghost"); got != 0 {
+		t.Errorf("MutationsByTeamAlias: want 0 (parked before /team/new), got %d", got)
+	}
+}
+
+// TestTeamPermission_OverridesParamsModels — a permission block deletes a
+// colliding spec.params.models key (permission wins).
+func TestTeamPermission_OverridesParamsModels(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetTeams()
+	mockServer.ResetAgents()
+	teamReconciler.ResetImplicitDefaultCache()
+	ensureNoTeam(t, ctx, "team-perm-override")
+	resetConnCacheSnapshot()
+
+	cleanupConn := setupReadyConnectionTeam(t, ctx)
+	t.Cleanup(func() {
+		cleanupConn()
+		ensureNoTeam(t, context.Background(), "team-perm-override")
+	})
+
+	cr := teamSampleCR("team-perm-override")
+	cr.Spec.Params = runtime.RawExtension{Raw: []byte(`{"models":["stale-from-params"]}`)}
+	cr.Spec.Permission = &litellmv1alpha1.PermissionSpec{Models: []string{"gpt-4o"}}
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create Team: %v", err)
+	}
+
+	pollTeamCondition(t, ctx, "team-perm-override", reasonSynced, 30*time.Second)
+	body := mockServer.LastTeamBody("team-perm-override")
+	models, _ := body["models"].([]any)
+	if len(models) != 1 || models[0] != "gpt-4o" {
+		t.Errorf("body.models: want [gpt-4o] (permission wins over params), got %v", body["models"])
+	}
+}
+
+// TestTeamPermission_AbsentBlockPassesParamsThrough — with NO permission
+// block, spec.params.models still passes through unchanged (migration path).
+func TestTeamPermission_AbsentBlockPassesParamsThrough(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetTeams()
+	mockServer.ResetAgents()
+	teamReconciler.ResetImplicitDefaultCache()
+	ensureNoTeam(t, ctx, "team-perm-absent")
+	resetConnCacheSnapshot()
+
+	cleanupConn := setupReadyConnectionTeam(t, ctx)
+	t.Cleanup(func() {
+		cleanupConn()
+		ensureNoTeam(t, context.Background(), "team-perm-absent")
+	})
+
+	cr := teamSampleCR("team-perm-absent")
+	cr.Spec.Params = runtime.RawExtension{Raw: []byte(`{"models":["passthrough-model"]}`)}
+	// No cr.Spec.Permission.
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create Team: %v", err)
+	}
+
+	pollTeamCondition(t, ctx, "team-perm-absent", reasonSynced, 30*time.Second)
+	body := mockServer.LastTeamBody("team-perm-absent")
+	models, _ := body["models"].([]any)
+	if len(models) != 1 || models[0] != "passthrough-model" {
+		t.Errorf("body.models: want passthrough [passthrough-model], got %v", body["models"])
+	}
+}
