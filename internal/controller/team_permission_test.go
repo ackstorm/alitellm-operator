@@ -35,11 +35,16 @@ func TestProjectPermission_MergesModelsAndGroups(t *testing.T) {
 	if want := []string{"gpt-4o", "claude-opus", "anthropic"}; !reflect.DeepEqual(models, want) {
 		t.Errorf("models: want %v, got %v", want, models)
 	}
-	// object_permission sub-fields are all present but empty (models-only block).
-	for _, k := range []string{"mcp_servers", "mcp_access_groups", "agents", "agent_access_groups"} {
+	// mcp + agent_access_groups present but empty; agents deny-by-default →
+	// nil-UUID sentinel (spec.permission.agents unset on a models-only block
+	// must NOT fail-open to every agent).
+	for _, k := range []string{"mcp_servers", "mcp_access_groups", "agent_access_groups"} {
 		if got := opStrings(t, op, k); len(got) != 0 {
 			t.Errorf("object_permission[%q]: want empty, got %v", k, got)
 		}
+	}
+	if got := opStrings(t, op, "agents"); !reflect.DeepEqual(got, []string{agentDenyAllSentinel}) {
+		t.Errorf("agents: want deny-all sentinel [%s], got %v", agentDenyAllSentinel, got)
 	}
 	if len(missing) != 0 {
 		t.Errorf("missingAgents: want none, got %v", missing)
@@ -58,9 +63,9 @@ func TestProjectPermission_McpAndGroups(t *testing.T) {
 	if got := opStrings(t, op, "mcp_access_groups"); !reflect.DeepEqual(got, []string{"team-a"}) {
 		t.Errorf("mcp_access_groups: got %v", got)
 	}
-	// The unset sub-fields are still emitted as empty (clear-on-wire).
-	if got := opStrings(t, op, "agents"); len(got) != 0 {
-		t.Errorf("agents: want empty, got %v", got)
+	// agents unset → deny-all sentinel; agent_access_groups unset → [] (no-op field).
+	if got := opStrings(t, op, "agents"); !reflect.DeepEqual(got, []string{agentDenyAllSentinel}) {
+		t.Errorf("agents: want deny-all sentinel [%s], got %v", agentDenyAllSentinel, got)
 	}
 	if got := opStrings(t, op, "agent_access_groups"); len(got) != 0 {
 		t.Errorf("agent_access_groups: want empty, got %v", got)
@@ -100,40 +105,83 @@ func TestProjectPermission_AgentGroupsProjectedVerbatim(t *testing.T) {
 	}
 }
 
-// TestProjectPermission_EmptyEmittedAsEmptyArrayNotNull is the security
-// regression: an all-empty present block must render every field as `[]` on
-// the wire, never omitted and never `null`. Omitting/null-ing lets LiteLLM's
-// per-field /team/update merge keep the stale (revoked) value.
-func TestProjectPermission_EmptyEmittedAsEmptyArrayNotNull(t *testing.T) {
+// TestProjectPermission_DenyByDefault_EmptyBlock is the security regression:
+// an all-empty present block must FAIL CLOSED. models and agents are the two
+// LiteLLM fail-open fields (an empty list disables the filter entirely, so the
+// team sees the master-key ceiling), so they carry their deny-all sentinels;
+// mcp_servers/mcp_access_groups/agent_access_groups stay `[]` (already
+// fail-closed / no-op in LiteLLM 1.83.10). Nothing may be omitted or `null`.
+func TestProjectPermission_DenyByDefault_EmptyBlock(t *testing.T) {
 	perm := &litellmv1alpha1.PermissionSpec{} // every sublist empty
 	models, op, missing := projectPermission(perm, nil)
 	if len(missing) != 0 {
 		t.Fatalf("missingAgents: want none, got %v", missing)
 	}
-	if models == nil {
-		t.Error("models is nil — must be non-nil empty slice so it marshals to [] not null")
+	if !reflect.DeepEqual(models, []string{modelDenyAllSentinel}) {
+		t.Errorf("models: want deny-all sentinel [%s], got %v", modelDenyAllSentinel, models)
 	}
-	for _, k := range []string{"mcp_servers", "mcp_access_groups", "agents", "agent_access_groups"} {
+	if got := opStrings(t, op, "agents"); !reflect.DeepEqual(got, []string{agentDenyAllSentinel}) {
+		t.Errorf("agents: want deny-all sentinel [%s], got %v", agentDenyAllSentinel, got)
+	}
+	for _, k := range []string{"mcp_servers", "mcp_access_groups", "agent_access_groups"} {
 		if got := opStrings(t, op, k); len(got) != 0 {
 			t.Errorf("object_permission[%q]: want empty non-nil, got %v", k, got)
 		}
 	}
-	// Serialization canary: [] on the wire, never null (LiteLLM merges null as
-	// "absent" → stale grant kept).
+	// Serialization canary: fail-closed fields carry the sentinel; the fail-safe
+	// fields are [] on the wire — never null (LiteLLM merges null as "absent" →
+	// stale grant kept).
 	raw, err := json.Marshal(map[string]any{"models": models, "object_permission": op})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
 	got := string(raw)
 	for _, want := range []string{
-		`"models":[]`, `"mcp_servers":[]`, `"mcp_access_groups":[]`,
-		`"agents":[]`, `"agent_access_groups":[]`,
+		`"models":["__deny_all__"]`,
+		`"agents":["00000000-0000-0000-0000-000000000000"]`,
+		`"mcp_servers":[]`, `"mcp_access_groups":[]`, `"agent_access_groups":[]`,
 	} {
 		if !strings.Contains(got, want) {
-			t.Errorf("marshaled body missing %s (leak risk). got=%s", want, got)
+			t.Errorf("marshaled body missing %s. got=%s", want, got)
 		}
 	}
 	if strings.Contains(got, "null") {
-		t.Errorf("marshaled body contains null — every permission field must be [] not null. got=%s", got)
+		t.Errorf("marshaled body contains null — every permission field must be [] or a sentinel, not null. got=%s", got)
+	}
+}
+
+// TestProjectPermission_ModelsSentinelWhenUnset covers the models fail-open
+// case in isolation: a block with only a non-model field set still denies all
+// models via the sentinel.
+func TestProjectPermission_ModelsSentinelWhenUnset(t *testing.T) {
+	perm := &litellmv1alpha1.PermissionSpec{McpServers: []string{"hindsight"}}
+	models, _, _ := projectPermission(perm, nil)
+	if !reflect.DeepEqual(models, []string{modelDenyAllSentinel}) {
+		t.Errorf("models: want deny-all sentinel [%s], got %v", modelDenyAllSentinel, models)
+	}
+}
+
+// TestProjectPermission_ModelsShrinkNoSentinel: a non-empty models list is
+// projected verbatim — the sentinel is ONLY for the shrunk-to-empty case.
+func TestProjectPermission_ModelsShrinkNoSentinel(t *testing.T) {
+	perm := &litellmv1alpha1.PermissionSpec{Models: []string{"a"}}
+	models, _, _ := projectPermission(perm, nil)
+	if !reflect.DeepEqual(models, []string{"a"}) {
+		t.Errorf("models: want [a] (non-empty → no sentinel), got %v", models)
+	}
+}
+
+// TestProjectPermission_AllAgentsMissingNoSentinel: a non-empty perm.Agents
+// that fails to resolve reports the missing names and leaves agents empty — it
+// must NOT be replaced by the deny-all sentinel. The sentinel is exclusively
+// the len(perm.Agents)==0 branch; the caller aborts (AgentNotFound) on missing.
+func TestProjectPermission_AllAgentsMissingNoSentinel(t *testing.T) {
+	perm := &litellmv1alpha1.PermissionSpec{Agents: []string{"ghost"}}
+	_, op, missing := projectPermission(perm, map[string]string{})
+	if !reflect.DeepEqual(missing, []string{"ghost"}) {
+		t.Fatalf("missingAgents: want [ghost], got %v", missing)
+	}
+	if got := opStrings(t, op, "agents"); len(got) != 0 {
+		t.Errorf("agents: want empty (missing path, not sentinel), got %v", got)
 	}
 }

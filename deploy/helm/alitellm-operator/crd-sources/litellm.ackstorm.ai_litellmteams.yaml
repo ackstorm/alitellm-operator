@@ -255,7 +255,11 @@ spec:
                       use. The operator resolves each name to its agent_id UUID via
                       GET /v1/agents before projecting onto object_permission.agents — LiteLLM
                       enforces on UUIDs and ignores names. An unresolved name requeues the
-                      Team (reason=AgentNotFound).
+                      Team (reason=AgentNotFound). When a present permission block leaves this
+                      list empty the operator projects the null-UUID deny-all sentinel
+                      (fail-closed) — an empty agents list fails OPEN in LiteLLM. The sentinel
+                      is scoped to the empty case only; it never substitutes for an unresolved
+                      name. See the deny-by-default note above.
                     items:
                       type: string
                     type: array
@@ -284,7 +288,11 @@ spec:
                   models:
                     description: |-
                       Models is the list of specific LiteLLM model NAMES this team may use.
-                      Merged with ModelGroups into the single top-level `models` list.
+                      Merged with ModelGroups into the single top-level `models` list. When a
+                      present permission block leaves BOTH Models and ModelGroups empty the
+                      operator projects the deny-all sentinel `["__deny_all__"]` (fail-closed)
+                      — an empty `models` list fails OPEN in LiteLLM. See the deny-by-default
+                      note above.
                     items:
                       type: string
                     type: array

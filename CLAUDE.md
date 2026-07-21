@@ -989,6 +989,33 @@ value (verified on LiteLLM 1.83.10: dropping a key left it unchanged; sending
 was sent); only shrink-to-empty / last-item-removal leaked. `null` is treated
 as absent by the merge too, so the field must serialize as `[]`, not `null`.
 
+### ❌ Empty `spec.permission` list = deny (NOT allow-all) — deny-by-default
+```yaml
+spec:
+  permission:
+    mcpServers: [hindsight]   # models/agents omitted → NOT "grant everything"
+```
+Symptom (≤ v0.7.26): a present `spec.permission` block that leaves `models`
+(or `agents`) empty made the team see EVERY model / EVERY agent — the
+master-key ceiling. Verified in prod (LiteLLM 1.83.10): a team with `models=[]
+object_permission=None` saw all 427 models / 7 agents. `[]` on those two fields
+is fail-OPEN — LiteLLM reads it as "no filter". (`mcp_servers` /
+`mcp_access_groups` were already fail-CLOSED — `[]` there = 0.)
+✅ Deny-by-default: with `spec.permission` present, `projectPermission`
+(`team_permission.go`) substitutes a deny-all SENTINEL when the fail-open lists
+resolve empty — `["__deny_all__"]` for `models`, the null UUID
+`"00000000-0000-0000-0000-000000000000"` for `agents`. LiteLLM activates the
+filter on any non-empty list and never validates the elements exist, so a value
+no real resource can match → 0 grants. The three fail-closed fields stay `[]`.
+An ABSENT block (`Permission == nil`, migration passthrough) is untouched — the
+sentinel applies only to a present typed block, or existing teams break.
+GOTCHA: the agent sentinel is injected ONLY in the `len(perm.Agents)==0` branch
+(where the code skips `GET /v1/agents`), NEVER for names that fail to resolve —
+a non-empty `agents` with an unregistered name still parks the team
+`AgentNotFound` and requeues; it must not be swapped for the sentinel.
+NOT VERIFIED: that an inference call against `models:["__deny_all__"]` is
+rejected (only that `/models` returns 1 phantom entry) — confirm on e2e/prod.
+
 ## Repository-specific patterns
 
 - **Periodic drift detection = `SafetyRelistRunnable`, never `RequeueAfter`.**
