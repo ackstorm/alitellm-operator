@@ -72,6 +72,42 @@ func litellmTeamsByAlias(alias string) []map[string]interface{} {
 	return matched
 }
 
+const litellmBase = "http://litellm.litellm-system.svc.cluster.local:4000"
+
+// generateTeamKey mints a team-scoped virtual key via POST /key/generate
+// (master-key authed) so a spec can prove LiteLLM ENFORCES the team's model
+// scope on real inference. Returns the `sk-...` value. NOTE: this is
+// test-driver traffic to /key/* — the AC-N3 scope invariant (see
+// scope_ac_n3_test.go) attributes forbidden /key//user calls to the OPERATOR
+// pod IP only, so this call does not trip it.
+func generateTeamKey(teamID string) string {
+	GinkgoHelper()
+	body := curlPodJSON("litellm-system", "key-gen", '{',
+		"curl", "-sS", "--max-time", "10", "-X", "POST",
+		"-H", "Authorization: Bearer sk-test-master-key",
+		"-H", "Content-Type: application/json",
+		"-d", `{"team_id":"`+teamID+`"}`,
+		litellmBase+"/key/generate",
+	)
+	var resp struct {
+		Key string `json:"key"`
+	}
+	Expect(json.Unmarshal(body, &resp)).To(Succeed(), "raw=%s", string(body))
+	Expect(resp.Key).NotTo(BeEmpty(), "no key in /key/generate response: %s", string(body))
+	return resp.Key
+}
+
+// deleteLiteLLMKey revokes a virtual key (best-effort cleanup).
+func deleteLiteLLMKey(key string) {
+	_, _ = runCurlPod("litellm-system", "key-del",
+		"curl", "-sS", "--max-time", "10", "-X", "POST",
+		"-H", "Authorization: Bearer sk-test-master-key",
+		"-H", "Content-Type: application/json",
+		"-d", `{"keys":["`+key+`"]}`,
+		litellmBase+"/key/delete",
+	)
+}
+
 // envtest counterpart: internal/controller/team_hubseam_test.go (renamed
 // from team_hubseam_e2e_test.go in Phase 4 / Task 4.1) covers reconcile
 // logic, hash-equal noop steady state, 401 fastpath, and AC-DC1 hand-
@@ -553,5 +589,78 @@ var _ = Describe("LiteLLMTeam", Ordered, ContinueOnFailure, func() {
 					"CR-01 regression: tpm_limit on LiteLLM `default` team is %v post-deletion; want null", v)
 			}
 		}, 90*time.Second, 2*time.Second).Should(Succeed())
+	})
+
+	// ─── Deny-by-default (TEAM-05) — a present spec.permission block that
+	// leaves `models` empty must FAIL CLOSED. LiteLLM reads an empty team
+	// `models` list as "no filter" (fail-OPEN → the team inherits the full
+	// master-key ceiling), so the operator projects the deny-all sentinel
+	// `["__deny_all__"]`. This spec proves the whole chain end-to-end against
+	// the Helm-deployed operator + real LiteLLM 1.83.10: the operator writes
+	// the sentinel (round-trip via /v2/team/list) AND LiteLLM ENFORCES it —
+	// a team-scoped key is denied (HTTP 401 team_model_access_denied) when it
+	// tries to run inference against a real model. Closes the one gap the
+	// deny-by-default change could not verify without a live cluster (the
+	// completion rejection, not just the /models phantom).
+	It("deny-by-default: empty spec.permission denies inference with 401 — TEAM-05", func() {
+		const teamName = "team-deny-default"
+		fg := metav1.DeletePropagationForeground
+		_ = dyn.Resource(teamGVR).Namespace(ns).
+			Delete(ctx, teamName, metav1.DeleteOptions{PropagationPolicy: &fg})
+
+		cr := newTeamCR(teamName, ns)
+		spec, _ := cr.Object["spec"].(map[string]interface{})
+		// Present-but-empty permission block: models omitted → deny-by-default.
+		spec["permission"] = map[string]interface{}{}
+		_, err := dyn.Resource(teamGVR).Namespace(ns).
+			Create(ctx, cr, metav1.CreateOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() {
+			_ = dyn.Resource(teamGVR).Namespace(ns).
+				Delete(context.Background(), teamName, metav1.DeleteOptions{PropagationPolicy: &fg})
+		})
+
+		// Wait for the operator to create the team and populate teamID.
+		var tid string
+		Eventually(func(g Gomega) {
+			obj, err := dyn.Resource(teamGVR).Namespace(ns).
+				Get(ctx, teamName, metav1.GetOptions{})
+			g.Expect(err).NotTo(HaveOccurred())
+			tid = teamID(obj)
+			g.Expect(tid).NotTo(BeEmpty(), "teamID not yet populated")
+		}, 60*time.Second, 2*time.Second).Should(Succeed())
+
+		// Round-trip: real LiteLLM persisted the deny-all models sentinel (the
+		// fail-open field turned fail-closed). An empty block would have left
+		// `models: []` (all models) pre-fix.
+		Eventually(func(g Gomega) {
+			matches := litellmTeamsByAlias(teamName)
+			g.Expect(matches).NotTo(BeEmpty(), "team not in LiteLLM")
+			models, _ := matches[0]["models"].([]interface{})
+			g.Expect(models).To(ConsistOf("__deny_all__"),
+				"team.models should carry the deny-all sentinel, got %v", matches[0]["models"])
+		}, 30*time.Second, 2*time.Second).Should(Succeed())
+
+		// Enforcement: a team-scoped key cannot run inference against a real
+		// model. tier2-openai is a live model in the e2e LiteLLM.
+		key := generateTeamKey(tid)
+		DeferCleanup(func() { deleteLiteLLMKey(key) })
+
+		body := curlPodJSON("litellm-system", "deny-complete", '{',
+			"curl", "-sS", "--max-time", "15",
+			"-w", "\nHTTP_STATUS:%{http_code}",
+			"-X", "POST",
+			"-H", "Authorization: Bearer "+key,
+			"-H", "Content-Type: application/json",
+			"-d", `{"model":"tier2-openai","messages":[{"role":"user","content":"hi"}]}`,
+			litellmBase+"/v1/chat/completions",
+		)
+		out := string(body)
+		Expect(out).To(ContainSubstring("HTTP_STATUS:401"),
+			"team-scoped completion must be denied 401, got: %s", out)
+		Expect(out).To(ContainSubstring("team_model_access_denied"),
+			"denial must cite team_model_access_denied, got: %s", out)
+		Expect(out).To(ContainSubstring("__deny_all__"),
+			"denial must reference the deny-all sentinel, got: %s", out)
 	})
 })

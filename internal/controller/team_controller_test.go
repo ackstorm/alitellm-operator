@@ -2938,6 +2938,11 @@ func TestTeamPermission_ResolvesAgentNamesToUUIDs(t *testing.T) {
 	if len(agents) != 1 || agents[0] != agentID {
 		t.Errorf("object_permission.agents: want [%s] (resolved UUID), got %v", agentID, op["agents"])
 	}
+	// The block omits models → deny-by-default: the outgoing body carries the
+	// deny-all sentinel, not an empty list (which would fail OPEN in LiteLLM).
+	if m, _ := body["models"].([]any); len(m) != 1 || m[0] != modelDenyAllSentinel {
+		t.Errorf("body.models: want deny-all sentinel [%s] (block omits models), got %v", modelDenyAllSentinel, body["models"])
+	}
 }
 
 // TestTeamPermission_AgentNotFoundRequeues — an agent name absent from
@@ -3121,10 +3126,13 @@ func TestTeamPermission_ShrinkToEmptyRevokes(t *testing.T) {
 	} else if g, _ := grp.([]any); len(g) != 0 {
 		t.Errorf("mcp_access_groups: want [] (cleared), got %v", grp)
 	}
-	// Untouched sub-fields are still emitted as [] (always-emit contract).
-	if _, ok := op["agents"]; !ok {
-		t.Error("agents ABSENT — always-emit contract requires it present as []")
+	// agents is a fail-open field the block never set → deny-by-default: it
+	// carries the null-UUID sentinel (present, non-empty), NOT []. Still emitted
+	// unconditionally (always-emit contract).
+	if a, _ := op["agents"].([]any); len(a) != 1 || a[0] != agentDenyAllSentinel {
+		t.Errorf("agents: want deny-all sentinel [%s] (block omits agents), got %v", agentDenyAllSentinel, op["agents"])
 	}
+	// agent_access_groups is fail-closed / no-op → still emitted as [].
 	if _, ok := op["agent_access_groups"]; !ok {
 		t.Error("agent_access_groups ABSENT — always-emit contract requires it present as []")
 	}

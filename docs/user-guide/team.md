@@ -192,12 +192,33 @@ The field is retained for forward-compat; the operator emits a Warning
 `spec.params.models` / `spec.params.object_permission` untouched (passthrough).
 A **present** block makes the operator OWN `models` and all four
 `object_permission` sub-fields: every one is sent to LiteLLM on each update,
-and a sublist you leave empty is sent as an explicit `[]` (a clear), never
-omitted. Shrinking a list — including down to empty (`mcpServers: []`, or
+never omitted. Shrinking a list — including down to empty (`mcpServers: []`, or
 removing the last agent) — therefore **does** revoke access. This is
 security-critical: LiteLLM's `POST /team/update` merges per-field on the
 persistent `object_permission` row, so an *omitted* field keeps its stale
-value; the operator always emits `[]` so a revocation is never silently lost.
+value; the operator never omits a field so a revocation is never silently lost.
+
+**Deny-by-default.** A present `spec.permission` block is a fail-CLOSED grant.
+LiteLLM turns on its `models` / `object_permission.agents` filter as soon as
+the list is non-empty (it never checks the elements exist), but it treats an
+**empty** list on those two fields as *no filter* — so an empty grant fails
+OPEN: the team inherits the full master-key ceiling (every model, every agent).
+To close that hole the operator projects a deny-all **sentinel** whenever a
+present block leaves those lists empty:
+
+| Field | Empty grant → | Effect |
+|-------|---------------|--------|
+| `models` (+ `modelGroups`) | `["__deny_all__"]` | 0 real models (a phantom entry appears in `/models`) |
+| `agents` | `["00000000-0000-0000-0000-000000000000"]` (null UUID) | 0 agents |
+| `mcpServers` / `mcpGroups` / `agentGroups` | `[]` | already fail-closed / no-op — no sentinel needed |
+
+So a `spec.permission` block that omits `models` (or sets it `[]`) grants the
+team **no models**, not all of them. To grant everything, list the models or
+model-groups explicitly. The sentinel applies only when the whole
+`spec.permission` block is present; an absent block (migration passthrough) is
+untouched. It is also scoped to the *empty* case — a populated `agents` list
+whose names don't resolve parks the team `AgentNotFound`, it is never replaced
+by the sentinel.
 
 **Precedence.** With `spec.permission` present, any `models` or
 `object_permission` key inside `spec.params` is dropped and a

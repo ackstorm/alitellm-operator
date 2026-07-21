@@ -6,6 +6,23 @@ import (
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 )
 
+// Deny-by-default sentinels (security-critical — see the DENY-BY-DEFAULT
+// contract on projectPermission). LiteLLM 1.83.10 activates the `models` /
+// object_permission.agents filter as soon as the list is NON-EMPTY; it never
+// validates that the elements exist. So an unset list must project a single
+// value that cannot match any real resource — deny-all — rather than `[]`
+// (which LiteLLM reads as "no filter" → the team inherits the master-key
+// ceiling). Verified in prod on LiteLLM 1.83.10: a garbage model name → 0
+// real models, the null UUID → 0 agents.
+const (
+	// modelDenyAllSentinel: no real model or model access-group can be named
+	// this, so LiteLLM's `models` filter matches nothing.
+	modelDenyAllSentinel = "__deny_all__"
+	// agentDenyAllSentinel: the null UUID — object_permission.agents matches on
+	// agent_id, and no agent is ever minted with the all-zero UUID.
+	agentDenyAllSentinel = "00000000-0000-0000-0000-000000000000"
+)
+
 // projectPermission renders a typed spec.permission block into the two
 // LiteLLM team body fields it maps to: the top-level `models` list (merged
 // specific model names + model access-group names) and the nested
@@ -22,9 +39,8 @@ import (
 // ALWAYS-EMIT contract (security-critical — reverses the original omit-empty
 // design). When the block is present the operator OWNS `models` AND all four
 // `object_permission` sub-fields, and emits EVERY one of them
-// UNCONDITIONALLY — as an empty list `[]` when the CR leaves it empty, never
-// omitted. This is mandatory because LiteLLM's POST /team/update MERGES
-// per-field on the persistent object_permission row (same
+// UNCONDITIONALLY, never omitted. This is mandatory because LiteLLM's POST
+// /team/update MERGES per-field on the persistent object_permission row (same
 // object_permission_id across updates): a present field is replaced, `[]`
 // clears it, but an OMITTED field keeps its STALE value. Omitting a
 // shrunk-to-empty field therefore silently fails to revoke access — a
@@ -32,6 +48,16 @@ import (
 // LiteLLM 1.83.10 in prod). Every returned slice is non-nil so encoding/json
 // renders `[]` (an explicit clear), never `null` (which LiteLLM's merge treats
 // as "field absent" → stale-value kept).
+//
+// DENY-BY-DEFAULT contract (security-critical). Emitting `[]` is correct for
+// mcp_servers / mcp_access_groups / agent_access_groups — LiteLLM treats an
+// empty list there as fail-CLOSED (0 resources). But for `models` and
+// object_permission.agents an empty list is fail-OPEN: LiteLLM reads it as "no
+// filter" and the team inherits the full master-key ceiling (verified in prod:
+// a brand-new team with models=[] object_permission=None saw all 427 models
+// and all 7 agents). So when the block is present but the list resolves empty,
+// those two fields project their deny-all sentinel instead of `[]` — a single
+// value no real resource can match. The other three stay `[]`.
 func projectPermission(
 	perm *litellmv1alpha1.PermissionSpec,
 	agentNameToID map[string]string,
@@ -42,6 +68,12 @@ func projectPermission(
 	models = make([]string, 0, len(perm.Models)+len(perm.ModelGroups))
 	models = append(models, perm.Models...)
 	models = append(models, perm.ModelGroups...)
+	// DENY-BY-DEFAULT: an empty models list fails OPEN in LiteLLM (no filter →
+	// master-key ceiling). Substitute the deny-all sentinel so the team sees no
+	// model. A non-empty list is projected verbatim.
+	if len(models) == 0 {
+		models = []string{modelDenyAllSentinel}
+	}
 
 	resolved := make([]string, 0, len(perm.Agents))
 	for _, name := range perm.Agents {
@@ -51,6 +83,14 @@ func projectPermission(
 			continue
 		}
 		resolved = append(resolved, id)
+	}
+	// DENY-BY-DEFAULT: an unset agents list fails OPEN in LiteLLM (empty →
+	// no filter → every agent). Substitute the null-UUID sentinel. Scoped to
+	// the len(perm.Agents)==0 branch ONLY — a non-empty list whose names don't
+	// resolve populates missingAgents and the caller aborts (AgentNotFound),
+	// so the sentinel must never stand in for unresolved names.
+	if len(perm.Agents) == 0 {
+		resolved = []string{agentDenyAllSentinel}
 	}
 
 	// Every sub-field emitted unconditionally (as [] when empty) — see the

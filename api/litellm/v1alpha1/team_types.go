@@ -108,14 +108,23 @@ type RateLimitsSpec struct {
 // Empty-vs-absent: an ABSENT block (`Permission == nil`) means the operator
 // manages nothing here (raw `spec.params` passthrough preserved). A PRESENT
 // block means the operator OWNS `models` and ALL FOUR `object_permission`
-// sub-fields and emits every one on the wire UNCONDITIONALLY — a sublist you
-// leave empty is sent as an explicit `[]` (a clear), NEVER omitted. This is
-// security-critical: LiteLLM's POST /team/update merges per-field on the
-// persistent object_permission row, so an OMITTED field keeps its stale value
-// — omitting a shrunk-to-empty list silently fails to revoke access. The
-// operator therefore faithfully renders the CR's declared state (`[]` clears,
-// a populated list replaces); it does not second-guess LiteLLM's enforcement
-// of an empty grant.
+// sub-fields and emits every one on the wire UNCONDITIONALLY, NEVER omitted.
+// This is security-critical: LiteLLM's POST /team/update merges per-field on
+// the persistent object_permission row, so an OMITTED field keeps its stale
+// value — omitting a shrunk-to-empty list silently fails to revoke access.
+//
+// Deny-by-default: a PRESENT block is a fail-CLOSED grant. LiteLLM activates
+// its `models` / object_permission.agents filter as soon as the list is
+// non-empty and never validates the elements exist — but it reads an EMPTY
+// list on those two fields as "no filter", so an empty grant fails OPEN (the
+// team inherits the full master-key ceiling: verified in prod, a new team with
+// models=[] object_permission=None saw all 427 models / 7 agents). To close
+// that hole the operator projects a deny-all SENTINEL — `["__deny_all__"]` for
+// `models`, the null UUID for `agents` — whenever a present block leaves those
+// lists empty. The three fail-CLOSED fields (mcp_servers, mcp_access_groups,
+// agent_access_groups) are still sent as an explicit `[]` (a clear). A
+// populated list on any field replaces verbatim; the sentinel appears ONLY on
+// the empty case of the two fail-open fields.
 //
 // Projection to LiteLLM (verified empirically against LiteLLM 1.83.10):
 //   - Models + ModelGroups → merged into the top-level `models` list (LiteLLM
@@ -133,7 +142,11 @@ type RateLimitsSpec struct {
 //     when this sublist is non-empty.
 type PermissionSpec struct {
 	// Models is the list of specific LiteLLM model NAMES this team may use.
-	// Merged with ModelGroups into the single top-level `models` list.
+	// Merged with ModelGroups into the single top-level `models` list. When a
+	// present permission block leaves BOTH Models and ModelGroups empty the
+	// operator projects the deny-all sentinel `["__deny_all__"]` (fail-closed)
+	// — an empty `models` list fails OPEN in LiteLLM. See the deny-by-default
+	// note above.
 	//
 	// +optional
 	Models []string `json:"models,omitempty"`
@@ -161,7 +174,11 @@ type PermissionSpec struct {
 	// use. The operator resolves each name to its agent_id UUID via
 	// GET /v1/agents before projecting onto object_permission.agents — LiteLLM
 	// enforces on UUIDs and ignores names. An unresolved name requeues the
-	// Team (reason=AgentNotFound).
+	// Team (reason=AgentNotFound). When a present permission block leaves this
+	// list empty the operator projects the null-UUID deny-all sentinel
+	// (fail-closed) — an empty agents list fails OPEN in LiteLLM. The sentinel
+	// is scoped to the empty case only; it never substitutes for an unresolved
+	// name. See the deny-by-default note above.
 	//
 	// +optional
 	Agents []string `json:"agents,omitempty"`
