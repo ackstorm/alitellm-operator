@@ -5313,6 +5313,10 @@ gemini — requires credentialsSecretRef; forbids region, baseUrl.
 kubeai — requires baseUrl; forbids credentialsSecretRef, region.
 openai — requires credentialsSecretRef; baseUrl optional; forbids region.
 </code></pre></div>
+<p>spec.litellmProvider (optional; spec.type=openai only) overrides the LiteLLM
+pricing-prefix provider used for cost tracking (default: derived from
+spec.type) — e.g. <code>openrouter</code> to bill discovered models under OpenRouter's
+cost table without a new provider type. See the LitellmProvider field doc.</p>
 <p>MDISC-01 enforces spec.type ∈ {anthropic, bedrock, elevenlabs, gemini, kubeai, openai}
 at admission via the +kubebuilder:validation:Enum marker. MDISC-04
 (prefix), MDISC-05 (refresh.interval floor), MDISC-15 (credential
@@ -5334,6 +5338,12 @@ surface), and MDISC-22/23 (propagation bags) are all schema-side.</p>
 <td>Type discriminates the upstream provider. Enforced at admission via<br />the +kubebuilder:validation:Enum marker (MDISC-01). The reconciler<br />dispatches to internal/providers/<type>.go via the registry; per-type<br />branching outside the registry is prohibited (CONTEXT.md D-01).</td>
 <td></td>
 <td>Enum: [anthropic bedrock elevenlabs gemini kubeai openai] <br />Required: {} <br /></td>
+</tr>
+<tr>
+<td><code>litellmProvider</code> <em>string</em></td>
+<td>LitellmProvider overrides the LiteLLM custom_llm_provider used to build<br />each child's litellm_params.model prefix (<code>&lt;provider&gt;/&lt;rawID&gt;</code>), which<br />determines the pricing / cost-tracking key. When empty (default) the<br />provider is derived from spec.type (kubeai -&gt; hosted_vllm; all others<br />verbatim). Set it to bill discovered models under an OpenAI-compatible<br />gateway's pricing -- e.g. litellmProvider=openrouter with type=openai and<br />baseUrl=https://openrouter.ai/api/v1 stamps <code>openrouter/&lt;rawID&gt;</code> so LiteLLM<br />applies OpenRouter's cost table. Only the pricing prefix changes; the child<br />CR NAME still derives from spec.type/spec.prefix, so switching this on an<br />existing Discovery updates children in place (POST /model/update) rather<br />than recreating them. Restricted by CEL to spec.type=openai (the only<br />OpenAI-compatible discovery wire shape).</td>
+<td></td>
+<td>MaxLength: 40 <br />Pattern: <code>^[a-z0-9_]+$</code> <br /></td>
 </tr>
 <tr>
 <td><code>prefix</code> <em>string</em></td>
