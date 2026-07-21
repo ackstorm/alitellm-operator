@@ -1998,12 +1998,51 @@ The field is retained for forward-compat; the operator emits a Warning
 <code>spec.params.models</code> / <code>spec.params.object_permission</code> untouched (passthrough).
 A <strong>present</strong> block makes the operator OWN <code>models</code> and all four
 <code>object_permission</code> sub-fields: every one is sent to LiteLLM on each update,
-and a sublist you leave empty is sent as an explicit <code>[]</code> (a clear), never
-omitted. Shrinking a list — including down to empty (<code>mcpServers: []</code>, or
+never omitted. Shrinking a list — including down to empty (<code>mcpServers: []</code>, or
 removing the last agent) — therefore <strong>does</strong> revoke access. This is
 security-critical: LiteLLM's <code>POST /team/update</code> merges per-field on the
 persistent <code>object_permission</code> row, so an <em>omitted</em> field keeps its stale
-value; the operator always emits <code>[]</code> so a revocation is never silently lost.</p>
+value; the operator never omits a field so a revocation is never silently lost.</p>
+<p><strong>Deny-by-default.</strong> A present <code>spec.permission</code> block is a fail-CLOSED grant.
+LiteLLM turns on its <code>models</code> / <code>object_permission.agents</code> filter as soon as
+the list is non-empty (it never checks the elements exist), but it treats an
+<strong>empty</strong> list on those two fields as <em>no filter</em> — so an empty grant fails
+OPEN: the team inherits the full master-key ceiling (every model, every agent).
+To close that hole the operator projects a deny-all <strong>sentinel</strong> whenever a
+present block leaves those lists empty:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Empty grant →</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>models</code> (+ <code>modelGroups</code>)</td>
+<td><code>["__deny_all__"]</code></td>
+<td>0 real models (a phantom entry appears in <code>/models</code>)</td>
+</tr>
+<tr>
+<td><code>agents</code></td>
+<td><code>["00000000-0000-0000-0000-000000000000"]</code> (null UUID)</td>
+<td>0 agents</td>
+</tr>
+<tr>
+<td><code>mcpServers</code> / <code>mcpGroups</code> / <code>agentGroups</code></td>
+<td><code>[]</code></td>
+<td>already fail-closed / no-op — no sentinel needed</td>
+</tr>
+</tbody>
+</table>
+<p>So a <code>spec.permission</code> block that omits <code>models</code> (or sets it <code>[]</code>) grants the
+team <strong>no models</strong>, not all of them. To grant everything, list the models or
+model-groups explicitly. The sentinel applies only when the whole
+<code>spec.permission</code> block is present; an absent block (migration passthrough) is
+untouched. It is also scoped to the <em>empty</em> case — a populated <code>agents</code> list
+whose names don't resolve parks the team <code>AgentNotFound</code>, it is never replaced
+by the sentinel.</p>
 <p><strong>Precedence.</strong> With <code>spec.permission</code> present, any <code>models</code> or
 <code>object_permission</code> key inside <code>spec.params</code> is dropped and a
 <code>ProjectionOverride</code> Warning Event fires — the typed block always wins.</p>
