@@ -16,14 +16,14 @@ import (
 // from spec §10 (regardless of value). Pulled from the cluster-internal
 // metrics service via a one-shot curl pod.
 var expectedMetricNames = []string{
-	"reconcile_total",
-	"discovery_refresh_total",
-	"discovery_generated_count",
-	"discovery_failed_total",
-	"child_cr_writes_total",
-	"drift_corrected_total",
-	"connection_ready",
-	"cr_status_age_seconds",
+	"alitellm_operator_reconcile_outcome_total",
+	"alitellm_operator_discovery_refresh_total",
+	"alitellm_operator_discovery_generated_count",
+	"alitellm_operator_discovery_failed_total",
+	"alitellm_operator_child_cr_writes_total",
+	"alitellm_operator_drift_corrected_total",
+	"alitellm_operator_connection_ready",
+	"alitellm_operator_cr_status_age_seconds",
 }
 
 // envtest counterpart: internal/controller/metrics_scrape_test.go covers
