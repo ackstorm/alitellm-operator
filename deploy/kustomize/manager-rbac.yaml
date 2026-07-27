@@ -52,6 +52,7 @@ rules:
   - litellmguardrails
   - litellmmcpserverdiscoveries
   - litellmmcpservers
+  - litellmmcptoolsets
   - litellmmodelaliases
   - litellmmodeldiscoveries
   - litellmmodels
@@ -72,6 +73,7 @@ rules:
   - litellmguardrails/finalizers
   - litellmmcpserverdiscoveries/finalizers
   - litellmmcpservers/finalizers
+  - litellmmcptoolsets/finalizers
   - litellmmodelaliases/finalizers
   - litellmmodeldiscoveries/finalizers
   - litellmmodels/finalizers
@@ -86,6 +88,7 @@ rules:
   - litellmguardrails/status
   - litellmmcpserverdiscoveries/status
   - litellmmcpservers/status
+  - litellmmcptoolsets/status
   - litellmmodelaliases/status
   - litellmmodeldiscoveries/status
   - litellmmodels/status
