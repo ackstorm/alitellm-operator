@@ -52,6 +52,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/v1/models", s.recordAndAuth(s.handleModels))
+	mux.HandleFunc("/v1/chat/completions", s.recordAndAuth(s.handleChatCompletions))
 	mux.HandleFunc("/__mock/calls", s.handleCalls)
 	mux.HandleFunc("/__mock/reset", s.handleReset)
 	mux.HandleFunc("/__mock/auth-mode", s.handleAuthMode)
@@ -101,6 +102,47 @@ func (s *server) handleModels(w http.ResponseWriter, _ *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = w.Write(blob)
+}
+
+// handleChatCompletions serves a canned OpenAI-shaped chat completion.
+//
+// Exists so the suite can assert the POSITIVE authorization path: that a
+// team-scoped key granted a model can actually run inference through it.
+// TEAM-05 covers only the denial path, which LiteLLM answers at its own auth
+// layer without ever calling a provider — so without this handler nothing
+// proves a grant WORKS, only that a non-grant fails.
+//
+// The reply echoes a fixed marker rather than anything from the request: the
+// assertion under test is authorization, not model behaviour. Honors
+// MOCK_AUTH_MODE via recordAndAuth like every other route.
+func (s *server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Model string `json:"model"`
+	}
+	if body, err := io.ReadAll(r.Body); err == nil {
+		_ = json.Unmarshal(body, &req)
+	}
+	if req.Model == "" {
+		req.Model = "mock-model"
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"id":      "chatcmpl-mock",
+		"object":  "chat.completion",
+		"created": 0,
+		"model":   req.Model,
+		"choices": []map[string]any{{
+			"index":         0,
+			"finish_reason": "stop",
+			"message": map[string]any{
+				"role":    "assistant",
+				"content": "E2E-MOCK-COMPLETION-OK",
+			},
+		}},
+		"usage": map[string]any{
+			"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2,
+		},
+	})
 }
 
 func (s *server) handleCalls(w http.ResponseWriter, _ *http.Request) {
