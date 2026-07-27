@@ -84,7 +84,7 @@
       },
       "id": 2,
       "type": "stat",
-      "title": "Reconciles /s",
+      "title": "Reconciles (range)",
       "gridPos": {
         "h": 5,
         "w": 4,
@@ -93,7 +93,8 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "ops"
+          "unit": "short",
+          "decimals": 0
         },
         "overrides": []
       },
@@ -116,7 +117,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(alitellm_operator_reconcile_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum(increase(alitellm_operator_reconcile_total{namespace=~\"$namespace\"}[$__range]))",
           "refId": "A"
         }
       ]
@@ -128,7 +129,7 @@
       },
       "id": 3,
       "type": "stat",
-      "title": "Non-synced /s",
+      "title": "Non-synced (range)",
       "gridPos": {
         "h": 5,
         "w": 4,
@@ -137,7 +138,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "ops",
+          "unit": "short",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -150,7 +151,8 @@
                 "value": 0.0001
               }
             ]
-          }
+          },
+          "decimals": 0
         },
         "overrides": []
       },
@@ -173,7 +175,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(alitellm_operator_reconcile_total{namespace=~\"$namespace\", result!=\"synced\"}[5m]))",
+          "expr": "sum(increase(alitellm_operator_reconcile_total{namespace=~\"$namespace\", result!=\"synced\"}[$__range]))",
           "refId": "A"
         }
       ],
@@ -186,7 +188,7 @@
       },
       "id": 4,
       "type": "stat",
-      "title": "Conflicts /s",
+      "title": "Conflicts (range)",
       "gridPos": {
         "h": 5,
         "w": 4,
@@ -195,7 +197,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "ops",
+          "unit": "short",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -208,7 +210,8 @@
                 "value": 0.0001
               }
             ]
-          }
+          },
+          "decimals": 0
         },
         "overrides": []
       },
@@ -231,7 +234,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(alitellm_operator_conflicts_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum(increase(alitellm_operator_conflicts_total{namespace=~\"$namespace\"}[$__range]))",
           "refId": "A"
         }
       ],
@@ -244,7 +247,7 @@
       },
       "id": 5,
       "type": "stat",
-      "title": "Orphaned deletions /s",
+      "title": "Orphaned deletions (range)",
       "gridPos": {
         "h": 5,
         "w": 4,
@@ -253,7 +256,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "ops",
+          "unit": "short",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -266,7 +269,8 @@
                 "value": 0.0001
               }
             ]
-          }
+          },
+          "decimals": 0
         },
         "overrides": []
       },
@@ -289,7 +293,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(alitellm_operator_deletion_orphaned_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum(increase(alitellm_operator_deletion_orphaned_total{namespace=~\"$namespace\"}[$__range]))",
           "refId": "A"
         }
       ],
@@ -347,7 +351,7 @@
       },
       "id": 7,
       "type": "stat",
-      "title": "Reconcile errors /s (ctrl-runtime)",
+      "title": "Reconcile errors (ctrl-runtime) (range)",
       "gridPos": {
         "h": 5,
         "w": 4,
@@ -356,7 +360,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "ops",
+          "unit": "short",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -369,7 +373,8 @@
                 "value": 0.0001
               }
             ]
-          }
+          },
+          "decimals": 0
         },
         "overrides": []
       },
@@ -392,7 +397,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(controller_runtime_reconcile_errors_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum(increase(controller_runtime_reconcile_errors_total{namespace=~\"$namespace\", job=~\".*alitellm-operator.*\"}[$__range]))",
           "refId": "A"
         }
       ]
@@ -1105,7 +1110,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, controller) (rate(controller_runtime_reconcile_time_seconds_bucket{namespace=~\"$namespace\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le, controller) (rate(controller_runtime_reconcile_time_seconds_bucket{namespace=~\"$namespace\", job=~\".*alitellm-operator.*\"}[5m])))",
           "refId": "A",
           "legendFormat": "{{controller}}"
         }
@@ -1155,7 +1160,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (name) (workqueue_depth{namespace=~\"$namespace\"})",
+          "expr": "sum by (name) (workqueue_depth{namespace=~\"$namespace\", job=~\".*alitellm-operator.*\"})",
           "refId": "A",
           "legendFormat": "depth {{name}}"
         },
@@ -1164,7 +1169,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (name) (rate(workqueue_retries_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum by (name) (rate(workqueue_retries_total{namespace=~\"$namespace\", job=~\".*alitellm-operator.*\"}[5m]))",
           "refId": "B",
           "legendFormat": "retries/s {{name}}"
         }

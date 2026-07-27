@@ -199,7 +199,7 @@
       },
       "id": 68,
       "type": "stat",
-      "title": "Deployment failures /s",
+      "title": "Deployment failures (range)",
       "gridPos": {
         "h": 5,
         "w": 6,
@@ -208,7 +208,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "ops",
+          "unit": "short",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -221,7 +221,8 @@
                 "value": 0.0001
               }
             ]
-          }
+          },
+          "decimals": 0
         },
         "overrides": []
       },
@@ -244,7 +245,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(litellm_deployment_failure_responses_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum(increase(litellm_deployment_failure_responses_total{namespace=~\"$namespace\"}[$__range]))",
           "refId": "A"
         }
       ]
@@ -256,7 +257,7 @@
       },
       "id": 69,
       "type": "stat",
-      "title": "Cooldown / no-healthy events /s",
+      "title": "Cooldown / no-healthy events (range)",
       "gridPos": {
         "h": 5,
         "w": 6,
@@ -265,7 +266,8 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "ops"
+          "unit": "short",
+          "decimals": 0
         },
         "overrides": []
       },
@@ -288,7 +290,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(litellm_deployment_total_requests_total{namespace=~\"$namespace\"}[5m])) - sum(rate(litellm_deployment_success_responses_total{namespace=~\"$namespace\"}[5m])) - sum(rate(litellm_deployment_failure_responses_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum(increase(litellm_deployment_total_requests_total{namespace=~\"$namespace\"}[$__range])) - sum(increase(litellm_deployment_success_responses_total{namespace=~\"$namespace\"}[$__range])) - sum(increase(litellm_deployment_failure_responses_total{namespace=~\"$namespace\"}[$__range]))",
           "refId": "A"
         }
       ]
@@ -761,7 +763,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
+          "unit": "reqps",
           "custom": {
             "drawStyle": "line",
             "fillOpacity": 18,
@@ -770,7 +772,24 @@
             "spanNulls": true
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "p95 .*"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "legend": {
