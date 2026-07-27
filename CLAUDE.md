@@ -62,8 +62,10 @@ ackstorm material.
 ```
 
 Owned CRDs: `LiteLLMTeam`, `LiteLLMModel`, `LiteLLMModelDiscovery`,
-`LiteLLMMCPServer`, `LiteLLMMCPServerDiscovery`, `LiteLLMA2AAgent`,
-`LiteLLMConnection`. API group `litellm.ackstorm.ai`, version `v1alpha1`.
+`LiteLLMMCPServer`, `LiteLLMMCPServerDiscovery`, `LiteLLMMCPToolset`,
+`LiteLLMA2AAgent`, `LiteLLMConnection`. API group `litellm.ackstorm.ai`,
+version `v1alpha1`. `LiteLLMMCPToolset` requires LiteLLM **1.93.0+**
+(`/v1/mcp/toolset` does not exist before that).
 
 Critical paths:
 - CRD apply → reconciler → LiteLLM HTTP call → status condition update
@@ -1013,14 +1015,103 @@ GOTCHA: the agent sentinel is injected ONLY in the `len(perm.Agents)==0` branch
 (where the code skips `GET /v1/agents`), NEVER for names that fail to resolve —
 a non-empty `agents` with an unregistered name still parks the team
 `AgentNotFound` and requeues; it must not be swapped for the sentinel.
-NOT VERIFIED: that an inference call against `models:["__deny_all__"]` is
-rejected (only that `/models` returns 1 phantom entry) — confirm on e2e/prod.
+VERIFIED e2e (2026-07-27, LiteLLM 1.93.0, TEAM-05): an inference call with a
+team-scoped key against `models:["__deny_all__"]` IS rejected —
+`team_model_access_denied`, `"This team can only access models=['__deny_all__']"`.
+Status code drifted upstream: **401 on 1.83.10, 403 on 1.93.0**. Assert the
+error type + sentinel echo, never the bare status code.
+
+### ❌ Expecting the operator to validate `LiteLLMMCPToolset` server/tool names
+```yaml
+spec:
+  from:
+  - server: hindsigt          # typo — accepted, CR goes Ready=Synced
+    tools: [web_serch]        # typo — accepted, CR goes Ready=Synced
+```
+✅ Neither the operator nor LiteLLM validates these. Verified on LiteLLM 1.93.0:
+a bogus `server_id` or `tool_name` is accepted with 201, and the toolset simply
+grants nothing (`200 {"tools":[]}` at `/toolset/<name>/mcp`, no exception in the
+proxy logs). Deleting a referenced MCP server leaves a dangling ref with no
+cascade. This is DELIBERATE — glob/name validation would require the operator
+to enumerate tools via `GET /v1/mcp/tools`, which needs the MCP server live,
+reachable, and readable by the operator key. Diagnose an empty toolset with:
+```bash
+curl -H "Authorization: Bearer $KEY" $LITELLM/v1/mcp/toolset
+```
+WHY IT IS SILENT: LiteLLM's toolset resolution wraps the whole lookup in
+`try/except → return {}`, and an unknown `server_id` simply never matches a
+real server in the fail-CLOSED server-access check.
+
+### ❌ Trusting `DELETE /v1/mcp/toolset/<id>` to 404 on an absent entry
+```
+error="litellm: 500 on DELETE /v1/mcp/toolset/<uuid> (code=500, transient)"
+```
+repeating forever, CR stuck `Terminating` with its finalizer intact.
+✅ LiteLLM 1.93.0 raises `AttributeError` — **HTTP 500, not 404** — when the
+toolset is already gone:
+```python
+# toolset_db.py:110  delete_mcp_toolset
+row = await ...delete(...)      # None when the row is absent
+return _toolset_from_row(row)
+# toolset_db.py:16   _toolset_from_row
+AttributeError: 'NoneType' object has no attribute 'model_dump'
+```
+A reconciler that classifies 500 as transient retries the finalizer forever and
+strands the CR PERMANENTLY (nothing but a manual `kubectl patch` clears it).
+`mcptoolset_controller.go` therefore re-resolves by name in the 5xx branch: an
+empty name-resolve is positive proof the entry is absent, so the Delete goal is
+met and the finalizer drains regardless of `deletionPolicy` — the same
+confirmed-absent rule the model controller follows. A still-listed entry keeps
+the transient backoff. Break-glass for an already-stuck CR:
+```bash
+kubectl patch litellmmcptoolset <name> --type=merge -p '{"metadata":{"finalizers":[]}}'
+```
+WHY IT MATTERS BEYOND TOOLSETS: `litellm.IsNotFound` covers 404/ErrNotFound, but
+an endpoint that 500s on a missing row defeats it. Any NEW delete path should
+confirm absence before treating a 5xx as retry-forever.
+
+### ❌ Asserting `object_permission` from `/v2/team/list`
+```go
+matches := litellmTeamsByAlias(alias)
+op, _ := matches[0]["object_permission"].(map[string]interface{})  // ALWAYS nil
+```
+✅ `/v2/team/list` reports only `object_permission_id` and leaves
+`object_permission: null` even when the row exists and is populated. Read the
+expanded object from `GET /team/info?team_id=<id>` (under `team_info`) — see
+`litellmTeamObjectPermission` in `test/e2e/team_test.go`. Verified on LiteLLM
+1.93.0. Top-level `models` IS present on the list endpoint, which is why the
+TEAM-05 sentinel assertion works there and a `mcp_toolsets` one cannot.
 
 ## Repository-specific patterns
 
+- **`mcp_toolsets` is the one `object_permission` field that takes NO
+  deny-all sentinel.** `models` and `agents` are fail-OPEN in LiteLLM (an
+  empty list disables the filter → master-key ceiling), so `projectPermission`
+  substitutes `__deny_all__` / the null UUID. `mcp_toolsets` is fail-CLOSED —
+  the handler reads "granted is None or id not in granted → deny", so `[]`
+  already grants nothing (verified 1.93.0: an ungranted key gets `403 API key
+  does not have access to toolset '<uuid>'`). It joins `mcp_servers`,
+  `mcp_access_groups`, and `agent_access_groups` in the emitted-as-`[]` group.
+  Do NOT "fix" this asymmetry for consistency — a sentinel there would inject a
+  bogus UUID into a filter that is already correct. `spec.permission.mcpToolsets`
+  takes toolset NAMES, resolved to `toolset_id` UUIDs via `GET /v1/mcp/toolset`;
+  an unresolved name parks the team `ToolsetNotFound` and requeues (ordering
+  dependency with `LiteLLMMCPToolset` CRs, same shape as `AgentNotFound`).
+
+- **`LiteLLMMCPToolset` ids are SERVER-MINTED; adoption is by name.** LiteLLM
+  1.93.0 IGNORES a caller-supplied `toolset_id` (same as A2A `agent_id`, unlike
+  `team_id` / MCP `server_id`, which the operator pins to `metadata.name`), so
+  the reconciler reads the id from the POST response. `toolset_name` IS unique
+  server-side: a duplicate create returns **409**, and the CREATE arm adopts the
+  existing toolset by name (`resolveToolsetIDByName` → `PUT`) rather than
+  parking — that is how an operator restart re-attaches. NOTE the update verb
+  is `PUT /v1/mcp/toolset` with the `toolset_id` in the **BODY**, not the path;
+  a path-style `PUT /v1/mcp/toolset/<id>` is a 405. This endpoint diverges from
+  every other LiteLLM update the operator calls.
+
 - **Periodic drift detection = `SafetyRelistRunnable`, never `RequeueAfter`.**
-  Each of the five domain reconcilers (Model, Team, MCPServer, A2AAgent,
-  GuardRail) has exactly one `SafetyRelistRunnable` in `cmd/main.go`, ticking
+  Each of the six domain reconcilers (Model, Team, MCPServer, A2AAgent,
+  GuardRail, MCPToolset) has exactly one `SafetyRelistRunnable` in `cmd/main.go`, ticking
   at `LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL` (default 10m). Reconcilers
   return bare `ctrl.Result{}, nil` — there are no `RequeueAfter` safety-relist
   paths and no `withJitter`. WHY: a `RequeueAfter` only fires from the return

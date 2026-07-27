@@ -138,8 +138,8 @@ func main() {
 	setupLog.Info("watch namespace configured", "namespace", watchNS)
 
 	// H5: parse LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL EXACTLY ONCE here and
-	// thread the resolved value to every consumer — the five relist Runnables
-	// (Model, Team, MCPServer, A2AAgent, GuardRail) and TeamDefaultRunnable
+	// thread the resolved value to every consumer — the six relist Runnables
+	// (Model, Team, MCPServer, A2AAgent, GuardRail, MCPToolset) and TeamDefaultRunnable
 	// below. Default 10m (DefaultSafetyRelistInterval); 5s floor; invalid
 	// input aborts startup. Accepts any time.ParseDuration string. Reasoning +
 	// floor justification in internal/controller/safety_relist.go.
@@ -399,6 +399,37 @@ func main() {
 		RecreateLimit:     controller.ResolveRecreateLimitPerMin(os.Getenv(controller.EnvRecreateLimitPerMin)),
 	}).SetupWithManager(mgr, a2aSafetyRelistCh); err != nil {
 		setupLog.Error(err, "unable to set up A2AAgent reconciler")
+		os.Exit(1)
+	}
+
+	// MCPToolsetReconciler: per-CR resolve/diff/apply against
+	// /v1/mcp/toolset. No Secret indexer — the CRD has no spec.secrets.
+	// Events RBAC marker is INHERITED from the MCPServer reconciler.
+	toolsetSafetyRelistCh := make(chan reconcile.Request, 256)
+	if err := mgr.Add(&controller.SafetyRelistRunnable{
+		Client:       mgr.GetClient(),
+		Namespace:    watchNS,
+		Interval:     relistInterval,
+		Log:          ctrl.Log.WithName("mcptoolset-safety-relist"),
+		RequeueCh:    toolsetSafetyRelistCh,
+		ListRequests: controller.ListMCPToolsetRequests,
+		LogLabel:     "mcptoolsets",
+	}); err != nil {
+		setupLog.Error(err, "unable to add mcptoolset SafetyRelistRunnable")
+		os.Exit(1)
+	}
+	if err := (&controller.MCPToolsetReconciler{
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		Cache:             connCache, // typed as connection.ConnectionCache per D-12
+		Recorder:          mgr.GetEventRecorderFor("mcptoolset-controller"),
+		Namespace:         watchNS,
+		Log:               ctrl.Log.WithName("controller").WithName("MCPToolset"),
+		BootEvents:        bootSweep.MCPToolsetEvents,
+		ConnectionRebuilt: connCache.Subscribe(),
+		RecreateLimit:     controller.ResolveRecreateLimitPerMin(os.Getenv(controller.EnvRecreateLimitPerMin)),
+	}).SetupWithManager(mgr, toolsetSafetyRelistCh); err != nil {
+		setupLog.Error(err, "unable to set up MCPToolset reconciler")
 		os.Exit(1)
 	}
 

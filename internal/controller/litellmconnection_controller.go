@@ -78,6 +78,10 @@ const (
 	// Team is requeued (ordering dependency with LiteLLMA2AAgent CRs),
 	// mirroring reasonSecretNotFound.
 	reasonAgentNotFound = "AgentNotFound"
+	// reasonToolsetNotFound — a spec.permission.mcpToolsets entry names a
+	// toolset GET /v1/mcp/toolset does not (yet) list. Non-terminal: the Team
+	// is requeued (ordering dependency with LiteLLMMCPToolset CRs).
+	reasonToolsetNotFound = "ToolsetNotFound"
 )
 
 // EnvRequireHTTPSRemote, when "true", upgrades the M-SEC2 plaintext-http

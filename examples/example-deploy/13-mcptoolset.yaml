@@ -1,0 +1,44 @@
+---
+# Copyright 2026 ACKstorm.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# LiteLLMMCPToolset — a named, curated subset of MCP tools drawn from one or
+# more MCP servers. Requires LiteLLM 1.93.0+ (/v1/mcp/toolset).
+#
+# A toolset grants nobody anything on its own: reference it from a team via
+# `spec.permission.mcpToolsets` (see 07-team.yaml). An ungranted key gets
+# `403 API key does not have access to toolset '<uuid>'`.
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMMCPToolset
+metadata:
+  name: example-research-tools
+spec:
+  description: "Curated research subset drawn from the example MCP server"
+
+  # Each entry pairs one MCP server with the explicit tool names taken from it.
+  #
+  # NO GLOBS by design: expanding a pattern would require the operator to
+  # enumerate the server's tools via GET /v1/mcp/tools, which needs the MCP
+  # server live, reachable, and readable by the operator's key.
+  #
+  # NO VALIDATION either — LiteLLM accepts a nonexistent server or tool name
+  # with 201 and the toolset simply grants nothing. A typo yields an inert
+  # toolset, not an error. Read back GET /v1/mcp/toolset to diagnose.
+  from:
+    # `server` takes the NAME of a LiteLLMMCPServer CR in this namespace (the
+    # operator resolves it to that CR's status.lastRendered.serverID), OR a raw
+    # server_id UUID for a server the operator does not manage. An unresolvable
+    # value is forwarded verbatim and never parks the CR.
+    - server: exa-mcp            # matches 04-mcpserver.yaml
+      tools:
+        - search
+        - fetch
+
+  # Orphan (default): if the LiteLLM-side DELETE cannot be confirmed on CR
+  # deletion, drain the finalizer anyway. Delete: block until confirmed.
+  deletionPolicy: Orphan

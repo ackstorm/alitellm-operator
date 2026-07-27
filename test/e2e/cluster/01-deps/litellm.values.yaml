@@ -2,26 +2,27 @@
 #
 # Used by:  scripts/cluster.sh up   (step 5 — helm pull + helm upgrade --install litellm)
 # Chart:    oci://docker.litellm.ai/berriai/litellm-helm  (upstream, OCI, BETA)
-# Image:    v1.83.10-stable (operator's binary target — see auto-memory litellm_version_target.md)
+# Image:    v1.93.0 (operator's binary target — see test/e2e/CHART_PINS.md)
 #
 # WARNING: the upstream litellm-helm chart is currently in BETA. When bumping
 # `chartVersion`, re-run `make test-full` and inspect any failed Tier 2
 # scenarios for schema drift.
 #
-# NOTE on image.tag override: chart 1.84.0's default appVersion is v1.84.0
-# (BerriAI/litellm#15288), but the operator targets v1.83.10-stable. The
-# `image.tag` value below is an explicit override and must NOT be dropped on
-# chart bumps — keep it pinned to whatever the operator targets in
-# auto-memory `litellm_version_target.md`. A Tier 2 scope_test assertion
-# (Task 9.11) verifies the rendered Deployment uses this tag.
+# NOTE on image.tag override: chart 1.93.0's appVersion is `1.93.0` (no `v`
+# prefix), which does not resolve to a published image tag. The `image.tag`
+# value below is an explicit override and must NOT be dropped on chart bumps —
+# keep it pinned to whatever the operator targets in
+# `test/e2e/CHART_PINS.md`. A Tier 2 scope_test assertion (Task 9.11)
+# verifies the rendered Deployment uses this tag. Upstream stopped publishing
+# `-stable` suffixed tags after the 1.83.x line, so the tag is a bare `vX.Y.Z`.
 #
 # Apply changes:  make cluster-sync
 
-chartVersion: 1.84.0              # see test/e2e/CHART_PINS.md (BETA — verify suite on bumps)
+chartVersion: 1.93.0              # see test/e2e/CHART_PINS.md (BETA — verify suite on bumps)
 
 image:
   repository: ghcr.io/berriai/litellm-database
-  tag: v1.83.10-stable            # explicit override — see comment above
+  tag: v1.93.0                    # explicit override — see comment above
   # Override chart default `Always`: scripts/cluster.sh pre-pulls + `kind
   # load`s this image into the node before `helm install`. With Always,
   # kubelet round-trips ghcr.io on every Pod start (and EVERY migrations
@@ -82,7 +83,7 @@ envVars:
   # min) — by which time the Postgres StatefulSet has come up.
   ENFORCE_PRISMA_MIGRATION_CHECK: "true"
 
-# resources: deliberately unset. LiteLLM 1.83 is heavy (Python + Prisma + many
+# resources: deliberately unset. LiteLLM 1.93 is heavy (Python + Prisma + many
 # provider SDKs); fixed limits keep tripping OOMKilled on kind. Tier 2 is a
 # test env, not capacity-constrained — let kubelet best-effort schedule.
 

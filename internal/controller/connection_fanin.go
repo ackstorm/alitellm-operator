@@ -108,6 +108,10 @@ func (r *TeamReconciler) connectionToTeams(ctx context.Context, obj client.Objec
 	return connectionFanIn(ctx, r.Client, obj, &litellmv1alpha1.LiteLLMTeamList{}, r.Namespace, "LiteLLMTeam")
 }
 
+func (r *MCPToolsetReconciler) connectionToMCPToolsets(ctx context.Context, obj client.Object) []reconcile.Request {
+	return connectionFanIn(ctx, r.Client, obj, &litellmv1alpha1.LiteLLMMCPToolsetList{}, r.Namespace, "LiteLLMMCPToolset")
+}
+
 // ConnectionRebuiltSource returns a controller-runtime source that
 // drains a Cache.Subscribe() channel and, for each event, invokes
 // mapper(ctx, nil) and enqueues the returned requests. Closes the

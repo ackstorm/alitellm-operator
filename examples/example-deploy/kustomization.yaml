@@ -40,3 +40,4 @@ resources:
   - 08-guardrail.yaml
   - 09-modelalias.yaml
   - 12-modeldiscovery-elevenlabs.yaml
+  - 13-mcptoolset.yaml
