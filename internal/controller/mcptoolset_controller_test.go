@@ -670,6 +670,58 @@ func TestMCPToolset_FinalizerDeletes(t *testing.T) {
 	}
 }
 
+// Regression for the e2e TOOLSET-05 strand: LiteLLM 1.93.0 returns HTTP 500
+// (not 404) when asked to delete a toolset that is already gone, because
+// toolset_db.py calls .model_dump() on a nil row. A reconciler that treats
+// 500 as purely transient retries the finalizer forever and leaves the CR in
+// Terminating permanently. The confirmed-absent name-resolve must drain it.
+func TestMCPToolset_FinalizerDrainsWhenDeleteReturns500ButEntryIsAbsent(t *testing.T) {
+	ctx := context.Background()
+	name := "ts-delete500-test"
+	resetMockToolset()
+	ensureNoToolset(t, ctx, name)
+	resetConnCacheSnapshot()
+
+	cleanupConn := setupReadyConnectionToolset(t, ctx)
+	t.Cleanup(func() {
+		cleanupConn()
+		setConnCacheReady()
+		ensureNoToolset(t, context.Background(), name)
+	})
+
+	cr := toolsetSampleCR(name, litellmv1alpha1.MCPToolsetServerTools{
+		Server: "s1", Tools: []string{"t1"},
+	})
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create toolset CR: %v", err)
+	}
+	synced := pollToolsetCondition(t, ctx, name, reasonSynced)
+	id := synced.Status.LastRendered.ToolsetID
+	if id == "" {
+		t.Fatal("precondition: toolset never reached Synced with an id")
+	}
+
+	// Remove it out-of-band so the finalizer's DELETE hits the absent-row
+	// path — the mock then answers 500, exactly like real LiteLLM 1.93.0.
+	mockServer.DeleteToolsetOutOfBand(id)
+
+	if err := k8sClient.Delete(ctx, synced); err != nil {
+		t.Fatalf("delete toolset CR: %v", err)
+	}
+
+	key := client.ObjectKey{Name: name, Namespace: WatchNamespace}
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		var check litellmv1alpha1.LiteLLMMCPToolset
+		if err := k8sClient.Get(ctx, key, &check); apierrors.IsNotFound(err) {
+			return // finalizer drained despite the 500
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Error("CR still present after 30s: a 500 from DELETE on an already-absent " +
+		"toolset stranded the finalizer (LiteLLM 1.93.0 returns 500, not 404, here)")
+}
+
 // Issue #74: a Ready snapshot with a nil Client must take the not-Ready path,
 // never nil-deref. Cache.Rebuild does not enforce Ready ⇒ Client != nil.
 func TestMCPToolset_NotUsableSnapshotParks(t *testing.T) {

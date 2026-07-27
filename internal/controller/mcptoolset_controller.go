@@ -154,7 +154,33 @@ func (r *MCPToolsetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 								return ctrl.Result{}, gerr
 							}
 						default:
-							// Transient error — return for backoff. Finalizer stays.
+							// 5xx / network. Before backing off, check whether
+							// the entry is actually GONE — LiteLLM 1.93.0 raises
+							// AttributeError (→ 500, NOT 404) when asked to
+							// delete a toolset that no longer exists:
+							//
+							//   toolset_db.py:110 delete_mcp_toolset
+							//     row = await ...delete(...)   # None when absent
+							//     return _toolset_from_row(row)
+							//   toolset_db.py:16 _toolset_from_row
+							//     AttributeError: 'NoneType' object has no
+							//     attribute 'model_dump'
+							//
+							// Taken at face value that 500 is "transient", so the
+							// finalizer retries forever and the CR is stranded in
+							// Terminating permanently (observed e2e TOOLSET-05).
+							// A name-resolve returning empty is positive proof the
+							// entry is absent, so the Delete goal is already met —
+							// drain regardless of deletionPolicy, mirroring the
+							// confirmed-absent rule the model controller follows.
+							if resolved := r.resolveToolsetIDByName(ctx, snap.Client, ts.Name, logger); resolved == "" {
+								metrics.DeletionBlocked.Forget(mcpToolsetKind, ts.Namespace, ts.Name)
+								logger.Info("deletion: DELETE failed but the toolset is confirmed absent; draining finalizer",
+									"toolsetID", toolsetID, "error", err.Error())
+								break
+							}
+							// Still present — a genuine transient failure.
+							// Return for backoff; the finalizer stays.
 							return ctrl.Result{}, err
 						}
 					} else {

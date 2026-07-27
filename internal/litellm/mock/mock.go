@@ -982,6 +982,43 @@ func (m *MockServer) writeDuplicateToolsetConflict(w http.ResponseWriter, r *htt
 	return true
 }
 
+// writeAbsentToolsetDelete500 reproduces a REAL LiteLLM 1.93.0 defect:
+// DELETE /v1/mcp/toolset/<id> for a toolset that no longer exists returns
+// HTTP 500, not 404. Upstream:
+//
+//	toolset_db.py:110  delete_mcp_toolset
+//	    row = await ...delete(...)      # None when the row is absent
+//	    return _toolset_from_row(row)
+//	toolset_db.py:16   _toolset_from_row
+//	    AttributeError: 'NoneType' object has no attribute 'model_dump'
+//
+// This matters because a naive reconciler classifies 500 as transient and
+// retries the finalizer forever, stranding the CR in Terminating (observed
+// in e2e TOOLSET-05). The mock reproduces it so the operator's
+// confirmed-absent drain stays regression-locked.
+//
+// Returns whether it wrote the response.
+func (m *MockServer) writeAbsentToolsetDelete500(w http.ResponseWriter, r *http.Request, mode string) bool {
+	if mode != ModeHappy || r.Method != http.MethodDelete ||
+		!strings.HasPrefix(r.URL.Path, pathMCPToolset+"/") {
+		return false
+	}
+	toolsetID := strings.TrimPrefix(r.URL.Path, pathMCPToolset+"/")
+	m.mu.Lock()
+	_, present := m.toolsets[toolsetID]
+	m.mu.Unlock()
+	if present {
+		return false
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusInternalServerError)
+	_, _ = w.Write([]byte(
+		`{"error":{"message":"AttributeError: 'NoneType' object has no attribute 'model_dump'",` +
+			`"type":"internal_server_error","param":null,"code":"500"}}`))
+	return true
+}
+
 // handle is the single HTTP handler routed to every request. It records
 // the call, increments the appropriate counter, and emits a mode-specific
 // response.
@@ -1077,6 +1114,9 @@ func (m *MockServer) handle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if m.writeDuplicateToolsetConflict(w, r, mode) {
+		return
+	}
+	if m.writeAbsentToolsetDelete500(w, r, mode) {
 		return
 	}
 
