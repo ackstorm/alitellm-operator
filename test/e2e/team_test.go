@@ -763,4 +763,98 @@ var _ = Describe("LiteLLMTeam", Ordered, ContinueOnFailure, func() {
 				wantToolsetID, tsName, op["mcp_toolsets"])
 		}, 60*time.Second, 3*time.Second).Should(Succeed())
 	})
+
+	// TEAM-07 (ported from the prod UAT runbook's FN3): the POSITIVE half of
+	// TEAM-05.
+	//
+	// TEAM-05 proves a team with no model grant is DENIED. That denial is
+	// answered by LiteLLM's own auth layer and never reaches a provider, so on
+	// its own it cannot distinguish "deny-by-default works" from "team keys are
+	// broken and everything is denied". This spec closes that gap by driving a
+	// granted model all the way through to the mock provider.
+	It("TEAM-07 grant works: a team-scoped key CAN infer against a granted model", func() {
+		const teamName = "e2e-team-grant-allow"
+		// Own model. Ginkgo randomizes TOP-LEVEL containers, so this spec
+		// cannot rely on LiteLLMModel's tier2-openai having been created —
+		// unlike TEAM-05, whose denial is answered by LiteLLM's auth layer and
+		// so holds whether or not the model exists.
+		const grantModel = "e2e-team-grant-model"
+		fg := metav1.DeletePropagationForeground
+		_ = dyn.Resource(teamGVR).Namespace(ns).
+			Delete(ctx, teamName, metav1.DeleteOptions{PropagationPolicy: &fg})
+		_ = dyn.Resource(modelGVR).Namespace(ns).
+			Delete(ctx, grantModel, metav1.DeleteOptions{})
+
+		Eventually(func(g Gomega) {
+			_, err := dyn.Resource(modelGVR).Namespace(ns).
+				Get(ctx, grantModel, metav1.GetOptions{})
+			g.Expect(err).To(HaveOccurred(), "grant model still terminating")
+		}, 60*time.Second, 2*time.Second).Should(Succeed())
+
+		_, err := dyn.Resource(modelGVR).Namespace(ns).
+			Create(ctx, newOpenAIMockModel(grantModel, ns), metav1.CreateOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() {
+			_ = dyn.Resource(modelGVR).Namespace(ns).
+				Delete(context.Background(), grantModel, metav1.DeleteOptions{})
+		})
+		Eventually(func(g Gomega) {
+			obj, err := dyn.Resource(modelGVR).Namespace(ns).
+				Get(ctx, grantModel, metav1.GetOptions{})
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(modelID(obj)).NotTo(BeEmpty(), "grant model not registered yet")
+		}, 90*time.Second, 3*time.Second).Should(Succeed())
+
+		cr := newTeamCR(teamName, ns)
+		spec, _ := cr.Object["spec"].(map[string]interface{})
+		spec["permission"] = map[string]interface{}{
+			"models": []interface{}{grantModel},
+		}
+		_, err = dyn.Resource(teamGVR).Namespace(ns).Create(ctx, cr, metav1.CreateOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() {
+			_ = dyn.Resource(teamGVR).Namespace(ns).
+				Delete(context.Background(), teamName, metav1.DeleteOptions{PropagationPolicy: &fg})
+		})
+
+		var tid string
+		Eventually(func(g Gomega) {
+			obj, err := dyn.Resource(teamGVR).Namespace(ns).Get(ctx, teamName, metav1.GetOptions{})
+			g.Expect(err).NotTo(HaveOccurred())
+			tid = teamID(obj)
+			g.Expect(tid).NotTo(BeEmpty(), "teamID not yet populated")
+		}, 60*time.Second, 2*time.Second).Should(Succeed())
+
+		// The grant must land as a real model list, never the deny-all sentinel.
+		Eventually(func(g Gomega) {
+			matches := litellmTeamsByAlias(teamName)
+			g.Expect(matches).NotTo(BeEmpty(), "team not in LiteLLM")
+			g.Expect(matches[0]["models"]).To(ConsistOf("tier2-openai"),
+				"granted team must carry its model list, got %v", matches[0]["models"])
+		}, 30*time.Second, 2*time.Second).Should(Succeed())
+
+		key := generateTeamKey(tid)
+		DeferCleanup(func() { deleteLiteLLMKey(key) })
+
+		// Retry the whole completion: LiteLLM caches team/key auth state
+		// briefly, so the first call after /key/generate can still 401.
+		Eventually(func(g Gomega) {
+			body := curlPodJSON("litellm-system", "allow-complete", '{',
+				"curl", "-sS", "--max-time", "20",
+				"-w", "\nHTTP_STATUS:%{http_code}",
+				"-X", "POST",
+				"-H", "Authorization: Bearer "+key,
+				"-H", "Content-Type: application/json",
+				"-d", `{"model":"tier2-openai","messages":[{"role":"user","content":"hi"}]}`,
+				litellmBase+"/v1/chat/completions",
+			)
+			out := string(body)
+			g.Expect(out).To(ContainSubstring("HTTP_STATUS:200"),
+				"granted completion must succeed, got: %s", out)
+			// Proves the request reached the mock provider rather than being
+			// short-circuited by LiteLLM — see mock handleChatCompletions.
+			g.Expect(out).To(ContainSubstring("E2E-MOCK-COMPLETION-OK"),
+				"completion did not reach the mock provider, got: %s", out)
+		}, 90*time.Second, 5*time.Second).Should(Succeed())
+	})
 })

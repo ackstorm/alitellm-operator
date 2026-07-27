@@ -101,9 +101,14 @@ alitellm-operator/
 ├── scripts/                 ← dev.sh, cluster.sh, pre-push-check.sh, ...
 ├── spec/                    ← frozen LiteLLM OpenAPI + design spec
 ├── test/                    ← e2e (Ginkgo) + utils
-│   └── e2e/cluster/         standing-hydration kustomize phases (00-namespaces,
-│                            01-deps, 02-operator, 03-mocks, 04-hydration);
-│                            test CRs stay dynamic in test/e2e/*_test.go
+│   ├── e2e/cluster/         standing-hydration kustomize phases (00-namespaces,
+│   │                        01-deps, 02-operator, 03-mocks, 04-hydration);
+│   │                        test CRs stay dynamic in test/e2e/*_test.go
+│   └── uat/                 post-release acceptance against a REAL cluster
+│                            (bash, by hand). NOT a test suite and NOT part of
+│                            `make e2e-*` — holds ONLY what kind cannot prove
+│                            (real provider creds, scale, elapsed time). See
+│                            "UAT vs e2e" below before adding anything here.
 ├── ROADMAP.md, CHANGELOG.md, SECURITY.md, MAINTAINERS.md, CONTRIBUTING.md
 └── PROJECT, README.md, LICENSE, NOTICE, PUBLISH.md
 ```
@@ -195,14 +200,27 @@ not two). Never prefix a routed target with `./scripts/dev.sh` out of
 habit — the prefix is redundant.
 
 Only context-B/C targets run directly on the host: `docker-*` (host
-docker), `wait-*` / `logs-*` / `watch-crs` / `pf-*` / `mock-mode`, the gate
-orchestrators (`pre-push`, `verify`), `release-*`, and
+docker), the gate orchestrators (`pre-push`, `verify`), `release-*`, and
 `ensure-inotify`. `operator-redeploy` builds + `kind load`s on the host but
 runs its `kubectl rollout restart/status` THROUGH the devtools container
-(`./scripts/dev.sh kubectl`) — host kubectl has no context for the kind
+(`$(E2E_KUBECTL)`) — host kubectl has no context for the kind
 cluster (kubeconfig lives at `/workspace/.gocache/kube/config`). The `cluster-*` targets are NO LONGER host-direct: they
 now route THROUGH the devtools container (they drive kind/helm via the
 mounted docker socket), so run them bare too (`make cluster-up`).
+
+**`wait-*` / `logs-*` / `watch-crs` / `pf-*` / `mock-mode` are NO LONGER
+host-direct either.** They all route their kubectl through the devtools
+container via the `E2E_KUBECTL` variable (default
+`./scripts/dev.sh kubectl`). They used to call bare `kubectl`, which
+resolves the HOST kubeconfig — routinely a real production cluster on a
+developer machine. `make mock-mode` was the sharp edge: it shells into
+`scripts/mock-set-mode.sh`, which runs `kubectl -n mocks run ...`, a
+MUTATION against whatever context happened to be current. Routing through
+`dev.sh` makes the wrong cluster structurally unreachable (that kubeconfig
+only knows kind), so a misfire fails closed instead of addressing prod.
+`pf-*` still binds on the host's localhost as advertised because
+`scripts/dev.sh` runs with `--network=host`. Any NEW target that talks to
+the e2e cluster MUST use `$(E2E_KUBECTL)`, never bare `kubectl`.
 
 ## Test phases
 
@@ -220,6 +238,33 @@ mounted docker socket), so run them bare too (`make cluster-up`).
 Umbrella targets:
 - `make test-full` = `test-unit` + `test-envtest`
 - `make verify` = `make qa-lint` + `make test-unit` + `make qa-security` + `make pre-push` (each self-routes; the gates stay host-only)
+
+### UAT vs e2e — where a check belongs
+
+`test/uat/uat-runbook.sh` is a hand-run **acceptance pass against a real
+cluster**, not a test suite, and it is NOT wired into any `make` target.
+
+Default: **a new check goes in `test/e2e/` (Ginkgo)**, where it runs on every
+PR. Put it in `test/uat/` ONLY if a kind cluster structurally cannot produce
+the condition. There are three such cases, and they are the whole justification
+for the runbook's existence:
+
+| Only-prod case | Why e2e cannot cover it |
+|---|---|
+| Real provider credentials + endpoints | The e2e mock accepts ANY `api_key`/`api_base`, so a misrouted model looks identical to a correct one. This is the OpenRouter bug class: children `Ready=Synced`, inference 401s. |
+| Scale + elapsed time | Duplicate-row amplification needs hundreds of models over days (1718 rows in 9 days; 7186 in 5h). A 3-model cluster cannot generate it. |
+| Real LiteLLM build + Postgres | e2e pins a chart version; prod drifts, and endpoint behaviour drifts with it (toolset DELETE returning 500-not-404). |
+
+Anything else — CRUD, drift correction, status conditions, metrics, projection,
+authorization — is deterministic and mockable, so it belongs in e2e. These were
+ported OUT of the runbook and must not be re-added to it:
+`invariants_test.go` (`UAT-S1` status-truth, `UAT-D1` discovery
+`generatedCount`, `UAT-R1` restart idempotency) and `team_test.go`
+(`TEAM-07` grant-allows-inference, the positive half of `TEAM-05`).
+
+`TEAM-07` is why the mock serves `/v1/chat/completions`: without a positive
+inference path, `TEAM-05`'s denial alone cannot distinguish "deny-by-default
+works" from "all team keys are broken".
 - `make hooks` installs `.git/hooks/pre-push -> scripts/pre-push-check.sh`
   (and removes any stale pre-commit hook from a prior install)
 
@@ -483,7 +528,7 @@ script is the contract; the git hook makes it unmissable.
 ### ❌ Kubectl from host against the kind cluster
 ```bash
 kubectl get pods -n default
-# context not found
+# context not found  — or WORSE: silently answers from your PRODUCTION cluster
 ```
 ✅ Go through the devtools container:
 ```bash
@@ -492,6 +537,16 @@ kubectl get pods -n default
 WHY IT FAILS: The kind kubeconfig lives at
 `/workspace/.gocache/kube/config` — inside the container. Host kubectl
 has no context for the kind cluster.
+
+The failure is NOT always a clean "context not found". If the host
+kubeconfig has a current-context (an EKS/GKE cluster, say), the command
+SUCCEEDS against that cluster instead. Observed live: `make wait-litellm`
+answered `NotFound` from a production EKS cluster, not from kind — a
+read-only call, but `make mock-mode` on the same path would have created a
+Pod there. In-repo targets are all fixed (they use `$(E2E_KUBECTL)`), but
+ad-hoc `kubectl` you type yourself still carries this risk: check
+`kubectl config current-context` before any manual cluster command, or just
+prefix `./scripts/dev.sh`.
 
 ### ❌ Editing files via relative paths when cwd is the wrong repo
 ```bash
