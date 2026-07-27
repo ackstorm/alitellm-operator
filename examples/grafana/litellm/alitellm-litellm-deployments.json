@@ -199,7 +199,7 @@
       },
       "id": 68,
       "type": "stat",
-      "title": "Deployment failures /s",
+      "title": "Deployment failures (range)",
       "gridPos": {
         "h": 5,
         "w": 6,
@@ -208,7 +208,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "ops",
+          "unit": "short",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -221,7 +221,8 @@
                 "value": 0.0001
               }
             ]
-          }
+          },
+          "decimals": 0
         },
         "overrides": []
       },
@@ -231,7 +232,7 @@
         "justifyMode": "auto",
         "reduceOptions": {
           "calcs": [
-            "mean"
+            "lastNotNull"
           ],
           "fields": "",
           "values": false
@@ -244,7 +245,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(litellm_deployment_failure_responses_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum(increase(litellm_deployment_failure_responses_total{namespace=~\"$namespace\"}[$__range]))",
           "refId": "A"
         }
       ]
@@ -256,7 +257,7 @@
       },
       "id": 69,
       "type": "stat",
-      "title": "Cooldown / no-healthy events /s",
+      "title": "Cooldown / no-healthy events (range)",
       "gridPos": {
         "h": 5,
         "w": 6,
@@ -265,7 +266,8 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "ops"
+          "unit": "short",
+          "decimals": 0
         },
         "overrides": []
       },
@@ -275,7 +277,7 @@
         "justifyMode": "auto",
         "reduceOptions": {
           "calcs": [
-            "mean"
+            "lastNotNull"
           ],
           "fields": "",
           "values": false
@@ -288,7 +290,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(litellm_deployment_total_requests_total{namespace=~\"$namespace\"}[5m])) - sum(rate(litellm_deployment_success_responses_total{namespace=~\"$namespace\"}[5m])) - sum(rate(litellm_deployment_failure_responses_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum(increase(litellm_deployment_total_requests_total{namespace=~\"$namespace\"}[$__range])) - sum(increase(litellm_deployment_success_responses_total{namespace=~\"$namespace\"}[$__range])) - sum(increase(litellm_deployment_failure_responses_total{namespace=~\"$namespace\"}[$__range]))",
           "refId": "A"
         }
       ]

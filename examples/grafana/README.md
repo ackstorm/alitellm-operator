@@ -65,6 +65,29 @@ seconds-until-expiry and does tick down at 1/s, but 61 of 86 keys read < 60s for
 over an hour without ever expiring or disappearing. The dashboard therefore shows
 the ordering, not a "keys expiring soon" alert tile. Fix belongs in the exporter.
 
+## Rates vs counts
+
+A stat reduced from `rate()` reads 0 whenever the counter is idle, which for an
+operator is almost always: the reconcile counter ticked twice in six hours, and
+`rate()` rendered that as `0 ops/s` while 698 controller-runtime errors showed
+as `0.0333 ops/s`. Neither number moves anyone.
+
+So the stats split by what the metric *is*:
+
+- **Flows** — requests, tokens, spend — stay rates. They are genuinely rates and
+  they scale to a busy proxy.
+- **Incidents** — reconciles, conflicts, orphaned deletions, reconcile errors,
+  deployment failures, cooldowns — are counts over the dashboard range
+  (`increase(...[$__range])`, titled `(range)`). The question for a discrete
+  event is how many, not how fast.
+
+Note `increase()` extrapolates, so a count of 7 can compute as 7.02; the panels
+render 0 decimals.
+
+Timeseries panels deliberately keep `rate()` even for incident counters. The
+stat answers "how many", the graph answers "when" — and `increase(x[$__interval])`
+would make the y-axis mean something different at every zoom level.
+
 ## Cardinality
 
 `litellm_proxy_total_requests_metric_total` carries 16 labels, including
