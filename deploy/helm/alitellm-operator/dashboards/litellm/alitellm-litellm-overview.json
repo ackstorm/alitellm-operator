@@ -1,6 +1,6 @@
 {
   "uid": "alitellm-litellm-overview",
-  "title": "aLiteLLM — LiteLLM Overview",
+  "title": "aLiteLLM \u2014 LiteLLM Overview",
   "tags": [
     "alitellm",
     "observability"
@@ -116,7 +116,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(litellm_proxy_total_requests_metric_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum(rate(litellm_proxy_total_requests_metric_total{namespace=~\"$namespace\"}[$__rate_interval]))",
           "refId": "A"
         }
       ]
@@ -178,7 +178,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(litellm_proxy_failed_requests_metric_total{namespace=~\"$namespace\"}[5m])) / clamp_min(sum(rate(litellm_proxy_total_requests_metric_total{namespace=~\"$namespace\"}[5m])), 0.0001)",
+          "expr": "sum(rate(litellm_proxy_failed_requests_metric_total{namespace=~\"$namespace\"}[$__rate_interval])) / clamp_min(sum(rate(litellm_proxy_total_requests_metric_total{namespace=~\"$namespace\"}[$__rate_interval])), 0.0001)",
           "refId": "A"
         }
       ]
@@ -223,7 +223,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "histogram_quantile(0.95, sum(rate(litellm_request_total_latency_metric_bucket{namespace=~\"$namespace\"}[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(litellm_request_total_latency_metric_bucket{namespace=~\"$namespace\"}[$__rate_interval])) by (le))",
           "refId": "A"
         }
       ]
@@ -421,7 +421,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (status_code) (rate(litellm_proxy_total_requests_metric_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum by (status_code) (rate(litellm_proxy_total_requests_metric_total{namespace=~\"$namespace\"}[$__rate_interval]))",
           "refId": "A",
           "legendFormat": "{{status_code}}"
         }
@@ -474,7 +474,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (exception_class) (rate(litellm_proxy_failed_requests_metric_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum by (exception_class) (rate(litellm_proxy_failed_requests_metric_total{namespace=~\"$namespace\"}[$__rate_interval]))",
           "refId": "A",
           "legendFormat": "{{exception_class}}"
         }
@@ -487,7 +487,7 @@
       },
       "id": 35,
       "type": "timeseries",
-      "title": "Requests /s by team",
+      "title": "Requests /s by team (top 10)",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -527,7 +527,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (team_alias) (rate(litellm_proxy_total_requests_metric_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "topk(10, sum by (team_alias) (rate(litellm_proxy_total_requests_metric_total{namespace=~\"$namespace\"}[$__rate_interval])))",
           "refId": "A",
           "legendFormat": "{{team_alias}}"
         }
@@ -540,7 +540,7 @@
       },
       "id": 36,
       "type": "timeseries",
-      "title": "Requests /s by requested model",
+      "title": "Requests /s by requested model (top 10)",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -580,7 +580,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "label_replace(sum by (requested_model) (rate(litellm_proxy_total_requests_metric_total{namespace=~\"$namespace\"}[5m])), \"requested_model\", \"(unlabelled)\", \"requested_model\", \"^$\")",
+          "expr": "label_replace(topk(10, sum by (requested_model) (rate(litellm_proxy_total_requests_metric_total{namespace=~\"$namespace\"}[$__rate_interval]))), \"requested_model\", \"(unlabelled)\", \"requested_model\", \"^$\")",
           "refId": "A",
           "legendFormat": "{{requested_model}}"
         }
@@ -596,7 +596,7 @@
       },
       "id": 37,
       "panels": [],
-      "title": "Latency — where does the time go?",
+      "title": "Latency \u2014 where does the time go?",
       "type": "row"
     },
     {
@@ -643,7 +643,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "histogram_quantile(0.50, sum(rate(litellm_request_total_latency_metric_bucket{namespace=~\"$namespace\"}[5m])) by (le))",
+          "expr": "histogram_quantile(0.50, sum(rate(litellm_request_total_latency_metric_bucket{namespace=~\"$namespace\"}[$__rate_interval])) by (le))",
           "refId": "A",
           "legendFormat": "p50"
         },
@@ -652,7 +652,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "histogram_quantile(0.95, sum(rate(litellm_request_total_latency_metric_bucket{namespace=~\"$namespace\"}[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(litellm_request_total_latency_metric_bucket{namespace=~\"$namespace\"}[$__rate_interval])) by (le))",
           "refId": "B",
           "legendFormat": "p95"
         },
@@ -661,7 +661,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "histogram_quantile(0.99, sum(rate(litellm_request_total_latency_metric_bucket{namespace=~\"$namespace\"}[5m])) by (le))",
+          "expr": "histogram_quantile(0.99, sum(rate(litellm_request_total_latency_metric_bucket{namespace=~\"$namespace\"}[$__rate_interval])) by (le))",
           "refId": "C",
           "legendFormat": "p99"
         }
@@ -711,7 +711,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "histogram_quantile(0.95, sum(rate(litellm_llm_api_latency_metric_bucket{namespace=~\"$namespace\"}[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(litellm_llm_api_latency_metric_bucket{namespace=~\"$namespace\"}[$__rate_interval])) by (le))",
           "refId": "A",
           "legendFormat": "llm api p95"
         },
@@ -720,7 +720,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "histogram_quantile(0.95, sum(rate(litellm_overhead_latency_metric_bucket{namespace=~\"$namespace\"}[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(litellm_overhead_latency_metric_bucket{namespace=~\"$namespace\"}[$__rate_interval])) by (le))",
           "refId": "B",
           "legendFormat": "proxy overhead p95"
         },
@@ -729,7 +729,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "histogram_quantile(0.95, sum(rate(litellm_overhead_with_guardrails_latency_metric_bucket{namespace=~\"$namespace\"}[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(litellm_overhead_with_guardrails_latency_metric_bucket{namespace=~\"$namespace\"}[$__rate_interval])) by (le))",
           "refId": "C",
           "legendFormat": "overhead incl. guardrails p95"
         }
@@ -743,7 +743,7 @@
       },
       "id": 40,
       "type": "timeseries",
-      "title": "Time to first token p50 / p95 by model",
+      "title": "Time to first token p95 by model",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -780,17 +780,8 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "histogram_quantile(0.50, sum by (le, requested_model) (rate(litellm_llm_api_time_to_first_token_metric_bucket{namespace=~\"$namespace\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le, requested_model) (rate(litellm_llm_api_time_to_first_token_metric_bucket{namespace=~\"$namespace\"}[$__rate_interval])))",
           "refId": "A",
-          "legendFormat": "p50 {{requested_model}}"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "histogram_quantile(0.95, sum by (le, requested_model) (rate(litellm_llm_api_time_to_first_token_metric_bucket{namespace=~\"$namespace\"}[5m])))",
-          "refId": "B",
           "legendFormat": "p95 {{requested_model}}"
         }
       ]
@@ -839,7 +830,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "histogram_quantile(0.95, sum(rate(litellm_request_queue_time_seconds_bucket{namespace=~\"$namespace\"}[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(litellm_request_queue_time_seconds_bucket{namespace=~\"$namespace\"}[$__rate_interval])) by (le))",
           "refId": "A",
           "legendFormat": "queue p95"
         },
@@ -848,11 +839,25 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "histogram_quantile(0.95, sum(rate(litellm_router_latency_bucket{namespace=~\"$namespace\"}[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(litellm_router_latency_bucket{namespace=~\"$namespace\"}[$__rate_interval])) by (le))",
           "refId": "B",
           "legendFormat": "router p95"
         }
       ]
+    }
+  ],
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "alitellm"
+      ],
+      "targetBlank": false,
+      "title": "aLiteLLM dashboards",
+      "type": "dashboards"
     }
   ]
 }

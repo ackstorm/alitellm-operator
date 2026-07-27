@@ -1,6 +1,6 @@
 {
   "uid": "alitellm-litellm-deployments",
-  "title": "aLiteLLM — LiteLLM Deployments & Internals",
+  "title": "aLiteLLM \u2014 LiteLLM Deployments & Internals",
   "tags": [
     "alitellm",
     "observability"
@@ -373,7 +373,7 @@
       },
       "id": 71,
       "type": "timeseries",
-      "title": "Success vs failure /s by model",
+      "title": "Success vs failure /s by model (top 10)",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -413,7 +413,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (litellm_model_name) (rate(litellm_deployment_success_responses_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "topk(10, sum by (litellm_model_name) (rate(litellm_deployment_success_responses_total{namespace=~\"$namespace\"}[$__rate_interval])))",
           "refId": "A",
           "legendFormat": "ok {{litellm_model_name}}"
         },
@@ -422,7 +422,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (litellm_model_name) (rate(litellm_deployment_failure_responses_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "topk(10, sum by (litellm_model_name) (rate(litellm_deployment_failure_responses_total{namespace=~\"$namespace\"}[$__rate_interval])))",
           "refId": "B",
           "legendFormat": "fail {{litellm_model_name}}"
         }
@@ -435,7 +435,7 @@
       },
       "id": 72,
       "type": "timeseries",
-      "title": "Latency per output token p95 by model",
+      "title": "Latency per output token p95 by model (top 10)",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -472,12 +472,12 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, litellm_model_name) (rate(litellm_deployment_latency_per_output_token_bucket{namespace=~\"$namespace\"}[5m])))",
+          "expr": "topk(10, histogram_quantile(0.95, sum by (le, litellm_model_name) (rate(litellm_deployment_latency_per_output_token_bucket{namespace=~\"$namespace\"}[$__rate_interval]))))",
           "refId": "A",
           "legendFormat": "{{litellm_model_name}}"
         }
       ],
-      "description": "The only fair cross-model latency comparison — normalises away response length."
+      "description": "The only fair cross-model latency comparison \u2014 normalises away response length."
     },
     {
       "datasource": {
@@ -596,7 +596,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "histogram_quantile(0.95, sum(rate(litellm_postgres_latency_bucket{namespace=~\"$namespace\"}[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(litellm_postgres_latency_bucket{namespace=~\"$namespace\"}[$__rate_interval])) by (le))",
           "refId": "A",
           "legendFormat": "postgres p95"
         },
@@ -605,7 +605,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "histogram_quantile(0.95, sum(rate(litellm_redis_latency_bucket{namespace=~\"$namespace\"}[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(litellm_redis_latency_bucket{namespace=~\"$namespace\"}[$__rate_interval])) by (le))",
           "refId": "B",
           "legendFormat": "redis p95"
         },
@@ -614,7 +614,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "histogram_quantile(0.95, sum(rate(litellm_auth_latency_bucket{namespace=~\"$namespace\"}[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(litellm_auth_latency_bucket{namespace=~\"$namespace\"}[$__rate_interval])) by (le))",
           "refId": "C",
           "legendFormat": "auth p95"
         },
@@ -623,7 +623,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "histogram_quantile(0.95, sum(rate(litellm_proxy_pre_call_latency_bucket{namespace=~\"$namespace\"}[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(litellm_proxy_pre_call_latency_bucket{namespace=~\"$namespace\"}[$__rate_interval])) by (le))",
           "refId": "D",
           "legendFormat": "pre-call p95"
         }
@@ -673,7 +673,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(litellm_postgres_total_requests_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum(rate(litellm_postgres_total_requests_total{namespace=~\"$namespace\"}[$__rate_interval]))",
           "refId": "A",
           "legendFormat": "postgres"
         },
@@ -682,7 +682,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(litellm_redis_total_requests_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum(rate(litellm_redis_total_requests_total{namespace=~\"$namespace\"}[$__rate_interval]))",
           "refId": "B",
           "legendFormat": "redis"
         },
@@ -691,7 +691,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(litellm_auth_total_requests_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum(rate(litellm_auth_total_requests_total{namespace=~\"$namespace\"}[$__rate_interval]))",
           "refId": "C",
           "legendFormat": "auth"
         }
@@ -741,7 +741,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(litellm_cache_hits_total{namespace=~\"$namespace\"}[5m])) / clamp_min(sum(rate(litellm_cache_hits_total{namespace=~\"$namespace\"}[5m])) + sum(rate(litellm_cache_misses_total{namespace=~\"$namespace\"}[5m])), 0.0001)",
+          "expr": "sum(rate(litellm_cache_hits_total{namespace=~\"$namespace\"}[$__rate_interval])) / clamp_min(sum(rate(litellm_cache_hits_total{namespace=~\"$namespace\"}[$__rate_interval])) + sum(rate(litellm_cache_misses_total{namespace=~\"$namespace\"}[$__rate_interval])), 0.0001)",
           "refId": "A",
           "legendFormat": "hit ratio"
         }
@@ -808,7 +808,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (guardrail_name) (rate(litellm_guardrail_requests_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum by (guardrail_name) (rate(litellm_guardrail_requests_total{namespace=~\"$namespace\"}[$__rate_interval]))",
           "refId": "A",
           "legendFormat": "req/s {{guardrail_name}}"
         },
@@ -817,7 +817,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, guardrail_name) (rate(litellm_guardrail_latency_seconds_bucket{namespace=~\"$namespace\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le, guardrail_name) (rate(litellm_guardrail_latency_seconds_bucket{namespace=~\"$namespace\"}[$__rate_interval])))",
           "refId": "B",
           "legendFormat": "p95 {{guardrail_name}}"
         }
@@ -870,7 +870,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (mcp_server_name) (rate(litellm_mcp_tool_calls_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum by (mcp_server_name) (rate(litellm_mcp_tool_calls_total{namespace=~\"$namespace\"}[$__rate_interval]))",
           "refId": "A",
           "legendFormat": "{{mcp_server_name}}"
         }
@@ -920,7 +920,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(litellm_callback_logging_failures_metric_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum(rate(litellm_callback_logging_failures_metric_total{namespace=~\"$namespace\"}[$__rate_interval]))",
           "refId": "A",
           "legendFormat": "callback logging failures/s"
         },
@@ -943,6 +943,20 @@
           "legendFormat": "reset-budget job/s"
         }
       ]
+    }
+  ],
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "alitellm"
+      ],
+      "targetBlank": false,
+      "title": "aLiteLLM dashboards",
+      "type": "dashboards"
     }
   ]
 }

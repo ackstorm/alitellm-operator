@@ -1,6 +1,6 @@
 {
   "uid": "alitellm-litellm-finops",
-  "title": "aLiteLLM — LiteLLM FinOps",
+  "title": "aLiteLLM \u2014 LiteLLM FinOps",
   "tags": [
     "alitellm",
     "observability"
@@ -74,7 +74,7 @@
       },
       "id": 42,
       "panels": [],
-      "title": "Spend (traffic-derived — callback)",
+      "title": "Spend (traffic-derived \u2014 callback)",
       "type": "row"
     },
     {
@@ -134,7 +134,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(litellm_spend_metric_total{namespace=~\"$namespace\"}[5m])) * 3600",
+          "expr": "sum(rate(litellm_spend_metric_total{namespace=~\"$namespace\"}[$__rate_interval])) * 3600",
           "refId": "A"
         }
       ]
@@ -223,7 +223,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(litellm_input_tokens_metric_total{namespace=~\"$namespace\"}[5m])) + sum(rate(litellm_output_tokens_metric_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum(rate(litellm_input_tokens_metric_total{namespace=~\"$namespace\"}[$__rate_interval])) + sum(rate(litellm_output_tokens_metric_total{namespace=~\"$namespace\"}[$__rate_interval]))",
           "refId": "A"
         }
       ]
@@ -285,7 +285,7 @@
           "refId": "A"
         }
       ],
-      "description": "0 is normal when no prompt caching is in use — LiteLLM emits litellm_input_cached_tokens_metric_total flat at 0, so this is not an error state."
+      "description": "0 is normal when no prompt caching is in use \u2014 LiteLLM emits litellm_input_cached_tokens_metric_total flat at 0, so this is not an error state."
     },
     {
       "datasource": {
@@ -294,7 +294,7 @@
       },
       "id": 47,
       "type": "timeseries",
-      "title": "Spend $/h by model",
+      "title": "Spend $/h by model (top 10)",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -338,7 +338,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (model) (rate(litellm_spend_metric_total{namespace=~\"$namespace\", model!~\"MCP:.*\"}[5m])) * 3600",
+          "expr": "topk(10, sum by (model) (rate(litellm_spend_metric_total{namespace=~\"$namespace\", model!~\"MCP:.*\"}[$__rate_interval])) * 3600)",
           "refId": "A",
           "legendFormat": "{{model}}"
         }
@@ -351,7 +351,7 @@
       },
       "id": 48,
       "type": "timeseries",
-      "title": "Spend $/h by team",
+      "title": "Spend $/h by team (top 10)",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -395,7 +395,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (team_alias) (rate(litellm_spend_metric_total{namespace=~\"$namespace\"}[5m])) * 3600",
+          "expr": "topk(10, sum by (team_alias) (rate(litellm_spend_metric_total{namespace=~\"$namespace\"}[$__rate_interval])) * 3600)",
           "refId": "A",
           "legendFormat": "{{team_alias}}"
         }
@@ -628,7 +628,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(litellm_input_tokens_metric_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum(rate(litellm_input_tokens_metric_total{namespace=~\"$namespace\"}[$__rate_interval]))",
           "refId": "A",
           "legendFormat": "input"
         },
@@ -637,7 +637,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(litellm_output_tokens_metric_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum(rate(litellm_output_tokens_metric_total{namespace=~\"$namespace\"}[$__rate_interval]))",
           "refId": "B",
           "legendFormat": "output"
         },
@@ -646,7 +646,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(litellm_input_cached_tokens_metric_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum(rate(litellm_input_cached_tokens_metric_total{namespace=~\"$namespace\"}[$__rate_interval]))",
           "refId": "C",
           "legendFormat": "cached input"
         },
@@ -655,7 +655,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(litellm_output_reasoning_tokens_metric_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum(rate(litellm_output_reasoning_tokens_metric_total{namespace=~\"$namespace\"}[$__rate_interval]))",
           "refId": "D",
           "legendFormat": "reasoning output"
         }
@@ -668,7 +668,7 @@
       },
       "id": 54,
       "type": "timeseries",
-      "title": "Tokens /s by model",
+      "title": "Tokens /s by model (top 10)",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -708,7 +708,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (model) (rate(litellm_input_tokens_metric_total{namespace=~\"$namespace\"}[5m])) + sum by (model) (rate(litellm_output_tokens_metric_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "topk(10, sum by (model) (rate(litellm_input_tokens_metric_total{namespace=~\"$namespace\"}[$__rate_interval])) + sum by (model) (rate(litellm_output_tokens_metric_total{namespace=~\"$namespace\"}[$__rate_interval])))",
           "refId": "A",
           "legendFormat": "{{model}}"
         }
@@ -724,7 +724,7 @@
       },
       "id": 55,
       "panels": [],
-      "title": "Inventory & budgets (DB truth — litellm-exporter)",
+      "title": "Inventory & budgets (DB truth \u2014 litellm-exporter)",
       "type": "row"
     },
     {
@@ -879,7 +879,7 @@
           "refId": "A"
         }
       ],
-      "description": "Every key in the LiteLLM database, including ones with no traffic since the proxy started — the callback metrics cannot see these."
+      "description": "Every key in the LiteLLM database, including ones with no traffic since the proxy started \u2014 the callback metrics cannot see these."
     },
     {
       "datasource": {
@@ -1133,7 +1133,7 @@
       },
       "id": 63,
       "type": "timeseries",
-      "title": "Remaining budget by team (callback gauge)",
+      "title": "Remaining budget by team (10 lowest)",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -1173,7 +1173,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "min by (team_alias) (litellm_remaining_team_budget_metric{namespace=~\"$namespace\"})",
+          "expr": "bottomk(10, min by (team_alias) (litellm_remaining_team_budget_metric{namespace=~\"$namespace\"}))",
           "refId": "A",
           "legendFormat": "{{team_alias}}"
         }
@@ -1186,7 +1186,7 @@
       },
       "id": 64,
       "type": "timeseries",
-      "title": "Remaining budget by key (callback gauge)",
+      "title": "Remaining budget by key (10 lowest)",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -1226,11 +1226,25 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "min by (api_key_alias) (litellm_remaining_api_key_budget_metric{namespace=~\"$namespace\"})",
+          "expr": "bottomk(10, min by (api_key_alias) (litellm_remaining_api_key_budget_metric{namespace=~\"$namespace\"}))",
           "refId": "A",
           "legendFormat": "{{api_key_alias}}"
         }
       ]
+    }
+  ],
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "alitellm"
+      ],
+      "targetBlank": false,
+      "title": "aLiteLLM dashboards",
+      "type": "dashboards"
     }
   ]
 }

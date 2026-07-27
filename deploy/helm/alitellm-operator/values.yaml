@@ -92,6 +92,18 @@ metrics:
     folder: aLiteLLM
     # labels: extra labels on every dashboard ConfigMap.
     labels: {}
+  # metrics.prometheusRule: ship alerting rules (templates/prometheus-rules.yaml)
+  # for the failure modes the operator dashboard's "Is it healthy?" row
+  # surfaces: operator down, LiteLLM connection not Ready, sustained reconcile
+  # errors, CRs failing to sync, stale CR status, deletions blocked, discovery
+  # failing. Requires the Prometheus Operator CRDs (monitoring.coreos.com/v1).
+  # The alitellm_operator_* expressions need operator >= v0.7.29.
+  prometheusRule:
+    enabled: false
+    # labels: extra labels on the PrometheusRule object — e.g. whatever your
+    # Prometheus's ruleSelector matches (kube-prometheus-stack default:
+    # release: <prom-release-name>).
+    labels: {}
 # safetyRelistInterval (v0.4.6+) overrides the per-reconciler vanish-probe
 # cadence shared by MCPServer / Model / Team / A2AAgent. Accepts any
 # time.ParseDuration string ("10s", "1m", "30m", "1h"). Empty / unset →
