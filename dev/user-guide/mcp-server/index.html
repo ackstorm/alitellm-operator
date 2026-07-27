@@ -1919,7 +1919,7 @@ verbatim. <code>stdio</code> is rejected. The Discovery-side normalization
   1.83.10).</li>
 <li>Row vanished in LiteLLM (out-of-band DELETE) → <code>POST /v1/mcp/server</code>,
   re-pin <code>serverID</code>, increment
-  <code>drift_corrected_total{domain=mcpserver,action=create_missing}</code>.</li>
+  <code>alitellm_operator_drift_corrected_total{domain=mcpserver,action=create_missing}</code>.</li>
 </ul>
 <p>The vanish probe uses the shared LIST cache (<code>CachedListMCPServers</code>)
 to coalesce probes across sibling CRs — see

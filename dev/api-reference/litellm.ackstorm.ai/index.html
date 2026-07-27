@@ -3541,7 +3541,7 @@ client and never touches the LiteLLM Deployment).</p>
 </tr>
 <tr>
 <td><code>lastRendered</code> <em><a href="#guardraillastrenderedstatus">GuardRailLastRenderedStatus</a></em></td>
-<td>LastRendered is the operator-side drift source of truth (D-01,<br />D-07 — same pattern as LiteLLMModel). On each reconcile the<br />rendered post-substitution body is hashed and compared against<br />LastRendered.Hash; a mismatch triggers a PUT /guardrails/{id}<br />(drift correction) and increments<br />drift_corrected_total{domain=guardrail,action=update_drifted}.</td>
+<td>LastRendered is the operator-side drift source of truth (D-01,<br />D-07 — same pattern as LiteLLMModel). On each reconcile the<br />rendered post-substitution body is hashed and compared against<br />LastRendered.Hash; a mismatch triggers a PUT /guardrails/{id}<br />(drift correction) and increments<br />alitellm_operator_drift_corrected_total{domain=guardrail,action=update_drifted}.</td>
 <td></td>
 <td></td>
 </tr>
@@ -3604,7 +3604,7 @@ operator — saves a GET /model/info per reconcile. Documented deviation.</p>
 </tr>
 <tr>
 <td><code>at</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#time-v1-meta">Time</a></em></td>
-<td>At is the timestamp of the last SUCCESSFUL render (NOT every reconcile<br />attempt — transient failures do not update this field). Reconcile<br />attempt frequency is observable via controller-runtime workqueue metrics<br />and cr_status_age_seconds (§10 / OBS-03).</td>
+<td>At is the timestamp of the last SUCCESSFUL render (NOT every reconcile<br />attempt — transient failures do not update this field). Reconcile<br />attempt frequency is observable via controller-runtime workqueue metrics<br />and alitellm_operator_cr_status_age_seconds (§10 / OBS-03).</td>
 <td></td>
 <td></td>
 </tr>

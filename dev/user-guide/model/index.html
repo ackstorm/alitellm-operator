@@ -1912,10 +1912,10 @@ hash is compared against <code>status.lastRendered.hash</code>:</p>
 <ul>
 <li>Match → no LiteLLM call (steady state).</li>
 <li>Mismatch → <code>POST /model/update</code>, increments
-  <code>drift_corrected_total{domain=model,action=update_drifted}</code>.</li>
+  <code>alitellm_operator_drift_corrected_total{domain=model,action=update_drifted}</code>.</li>
 <li>Vanish (row missing in LiteLLM) → <code>POST /model/new</code>, re-pin
   <code>modelID</code>, increment
-  <code>drift_corrected_total{domain=model,action=create_missing}</code>.</li>
+  <code>alitellm_operator_drift_corrected_total{domain=model,action=create_missing}</code>.</li>
 </ul>
 <p><code>spec.params</code> shrinkage (a key removed) triggers delete-and-recreate;
 <code>modelID</code> is re-pinned in the same reconcile.</p>
@@ -1942,7 +1942,7 @@ order-independent membership test — rather than reading the first row only.</p
 </ul>
 <p>When more than one row exists for a name, the operator prunes the extras on the
 relist tick — deleting every row except the tracked id — and increments
-<code>drift_corrected_total{domain=model,action=duplicate_pruned}</code> per deleted row.
+<code>alitellm_operator_drift_corrected_total{domain=model,action=duplicate_pruned}</code> per deleted row.
 The prune is best-effort: a failed delete is retried on the next relist and
 never blocks the reconcile. Router models (<code>litellm_params.model</code> starting
 <code>auto_router/</code>) are exempt — they live in LiteLLM's in-memory router, are

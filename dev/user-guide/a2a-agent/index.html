@@ -1832,7 +1832,7 @@ most one per reconcile pass per key:</p>
 agentCard + overlays). On mismatch the reconciler issues
 <code>PUT /v1/agents/&lt;agentID&gt;</code> (wholesale-replace per LiteLLM 1.83.10).
 Vanish-probe path: row missing → <code>POST /v1/agents</code>, re-pin <code>agentID</code>,
-increment <code>drift_corrected_total{domain=a2aagent,action=create_missing}</code>.</p>
+increment <code>alitellm_operator_drift_corrected_total{domain=a2aagent,action=create_missing}</code>.</p>
 <h2 id="status-what-to-read">Status: what to read<a class="headerlink" href="#status-what-to-read" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>a2a<span class="w"> </span>vendor-research-agent<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.status.lastRendered}{&quot;\n&quot;}&#39;</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="c1"># {&quot;agentCardKeys&quot;:[&quot;description&quot;,&quot;name&quot;,&quot;version&quot;],&quot;agentID&quot;:&quot;&lt;uuid&gt;&quot;,&quot;at&quot;:&quot;...&quot;,&quot;hash&quot;:&quot;abc...&quot;,&quot;paramsKeys&quot;:[&quot;timeout&quot;]}</span>
