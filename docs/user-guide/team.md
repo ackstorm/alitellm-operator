@@ -151,7 +151,7 @@ Use the typed `spec.budget` / `spec.rateLimits` sub-blocks instead.
 ## Resource permissions — `spec.permission`
 
 `spec.permission` is a typed, operator-MANAGED block that controls which
-models, MCP servers, and A2A agents a team may use. When present, the
+models, MCP servers, MCP toolsets, and A2A agents a team may use. When present, the
 operator OWNS the projected LiteLLM `models` and `object_permission` fields —
 out-of-band UI edits to them do NOT survive reconciliation.
 
@@ -164,6 +164,7 @@ spec:
     mcpGroups:   ["team-a"]        # MCP access-group names
     agents:      ["planner"]       # A2A agent NAMES (resolved to UUIDs by the operator)
     agentGroups: ["grp-a"]         # A2A agent access-group names (see no-op note)
+    mcpToolsets: ["research"]      # LiteLLMMCPToolset NAMES (resolved to UUIDs)
 ```
 
 Projection to LiteLLM:
@@ -175,6 +176,7 @@ Projection to LiteLLM:
 | `mcpGroups`    | `object_permission.mcp_access_groups`       |
 | `agents`       | `object_permission.agents` (name→UUID resolved) |
 | `agentGroups`  | `object_permission.agent_access_groups` (**no-op**, see below) |
+| `mcpToolsets`  | `object_permission.mcp_toolsets` (name→UUID resolved) |
 
 **Agent name resolution.** LiteLLM enforces `object_permission.agents` on
 agent `agent_id` UUIDs and silently ignores names. The operator resolves each
@@ -183,6 +185,15 @@ name via `GET /v1/agents`. If a referenced agent is not yet registered (the
 `Ready=False, reason=AgentNotFound` (listing the missing names) and requeued —
 it recovers automatically once the agent appears.
 
+**Toolset name resolution.** Same shape as agents: LiteLLM matches
+`object_permission.mcp_toolsets` on `toolset_id` UUIDs, so the operator
+resolves each name via `GET /v1/mcp/toolset`. An unregistered name parks the
+team `Ready=False, reason=ToolsetNotFound` and requeues — create the
+[`LiteLLMMCPToolset`](mcp-toolset.md) CR and it recovers automatically.
+Multiple toolsets are **unioned** by LiteLLM (not last-wins), so listing
+several composes their tool grants. There is no access-group concept for
+toolsets — listing several here IS the grouping mechanism.
+
 **`agentGroups` is a no-op.** LiteLLM 1.83.10 has no API to tag an agent into
 an access group, so `object_permission.agent_access_groups` is never enforced.
 The field is retained for forward-compat; the operator emits a Warning
@@ -190,7 +201,7 @@ The field is retained for forward-compat; the operator emits a Warning
 
 **Empty vs absent.** An absent `spec.permission` block leaves any raw
 `spec.params.models` / `spec.params.object_permission` untouched (passthrough).
-A **present** block makes the operator OWN `models` and all four
+A **present** block makes the operator OWN `models` and all five
 `object_permission` sub-fields: every one is sent to LiteLLM on each update,
 never omitted. Shrinking a list — including down to empty (`mcpServers: []`, or
 removing the last agent) — therefore **does** revoke access. This is
@@ -210,7 +221,13 @@ present block leaves those lists empty:
 |-------|---------------|--------|
 | `models` (+ `modelGroups`) | `["__deny_all__"]` | 0 real models (a phantom entry appears in `/models`) |
 | `agents` | `["00000000-0000-0000-0000-000000000000"]` (null UUID) | 0 agents |
-| `mcpServers` / `mcpGroups` / `agentGroups` | `[]` | already fail-closed / no-op — no sentinel needed |
+| `mcpServers` / `mcpGroups` / `agentGroups` / `mcpToolsets` | `[]` | already fail-closed / no-op — no sentinel needed |
+
+`mcpToolsets` deliberately takes **no** sentinel. LiteLLM's toolset check reads
+"granted is None or id not in granted → deny", so an empty list already denies
+everything (an ungranted key gets `403 API key does not have access to toolset
+'<uuid>'`). Adding a sentinel there in the name of consistency would inject a
+bogus UUID into a filter that is already correct.
 
 So a `spec.permission` block that omits `models` (or sets it `[]`) grants the
 team **no models**, not all of them. To grant everything, list the models or

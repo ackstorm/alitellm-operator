@@ -17,6 +17,7 @@ nav:
     - LiteLLMA2AAgent: user-guide/a2a-agent.md
     - LiteLLMMCPServer: user-guide/mcp-server.md
     - LiteLLMMCPServerDiscovery: user-guide/mcp-server-discovery.md
+    - LiteLLMMCPToolset: user-guide/mcp-toolset.md
     - LiteLLMModelDiscovery: user-guide/model-discovery.md
     - LiteLLMGuardRail: user-guide/guardrail.md
   - Concepts:

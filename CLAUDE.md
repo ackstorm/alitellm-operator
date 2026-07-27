@@ -62,8 +62,10 @@ ackstorm material.
 ```
 
 Owned CRDs: `LiteLLMTeam`, `LiteLLMModel`, `LiteLLMModelDiscovery`,
-`LiteLLMMCPServer`, `LiteLLMMCPServerDiscovery`, `LiteLLMA2AAgent`,
-`LiteLLMConnection`. API group `litellm.ackstorm.ai`, version `v1alpha1`.
+`LiteLLMMCPServer`, `LiteLLMMCPServerDiscovery`, `LiteLLMMCPToolset`,
+`LiteLLMA2AAgent`, `LiteLLMConnection`. API group `litellm.ackstorm.ai`,
+version `v1alpha1`. `LiteLLMMCPToolset` requires LiteLLM **1.93.0+**
+(`/v1/mcp/toolset` does not exist before that).
 
 Critical paths:
 - CRD apply → reconciler → LiteLLM HTTP call → status condition update
@@ -1019,11 +1021,57 @@ team-scoped key against `models:["__deny_all__"]` IS rejected —
 Status code drifted upstream: **401 on 1.83.10, 403 on 1.93.0**. Assert the
 error type + sentinel echo, never the bare status code.
 
+### ❌ Expecting the operator to validate `LiteLLMMCPToolset` server/tool names
+```yaml
+spec:
+  from:
+  - server: hindsigt          # typo — accepted, CR goes Ready=Synced
+    tools: [web_serch]        # typo — accepted, CR goes Ready=Synced
+```
+✅ Neither the operator nor LiteLLM validates these. Verified on LiteLLM 1.93.0:
+a bogus `server_id` or `tool_name` is accepted with 201, and the toolset simply
+grants nothing (`200 {"tools":[]}` at `/toolset/<name>/mcp`, no exception in the
+proxy logs). Deleting a referenced MCP server leaves a dangling ref with no
+cascade. This is DELIBERATE — glob/name validation would require the operator
+to enumerate tools via `GET /v1/mcp/tools`, which needs the MCP server live,
+reachable, and readable by the operator key. Diagnose an empty toolset with:
+```bash
+curl -H "Authorization: Bearer $KEY" $LITELLM/v1/mcp/toolset
+```
+WHY IT IS SILENT: LiteLLM's toolset resolution wraps the whole lookup in
+`try/except → return {}`, and an unknown `server_id` simply never matches a
+real server in the fail-CLOSED server-access check.
+
 ## Repository-specific patterns
 
+- **`mcp_toolsets` is the one `object_permission` field that takes NO
+  deny-all sentinel.** `models` and `agents` are fail-OPEN in LiteLLM (an
+  empty list disables the filter → master-key ceiling), so `projectPermission`
+  substitutes `__deny_all__` / the null UUID. `mcp_toolsets` is fail-CLOSED —
+  the handler reads "granted is None or id not in granted → deny", so `[]`
+  already grants nothing (verified 1.93.0: an ungranted key gets `403 API key
+  does not have access to toolset '<uuid>'`). It joins `mcp_servers`,
+  `mcp_access_groups`, and `agent_access_groups` in the emitted-as-`[]` group.
+  Do NOT "fix" this asymmetry for consistency — a sentinel there would inject a
+  bogus UUID into a filter that is already correct. `spec.permission.mcpToolsets`
+  takes toolset NAMES, resolved to `toolset_id` UUIDs via `GET /v1/mcp/toolset`;
+  an unresolved name parks the team `ToolsetNotFound` and requeues (ordering
+  dependency with `LiteLLMMCPToolset` CRs, same shape as `AgentNotFound`).
+
+- **`LiteLLMMCPToolset` ids are SERVER-MINTED; adoption is by name.** LiteLLM
+  1.93.0 IGNORES a caller-supplied `toolset_id` (same as A2A `agent_id`, unlike
+  `team_id` / MCP `server_id`, which the operator pins to `metadata.name`), so
+  the reconciler reads the id from the POST response. `toolset_name` IS unique
+  server-side: a duplicate create returns **409**, and the CREATE arm adopts the
+  existing toolset by name (`resolveToolsetIDByName` → `PUT`) rather than
+  parking — that is how an operator restart re-attaches. NOTE the update verb
+  is `PUT /v1/mcp/toolset` with the `toolset_id` in the **BODY**, not the path;
+  a path-style `PUT /v1/mcp/toolset/<id>` is a 405. This endpoint diverges from
+  every other LiteLLM update the operator calls.
+
 - **Periodic drift detection = `SafetyRelistRunnable`, never `RequeueAfter`.**
-  Each of the five domain reconcilers (Model, Team, MCPServer, A2AAgent,
-  GuardRail) has exactly one `SafetyRelistRunnable` in `cmd/main.go`, ticking
+  Each of the six domain reconcilers (Model, Team, MCPServer, A2AAgent,
+  GuardRail, MCPToolset) has exactly one `SafetyRelistRunnable` in `cmd/main.go`, ticking
   at `LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL` (default 10m). Reconcilers
   return bare `ctrl.Result{}, nil` — there are no `RequeueAfter` safety-relist
   paths and no `withJitter`. WHY: a `RequeueAfter` only fires from the return

@@ -19,6 +19,8 @@ Package v1alpha1 contains API Schema definitions for the litellm v1alpha1 API gr
 - [LiteLLMMCPServerDiscovery](#litellmmcpserverdiscovery)
 - [LiteLLMMCPServerDiscoveryList](#litellmmcpserverdiscoverylist)
 - [LiteLLMMCPServerList](#litellmmcpserverlist)
+- [LiteLLMMCPToolset](#litellmmcptoolset)
+- [LiteLLMMCPToolsetList](#litellmmcptoolsetlist)
 - [LiteLLMModel](#litellmmodel)
 - [LiteLLMModelAlias](#litellmmodelalias)
 - [LiteLLMModelAliasList](#litellmmodelaliaslist)
@@ -661,6 +663,55 @@ LiteLLMMCPServerList contains a list of LiteLLMMCPServer.
 | `items` _[LiteLLMMCPServer](#litellmmcpserver) array_ |  |  |  |
 
 
+#### LiteLLMMCPToolset
+
+
+
+LiteLLMMCPToolset is the Schema for the litellmmcptoolsets API.
+
+metadata.name IS the LiteLLM `toolset_name` (unique server-side — a
+duplicate create returns 409), which is how the operator adopts a
+pre-existing toolset after a restart.
+
+Finalizer: `mcptoolsets.litellm.ackstorm.ai/finalizer` — issues
+DELETE /v1/mcp/toolset/<toolset_id> before the CR leaves etcd.
+
+
+
+_Appears in:_
+- [LiteLLMMCPToolsetList](#litellmmcptoolsetlist)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `apiVersion` _string_ | `litellm.ackstorm.ai/v1alpha1` | | |
+| `kind` _string_ | `LiteLLMMCPToolset` | | |
+| `kind` _string_ | Kind is a string value representing the REST resource this object represents.<br />Servers may infer this from the endpoint the client submits requests to.<br />Cannot be updated.<br />In CamelCase.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds |  |  |
+| `apiVersion` _string_ | APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources |  |  |
+| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
+| `spec` _[MCPToolsetSpec](#mcptoolsetspec)_ |  |  |  |
+| `status` _[MCPToolsetStatus](#mcptoolsetstatus)_ |  |  |  |
+
+
+#### LiteLLMMCPToolsetList
+
+
+
+LiteLLMMCPToolsetList contains a list of LiteLLMMCPToolset.
+
+
+
+
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `apiVersion` _string_ | `litellm.ackstorm.ai/v1alpha1` | | |
+| `kind` _string_ | `LiteLLMMCPToolsetList` | | |
+| `kind` _string_ | Kind is a string value representing the REST resource this object represents.<br />Servers may infer this from the endpoint the client submits requests to.<br />Cannot be updated.<br />In CamelCase.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds |  |  |
+| `apiVersion` _string_ | APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources |  |  |
+| `metadata` _[ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#listmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
+| `items` _[LiteLLMMCPToolset](#litellmmcptoolset) array_ |  |  |  |
+
+
 #### LiteLLMModel
 
 
@@ -1283,6 +1334,95 @@ _Appears in:_
 | `lastRendered` _[MCPServerLastRenderedStatus](#mcpserverlastrenderedstatus)_ | LastRendered is the operator-side drift source of truth per Phase 3<br />D-01 / D-07 (extended for MCPServer per Phase 5 D-03). It records<br />the post-substitution rendered state that was last successfully<br />applied to LiteLLM. The reconciler compares the current desired<br />state hash against `lastRendered.hash` to detect drift without<br />querying the LiteLLM API on every reconcile. |  |  |
 
 
+#### MCPToolsetLastRenderedStatus
+
+
+
+MCPToolsetLastRenderedStatus records the rendered state last applied.
+
+ToolsetID is server-minted: LiteLLM 1.93.0 IGNORES a caller-supplied
+toolset_id and mints a UUID (verified). Same posture as A2A agent_id, and
+unlike team_id / MCP server_id which the operator pins to metadata.name.
+Adoption of a pre-existing toolset therefore goes through the unique
+`toolset_name`, which is metadata.name.
+
+
+
+_Appears in:_
+- [MCPToolsetStatus](#mcptoolsetstatus)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `hash` _string_ | Hash is the SHA-256 hex of the RFC 8785–canonicalized rendered body. |  |  |
+| `toolsetID` _string_ | ToolsetID is the LiteLLM-assigned UUID, read from the POST response or<br />re-resolved by name via GET /v1/mcp/toolset. |  |  |
+| `at` _[Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#time-v1-meta)_ | At is the timestamp of the last SUCCESSFUL render. |  |  |
+
+
+#### MCPToolsetServerTools
+
+
+
+MCPToolsetServerTools is one server's contribution to a toolset: the MCP
+server it draws from, and the explicit tool names taken from it.
+
+NO GLOBS, BY DESIGN. Expanding a pattern would require the operator to
+enumerate the server's tools via GET /v1/mcp/tools, which needs the MCP
+server to be live, reachable, and readable by the operator's key — often
+false in the target deployments. Tool names are declared explicitly.
+
+
+
+_Appears in:_
+- [MCPToolsetSpec](#mcptoolsetspec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `server` _string_ | Server is the MCP server this toolset draws tools from. Give the NAME<br />of a LiteLLMMCPServer CR in this namespace; the operator reads that<br />CR's status.lastRendered.serverID and sends the resolved id to LiteLLM.<br />BEST-EFFORT, NEVER-FAILING resolution: if no such CR exists (an<br />adopted/out-of-band server, or a plain typo) the string is forwarded to<br />LiteLLM VERBATIM — which is exactly right when the user supplies a raw<br />server_id UUID. The operator performs NO validation and NEVER parks the<br />CR on an unresolvable server. LiteLLM itself accepts a nonexistent<br />server_id with 201 and simply grants nothing (verified on 1.93.0), so<br />the failure mode is an inert toolset, not an error.<br />The value is forwarded WITHOUT sanitization. Do NOT apply<br />SanitizeMCPServerName here: with MCP_TOOL_PREFIX_SEPARATOR="-" it maps<br />`-` to `.` and would mangle a UUID. |  | MinLength: 1 <br />Required: \{\} <br /> |
+| `tools` _string array_ | Tools is the explicit list of tool names taken from Server. Each entry<br />becomes one \{server_id, tool_name\} pair in the LiteLLM body.<br />LiteLLM does not validate that a tool exists — a bogus name is accepted<br />and contributes nothing. An empty list contributes no pairs.<br />Tool names may be bare or server-prefixed<br />(`<server><MCP_TOOL_PREFIX_SEPARATOR><tool>`); LiteLLM strips a KNOWN<br />server prefix on resolution. Note the strip only happens when the<br />server_id resolves, so a prefixed name plus an unresolvable server is<br />doubly inert. |  |  |
+
+
+#### MCPToolsetSpec
+
+
+
+MCPToolsetSpec defines the desired state of a LiteLLM MCP toolset — a
+named, curated collection of specific tools drawn from one or more MCP
+servers, granted to teams via LiteLLMTeam.spec.permission.mcpToolsets.
+
+The reconciler is a near-pure data transform. There is deliberately no
+validation, no tool enumeration, and no glob expansion (see
+MCPToolsetServerTools.Server / .Tools).
+
+
+
+_Appears in:_
+- [LiteLLMMCPToolset](#litellmmcptoolset)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `description` _string_ | Description is free text forwarded to LiteLLM's `description` field. |  |  |
+| `from` _[MCPToolsetServerTools](#mcptoolsetservertools) array_ | From is the list of per-server tool selections composing this toolset.<br />Flattened in declaration order into LiteLLM's `tools` array of<br />\{server_id, tool_name\} pairs. Duplicate pairs are de-duplicated (first<br />occurrence wins) so the rendered hash is stable.<br />An empty/absent From renders `tools: []`, which LiteLLM accepts. The<br />resulting toolset grants NOTHING (its resolved mcp_servers set is<br />empty, and LiteLLM's server-access check is fail-CLOSED on an empty<br />list). Silent by design — LiteLLM emits no error. |  |  |
+| `deletionPolicy` _string_ | DeletionPolicy controls finalizer behavior when the LiteLLM-side DELETE<br />cannot be confirmed. Defaults to "Orphan" per REL-06 anti-storm. | Orphan | Enum: [Orphan Delete] <br /> |
+
+
+#### MCPToolsetStatus
+
+
+
+MCPToolsetStatus defines the observed state of a LiteLLMMCPToolset.
+
+
+
+_Appears in:_
+- [LiteLLMMCPToolset](#litellmmcptoolset)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `observedGeneration` _integer_ | ObservedGeneration is the metadata.generation most recently processed. |  |  |
+| `conditions` _[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#condition-v1-meta) array_ | Conditions carries the standard metav1.Condition list. The single type<br />is `Ready`, with reasons:<br />  - Synced             — rendered toolset matches LiteLLM.<br />  - LiteLLMUnavailable — LiteLLMConnection/default not usable.<br />  - LiteLLMRejected    — LiteLLM returned a 4xx (non-401) on mutation.<br />  - RecreateThrottled  — created-but-not-listed storm breaker tripped. |  |  |
+| `lastRendered` _[MCPToolsetLastRenderedStatus](#mcptoolsetlastrenderedstatus)_ | LastRendered is the operator-side drift source of truth. |  |  |
+
+
 #### ModelAliasEntry
 
 
@@ -1588,6 +1728,7 @@ _Appears in:_
 | `mcpGroups` _string array_ | McpGroups is the list of MCP access-group names this team may use.<br />Projected onto object_permission.mcp_access_groups. |  |  |
 | `agents` _string array_ | Agents is the list of A2A agent NAMES (human-friendly) this team may<br />use. The operator resolves each name to its agent_id UUID via<br />GET /v1/agents before projecting onto object_permission.agents — LiteLLM<br />enforces on UUIDs and ignores names. An unresolved name requeues the<br />Team (reason=AgentNotFound). When a present permission block leaves this<br />list empty the operator projects the null-UUID deny-all sentinel<br />(fail-closed) — an empty agents list fails OPEN in LiteLLM. The sentinel<br />is scoped to the empty case only; it never substitutes for an unresolved<br />name. See the deny-by-default note above. |  |  |
 | `agentGroups` _string array_ | AgentGroups is the list of A2A agent access-group names. Projected onto<br />object_permission.agent_access_groups for forward-compat, but this is a<br />NO-OP in LiteLLM 1.83.10 (the API never tags an agent into a group). The<br />reconciler emits a Warning/AgentGroupsNoOp Event when this is non-empty. |  |  |
+| `mcpToolsets` _string array_ | McpToolsets is the list of LiteLLMMCPToolset NAMES this team may use.<br />The operator resolves each name to its toolset_id UUID via<br />GET /v1/mcp/toolset before projecting onto<br />object_permission.mcp_toolsets — LiteLLM matches on the UUID. An<br />unresolved name requeues the Team (reason=ToolsetNotFound), mirroring<br />the agents ordering dependency.<br />Multiple toolsets are UNIONED by LiteLLM, not last-wins, so listing<br />several here composes their tool grants. There is no access-group<br />concept for toolsets in LiteLLM 1.93.0 — the toolset IS the grouping<br />primitive, and listing several here is the group.<br />NO deny-all sentinel: unlike `models` and `agents`, LiteLLM's toolset<br />check is fail-CLOSED ("None means no grants configured → deny"), so an<br />empty list correctly grants nothing and is emitted as a plain `[]`. |  |  |
 
 
 #### RateLimitsSpec
