@@ -12,6 +12,32 @@ Four dashboards, split by **who owns the metric**:
 The `<group>` directory selects the Grafana folder (`metrics.dashboards.folders`
 in the chart), which is why the operator's own dashboard lives apart from the
 LiteLLM ones: we control the first set end to end, we only consume the second.
+All four carry the `alitellm` tag and a tag-based dashboard link, so each one
+links to the other three from its top bar.
+
+## Design: the 03:00 test
+
+The operator dashboard is laid out for the person who opens it because
+something is broken, top row first:
+
+1. **Is it healthy?** — six stats that are all green in a healthy system and
+   name the failure domain when they are not: operator pods up, LiteLLM
+   connection, reconcile errors, non-synced reconciles, stalest CR status age,
+   CRs blocked in deletion. Volume counters (total reconciles) and
+   permanently-zero-when-healthy curiosities (conflicts, orphaned deletions)
+   live further down — they answer "what happened", not "is it broken".
+2. **What is failing?** — the drill-down for the top row: errors per hour *by
+   controller* (a single misbehaving discovery source shows up here named),
+   the non-synced table (filtered to non-zero rows), the failure-reason mix,
+   and discovery refresh outcomes per source.
+3. **Activity / CR state / Controller runtime** — what the operator is doing,
+   which CRs are stale or stuck, and the controller-runtime internals.
+
+The `$namespace` variable was removed from the operator dashboard: the
+operator's own metrics only ever exist in the namespace it runs in, and the
+shared controller-runtime/workqueue families are scoped by
+`job=~".*alitellm-operator.*"` instead. The LiteLLM dashboards keep the
+variable — several proxies in different namespaces is a real deployment.
 
 ## Install
 
@@ -84,9 +110,17 @@ So the stats split by what the metric *is*:
 Note `increase()` extrapolates, so a count of 7 can compute as 7.02; the panels
 render 0 decimals.
 
-Timeseries panels deliberately keep `rate()` even for incident counters. The
-stat answers "how many", the graph answers "when" — and `increase(x[$__interval])`
-would make the y-axis mean something different at every zoom level.
+Timeseries panels keep `rate()` even for incident counters — the stat answers
+"how many", the graph answers "when", and `increase(x[$__interval])` would make
+the y-axis mean something different at every zoom level. But on the operator
+dashboard the raw per-second rate was unreadable (698 errors in six hours is
+0.03 ops/s), so every operator-dashboard rate is scaled `* 3600` and titled
+`/h`: same zoom-independent semantics, human numbers. The LiteLLM dashboards
+stay per-second — proxy traffic is a genuine per-second flow.
+
+Rate windows use `$__rate_interval` (not a fixed `[5m]`) so zoomed-out views
+stay correct; the deliberate slow windows (`[15m]` budget-reset job, `[1h]`
+restart count) are the exception.
 
 ## Cardinality
 
@@ -96,6 +130,23 @@ would make the y-axis mean something different at every zoom level.
 cluster. Every panel here aggregates only over `team_alias`, `requested_model`,
 `status_code`, `api_provider`, `model_id` or `litellm_model_name`. Keep it that
 way, and consider trimming the label set in the LiteLLM config.
+
+Unbounded by-model / by-team / by-key timeseries are additionally capped with
+`topk(10, ...)` (or `bottomk(10, ...)` where the *lowest* values page, e.g.
+remaining budget) so the panels stay readable on a proxy with hundreds of
+models. `topk` on a range query re-evaluates per point, so series membership
+can shift over the range — that is fine for "what is big right now".
+
+## Alerts
+
+`metrics.prometheusRule.enabled=true` in the chart ships a `PrometheusRule`
+(`templates/prometheus-rules.yaml`) mirroring the operator dashboard's top
+row: operator down (critical), LiteLLM connection not Ready 10m (critical),
+sustained reconcile errors, repeated non-synced reconciles, CR status age
+> 1h, deletions blocked 30m, discovery source failing 30m (all warning).
+Requires the Prometheus Operator CRDs; needs operator ≥ v0.7.29 for the
+`alitellm_operator_*` expressions. The stale-status threshold assumes the
+default `safetyRelistInterval` (10m) — raise both together.
 
 ## Validate
 

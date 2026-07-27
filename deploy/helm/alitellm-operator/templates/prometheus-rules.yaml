@@ -1,0 +1,107 @@
+{{- if .Values.metrics.prometheusRule.enabled }}
+# PrometheusRule — opt-in via metrics.prometheusRule.enabled. Alerts on the
+# failure modes the operator dashboard's "Is it healthy?" row surfaces, so an
+# SRE is paged instead of noticing red stats by accident. Requires the
+# Prometheus Operator CRDs (monitoring.coreos.com/v1) — the same stack the
+# ServiceMonitor stub targets.
+#
+# All alitellm_operator_* expressions need operator >= v0.7.29 (the metric
+# names were namespaced in that release); against an older operator those
+# rules simply never fire.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: alitellm-operator
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    {{- with .Values.metrics.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: alitellm-operator
+      rules:
+        - alert: AlitellmOperatorDown
+          expr: absent(up{job=~".*alitellm-operator.*"} == 1)
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: alitellm-operator is down or not being scraped
+            description: >-
+              No up target for the operator's metrics Service for 5m. The
+              operator is not running, crash-looping, or Prometheus lost the
+              scrape target — either way no CR is being reconciled.
+        - alert: AlitellmOperatorConnectionNotReady
+          expr: max(alitellm_operator_connection_ready{reason="Synced"}) < 1
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: LiteLLMConnection has not been Ready for 10m
+            description: >-
+              The operator cannot talk to LiteLLM (connection_ready one-hot is
+              not on reason=Synced), so nothing reconciles. Check the
+              LiteLLMConnection CR's Ready condition for the active reason.
+        - alert: AlitellmOperatorReconcileErrors
+          expr: sum(rate(controller_runtime_reconcile_errors_total{job=~".*alitellm-operator.*"}[15m])) > 0.01
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: sustained reconcile errors ({{ `{{ $value | printf "%.3f" }}` }}/s)
+            description: >-
+              controller-runtime reconciles are erroring at a sustained rate.
+              Break it down by controller on the operator dashboard's "What is
+              failing?" row — a single misbehaving discovery source produces
+              exactly this signature.
+        - alert: AlitellmOperatorNonSyncedReconciles
+          expr: sum(rate(alitellm_operator_reconcile_total{result!="synced"}[15m])) > 0.01
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: CRs are repeatedly failing to sync
+            description: >-
+              Reconciles keep ending in a non-Ready condition (rejected,
+              transient_error, secret_missing, unreachable or invalid_config).
+              The dashboard's non-synced table names the kind, CR namespace
+              and reason.
+        - alert: AlitellmOperatorCRStatusStale
+          # Healthy stays under ~3x the safety-relist interval (default 10m).
+          # Raise this threshold if safetyRelistInterval was raised.
+          expr: max(alitellm_operator_cr_status_age_seconds) > 3600
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: a CR has not had a successful status write for over 1h
+            description: >-
+              The safety relist re-reconciles every CR every 10m by default,
+              so a status age above 1h means reconciles are not landing for at
+              least one CR. The dashboard's "Stalest CRs" table names it.
+        - alert: AlitellmOperatorDeletionBlocked
+          expr: count(alitellm_operator_deletion_blocked) > 0
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: CRs stuck in Terminating for over 30m
+            description: >-
+              deletionPolicy=Delete CRs are waiting on a LiteLLM-side delete
+              ack that is not coming. Break-glass for a wedged CR: annotate it
+              litellm.ackstorm.ai/deletion-policy-override=Orphan.
+        - alert: AlitellmOperatorDiscoveryFailing
+          expr: sum by (source) (rate(alitellm_operator_discovery_refresh_total{result="error"}[30m])) > 0
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: discovery source {{ `{{ $labels.source }}` }} failing for 30m
+            description: >-
+              A model/MCP discovery provider has been failing its refresh for
+              30m. Its children stay as-is (no cascade), but new or changed
+              upstream models are not being picked up.
+{{- end }}

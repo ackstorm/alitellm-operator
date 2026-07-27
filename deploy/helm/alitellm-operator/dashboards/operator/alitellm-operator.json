@@ -1,6 +1,6 @@
 {
   "uid": "alitellm-operator",
-  "title": "aLiteLLM — Operator",
+  "title": "aLiteLLM \u2014 Operator",
   "tags": [
     "alitellm",
     "observability"
@@ -14,6 +14,20 @@
   },
   "refresh": "30s",
   "timezone": "browser",
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [
+        "alitellm"
+      ],
+      "targetBlank": false,
+      "title": "aLiteLLM dashboards",
+      "type": "dashboards"
+    }
+  ],
   "templating": {
     "list": [
       {
@@ -26,25 +40,6 @@
         "query": "prometheus",
         "refresh": 1,
         "type": "datasource"
-      },
-      {
-        "allValue": ".*",
-        "current": {
-          "text": "All",
-          "value": "$__all"
-        },
-        "datasource": {
-          "type": "prometheus",
-          "uid": "${datasource}"
-        },
-        "hide": 0,
-        "includeAll": true,
-        "multi": true,
-        "name": "namespace",
-        "query": "label_values(alitellm_operator_reconcile_total, namespace)",
-        "refresh": 2,
-        "sort": 1,
-        "type": "query"
       }
     ]
   },
@@ -74,7 +69,7 @@
       },
       "id": 1,
       "panels": [],
-      "title": "Reconcile health",
+      "title": "Is it healthy?",
       "type": "row"
     },
     {
@@ -84,7 +79,7 @@
       },
       "id": 2,
       "type": "stat",
-      "title": "Reconciles (range)",
+      "title": "Operator pods up",
       "gridPos": {
         "h": 5,
         "w": 4,
@@ -94,12 +89,25 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "decimals": 0
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
         },
         "overrides": []
       },
       "options": {
-        "colorMode": "value",
+        "colorMode": "background",
         "graphMode": "area",
         "justifyMode": "auto",
         "reduceOptions": {
@@ -117,10 +125,11 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(increase(alitellm_operator_reconcile_total{namespace=~\"$namespace\"}[$__range]))",
+          "expr": "sum(up{job=~\".*alitellm-operator.*\"}) or vector(0)",
           "refId": "A"
         }
-      ]
+      ],
+      "description": "Prometheus targets up for the operator's metrics Service. 0 = the operator is down or not being scraped \u2014 every other panel is stale."
     },
     {
       "datasource": {
@@ -129,7 +138,7 @@
       },
       "id": 3,
       "type": "stat",
-      "title": "Non-synced (range)",
+      "title": "LiteLLM connection",
       "gridPos": {
         "h": 5,
         "w": 4,
@@ -139,20 +148,35 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
+          "decimals": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "red",
                 "value": null
               },
               {
-                "color": "red",
-                "value": 0.0001
+                "color": "green",
+                "value": 1
               }
             ]
           },
-          "decimals": 0
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "index": 1,
+                  "text": "NOT READY"
+                },
+                "1": {
+                  "index": 0,
+                  "text": "Synced"
+                }
+              },
+              "type": "value"
+            }
+          ]
         },
         "overrides": []
       },
@@ -175,11 +199,11 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(increase(alitellm_operator_reconcile_total{namespace=~\"$namespace\", result!=\"synced\"}[$__range]))",
+          "expr": "max(alitellm_operator_connection_ready{reason=\"Synced\"}) or vector(0)",
           "refId": "A"
         }
       ],
-      "description": "rejected + transient_error + secret_missing + unreachable + invalid_config"
+      "description": "One-hot readiness of the LiteLLMConnection. NOT READY = the operator cannot talk to LiteLLM, so nothing reconciles \u2014 check the readiness-by-reason panel below for why. Also reads NOT READY against an operator older than v0.7.29 (metric absent)."
     },
     {
       "datasource": {
@@ -188,7 +212,7 @@
       },
       "id": 4,
       "type": "stat",
-      "title": "Conflicts (range)",
+      "title": "Reconcile errors (range)",
       "gridPos": {
         "h": 5,
         "w": 4,
@@ -198,65 +222,7 @@
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 0.0001
-              }
-            ]
-          },
-          "decimals": 0
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "sum(increase(alitellm_operator_conflicts_total{namespace=~\"$namespace\"}[$__range]))",
-          "refId": "A"
-        }
-      ],
-      "description": "ADR-0001 alpha-last-wins resolutions. A steady rate means two CRs keep fighting over one LiteLLM object."
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "id": 5,
-      "type": "stat",
-      "title": "Orphaned deletions (range)",
-      "gridPos": {
-        "h": 5,
-        "w": 4,
-        "x": 12,
-        "y": 1
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
+          "decimals": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -269,8 +235,7 @@
                 "value": 0.0001
               }
             ]
-          },
-          "decimals": 0
+          }
         },
         "overrides": []
       },
@@ -293,11 +258,70 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(increase(alitellm_operator_deletion_orphaned_total{namespace=~\"$namespace\"}[$__range]))",
+          "expr": "sum(increase(controller_runtime_reconcile_errors_total{job=~\".*alitellm-operator.*\"}[$__range])) or vector(0)",
           "refId": "A"
         }
       ],
-      "description": "Finalizer removed WITHOUT a confirmed LiteLLM-side delete (deletionPolicy=Orphan). Every increment leaves a stale object upstream."
+      "description": "controller-runtime reconciles that returned an error over the dashboard range. Anything above 0 is red \u2014 see the by-controller panel below for which controller is failing."
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "id": 5,
+      "type": "stat",
+      "title": "Non-synced reconciles (range)",
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 12,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 0.0001
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(increase(alitellm_operator_reconcile_total{result!=\"synced\"}[$__range])) or vector(0)",
+          "refId": "A"
+        }
+      ],
+      "description": "Reconciles that ended in a non-Ready CR condition: rejected + transient_error + secret_missing + unreachable + invalid_config. The table below names the kind, CR namespace and reason."
     },
     {
       "datasource": {
@@ -315,52 +339,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "s"
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "max(alitellm_operator_cr_status_age_seconds{namespace=~\"$namespace\"})",
-          "refId": "A"
-        }
-      ],
-      "description": "Seconds since the last successful status write on the oldest CR. Climbing without bound = reconciles are not landing."
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "id": 7,
-      "type": "stat",
-      "title": "Reconcile errors (ctrl-runtime) (range)",
-      "gridPos": {
-        "h": 5,
-        "w": 4,
-        "x": 20,
-        "y": 1
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
+          "unit": "s",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -369,12 +348,15 @@
                 "value": null
               },
               {
+                "color": "yellow",
+                "value": 1800
+              },
+              {
                 "color": "red",
-                "value": 0.0001
+                "value": 3600
               }
             ]
-          },
-          "decimals": 0
+          }
         },
         "overrides": []
       },
@@ -397,10 +379,70 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(increase(controller_runtime_reconcile_errors_total{namespace=~\"$namespace\", job=~\".*alitellm-operator.*\"}[$__range]))",
+          "expr": "max(alitellm_operator_cr_status_age_seconds)",
           "refId": "A"
         }
-      ]
+      ],
+      "description": "Seconds since the last successful status write on the oldest CR. The safety relist re-reconciles every CR every 10m (default), so healthy stays well under 30m. Climbing without bound = reconciles are not landing. Thresholds assume the default safetyRelistInterval."
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "id": 7,
+      "type": "stat",
+      "title": "CRs blocked in deletion",
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 20,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 0.0001
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "count(alitellm_operator_deletion_blocked) or vector(0)",
+          "refId": "A"
+        }
+      ],
+      "description": "CRs stuck in Terminating because deletionPolicy=Delete and the LiteLLM-side delete has not been confirmed. Usually LiteLLM is unreachable or an endpoint is misbehaving; the table below names each CR."
     },
     {
       "collapsed": false,
@@ -412,7 +454,7 @@
       },
       "id": 8,
       "panels": [],
-      "title": "Reconcile detail",
+      "title": "What is failing?",
       "type": "row"
     },
     {
@@ -422,7 +464,7 @@
       },
       "id": 9,
       "type": "timeseries",
-      "title": "Reconciles /s by kind",
+      "title": "Reconcile errors /h by controller",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -431,7 +473,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "ops",
+          "unit": "short",
           "custom": {
             "drawStyle": "line",
             "fillOpacity": 18,
@@ -462,11 +504,12 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (kind) (rate(alitellm_operator_reconcile_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum by (controller) (rate(controller_runtime_reconcile_errors_total{job=~\".*alitellm-operator.*\"}[$__rate_interval])) * 3600",
           "refId": "A",
-          "legendFormat": "{{kind}}"
+          "legendFormat": "{{controller}}"
         }
-      ]
+      ],
+      "description": "Errors per hour, per controller-runtime controller. A single misbehaving discovery or provider shows up here with the guilty controller named \u2014 this is the panel that catches an error storm before a human does."
     },
     {
       "datasource": {
@@ -474,68 +517,13 @@
         "uid": "${datasource}"
       },
       "id": 10,
-      "type": "timeseries",
-      "title": "Reconcile result mix /s",
+      "type": "table",
+      "title": "Non-synced reconciles by kind \u00d7 CR namespace \u00d7 result (range)",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
         "y": 7
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops",
-          "custom": {
-            "drawStyle": "line",
-            "fillOpacity": 18,
-            "lineWidth": 1,
-            "showPoints": "never",
-            "spanNulls": true,
-            "stacking": {
-              "group": "A",
-              "mode": "normal"
-            }
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "sum by (result) (rate(alitellm_operator_reconcile_total{namespace=~\"$namespace\"}[5m]))",
-          "refId": "A",
-          "legendFormat": "{{result}}"
-        }
-      ],
-      "description": "result is derived from the CR's condition Reason: synced | rejected | transient_error | secret_missing | unreachable | invalid_config."
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "id": 11,
-      "type": "table",
-      "title": "Non-synced reconciles by kind x CR namespace x result (range)",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 15
       },
       "fieldConfig": {
         "defaults": {
@@ -562,7 +550,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (kind, cr_namespace, result) (increase(alitellm_operator_reconcile_total{namespace=~\"$namespace\", result!=\"synced\"}[$__range]))",
+          "expr": "sum by (kind, cr_namespace, result) (increase(alitellm_operator_reconcile_total{result!=\"synced\"}[$__range])) > 0",
           "refId": "A",
           "format": "table",
           "instant": true
@@ -592,25 +580,25 @@
           }
         }
       ],
-      "description": "cr_namespace is the CR's namespace. The operator pod's own namespace is `namespace` — do not confuse them."
+      "description": "Only rows with a non-zero count are shown \u2014 an empty table means every reconcile in range ended Ready. cr_namespace is the CR's namespace, not the operator pod's."
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
       },
-      "id": 12,
+      "id": 11,
       "type": "timeseries",
-      "title": "Reconcile outcome /s (success|error|requeued)",
+      "title": "Non-synced results /h (CR condition reason)",
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 12,
+        "x": 0,
         "y": 15
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "ops",
+          "unit": "short",
           "custom": {
             "drawStyle": "line",
             "fillOpacity": 18,
@@ -642,12 +630,75 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (result) (rate(alitellm_operator_reconcile_outcome_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum by (result) (rate(alitellm_operator_reconcile_total{result!=\"synced\"}[$__rate_interval])) * 3600",
           "refId": "A",
           "legendFormat": "{{result}}"
         }
       ],
-      "description": "The coarse controller-runtime-shaped outcome, kept alongside the reason-derived result above."
+      "description": "Failure mix derived from the CR's Ready condition reason: rejected (LiteLLM 4xx) | transient_error (5xx / transport / 401) | secret_missing | unreachable (connection not Ready) | invalid_config. Not the controller-runtime success|error|requeued enum \u2014 that one lives in the Controller runtime row."
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "id": 12,
+      "type": "timeseries",
+      "title": "Discovery refresh & failures /h",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 15
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 18,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "right"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (source, result) (rate(alitellm_operator_discovery_refresh_total[$__rate_interval])) * 3600",
+          "refId": "A",
+          "legendFormat": "refresh {{source}}/{{result}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (kind, reason) (rate(alitellm_operator_discovery_failed_total[$__rate_interval])) * 3600",
+          "refId": "B",
+          "legendFormat": "failed {{kind}}/{{reason}}"
+        }
+      ],
+      "description": "Discovery provider refreshes by source and outcome, plus child-CR write failures. A steady refresh error line means one provider (e.g. a kubeai endpoint) is down while the rest of the operator is healthy."
     },
     {
       "collapsed": false,
@@ -659,7 +710,7 @@
       },
       "id": 13,
       "panels": [],
-      "title": "Drift, discovery & child CRs",
+      "title": "Activity",
       "type": "row"
     },
     {
@@ -668,40 +719,33 @@
         "uid": "${datasource}"
       },
       "id": 14,
-      "type": "timeseries",
-      "title": "Drift corrections /s by domain+action",
+      "type": "stat",
+      "title": "Reconciles (range)",
       "gridPos": {
-        "h": 8,
-        "w": 12,
+        "h": 4,
+        "w": 6,
         "x": 0,
         "y": 24
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "ops",
-          "custom": {
-            "drawStyle": "line",
-            "fillOpacity": 18,
-            "lineWidth": 1,
-            "showPoints": "never",
-            "spanNulls": true
-          }
+          "unit": "short",
+          "decimals": 0
         },
         "overrides": []
       },
       "options": {
-        "legend": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "reduceOptions": {
           "calcs": [
-            "mean",
-            "max"
+            "lastNotNull"
           ],
-          "displayMode": "table",
-          "placement": "right"
+          "fields": "",
+          "values": false
         },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
+        "textMode": "auto"
       },
       "targets": [
         {
@@ -709,12 +753,11 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (domain, action) (rate(alitellm_operator_drift_corrected_total{namespace=~\"$namespace\"}[5m]))",
-          "refId": "A",
-          "legendFormat": "{{domain}}/{{action}}"
+          "expr": "sum(increase(alitellm_operator_reconcile_total[$__range]))",
+          "refId": "A"
         }
       ],
-      "description": "LiteLLM writes issued because upstream state had drifted from the CRs."
+      "description": "All reconciles by the domain controllers over the dashboard range (reason-derived counter). A volume gauge, not a health signal \u2014 the safety relist alone produces a steady baseline."
     },
     {
       "datasource": {
@@ -722,17 +765,194 @@
         "uid": "${datasource}"
       },
       "id": 15,
-      "type": "timeseries",
-      "title": "Discovery refresh /s (success vs error)",
+      "type": "stat",
+      "title": "Conflicts (range)",
       "gridPos": {
-        "h": 8,
-        "w": 12,
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.0001
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(increase(alitellm_operator_conflicts_total[$__range]))",
+          "refId": "A"
+        }
+      ],
+      "description": "ADR-0001 alpha-last-wins edge counters: role=loser increments when a CR ENTERS conflict (parked Ready=False/Conflict); role=winner when a CR is PROMOTED after the previous winner left. Two different events \u2014 any movement means two CRs are contending for one LiteLLM object."
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "id": 16,
+      "type": "stat",
+      "title": "Orphaned deletions (range)",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
         "x": 12,
         "y": 24
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "ops",
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.0001
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(increase(alitellm_operator_deletion_orphaned_total[$__range]))",
+          "refId": "A"
+        }
+      ],
+      "description": "Finalizer removed WITHOUT a confirmed LiteLLM-side delete (deletionPolicy=Orphan or ack-missing). Deliberate policy, but every increment leaves a stale object upstream."
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "id": 17,
+      "type": "stat",
+      "title": "Cascade drains overdue (range)",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 0.0001
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(increase(alitellm_operator_cascade_drain_overdue_total[$__range]))",
+          "refId": "A"
+        }
+      ],
+      "description": "Discovery cascade-deletes whose child drain exceeded the deadline \u2014 usually a wedged child finalizer. Check the deletion-blocked table."
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "id": 18,
+      "type": "timeseries",
+      "title": "Reconciles /h by kind",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 28
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
           "custom": {
             "drawStyle": "line",
             "fillOpacity": 18,
@@ -763,9 +983,9 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (source, result) (rate(alitellm_operator_discovery_refresh_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum by (kind) (rate(alitellm_operator_reconcile_total[$__rate_interval])) * 3600",
           "refId": "A",
-          "legendFormat": "{{source}}/{{result}}"
+          "legendFormat": "{{kind}}"
         }
       ]
     },
@@ -774,18 +994,72 @@
         "type": "prometheus",
         "uid": "${datasource}"
       },
-      "id": 16,
+      "id": 19,
       "type": "timeseries",
-      "title": "Child CR writes /s by action+result",
+      "title": "Drift corrections /h by domain+action",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 28
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 18,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "right"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (domain, action) (rate(alitellm_operator_drift_corrected_total[$__rate_interval])) * 3600",
+          "refId": "A",
+          "legendFormat": "{{domain}}/{{action}}"
+        }
+      ],
+      "description": "LiteLLM writes issued because upstream state had drifted from the CRs. A steady duplicate_pruned or create_missing line means something is repeatedly mutating LiteLLM behind the operator's back."
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "id": 20,
+      "type": "timeseries",
+      "title": "Child CR writes /h by action+result",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 32
+        "y": 36
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "ops",
+          "unit": "short",
           "custom": {
             "drawStyle": "line",
             "fillOpacity": 18,
@@ -817,25 +1091,26 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (action, result) (rate(alitellm_operator_child_cr_writes_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum by (action, result) (rate(alitellm_operator_child_cr_writes_total[$__rate_interval])) * 3600",
           "refId": "A",
           "legendFormat": "{{action}}/{{result}}"
         }
-      ]
+      ],
+      "description": "K8s child Model CR writes performed by the Discovery reconcilers (create|update|delete \u00d7 success|error)."
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
       },
-      "id": 17,
+      "id": 21,
       "type": "timeseries",
       "title": "Generated child CRs by discovery source",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 32
+        "y": 36
       },
       "fieldConfig": {
         "defaults": {
@@ -867,85 +1142,39 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (kind, source) (alitellm_operator_discovery_generated_count{namespace=~\"$namespace\"})",
+          "expr": "sum by (kind, source) (alitellm_operator_discovery_generated_count)",
           "refId": "A",
           "legendFormat": "{{kind}}/{{source}}"
         }
-      ]
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${datasource}"
-      },
-      "id": 18,
-      "type": "timeseries",
-      "title": "Discovery failures /s + cascade drains overdue /s",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 40
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops",
-          "custom": {
-            "drawStyle": "line",
-            "fillOpacity": 18,
-            "lineWidth": 1,
-            "showPoints": "never",
-            "spanNulls": true
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "sum by (kind, reason) (rate(alitellm_operator_discovery_failed_total{namespace=~\"$namespace\"}[5m]))",
-          "refId": "A",
-          "legendFormat": "failed {{kind}}/{{reason}}"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${datasource}"
-          },
-          "expr": "sum by (kind) (rate(alitellm_operator_cascade_drain_overdue_total{namespace=~\"$namespace\"}[5m]))",
-          "refId": "B",
-          "legendFormat": "drain overdue {{kind}}"
-        }
       ],
-      "description": "Both should sit flat at 0. A cascade-drain overdue usually means a child finalizer is wedged."
+      "description": "Gauge of child Model CRs each Discovery currently generates. A sudden drop to 0 on one source = that provider's discovery stopped returning models."
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 44
+      },
+      "id": 22,
+      "panels": [],
+      "title": "CR state & connection",
+      "type": "row"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
       },
-      "id": 19,
+      "id": 23,
       "type": "table",
       "title": "Stalest CRs (top 20 by status age)",
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 12,
-        "y": 40
+        "x": 0,
+        "y": 45
       },
       "fieldConfig": {
         "defaults": {
@@ -972,7 +1201,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "topk(20, alitellm_operator_cr_status_age_seconds{namespace=~\"$namespace\"})",
+          "expr": "topk(20, alitellm_operator_cr_status_age_seconds)",
           "refId": "A",
           "format": "table",
           "instant": true
@@ -1003,31 +1232,83 @@
       ]
     },
     {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 48
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
       },
-      "id": 20,
-      "panels": [],
-      "title": "Connection & runtime",
-      "type": "row"
+      "id": 24,
+      "type": "table",
+      "title": "CRs blocked in deletion",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 45
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "alitellm_operator_deletion_blocked",
+          "refId": "A",
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "container": true,
+              "endpoint": true,
+              "instance": true,
+              "job": true,
+              "namespace": true,
+              "pod": true,
+              "service": true
+            },
+            "renameByName": {
+              "Value": "blocked",
+              "kind": "Kind",
+              "cr_namespace": "CR namespace",
+              "name": "Name"
+            }
+          }
+        }
+      ],
+      "description": "Each row is a CR in Terminating waiting for a LiteLLM-side delete ack. Break-glass for a wedged CR: annotate litellm.ackstorm.ai/deletion-policy-override=Orphan."
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
       },
-      "id": 21,
+      "id": 25,
       "type": "timeseries",
       "title": "LiteLLMConnection readiness (one-hot by reason)",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 49
+        "y": 53
       },
       "fieldConfig": {
         "defaults": {
@@ -1059,26 +1340,94 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (reason) (alitellm_operator_connection_ready{namespace=~\"$namespace\"})",
+          "expr": "sum by (reason) (alitellm_operator_connection_ready)",
           "refId": "A",
           "legendFormat": "{{reason}}"
         }
       ],
-      "description": "Exactly one reason should read 1. Synced is the healthy one."
+      "description": "Exactly one reason should read 1. Synced is the healthy one; anything else names why the operator cannot talk to LiteLLM."
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
       },
-      "id": 22,
+      "id": 26,
+      "type": "timeseries",
+      "title": "controller-runtime outcome /h (success|error|requeued)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 53
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 18,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (result) (rate(alitellm_operator_reconcile_outcome_total[$__rate_interval])) * 3600",
+          "refId": "A",
+          "legendFormat": "{{result}}"
+        }
+      ],
+      "description": "The coarse controller-runtime-shaped outcome enum (success|error|requeued) \u2014 a different axis from the CR-condition-reason mix in the 'What is failing?' row."
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 61
+      },
+      "id": 27,
+      "panels": [],
+      "title": "Controller runtime",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "id": 28,
       "type": "timeseries",
       "title": "Reconcile p95 latency by controller",
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 12,
-        "y": 49
+        "x": 0,
+        "y": 62
       },
       "fieldConfig": {
         "defaults": {
@@ -1110,7 +1459,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, controller) (rate(controller_runtime_reconcile_time_seconds_bucket{namespace=~\"$namespace\", job=~\".*alitellm-operator.*\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le, controller) (rate(controller_runtime_reconcile_time_seconds_bucket{job=~\".*alitellm-operator.*\"}[$__rate_interval])))",
           "refId": "A",
           "legendFormat": "{{controller}}"
         }
@@ -1121,14 +1470,14 @@
         "type": "prometheus",
         "uid": "${datasource}"
       },
-      "id": 23,
+      "id": 29,
       "type": "timeseries",
-      "title": "Workqueue depth + retries /s",
+      "title": "Workqueue depth + retries /h",
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 0,
-        "y": 57
+        "x": 12,
+        "y": 62
       },
       "fieldConfig": {
         "defaults": {
@@ -1160,7 +1509,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (name) (workqueue_depth{namespace=~\"$namespace\", job=~\".*alitellm-operator.*\"})",
+          "expr": "sum by (name) (workqueue_depth{job=~\".*alitellm-operator.*\"})",
           "refId": "A",
           "legendFormat": "depth {{name}}"
         },
@@ -1169,25 +1518,26 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (name) (rate(workqueue_retries_total{namespace=~\"$namespace\", job=~\".*alitellm-operator.*\"}[5m]))",
+          "expr": "sum by (name) (rate(workqueue_retries_total{job=~\".*alitellm-operator.*\"}[$__rate_interval])) * 3600",
           "refId": "B",
-          "legendFormat": "retries/s {{name}}"
+          "legendFormat": "retries/h {{name}}"
         }
-      ]
+      ],
+      "description": "Sustained depth growth = reconciles cannot keep up (or a controller is deadlocked on requeues)."
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${datasource}"
       },
-      "id": 24,
+      "id": 30,
       "type": "timeseries",
       "title": "Operator up + restarts",
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 12,
-        "y": 57
+        "x": 0,
+        "y": 70
       },
       "fieldConfig": {
         "defaults": {
@@ -1219,7 +1569,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(up{namespace=~\"$namespace\", job=~\".*alitellm-operator.*\"})",
+          "expr": "sum(up{job=~\".*alitellm-operator.*\"})",
           "refId": "A",
           "legendFormat": "up"
         },
@@ -1228,9 +1578,9 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(kube_pod_container_status_restarts_total{namespace=~\"$namespace\", container=\"manager\"}[15m]))",
+          "expr": "sum(increase(kube_pod_container_status_restarts_total{pod=~\"alitellm-operator.*\", container=\"manager\"}[1h]))",
           "refId": "B",
-          "legendFormat": "restarts/s"
+          "legendFormat": "restarts (1h window)"
         }
       ]
     }

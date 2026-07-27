@@ -47,6 +47,7 @@ required=(
   alitellm_operator_cr_status_age_seconds
   alitellm_operator_connection_ready
   alitellm_operator_drift_corrected_total
+  alitellm_operator_deletion_blocked
   # LiteLLM proxy callback
   litellm_proxy_total_requests_metric_total
   litellm_request_total_latency_metric_bucket
