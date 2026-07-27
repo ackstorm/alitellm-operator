@@ -1865,7 +1865,7 @@ func TestModel_DriftCounter_FirstReconcile_NoIncrement(t *testing.T) {
 //
 // AC-DC4 / AC-O2 / OWN-02: after a Model reaches Synced, editing spec.params
 // triggers a reconcile with a new hash. The UPDATE path must increment
-// drift_corrected_total{model, update_drifted} exactly once.
+// alitellm_operator_drift_corrected_total{model, update_drifted} exactly once.
 func TestModel_DriftCounter_UpdateDrifted(t *testing.T) {
 	ctx := context.Background()
 	mockServer.SetMode(mock.ModeHappy)
@@ -1950,7 +1950,7 @@ func TestModel_DriftCounter_UpdateDrifted(t *testing.T) {
 // AC-DC5 / OWN-05: after a Model reaches Synced, the LiteLLM entry is
 // deleted out of band (directly from mock state). The safety re-list
 // detects the missing entry on the next tick and the reconciler creates it
-// again, incrementing drift_corrected_total{model, create_missing} once.
+// again, incrementing alitellm_operator_drift_corrected_total{model, create_missing} once.
 func TestModel_DriftCounter_CreateMissing_SafetyRelist(t *testing.T) {
 	ctx := context.Background()
 	mockServer.SetMode(mock.ModeHappy)
@@ -2035,7 +2035,7 @@ func TestModel_DriftCounter_CreateMissing_SafetyRelist(t *testing.T) {
 // TestModel_DriftCounter_DeleteVanished_OnFinalizer — Task 1 Test 4.
 //
 // OWN-03: when a Model CR is deleted, the finalizer issues POST /model/delete
-// and increments drift_corrected_total{model, delete_vanished}.
+// and increments alitellm_operator_drift_corrected_total{model, delete_vanished}.
 func TestModel_DriftCounter_DeleteVanished_OnFinalizer(t *testing.T) {
 	ctx := context.Background()
 	mockServer.SetMode(mock.ModeHappy)
@@ -2449,7 +2449,7 @@ func TestSafetyRelist_PrunesDuplicates(t *testing.T) {
 	// duplicate_pruned metric incremented (>=3 across the prune).
 	pruned := testutil.ToFloat64(metrics.DriftCorrectedTotal.WithLabelValues("model", "duplicate_pruned"))
 	if pruned < 3 {
-		t.Errorf("Fix B: drift_corrected_total{model,duplicate_pruned} = %.0f, want >= 3", pruned)
+		t.Errorf("Fix B: alitellm_operator_drift_corrected_total{model,duplicate_pruned} = %.0f, want >= 3", pruned)
 	}
 }
 

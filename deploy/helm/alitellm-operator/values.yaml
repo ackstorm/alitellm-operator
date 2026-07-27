@@ -64,6 +64,34 @@ metrics:
     # cluster. See deploy/helm/alitellm-operator/templates/install.yaml for the
     # stub block that is activated when this value is true.
     enabled: false
+  # metrics.dashboards: ship the Grafana dashboards
+  # (templates/grafana-dashboards.yaml) as one ConfigMap per dashboard, labelled
+  # for the kube-prometheus-stack Grafana sidecar to auto-load. Needs NO
+  # Prometheus Operator CRD — plain ConfigMaps — so it is safe to enable
+  # wherever that sidecar runs (sidecar.dashboards.enabled=true is the
+  # kube-prometheus-stack default). The JSON lives in the chart's
+  # dashboards/<group>/ dirs, mirrored from examples/grafana by `make helm-sync`.
+  #
+  # Groups: `operator` = metrics this operator emits; `litellm` = the LiteLLM
+  # proxy's own callback metrics plus the litellm-exporter's DB-derived ones.
+  # The LiteLLM dashboards render only where a LiteLLM proxy is scraped.
+  dashboards:
+    enabled: false
+    # label/labelValue: must match the sidecar's LABEL/LABEL_VALUE
+    # (kube-prometheus-stack defaults: grafana_dashboard / "1").
+    label: grafana_dashboard
+    labelValue: "1"
+    # folders: per-group Grafana folder, keyed by the dashboards/<group>/ dir.
+    # Honoured only when the sidecar runs with
+    # sidecar.dashboards.folderAnnotation=grafana_folder.
+    folders:
+      operator: aLiteLLM Operator
+      litellm: aLiteLLM
+    # folder: fallback for a group with no entry above. Empty → no annotation,
+    # so the dashboard lands in the sidecar provider's default folder.
+    folder: aLiteLLM
+    # labels: extra labels on every dashboard ConfigMap.
+    labels: {}
 # safetyRelistInterval (v0.4.6+) overrides the per-reconciler vanish-probe
 # cadence shared by MCPServer / Model / Team / A2AAgent. Accepts any
 # time.ParseDuration string ("10s", "1m", "30m", "1h"). Empty / unset →

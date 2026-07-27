@@ -355,7 +355,7 @@ func TestMCPServerReconciler_NoCallOnUnchangedSpec(t *testing.T) {
 // TestMCPServerReconciler_DeleteViaFinalizer — Phase 5 behavior
 // #4. kubectl delete MCPServer → mock records exactly 1 DELETE
 // /v1/mcp/server/<serverID>; finalizer drains; CR fully removed;
-// drift_corrected_total{domain=mcp,action=delete_vanished} increments.
+// alitellm_operator_drift_corrected_total{domain=mcp,action=delete_vanished} increments.
 func TestMCPServerReconciler_DeleteViaFinalizer(t *testing.T) {
 	ctx := context.Background()
 	mockServer.SetMode(mock.ModeHappy)
@@ -421,7 +421,7 @@ func TestMCPServerReconciler_DeleteViaFinalizer(t *testing.T) {
 	after := testutil.ToFloat64(
 		metrics.DriftCorrectedTotal.WithLabelValues("mcp", "delete_vanished"))
 	if after-before < 1 {
-		t.Errorf("drift_corrected_total{domain=mcp,action=delete_vanished}: want +1, got delta=%v", after-before)
+		t.Errorf("alitellm_operator_drift_corrected_total{domain=mcp,action=delete_vanished}: want +1, got delta=%v", after-before)
 	}
 }
 
@@ -1108,7 +1108,7 @@ func TestMCPServerReconciler_AC_DC1_HandManagedUntouched(t *testing.T) {
 
 // TestMCPServerReconciler_DriftSuppressedOnFirstCreate — Phase 5 plan
 // 05-05. OWN-04: on the very first reconcile (ObservedGeneration == 0 →
-// firstReconcile=true), drift_corrected_total{domain=mcp,action=create_missing}
+// firstReconcile=true), alitellm_operator_drift_corrected_total{domain=mcp,action=create_missing}
 // MUST NOT increment.
 func TestMCPServerReconciler_DriftSuppressedOnFirstCreate(t *testing.T) {
 	ctx := context.Background()
@@ -1140,13 +1140,13 @@ func TestMCPServerReconciler_DriftSuppressedOnFirstCreate(t *testing.T) {
 	after := testutil.ToFloat64(
 		metrics.DriftCorrectedTotal.WithLabelValues("mcp", "create_missing"))
 	if delta := after - before; delta != 0 {
-		t.Errorf("OWN-04 violation: drift_corrected_total{domain=mcp,action=create_missing} incremented by %v on first reconcile (want 0)", delta)
+		t.Errorf("OWN-04 violation: alitellm_operator_drift_corrected_total{domain=mcp,action=create_missing} incremented by %v on first reconcile (want 0)", delta)
 	}
 }
 
 // TestMCPServerReconciler_DriftIncrementOnUpdate — Phase 5.
 // After a successful first reconcile, mutate spec.endpoint → next
-// reconcile issues a PUT and drift_corrected_total{domain=mcp,
+// reconcile issues a PUT and alitellm_operator_drift_corrected_total{domain=mcp,
 // action=update_drifted} increments by 1.
 func TestMCPServerReconciler_DriftIncrementOnUpdate(t *testing.T) {
 	ctx := context.Background()
@@ -1195,13 +1195,13 @@ func TestMCPServerReconciler_DriftIncrementOnUpdate(t *testing.T) {
 	after := testutil.ToFloat64(
 		metrics.DriftCorrectedTotal.WithLabelValues("mcp", "update_drifted"))
 	if delta := after - before; delta < 1 {
-		t.Errorf("drift_corrected_total{domain=mcp,action=update_drifted}: want >=1 increment after spec.endpoint mutation, got delta=%v", delta)
+		t.Errorf("alitellm_operator_drift_corrected_total{domain=mcp,action=update_drifted}: want >=1 increment after spec.endpoint mutation, got delta=%v", delta)
 	}
 }
 
 // TestMCPServerReconciler_DriftIncrementOnVanishDelete — Phase 5 plan
 // 05-05. kubectl delete MCPServer → finalizer issues DELETE /v1/mcp/server;
-// drift_corrected_total{domain=mcp,action=delete_vanished} increments.
+// alitellm_operator_drift_corrected_total{domain=mcp,action=delete_vanished} increments.
 //
 // Equivalent in spirit to TestMCPServerReconciler_DeleteViaFinalizer
 // (named Drift* for the grep gate's regex match).
@@ -1247,7 +1247,7 @@ func TestMCPServerReconciler_DriftIncrementOnVanishDelete(t *testing.T) {
 	after := testutil.ToFloat64(
 		metrics.DriftCorrectedTotal.WithLabelValues("mcp", "delete_vanished"))
 	if delta := after - before; delta < 1 {
-		t.Errorf("drift_corrected_total{domain=mcp,action=delete_vanished}: want >=1, got delta=%v", delta)
+		t.Errorf("alitellm_operator_drift_corrected_total{domain=mcp,action=delete_vanished}: want >=1, got delta=%v", delta)
 	}
 }
 

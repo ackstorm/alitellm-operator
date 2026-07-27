@@ -29,12 +29,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `litellm_api_request_duration_seconds` →
     `alitellm_api_request_duration_seconds`.
   - `litellm_api_errors_total` → `alitellm_api_errors_total`.
-  Unprefixed metrics (`reconcile_total`, `discovery_*`,
-  `drift_corrected_total`, `connection_ready`, `child_cr_writes_total`,
-  `cr_status_age_seconds`) are unchanged. Update any Grafana dashboards,
-  recording rules, or Prometheus alerts referencing the old names.
+- **BREAKING (observability): the remaining unprefixed metrics are now
+  namespaced too, finishing the rename above.** In a shared Prometheus
+  `reconcile_total` is nobody's metric in particular; all operator-owned
+  families now carry the `alitellm_operator_` prefix:
+  - `reconcile_total` → **`alitellm_operator_reconcile_outcome_total`**
+    (the coarse `{success, error, requeued}` counter). The name changed
+    rather than just gaining a prefix because `alitellm_operator_reconcile_total`
+    was already taken by the richer reason-derived counter.
+  - `discovery_refresh_total`, `discovery_generated_count`,
+    `discovery_failed_total`, `child_cr_writes_total`,
+    `drift_corrected_total`, `connection_ready`, `cr_status_age_seconds`
+    → same names under `alitellm_operator_`.
+- **BREAKING (observability): `alitellm_operator_reconcile_total`'s
+  `namespace` label is now `cr_namespace`.** A metric label that collides
+  with a target label reaches the TSDB renamed to `exported_namespace`, so
+  every dashboard grouping `by (namespace)` was silently grouping by the
+  *operator pod's* namespace instead of the CR's.
+  `alitellm_operator_deletion_blocked` gets the same treatment.
+  Update any Grafana dashboards, recording rules, or Prometheus alerts
+  referencing the old names or the old label.
+
+### Added
+- **Grafana dashboards shipped by the chart** (`metrics.dashboards.enabled`,
+  default `false`). Four dashboards live in `examples/grafana/` and are
+  mirrored into the chart by `make helm-sync`; the chart renders one ConfigMap
+  per dashboard, labelled for the kube-prometheus-stack Grafana sidecar (no
+  Prometheus Operator CRD needed). They are split by metric ownership —
+  `operator/` (this operator's own metrics, folder *aLiteLLM Operator*) and
+  `litellm/` (the proxy's callback metrics plus the `litellm-exporter`
+  DB-derived ones, folder *aLiteLLM*) — via `metrics.dashboards.folders`.
+  Pre-push gate 14b now fails on drift between `examples/grafana/` and the
+  chart copies. See `examples/grafana/README.md`.
 
 ### Fixed
+- **`alitellm_operator_cascade_drain_overdue_total` never appeared on
+  `/metrics`.** A labelled counter is absent until its first `.Inc()`, so a
+  dashboard panel or alert on it read "No data" instead of the flat 0 that
+  actually held. Its label values are now pre-touched at init like every other
+  enumerated family.
 - **Model UI showed "Unknown date" — operator now stamps
   `created_at`/`updated_at` on model create.** In OSS (non-premium)
   LiteLLM the Models UI reads these from the `model_info` JSON blob

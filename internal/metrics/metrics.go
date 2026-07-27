@@ -16,8 +16,9 @@ import (
 // MCPServerDiscovery, A2AAgent, Team}; result ∈ {success, error, requeued}.
 var ReconcileTotal = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
-		Name: "reconcile_total",
-		Help: "Reconciles by kind and outcome (§10).",
+		Namespace: "alitellm_operator",
+		Name:      "reconcile_outcome_total",
+		Help:      "Reconciles by kind and outcome (§10).",
 	},
 	[]string{"kind", "result"},
 )
@@ -41,9 +42,13 @@ var LitellmOperatorReconcileTotal = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
 		Namespace: "alitellm_operator",
 		Name:      "reconcile_total",
-		Help:      "Reconciles by kind/namespace/result with reason-derived result enum (FIX2.txt LOW-6).",
+		Help:      "Reconciles by kind/CR namespace/result with reason-derived result enum (FIX2.txt LOW-6).",
 	},
-	[]string{"kind", "namespace", "result"},
+	// cr_namespace, NOT namespace: Prometheus renames a metric label that
+	// collides with a target label, so `namespace` reached the TSDB as
+	// `exported_namespace` and every `by (namespace)` panel silently grouped by
+	// the OPERATOR pod's namespace instead of the CR's.
+	[]string{"kind", "cr_namespace", "result"},
 )
 
 // ReasonToReconcileResult maps a condition Reason string to the result
@@ -75,8 +80,9 @@ func ReasonToReconcileResult(reason string) string {
 // result ∈ {success, error}.
 var DiscoveryRefreshTotal = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
-		Name: "discovery_refresh_total",
-		Help: "Discovery refresh attempts by kind, source, and outcome (§10).",
+		Namespace: "alitellm_operator",
+		Name:      "discovery_refresh_total",
+		Help:      "Discovery refresh attempts by kind, source, and outcome (§10).",
 	},
 	[]string{"kind", "source", "result"},
 )
@@ -89,8 +95,9 @@ var DiscoveryRefreshTotal = prometheus.NewCounterVec(
 // pre-_FINALv3 single-pipeline model.
 var DiscoveryGeneratedCount = prometheus.NewGaugeVec(
 	prometheus.GaugeOpts{
-		Name: "discovery_generated_count",
-		Help: "Count of K8s child Model CRs generated per discovery kind+source (§10).",
+		Namespace: "alitellm_operator",
+		Name:      "discovery_generated_count",
+		Help:      "Count of K8s child Model CRs generated per discovery kind+source (§10).",
 	},
 	[]string{"kind", "source"},
 )
@@ -102,8 +109,9 @@ var DiscoveryGeneratedCount = prometheus.NewGaugeVec(
 // failure is now the sole Discovery-level failure reason.
 var DiscoveryFailedTotal = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
-		Name: "discovery_failed_total",
-		Help: "Discovery items that failed to register, by kind and reason (§10).",
+		Namespace: "alitellm_operator",
+		Name:      "discovery_failed_total",
+		Help:      "Discovery items that failed to register, by kind and reason (§10).",
 	},
 	[]string{"kind", "reason"},
 )
@@ -116,8 +124,9 @@ var DiscoveryFailedTotal = prometheus.NewCounterVec(
 // AC-O1). Inherited by MCPServerDiscovery in Phase 5.
 var ChildCRWritesTotal = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
-		Name: "child_cr_writes_total",
-		Help: "K8s child CR writes by parent Discovery kind, action, and outcome (§10).",
+		Namespace: "alitellm_operator",
+		Name:      "child_cr_writes_total",
+		Help:      "K8s child CR writes by parent Discovery kind, action, and outcome (§10).",
 	},
 	[]string{"kind", "action", "result"},
 )
@@ -127,8 +136,9 @@ var ChildCRWritesTotal = prometheus.NewCounterVec(
 // action ∈ {create_missing, update_drifted, delete_vanished}.
 var DriftCorrectedTotal = prometheus.NewCounterVec(
 	prometheus.CounterOpts{
-		Name: "drift_corrected_total",
-		Help: "LiteLLM writes issued to correct drift, by domain and action (§10).",
+		Namespace: "alitellm_operator",
+		Name:      "drift_corrected_total",
+		Help:      "LiteLLM writes issued to correct drift, by domain and action (§10).",
 	},
 	[]string{"domain", "action"},
 )
@@ -179,14 +189,15 @@ var ConflictsTotal = prometheus.NewCounterVec(
 // SecretNotFound}. Exactly one reason should be 1 at any time.
 var ConnectionReady = prometheus.NewGaugeVec(
 	prometheus.GaugeOpts{
-		Name: "connection_ready",
-		Help: "LiteLLMConnection readiness gauge (one-hot across reason labels, §10).",
+		Namespace: "alitellm_operator",
+		Name:      "connection_ready",
+		Help:      "LiteLLMConnection readiness gauge (one-hot across reason labels, §10).",
 	},
 	[]string{"reason"},
 )
 
 // CRStatusAgeTracker — spec §10 OBS-03: custom prometheus.Collector that
-// emits one cr_status_age_seconds{kind,name} sample per tracked CR on every
+// emits one alitellm_operator_cr_status_age_seconds{kind,name} sample per tracked CR on every
 // scrape. The sample value is time.Since(last_successful_status_write).Seconds.
 //
 // Replaces the prior prometheus.GaugeVec(.Set(0)) placeholder (Phase 1).
@@ -210,7 +221,7 @@ var (
 		"anthropic", "bedrock", "gemini", "kubeai", "openai", "toolhive",
 	}
 
-	// drift_corrected_total's domain × action. `duplicate_pruned` is
+	// alitellm_operator_drift_corrected_total's domain × action. `duplicate_pruned` is
 	// model-only in practice (LiteLLM allows multiple deployment rows per
 	// model_name; the Model safety-relist prunes the extras), but it is
 	// pre-touched across every domain for a uniform Cartesian enumeration —
@@ -221,10 +232,10 @@ var (
 	// reconcile_total{result}.
 	reconcileResults = []string{"success", "error", "requeued"}
 
-	// discovery_refresh_total{result}.
+	// alitellm_operator_discovery_refresh_total{result}.
 	discoveryRefreshResults = []string{"success", "error"}
 
-	// discovery_failed_total{reason} — _FINALv3 (D-10) narrowing: this
+	// alitellm_operator_discovery_failed_total{reason} — _FINALv3 (D-10) narrowing: this
 	// enum was {LiteLLMRejected, LiteLLMUnavailable} before _FINALv3.
 	// Phase 4 retires both reasons because Discovery never calls LiteLLM
 	// (MDISC-27). The single remaining reason is ChildCRWriteFailed —
@@ -232,7 +243,7 @@ var (
 	// service unavailable, SSA field conflict).
 	discoveryFailedReasons = []string{"ChildCRWriteFailed"}
 
-	// child_cr_writes_total{kind, action, result} — Phase 4 OBS-04.
+	// alitellm_operator_child_cr_writes_total{kind, action, result} — Phase 4 OBS-04.
 	// 2 (Discovery kinds) × 3 (actions) × 2 (results) = 12 combos.
 	// MCPServerDiscovery is enumerated alongside ModelDiscovery so the
 	// surface stays stable across Phase 4 → Phase 5.
@@ -292,7 +303,7 @@ func init() {
 		}
 	}
 
-	// discovery_refresh_total{kind, source, result}.
+	// alitellm_operator_discovery_refresh_total{kind, source, result}.
 	for _, k := range allKinds {
 		for _, s := range allSources {
 			for _, r := range discoveryRefreshResults {
@@ -301,7 +312,7 @@ func init() {
 		}
 	}
 
-	// discovery_generated_count{kind, source} — renamed in _FINALv3 (D-10)
+	// alitellm_operator_discovery_generated_count{kind, source} — renamed in _FINALv3 (D-10)
 	// from the pre-Phase-4 LiteLLM-registration-counter name. Same shape;
 	// the rename reflects Pipeline B emitting K8s child Model CRs rather
 	// than registering names directly with LiteLLM.
@@ -311,14 +322,14 @@ func init() {
 		}
 	}
 
-	// discovery_failed_total{kind, reason}.
+	// alitellm_operator_discovery_failed_total{kind, reason}.
 	for _, k := range allKinds {
 		for _, r := range discoveryFailedReasons {
 			DiscoveryFailedTotal.WithLabelValues(k, r)
 		}
 	}
 
-	// drift_corrected_total{domain, action} — 4 × 3 = 12 combos.
+	// alitellm_operator_drift_corrected_total{domain, action} — 4 × 3 = 12 combos.
 	// This is the canonical Cartesian enumeration the AC-O1 scrape test
 	// asserts on.
 	for _, d := range allDomains {
@@ -332,7 +343,7 @@ func init() {
 		ConnectionReady.WithLabelValues(r)
 	}
 
-	// cr_status_age_seconds — now emitted by CRStatusAgeTracker (OBS-03
+	// alitellm_operator_cr_status_age_seconds — now emitted by CRStatusAgeTracker (OBS-03
 	// custom Collector; replaces CRStatusAgeSeconds GaugeVec pre-touch).
 	// The Collector emits nothing until the first RecordSuccess call —
 	// this is correct: there are no tracked CRs until reconciliation starts.
@@ -360,7 +371,7 @@ func init() {
 		DeletionOrphanedTotal.WithLabelValues(k)
 	}
 
-	// child_cr_writes_total{kind, action, result} — Phase 4 OBS-04 / D-10.
+	// alitellm_operator_child_cr_writes_total{kind, action, result} — Phase 4 OBS-04 / D-10.
 	// 2 Discovery kinds × 3 actions × 2 results = 12 combos. Pre-touched
 	// at init time so /metrics enumerates the full surface on first scrape
 	// (Assumption A5 / AC-O1) — Phase 4 introduces this metric and Phase 5
@@ -372,5 +383,13 @@ func init() {
 				ChildCRWritesTotal.WithLabelValues(k, a, r)
 			}
 		}
+	}
+
+	// alitellm_operator_cascade_drain_overdue_total{kind} — M-B9. Only the
+	// Discovery parents ever run a cascade drain. Pre-touched because an
+	// un-incremented labeled counter is ABSENT from /metrics, so a dashboard
+	// panel on it reads "No data" instead of the flat 0 that actually holds.
+	for _, k := range discoveryParentKinds {
+		CascadeDrainOverdueTotal.WithLabelValues(k)
 	}
 }

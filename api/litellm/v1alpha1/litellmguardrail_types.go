@@ -230,7 +230,7 @@ type GuardRailStatus struct {
 	// rendered post-substitution body is hashed and compared against
 	// LastRendered.Hash; a mismatch triggers a PUT /guardrails/{id}
 	// (drift correction) and increments
-	// drift_corrected_total{domain=guardrail,action=update_drifted}.
+	// alitellm_operator_drift_corrected_total{domain=guardrail,action=update_drifted}.
 	//
 	// +optional
 	LastRendered GuardRailLastRenderedStatus `json:"lastRendered,omitempty"`

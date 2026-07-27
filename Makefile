@@ -550,6 +550,13 @@ _helm-sync: build-installer
 	# CRDs and the user's CR data.
 	cp -f config/crd/bases/litellm.ackstorm.ai_*.yaml deploy/helm/alitellm-operator/crd-sources/
 	python3 scripts/helm-inject-crd-annotation.py deploy/helm/alitellm-operator/crd-sources/*.yaml
+	# Grafana dashboards: examples/grafana is the source of truth; the chart
+	# ships copies so templates/grafana-dashboards.yaml can .Files.Glob them
+	# (Helm cannot read files outside the chart dir). The <group> dir selects
+	# the Grafana folder via metrics.dashboards.folders.
+	rm -rf deploy/helm/alitellm-operator/dashboards
+	mkdir -p deploy/helm/alitellm-operator/dashboards
+	cp -R examples/grafana/operator examples/grafana/litellm deploy/helm/alitellm-operator/dashboards/
 
 .PHONY: helm-sync-check
 helm-sync-check: ## CI gate: fail if `make helm-sync` produced uncommitted diff (drift between kustomize and chart).

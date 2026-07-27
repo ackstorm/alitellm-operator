@@ -1,0 +1,858 @@
+{
+  "uid": "alitellm-litellm-overview",
+  "title": "aLiteLLM — LiteLLM Overview",
+  "tags": [
+    "alitellm",
+    "observability"
+  ],
+  "schemaVersion": 39,
+  "editable": true,
+  "version": 1,
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "refresh": "30s",
+  "timezone": "browser",
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "text": "Prometheus",
+          "value": "prometheus"
+        },
+        "hide": 0,
+        "name": "datasource",
+        "query": "prometheus",
+        "refresh": 1,
+        "type": "datasource"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "namespace",
+        "query": "label_values(litellm_proxy_total_requests_metric_total, namespace)",
+        "refresh": 2,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 25,
+      "panels": [],
+      "title": "Proxy at a glance",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "id": 26,
+      "type": "stat",
+      "title": "Requests /s",
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 0,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(rate(litellm_proxy_total_requests_metric_total{namespace=~\"$namespace\"}[5m]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "id": 27,
+      "type": "stat",
+      "title": "Error rate",
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 4,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.01
+              },
+              {
+                "color": "red",
+                "value": 0.05
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(rate(litellm_proxy_failed_requests_metric_total{namespace=~\"$namespace\"}[5m])) / clamp_min(sum(rate(litellm_proxy_total_requests_metric_total{namespace=~\"$namespace\"}[5m])), 0.0001)",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "id": 28,
+      "type": "stat",
+      "title": "p95 total latency",
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 8,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "histogram_quantile(0.95, sum(rate(litellm_request_total_latency_metric_bucket{namespace=~\"$namespace\"}[5m])) by (le))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "id": 29,
+      "type": "stat",
+      "title": "In-flight requests",
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 12,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(litellm_in_flight_requests{namespace=~\"$namespace\"})",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "id": 30,
+      "type": "stat",
+      "title": "Teams",
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 16,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max(litellm_teams_count{namespace=~\"$namespace\"})",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "id": 31,
+      "type": "stat",
+      "title": "Active users",
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 20,
+        "y": 1
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max(litellm_active_users{namespace=~\"$namespace\"})",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 6
+      },
+      "id": 32,
+      "panels": [],
+      "title": "Traffic",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "id": 33,
+      "type": "timeseries",
+      "title": "Requests /s by status_code",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 18,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (status_code) (rate(litellm_proxy_total_requests_metric_total{namespace=~\"$namespace\"}[5m]))",
+          "refId": "A",
+          "legendFormat": "{{status_code}}"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "id": 34,
+      "type": "timeseries",
+      "title": "Failures /s by exception_class",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 18,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "right"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (exception_class) (rate(litellm_proxy_failed_requests_metric_total{namespace=~\"$namespace\"}[5m]))",
+          "refId": "A",
+          "legendFormat": "{{exception_class}}"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "id": 35,
+      "type": "timeseries",
+      "title": "Requests /s by team",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 15
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 18,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "right"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (team_alias) (rate(litellm_proxy_total_requests_metric_total{namespace=~\"$namespace\"}[5m]))",
+          "refId": "A",
+          "legendFormat": "{{team_alias}}"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "id": 36,
+      "type": "timeseries",
+      "title": "Requests /s by requested model",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 15
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 18,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "right"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (requested_model) (rate(litellm_proxy_total_requests_metric_total{namespace=~\"$namespace\"}[5m]))",
+          "refId": "A",
+          "legendFormat": "{{requested_model}}"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 23
+      },
+      "id": 37,
+      "panels": [],
+      "title": "Latency — where does the time go?",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "id": 38,
+      "type": "timeseries",
+      "title": "Total request latency p50 / p95 / p99",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 18,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "histogram_quantile(0.50, sum(rate(litellm_request_total_latency_metric_bucket{namespace=~\"$namespace\"}[5m])) by (le))",
+          "refId": "A",
+          "legendFormat": "p50"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "histogram_quantile(0.95, sum(rate(litellm_request_total_latency_metric_bucket{namespace=~\"$namespace\"}[5m])) by (le))",
+          "refId": "B",
+          "legendFormat": "p95"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "histogram_quantile(0.99, sum(rate(litellm_request_total_latency_metric_bucket{namespace=~\"$namespace\"}[5m])) by (le))",
+          "refId": "C",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "id": 39,
+      "type": "timeseries",
+      "title": "Provider vs proxy: LLM-API p95 vs overhead p95",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 18,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "histogram_quantile(0.95, sum(rate(litellm_llm_api_latency_metric_bucket{namespace=~\"$namespace\"}[5m])) by (le))",
+          "refId": "A",
+          "legendFormat": "llm api p95"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "histogram_quantile(0.95, sum(rate(litellm_overhead_latency_metric_bucket{namespace=~\"$namespace\"}[5m])) by (le))",
+          "refId": "B",
+          "legendFormat": "proxy overhead p95"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "histogram_quantile(0.95, sum(rate(litellm_overhead_with_guardrails_latency_metric_bucket{namespace=~\"$namespace\"}[5m])) by (le))",
+          "refId": "C",
+          "legendFormat": "overhead incl. guardrails p95"
+        }
+      ],
+      "description": "If overhead tracks total latency, the problem is us; if llm api dominates, it is the provider."
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "id": 40,
+      "type": "timeseries",
+      "title": "Time to first token p50 / p95 by model",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 32
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 18,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "histogram_quantile(0.50, sum by (le, requested_model) (rate(litellm_llm_api_time_to_first_token_metric_bucket{namespace=~\"$namespace\"}[5m])))",
+          "refId": "A",
+          "legendFormat": "p50 {{requested_model}}"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, requested_model) (rate(litellm_llm_api_time_to_first_token_metric_bucket{namespace=~\"$namespace\"}[5m])))",
+          "refId": "B",
+          "legendFormat": "p95 {{requested_model}}"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "id": 41,
+      "type": "timeseries",
+      "title": "Queue time p95 + router latency p95",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 32
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 18,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "histogram_quantile(0.95, sum(rate(litellm_request_queue_time_seconds_bucket{namespace=~\"$namespace\"}[5m])) by (le))",
+          "refId": "A",
+          "legendFormat": "queue p95"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "histogram_quantile(0.95, sum(rate(litellm_router_latency_bucket{namespace=~\"$namespace\"}[5m])) by (le))",
+          "refId": "B",
+          "legendFormat": "router p95"
+        }
+      ]
+    }
+  ]
+}

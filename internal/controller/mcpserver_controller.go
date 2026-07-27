@@ -219,7 +219,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				}
 			}
 
-			// OBS-03: drop the cr_status_age_seconds label before the CR is gone
+			// OBS-03: drop the alitellm_operator_cr_status_age_seconds label before the CR is gone
 			// so /metrics cardinality never grows monotonically (T-07-01-01).
 			metrics.CRStatusAgeTracker.Forget(mcpServerKind, mcp.Name)
 			// Issue #23: idempotent Forget — clears DeletionBlocked gauge.
