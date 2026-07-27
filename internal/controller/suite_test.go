@@ -137,6 +137,14 @@ var (
 	// DeleteViaFinalizer, ConnectionGate, 401FastPath, SecretRotation.
 	a2aAgentReconciler *A2AAgentReconciler
 
+	// MCPToolsetReconciler + its safety-relist channel. Shares connCache
+	// with the other reconcilers. Tests exercise create/update/steady-state,
+	// the server-name → server_id resolution, the 409 adoption path, the
+	// ALWAYS-EMIT empty-tools clear, the vanish probe, and the #102 stale
+	// Ready=False heal.
+	mcpToolsetReconciler  *MCPToolsetReconciler
+	toolsetSafetyRelistCh chan reconcile.Request
+
 	// Phase 6 — TeamReconciler. Shares connCache with the
 	// Phase 2/3/5 reconcilers. Tests exercise TEAM-01.06 + AC-T1
 	// (budget projection), AC-T6 (params pass-through + ProjectionOverride
@@ -514,6 +522,38 @@ func setupAndRun(m *testing.M) int {
 	}
 	if err := a2aAgentReconciler.SetupWithManager(mgr, a2aSafetyRelistCh); err != nil {
 		fmt.Fprintf(os.Stderr, "SetupWithManager(A2AAgent): %v\n", err)
+		return 1
+	}
+
+	// MCPToolsetReconciler. No field indexer — the CRD has no spec.secrets.
+	// The SafetyRelistRunnable carries the SAME suiteRelistEnabled gate as
+	// its siblings: an ungated suite runnable ticking at 100ms is the #74
+	// workqueue-contention flake.
+	toolsetSafetyRelistCh = make(chan reconcile.Request, 256)
+	if err := mgr.Add(&SafetyRelistRunnable{
+		Client:       mgr.GetClient(),
+		Namespace:    WatchNamespace,
+		Interval:     100 * time.Millisecond,
+		Log:          logr.Discard(),
+		RequeueCh:    toolsetSafetyRelistCh,
+		ListRequests: ListMCPToolsetRequests,
+		LogLabel:     "mcptoolsets",
+		Gate:         suiteRelistEnabled.Load,
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "mgr.Add(mcptoolset SafetyRelistRunnable): %v\n", err)
+		return 1
+	}
+	mcpToolsetReconciler = &MCPToolsetReconciler{
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		Cache:             connCache,
+		Recorder:          mgr.GetEventRecorderFor("mcptoolset-controller"),
+		Namespace:         WatchNamespace,
+		Log:               logr.Discard(),
+		ConnectionRebuilt: connCache.Subscribe(),
+	}
+	if err := mcpToolsetReconciler.SetupWithManager(mgr, toolsetSafetyRelistCh); err != nil {
+		fmt.Fprintf(os.Stderr, "SetupWithManager(MCPToolset): %v\n", err)
 		return 1
 	}
 

@@ -3,6 +3,7 @@
 package mock
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -74,6 +75,11 @@ const LiteLLMAuth401Body = `{"error":{"message":"Authentication Error, Invalid p
 // branches; extracted as a const so goconst stays quiet.
 const pathTeamDelete = "/team/delete"
 
+// pathMCPToolset is the MCP toolset COLLECTION route. Note that LiteLLM's
+// update verb targets this same collection path (the toolset_id travels in
+// the body), unlike every other update endpoint the operator calls.
+const pathMCPToolset = "/v1/mcp/toolset"
+
 // modelEntry is a stateful in-memory record of a model created via
 // POST /model/new. The mock tracks these to serve realistic GET /model/info
 // responses that include the model_info.id UUID needed for update/delete tests.
@@ -138,6 +144,20 @@ type agentEntry struct {
 	AgentName       string
 	AgentCardParams map[string]any
 	LastBody        map[string]any
+}
+
+// toolsetEntry is a stateful in-memory record of an MCP toolset created via
+// POST /v1/mcp/toolset. Mirrors agentEntry: LiteLLM 1.93.0 MINTS the
+// toolset_id (a caller-supplied one is ignored) and PUT is a wholesale
+// replace. LastBody captures the most recent POST/PUT body so envtests can
+// assert the rendered `tools` array — notably that an emptied list arrives as
+// a present-but-empty `[]` rather than being omitted.
+type toolsetEntry struct {
+	ToolsetID   string
+	ToolsetName string
+	Description string
+	Tools       []any
+	LastBody    map[string]any
 }
 
 // MockServer wraps a httptest.Server with per-method counters and a
@@ -217,6 +237,17 @@ type MockServer struct {
 	agentSeq          atomic.Int64
 	perAgentMutations map[string]int64
 
+	// MCP toolset state. Mirrors the A2A shape because the LiteLLM
+	// semantics match: the server MINTS toolset_id (a caller-supplied one
+	// is ignored) and adoption goes through the unique toolset_name.
+	// toolsets — keyed by ToolsetID
+	// toolsetByName — keyed by ToolsetName → ToolsetID; toolset_name is
+	// UNIQUE server-side, so a duplicate POST is a 409.
+	toolsets            map[string]*toolsetEntry
+	toolsetByName       map[string]string
+	toolsetSeq          atomic.Int64
+	perToolsetMutations map[string]int64
+
 	// Team state. Two indices for O(1) lookups:
 	// teams — keyed by TeamID (the LiteLLM-assigned UUID,
 	// surfaced in POST/UPDATE response bodies + DELETE
@@ -291,11 +322,16 @@ func NewServer(t *testing.T) *MockServer {
 		agents:            make(map[string]*agentEntry),
 		agentByName:       make(map[string]string),
 		perAgentMutations: make(map[string]int64),
-		teams:             make(map[string]*teamEntry),
-		teamByAlias:       make(map[string]string),
-		perTeamMutations:  make(map[string]int64),
-		pathCalls:         make(map[string]int64),
-		routerSettings:    map[string]any{"model_group_alias": map[string]any{}},
+
+		toolsets:            make(map[string]*toolsetEntry),
+		toolsetByName:       make(map[string]string),
+		perToolsetMutations: make(map[string]int64),
+
+		teams:            make(map[string]*teamEntry),
+		teamByAlias:      make(map[string]string),
+		perTeamMutations: make(map[string]int64),
+		pathCalls:        make(map[string]int64),
+		routerSettings:   map[string]any{"model_group_alias": map[string]any{}},
 	}
 	m.mode.Store(ModeHappy)
 	m.srv = httptest.NewServer(http.HandlerFunc(m.handle))
@@ -470,6 +506,99 @@ func (m *MockServer) AddHandManagedAgent(name string) string {
 	m.agentByName[name] = agentID
 	m.mu.Unlock()
 	return agentID
+}
+
+// ── MCP toolset helpers ──────────────────────────────
+
+// ResetToolsets clears the in-memory MCP toolset store. Call between tests
+// that need a clean slate for GET /v1/mcp/toolset responses.
+func (m *MockServer) ResetToolsets() {
+	m.mu.Lock()
+	m.toolsets = make(map[string]*toolsetEntry)
+	m.toolsetByName = make(map[string]string)
+	m.perToolsetMutations = make(map[string]int64)
+	m.mu.Unlock()
+}
+
+// SeedToolset inserts an MCP toolset into the mock's store as if it were
+// created out-of-band (NOT via POST /v1/mcp/toolset through the operator).
+// Returns the minted toolset_id. Used by envtests that need a pre-existing
+// entry visible to ListMCPToolsets — notably the 409-adoption path, where a
+// toolset with the CR's name already exists in LiteLLM.
+func (m *MockServer) SeedToolset(name string) string {
+	seq := m.toolsetSeq.Add(1)
+	toolsetID := fmt.Sprintf("mock-toolset-id-%d", seq)
+	m.mu.Lock()
+	m.toolsets[toolsetID] = &toolsetEntry{
+		ToolsetID:   toolsetID,
+		ToolsetName: name,
+		Tools:       []any{},
+	}
+	m.toolsetByName[name] = toolsetID
+	m.mu.Unlock()
+	return toolsetID
+}
+
+// DeleteToolsetOutOfBand removes an MCP toolset from the mock's store WITHOUT
+// going through the HTTP handler. Simulates an out-of-band DELETE in LiteLLM,
+// which the operator's vanish probe should detect.
+func (m *MockServer) DeleteToolsetOutOfBand(toolsetID string) {
+	m.mu.Lock()
+	if e, ok := m.toolsets[toolsetID]; ok {
+		delete(m.toolsetByName, e.ToolsetName)
+	}
+	delete(m.toolsets, toolsetID)
+	m.mu.Unlock()
+}
+
+// HasToolset reports whether the mock's store contains a toolset with the
+// given name.
+func (m *MockServer) HasToolset(name string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_, ok := m.toolsetByName[name]
+	return ok
+}
+
+// GetToolsetID returns the toolset_id the mock minted for the given name, or
+// "" if no entry with that name exists.
+func (m *MockServer) GetToolsetID(name string) string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if id, ok := m.toolsetByName[name]; ok {
+		return id
+	}
+	return ""
+}
+
+// MutationsByToolsetName returns the number of toolset mutation calls
+// (POST/PUT/DELETE /v1/mcp/toolset*) that touched the given toolset name.
+func (m *MockServer) MutationsByToolsetName(name string) int64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.perToolsetMutations[name]
+}
+
+// LastToolsetBody returns the most-recent POST/PUT body received for the
+// given toolset name, or nil if none was captured. Envtests use it to assert
+// the rendered `tools` array — in particular that an emptied list arrives as
+// a PRESENT empty array (ALWAYS-EMIT) rather than being omitted.
+func (m *MockServer) LastToolsetBody(name string) map[string]any {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	id, ok := m.toolsetByName[name]
+	if !ok {
+		return nil
+	}
+	e, ok := m.toolsets[id]
+	if !ok || e.LastBody == nil {
+		return nil
+	}
+	cp := make(map[string]any, len(e.LastBody))
+	for k, v := range e.LastBody {
+		cp[k] = v
+	}
+	return cp
 }
 
 // DeleteAgentOutOfBand removes an A2A agent from the mock's internal
@@ -818,6 +947,41 @@ func (m *MockServer) Recorded() []RecordedCall {
 	return out
 }
 
+// writeDuplicateToolsetConflict answers POST /v1/mcp/toolset with a 409 when
+// the requested toolset_name is already taken, and reports whether it wrote
+// the response.
+//
+// toolset_name is UNIQUE in LiteLLM 1.93.0 (verified: a duplicate create
+// returns `{"detail":{"error":"A toolset named 'X' already exists."}}`), and
+// the operator's CREATE arm adopts the existing toolset on that 409. This
+// lives outside statefulBody because the happy path writes StatusOK before
+// statefulBody runs, so a body-only route cannot set a status code. Gated on
+// happy mode so the fault modes still win.
+func (m *MockServer) writeDuplicateToolsetConflict(w http.ResponseWriter, r *http.Request, mode string) bool {
+	if mode != ModeHappy || r.Method != http.MethodPost || r.URL.Path != pathMCPToolset {
+		return false
+	}
+	body, _ := io.ReadAll(r.Body)
+	// Restore the body for statefulBody when this is NOT a duplicate.
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	var reqBody map[string]any
+	_ = json.Unmarshal(body, &reqBody)
+	name, _ := reqBody["toolset_name"].(string)
+
+	m.mu.Lock()
+	_, dup := m.toolsetByName[name]
+	m.mu.Unlock()
+	if !dup {
+		return false
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusConflict)
+	_, _ = w.Write([]byte(fmt.Sprintf(
+		`{"detail":{"error":"A toolset named '%s' already exists."}}`, name)))
+	return true
+}
+
 // handle is the single HTTP handler routed to every request. It records
 // the call, increments the appropriate counter, and emits a mode-specific
 // response.
@@ -909,6 +1073,10 @@ func (m *MockServer) handle(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = w.Write([]byte(LiteLLMAuth401Body))
+		return
+	}
+
+	if m.writeDuplicateToolsetConflict(w, r, mode) {
 		return
 	}
 
@@ -1506,6 +1674,99 @@ func (m *MockServer) statefulBody(r *http.Request) []byte {
 			entries = append(entries, fmt.Sprintf(
 				`{"agent_id":%q,"agent_name":%q}`,
 				e.AgentID, e.AgentName,
+			))
+		}
+		m.mu.Unlock()
+		return []byte(fmt.Sprintf(`[%s]`, strings.Join(entries, ",")))
+	}
+
+	// ── MCP toolset routes ─────────────────────────
+	// LiteLLM 1.93.0 semantics, verified live:
+	//   - POST mints toolset_id; a caller-supplied one is IGNORED.
+	//   - PUT carries toolset_id in the BODY (not the path) and is a
+	//     wholesale replace.
+	//   - GET returns a BARE ARRAY.
+	// The duplicate-name 409 is handled earlier in handle() because this
+	// function cannot set a status code.
+	//
+	// DELETE /v1/mcp/toolset/<toolset_id> — id from the path.
+	if method == http.MethodDelete && strings.HasPrefix(path, pathMCPToolset+"/") {
+		toolsetID := strings.TrimPrefix(path, pathMCPToolset+"/")
+		m.mu.Lock()
+		if e, ok := m.toolsets[toolsetID]; ok {
+			delete(m.toolsetByName, e.ToolsetName)
+			m.perToolsetMutations[e.ToolsetName]++
+		}
+		delete(m.toolsets, toolsetID)
+		m.mu.Unlock()
+		return []byte(`{}`)
+	}
+	// PUT /v1/mcp/toolset — wholesale-replace; toolset_id is read from the
+	// BODY, which is what makes this endpoint diverge from every other
+	// LiteLLM update the operator issues.
+	if method == http.MethodPut && path == pathMCPToolset {
+		var reqBody map[string]any
+		if b, err := io.ReadAll(r.Body); err == nil {
+			_ = json.Unmarshal(b, &reqBody)
+		}
+		toolsetID, _ := reqBody["toolset_id"].(string)
+		name, _ := reqBody["toolset_name"].(string)
+		desc, _ := reqBody["description"].(string)
+		tools, _ := reqBody["tools"].([]any)
+
+		m.mu.Lock()
+		if e, ok := m.toolsets[toolsetID]; ok {
+			delete(m.toolsetByName, e.ToolsetName)
+			e.ToolsetName = name
+			e.Description = desc
+			e.Tools = tools
+			e.LastBody = reqBody
+			m.toolsetByName[name] = toolsetID
+			m.perToolsetMutations[name]++
+		}
+		m.mu.Unlock()
+
+		return []byte(fmt.Sprintf(`{"toolset_id":%q,"toolset_name":%q}`, toolsetID, name))
+	}
+	// POST /v1/mcp/toolset — create, MINT toolset_id (a supplied one is
+	// deliberately ignored, mirroring real 1.93.0).
+	if method == http.MethodPost && path == pathMCPToolset {
+		var reqBody map[string]any
+		if b, err := io.ReadAll(r.Body); err == nil {
+			_ = json.Unmarshal(b, &reqBody)
+		}
+		name, _ := reqBody["toolset_name"].(string)
+		desc, _ := reqBody["description"].(string)
+		tools, _ := reqBody["tools"].([]any)
+		seq := m.toolsetSeq.Add(1)
+		toolsetID := fmt.Sprintf("mock-toolset-id-%d", seq)
+
+		m.mu.Lock()
+		m.toolsets[toolsetID] = &toolsetEntry{
+			ToolsetID:   toolsetID,
+			ToolsetName: name,
+			Description: desc,
+			Tools:       tools,
+			LastBody:    reqBody,
+		}
+		m.toolsetByName[name] = toolsetID
+		m.perToolsetMutations[name]++
+		m.mu.Unlock()
+
+		return []byte(fmt.Sprintf(`{"toolset_id":%q,"toolset_name":%q}`, toolsetID, name))
+	}
+	// GET /v1/mcp/toolset — bare-array list of all toolsets.
+	if method == http.MethodGet && strings.HasPrefix(path, pathMCPToolset) {
+		m.mu.Lock()
+		entries := make([]string, 0, len(m.toolsets))
+		for _, e := range m.toolsets {
+			toolsJSON, err := json.Marshal(e.Tools)
+			if err != nil || e.Tools == nil {
+				toolsJSON = []byte(`[]`)
+			}
+			entries = append(entries, fmt.Sprintf(
+				`{"toolset_id":%q,"toolset_name":%q,"tools":%s}`,
+				e.ToolsetID, e.ToolsetName, toolsJSON,
 			))
 		}
 		m.mu.Unlock()
