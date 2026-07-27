@@ -1020,6 +1020,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../mcp-toolset/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMMCPToolset
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../model-discovery/" class="md-nav__link">
         
   
@@ -1941,7 +1969,7 @@ emits a <code>reason=ProjectionOverride</code> Warning Event per colliding key.
 Use the typed <code>spec.budget</code> / <code>spec.rateLimits</code> sub-blocks instead.</p>
 <h2 id="resource-permissions-specpermission">Resource permissions — <code>spec.permission</code><a class="headerlink" href="#resource-permissions-specpermission" title="Permanent link">&para;</a></h2>
 <p><code>spec.permission</code> is a typed, operator-MANAGED block that controls which
-models, MCP servers, and A2A agents a team may use. When present, the
+models, MCP servers, MCP toolsets, and A2A agents a team may use. When present, the
 operator OWNS the projected LiteLLM <code>models</code> and <code>object_permission</code> fields —
 out-of-band UI edits to them do NOT survive reconciliation.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">spec</span><span class="p">:</span>
@@ -1952,6 +1980,7 @@ out-of-band UI edits to them do NOT survive reconciliation.</p>
 <a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">    </span><span class="nt">mcpGroups</span><span class="p">:</span><span class="w">   </span><span class="p p-Indicator">[</span><span class="s">&quot;team-a&quot;</span><span class="p p-Indicator">]</span><span class="w">        </span><span class="c1"># MCP access-group names</span>
 <a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">    </span><span class="nt">agents</span><span class="p">:</span><span class="w">      </span><span class="p p-Indicator">[</span><span class="s">&quot;planner&quot;</span><span class="p p-Indicator">]</span><span class="w">       </span><span class="c1"># A2A agent NAMES (resolved to UUIDs by the operator)</span>
 <a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="w">    </span><span class="nt">agentGroups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;grp-a&quot;</span><span class="p p-Indicator">]</span><span class="w">         </span><span class="c1"># A2A agent access-group names (see no-op note)</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="w">    </span><span class="nt">mcpToolsets</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;research&quot;</span><span class="p p-Indicator">]</span><span class="w">      </span><span class="c1"># LiteLLMMCPToolset NAMES (resolved to UUIDs)</span>
 </code></pre></div>
 <p>Projection to LiteLLM:</p>
 <table>
@@ -1982,6 +2011,10 @@ out-of-band UI edits to them do NOT survive reconciliation.</p>
 <td><code>agentGroups</code></td>
 <td><code>object_permission.agent_access_groups</code> (<strong>no-op</strong>, see below)</td>
 </tr>
+<tr>
+<td><code>mcpToolsets</code></td>
+<td><code>object_permission.mcp_toolsets</code> (name→UUID resolved)</td>
+</tr>
 </tbody>
 </table>
 <p><strong>Agent name resolution.</strong> LiteLLM enforces <code>object_permission.agents</code> on
@@ -1990,13 +2023,21 @@ name via <code>GET /v1/agents</code>. If a referenced agent is not yet registere
 <code>LiteLLMA2AAgent</code> CR has not reconciled), the team is parked
 <code>Ready=False, reason=AgentNotFound</code> (listing the missing names) and requeued —
 it recovers automatically once the agent appears.</p>
+<p><strong>Toolset name resolution.</strong> Same shape as agents: LiteLLM matches
+<code>object_permission.mcp_toolsets</code> on <code>toolset_id</code> UUIDs, so the operator
+resolves each name via <code>GET /v1/mcp/toolset</code>. An unregistered name parks the
+team <code>Ready=False, reason=ToolsetNotFound</code> and requeues — create the
+<a href="../mcp-toolset/"><code>LiteLLMMCPToolset</code></a> CR and it recovers automatically.
+Multiple toolsets are <strong>unioned</strong> by LiteLLM (not last-wins), so listing
+several composes their tool grants. There is no access-group concept for
+toolsets — listing several here IS the grouping mechanism.</p>
 <p><strong><code>agentGroups</code> is a no-op.</strong> LiteLLM 1.83.10 has no API to tag an agent into
 an access group, so <code>object_permission.agent_access_groups</code> is never enforced.
 The field is retained for forward-compat; the operator emits a Warning
 <code>AgentGroupsNoOp</code> Event when it is non-empty.</p>
 <p><strong>Empty vs absent.</strong> An absent <code>spec.permission</code> block leaves any raw
 <code>spec.params.models</code> / <code>spec.params.object_permission</code> untouched (passthrough).
-A <strong>present</strong> block makes the operator OWN <code>models</code> and all four
+A <strong>present</strong> block makes the operator OWN <code>models</code> and all five
 <code>object_permission</code> sub-fields: every one is sent to LiteLLM on each update,
 never omitted. Shrinking a list — including down to empty (<code>mcpServers: []</code>, or
 removing the last agent) — therefore <strong>does</strong> revoke access. This is
@@ -2030,12 +2071,17 @@ present block leaves those lists empty:</p>
 <td>0 agents</td>
 </tr>
 <tr>
-<td><code>mcpServers</code> / <code>mcpGroups</code> / <code>agentGroups</code></td>
+<td><code>mcpServers</code> / <code>mcpGroups</code> / <code>agentGroups</code> / <code>mcpToolsets</code></td>
 <td><code>[]</code></td>
 <td>already fail-closed / no-op — no sentinel needed</td>
 </tr>
 </tbody>
 </table>
+<p><code>mcpToolsets</code> deliberately takes <strong>no</strong> sentinel. LiteLLM's toolset check reads
+"granted is None or id not in granted → deny", so an empty list already denies
+everything (an ungranted key gets <code>403 API key does not have access to toolset
+'&lt;uuid&gt;'</code>). Adding a sentinel there in the name of consistency would inject a
+bogus UUID into a filter that is already correct.</p>
 <p>So a <code>spec.permission</code> block that omits <code>models</code> (or sets it <code>[]</code>) grants the
 team <strong>no models</strong>, not all of them. To grant everything, list the models or
 model-groups explicitly. The sentinel applies only when the whole
