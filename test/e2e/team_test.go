@@ -829,7 +829,7 @@ var _ = Describe("LiteLLMTeam", Ordered, ContinueOnFailure, func() {
 		Eventually(func(g Gomega) {
 			matches := litellmTeamsByAlias(teamName)
 			g.Expect(matches).NotTo(BeEmpty(), "team not in LiteLLM")
-			g.Expect(matches[0]["models"]).To(ConsistOf("tier2-openai"),
+			g.Expect(matches[0]["models"]).To(ConsistOf(grantModel),
 				"granted team must carry its model list, got %v", matches[0]["models"])
 		}, 30*time.Second, 2*time.Second).Should(Succeed())
 
@@ -845,7 +845,7 @@ var _ = Describe("LiteLLMTeam", Ordered, ContinueOnFailure, func() {
 				"-X", "POST",
 				"-H", "Authorization: Bearer "+key,
 				"-H", "Content-Type: application/json",
-				"-d", `{"model":"tier2-openai","messages":[{"role":"user","content":"hi"}]}`,
+				"-d", `{"model":"`+grantModel+`","messages":[{"role":"user","content":"hi"}]}`,
 				litellmBase+"/v1/chat/completions",
 			)
 			out := string(body)
