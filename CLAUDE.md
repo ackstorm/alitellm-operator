@@ -1042,6 +1042,46 @@ WHY IT IS SILENT: LiteLLM's toolset resolution wraps the whole lookup in
 `try/except → return {}`, and an unknown `server_id` simply never matches a
 real server in the fail-CLOSED server-access check.
 
+### ❌ Trusting `DELETE /v1/mcp/toolset/<id>` to 404 on an absent entry
+```
+error="litellm: 500 on DELETE /v1/mcp/toolset/<uuid> (code=500, transient)"
+```
+repeating forever, CR stuck `Terminating` with its finalizer intact.
+✅ LiteLLM 1.93.0 raises `AttributeError` — **HTTP 500, not 404** — when the
+toolset is already gone:
+```python
+# toolset_db.py:110  delete_mcp_toolset
+row = await ...delete(...)      # None when the row is absent
+return _toolset_from_row(row)
+# toolset_db.py:16   _toolset_from_row
+AttributeError: 'NoneType' object has no attribute 'model_dump'
+```
+A reconciler that classifies 500 as transient retries the finalizer forever and
+strands the CR PERMANENTLY (nothing but a manual `kubectl patch` clears it).
+`mcptoolset_controller.go` therefore re-resolves by name in the 5xx branch: an
+empty name-resolve is positive proof the entry is absent, so the Delete goal is
+met and the finalizer drains regardless of `deletionPolicy` — the same
+confirmed-absent rule the model controller follows. A still-listed entry keeps
+the transient backoff. Break-glass for an already-stuck CR:
+```bash
+kubectl patch litellmmcptoolset <name> --type=merge -p '{"metadata":{"finalizers":[]}}'
+```
+WHY IT MATTERS BEYOND TOOLSETS: `litellm.IsNotFound` covers 404/ErrNotFound, but
+an endpoint that 500s on a missing row defeats it. Any NEW delete path should
+confirm absence before treating a 5xx as retry-forever.
+
+### ❌ Asserting `object_permission` from `/v2/team/list`
+```go
+matches := litellmTeamsByAlias(alias)
+op, _ := matches[0]["object_permission"].(map[string]interface{})  // ALWAYS nil
+```
+✅ `/v2/team/list` reports only `object_permission_id` and leaves
+`object_permission: null` even when the row exists and is populated. Read the
+expanded object from `GET /team/info?team_id=<id>` (under `team_info`) — see
+`litellmTeamObjectPermission` in `test/e2e/team_test.go`. Verified on LiteLLM
+1.93.0. Top-level `models` IS present on the list endpoint, which is why the
+TEAM-05 sentinel assertion works there and a `mcp_toolsets` one cannot.
+
 ## Repository-specific patterns
 
 - **`mcp_toolsets` is the one `object_permission` field that takes NO
