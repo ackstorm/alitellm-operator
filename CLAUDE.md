@@ -1013,8 +1013,11 @@ GOTCHA: the agent sentinel is injected ONLY in the `len(perm.Agents)==0` branch
 (where the code skips `GET /v1/agents`), NEVER for names that fail to resolve —
 a non-empty `agents` with an unregistered name still parks the team
 `AgentNotFound` and requeues; it must not be swapped for the sentinel.
-NOT VERIFIED: that an inference call against `models:["__deny_all__"]` is
-rejected (only that `/models` returns 1 phantom entry) — confirm on e2e/prod.
+VERIFIED e2e (2026-07-27, LiteLLM 1.93.0, TEAM-05): an inference call with a
+team-scoped key against `models:["__deny_all__"]` IS rejected —
+`team_model_access_denied`, `"This team can only access models=['__deny_all__']"`.
+Status code drifted upstream: **401 on 1.83.10, 403 on 1.93.0**. Assert the
+error type + sentinel echo, never the bare status code.
 
 ## Repository-specific patterns
 

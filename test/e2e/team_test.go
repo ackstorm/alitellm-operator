@@ -596,13 +596,17 @@ var _ = Describe("LiteLLMTeam", Ordered, ContinueOnFailure, func() {
 	// `models` list as "no filter" (fail-OPEN → the team inherits the full
 	// master-key ceiling), so the operator projects the deny-all sentinel
 	// `["__deny_all__"]`. This spec proves the whole chain end-to-end against
-	// the Helm-deployed operator + real LiteLLM 1.83.10: the operator writes
+	// the Helm-deployed operator + real LiteLLM: the operator writes
 	// the sentinel (round-trip via /v2/team/list) AND LiteLLM ENFORCES it —
-	// a team-scoped key is denied (HTTP 401 team_model_access_denied) when it
+	// a team-scoped key is denied (team_model_access_denied) when it
 	// tries to run inference against a real model. Closes the one gap the
 	// deny-by-default change could not verify without a live cluster (the
 	// completion rejection, not just the /models phantom).
-	It("deny-by-default: empty spec.permission denies inference with 401 — TEAM-05", func() {
+	//
+	// Status code is asserted as 401-or-403: LiteLLM 1.83.10 returned 401,
+	// 1.93.0 returns 403 for the same team_model_access_denied condition.
+	// The stable contract is the error type + the sentinel echo, not the code.
+	It("deny-by-default: empty spec.permission denies inference — TEAM-05", func() {
 		const teamName = "team-deny-default"
 		fg := metav1.DeletePropagationForeground
 		_ = dyn.Resource(teamGVR).Namespace(ns).
@@ -656,8 +660,8 @@ var _ = Describe("LiteLLMTeam", Ordered, ContinueOnFailure, func() {
 			litellmBase+"/v1/chat/completions",
 		)
 		out := string(body)
-		Expect(out).To(ContainSubstring("HTTP_STATUS:401"),
-			"team-scoped completion must be denied 401, got: %s", out)
+		Expect(out).To(MatchRegexp(`HTTP_STATUS:(401|403)`),
+			"team-scoped completion must be denied 401/403, got: %s", out)
 		Expect(out).To(ContainSubstring("team_model_access_denied"),
 			"denial must cite team_model_access_denied, got: %s", out)
 		Expect(out).To(ContainSubstring("__deny_all__"),

@@ -44,7 +44,7 @@ The authoritative contract is the operator spec; see
 Prerequisites:
 
 - Kubernetes >= 1.27 cluster
-- A LiteLLM 1.83.10 (or compatible) deployment reachable in-cluster at a
+- A LiteLLM 1.83.10+ deployment reachable in-cluster at a
   known Service DNS address
 - A Kubernetes Secret in the `default` namespace holding the LiteLLM
   master key

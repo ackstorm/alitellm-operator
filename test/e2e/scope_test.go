@@ -64,14 +64,14 @@ var _ = Describe("Scope and metrics", Ordered, ContinueOnFailure, func() {
 		}
 	})
 
-	It("LiteLLM Pod runs the operator-targeted image tag :v1.83.10-stable (chart-pin override smoke)", func() {
+	It("LiteLLM Pod runs the operator-targeted image tag :v1.93.0 (chart-pin override smoke)", func() {
 		out, err := exec.Command("kubectl", "-n", "litellm-system",
 			"get", "pod", "-l", "app.kubernetes.io/name=litellm",
 			"-o", "jsonpath={.items[0].spec.containers[*].image}",
 		).CombinedOutput()
 		Expect(err).NotTo(HaveOccurred(), "out=%s", string(out))
 		img := strings.TrimSpace(string(out))
-		Expect(img).To(HaveSuffix(":v1.83.10-stable"),
-			"LiteLLM image %q does not pin v1.83.10-stable — chart bump regressed", img)
+		Expect(img).To(HaveSuffix(":v1.93.0"),
+			"LiteLLM image %q does not pin v1.93.0 — chart bump regressed", img)
 	})
 })
