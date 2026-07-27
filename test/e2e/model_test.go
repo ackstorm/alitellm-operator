@@ -35,7 +35,7 @@ func newOpenAIMockModel(name, ns string) *unstructured.Unstructured {
 				"params": map[string]interface{}{
 					"model":    "openai/gpt-4o-mini",
 					"api_key":  "sk-mock-key",
-					"api_base": "http://openai-mock.mocks.svc.cluster.local:8080",
+					"api_base": "http://openai-mock.mocks.svc.cluster.local:8080/v1",
 				},
 			},
 		},

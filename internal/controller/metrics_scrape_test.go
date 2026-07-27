@@ -23,7 +23,7 @@ import (
 // 3. Assert each of the 8 §10 metric names is present.
 // 4. Assert alitellm_operator_drift_corrected_total has ≥12 enumerated label combos
 // (4 domains × 3 actions).
-// 5. Assert connection_ready has ≥6 reason combos.
+// 5. Assert alitellm_operator_connection_ready has ≥6 reason combos.
 func TestMetricsExposeS10Set(t *testing.T) {
 	if reconcileCalls == nil {
 		t.Fatal("suite_test.go did not initialize globals")
@@ -60,11 +60,11 @@ func TestMetricsExposeS10Set(t *testing.T) {
 	// All 8 §10 metric names must be present in the scrape.
 	wantNames := []string{
 		"alitellm_operator_drift_corrected_total",
-		"reconcile_total",
+		"alitellm_operator_reconcile_outcome_total",
 		"alitellm_operator_discovery_refresh_total",
 		"alitellm_operator_discovery_generated_count",
 		"alitellm_operator_discovery_failed_total",
-		"connection_ready",
+		"alitellm_operator_connection_ready",
 		"alitellm_operator_cr_status_age_seconds",
 		"alitellm_operator_child_cr_writes_total",
 	}
@@ -97,18 +97,19 @@ func TestMetricsExposeS10Set(t *testing.T) {
 		}
 	}
 
-	// connection_ready: 6 enumerated reasons.
+	// alitellm_operator_connection_ready: 6 enumerated reasons.
 	connReasons := []string{reasonSynced, reasonConnecting, reasonAbsent, reasonUnreachable, reasonBadMasterKey, reasonSecretNotFound}
 	for _, r := range connReasons {
-		want := `connection_ready{reason="` + r + `"}`
+		want := `alitellm_operator_connection_ready{reason="` + r + `"}`
 		if !strings.Contains(scrape, want) {
-			t.Errorf("connection_ready{reason=%q} not present in /metrics", r)
+			t.Errorf("alitellm_operator_connection_ready{reason=%q} not present in /metrics", r)
 		}
 	}
 
-	// reconcile_total: 7 kinds × 3 results = 21 combos. Sample-spot-check:
-	// {kind="LiteLLMModel", result="success"} must be present (one of the 21).
-	if !strings.Contains(scrape, `reconcile_total{kind="LiteLLMModel",result="success"}`) {
-		t.Errorf(`reconcile_total{kind="LiteLLMModel",result="success"} not present in /metrics`)
+	// alitellm_operator_reconcile_outcome_total: 7 kinds × 3 results = 21
+	// combos. Sample-spot-check: {kind="LiteLLMModel", result="success"} must
+	// be present (one of the 21).
+	if !strings.Contains(scrape, `alitellm_operator_reconcile_outcome_total{kind="LiteLLMModel",result="success"}`) {
+		t.Errorf(`alitellm_operator_reconcile_outcome_total{kind="LiteLLMModel",result="success"} not present in /metrics`)
 	}
 }
