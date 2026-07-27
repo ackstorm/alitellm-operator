@@ -18,8 +18,23 @@ case "${mode}" in
   *) echo "mode must be accept or reject-401, got: ${mode}" >&2; exit 2 ;;
 esac
 
+# This script CREATES a Pod, so it must never be pointed at the wrong cluster.
+# A bare `kubectl` resolves the host's default context, which on a developer
+# machine is routinely a real production cluster. Route through the devtools
+# container, whose kubeconfig only ever knows the ephemeral kind cluster, so a
+# misfire fails closed instead of mutating prod. Override with KUBECTL= when
+# already inside the container (dev.sh sets LITELLM_IN_DEVTOOLS=1).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -n "${KUBECTL:-}" ]]; then
+  read -r -a KUBECTL_CMD <<<"${KUBECTL}"
+elif [[ -n "${LITELLM_IN_DEVTOOLS:-}" ]]; then
+  KUBECTL_CMD=(kubectl)
+else
+  KUBECTL_CMD=("${SCRIPT_DIR}/dev.sh" kubectl)
+fi
+
 pod="mock-mode-poke-$$"
-kubectl -n mocks run "${pod}" --rm -i --restart=Never --quiet \
+"${KUBECTL_CMD[@]}" -n mocks run "${pod}" --rm -i --restart=Never --quiet \
   --image=curlimages/curl:8.10.1 -- \
   curl -sS -X POST -H "Content-Type: application/json" \
     --data "{\"mode\":\"${mode}\"}" \

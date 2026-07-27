@@ -685,22 +685,37 @@ _cluster-image-load:
 
 WAIT_TIMEOUT ?= 300s
 
+# E2E_KUBECTL — kubectl bound to the KIND cluster, never the host's default context.
+#
+# Every target below talks to the ephemeral e2e kind cluster, whose kubeconfig
+# lives at /workspace/.gocache/kube/config INSIDE the devtools container (set by
+# scripts/dev.sh). A bare `kubectl` here resolves the HOST kubeconfig instead —
+# which on a developer machine is routinely a real production cluster. That is a
+# live footgun, not a hypothetical: `make mock-mode` shells into
+# scripts/mock-set-mode.sh, which runs `kubectl -n mocks run ...` — a MUTATION
+# against whatever context happens to be current.
+#
+# Routing through scripts/dev.sh makes the wrong cluster structurally
+# unreachable: that kubeconfig only ever knows the kind cluster, so these
+# targets fail closed instead of silently addressing prod.
+E2E_KUBECTL ?= ./scripts/dev.sh kubectl
+
 .PHONY: wait-cr-ready
 wait-cr-ready: ## Wait for a CR Ready condition. Usage: make wait-cr-ready KIND=litellmconnection NAME=default NS=default
 	@test -n "$(KIND)" -a -n "$(NAME)" -a -n "$(NS)" || { echo "ERROR: KIND= NAME= NS= all required" >&2; exit 1; }
-	kubectl -n $(NS) wait --for=condition=Ready --timeout=$(WAIT_TIMEOUT) $(KIND)/$(NAME)
+	$(E2E_KUBECTL) -n $(NS) wait --for=condition=Ready --timeout=$(WAIT_TIMEOUT) $(KIND)/$(NAME)
 
 .PHONY: wait-operator
 wait-operator: ## Wait operator Deployment Ready (bounded).
-	kubectl -n default rollout status deploy/alitellm-operator --timeout=$(WAIT_TIMEOUT)
+	$(E2E_KUBECTL) -n default rollout status deploy/alitellm-operator --timeout=$(WAIT_TIMEOUT)
 
 .PHONY: wait-litellm
 wait-litellm: ## Wait LiteLLM Deployment Ready (bounded).
-	kubectl -n litellm-system rollout status deploy/litellm --timeout=$(WAIT_TIMEOUT)
+	$(E2E_KUBECTL) -n litellm-system rollout status deploy/litellm --timeout=$(WAIT_TIMEOUT)
 
 .PHONY: wait-mocks
 wait-mocks: ## Wait all mock Pods Ready (bounded).
-	kubectl -n mocks wait --for=condition=Ready --timeout=$(WAIT_TIMEOUT) pod --all
+	$(E2E_KUBECTL) -n mocks wait --for=condition=Ready --timeout=$(WAIT_TIMEOUT) pod --all
 
 .PHONY: wait-container
 wait-container: ## Wait for named container exit + PASS/FAIL marker. Usage: make wait-container NAME=<container> [TIMEOUT=600]
@@ -715,40 +730,42 @@ wait-container: ## Wait for named container exit + PASS/FAIL marker. Usage: make
 operator-redeploy: ## rebuild operator image, kind-load, restart deploy (~20s inner loop)
 	$(MAKE) build-image IMG=alitellm-operator:e2e
 	kind load docker-image alitellm-operator:e2e --name alitellm-operator-test
-	# kubectl runs THROUGH the devtools container: the kind kubeconfig lives at
-	# /workspace/.gocache/kube/config (set by scripts/dev.sh), so host kubectl
+	# kubectl runs THROUGH the devtools container (see E2E_KUBECTL above): the
+	# kind kubeconfig lives at /workspace/.gocache/kube/config, so host kubectl
 	# has no context for the kind cluster (would fail "deployments not found").
-	./scripts/dev.sh kubectl -n default rollout restart deploy/alitellm-operator
-	./scripts/dev.sh kubectl -n default rollout status deploy/alitellm-operator --timeout=60s
+	$(E2E_KUBECTL) -n default rollout restart deploy/alitellm-operator
+	$(E2E_KUBECTL) -n default rollout status deploy/alitellm-operator --timeout=60s
 
 ##@ Logs & Debug
 
 .PHONY: logs-operator logs-litellm logs-mocks
 logs-operator: ## tail operator logs with timestamps
-	kubectl -n default logs -f --timestamps deploy/alitellm-operator
+	$(E2E_KUBECTL) -n default logs -f --timestamps deploy/alitellm-operator
 logs-litellm:  ## tail LiteLLM logs with timestamps
-	kubectl -n litellm-system logs -f --timestamps deploy/litellm
+	$(E2E_KUBECTL) -n litellm-system logs -f --timestamps deploy/litellm
 logs-mocks:    ## tail openai-mock + kubeai-mock logs in parallel (uses stern if present, else kubectl)
 	@if command -v stern >/dev/null 2>&1; then \
-	  stern -n mocks --timestamps . ; \
+	  KUBECONFIG=$(PWD)/.gocache/kube/config stern -n mocks --timestamps . ; \
 	else \
-	  kubectl -n mocks logs -f --timestamps -l app=openai-mock & \
-	  kubectl -n mocks logs -f --timestamps -l app=kubeai-mock ; wait ; \
+	  $(E2E_KUBECTL) -n mocks logs -f --timestamps -l app=openai-mock & \
+	  $(E2E_KUBECTL) -n mocks logs -f --timestamps -l app=kubeai-mock ; wait ; \
 	fi
 
 .PHONY: watch-crs
 watch-crs: ## kubectl get -w across all 7 in-scope kinds in default
-	kubectl -n default get \
+	$(E2E_KUBECTL) -n default get \
 	  litellmconnections,models,modeldiscoveries,mcpservers,mcpserverdiscoveries,a2aagents,teams \
 	  -w
 
+# scripts/dev.sh runs with --network=host, so a port-forward started inside the
+# devtools container still binds on the HOST's localhost as these targets promise.
 .PHONY: pf-litellm pf-openai-mock pf-kubeai-mock
 pf-litellm:     ## port-forward litellm svc to localhost:4000
-	kubectl -n litellm-system port-forward svc/litellm 4000:4000
+	$(E2E_KUBECTL) -n litellm-system port-forward svc/litellm 4000:4000
 pf-openai-mock: ## port-forward openai-mock to localhost:8081
-	kubectl -n mocks port-forward svc/openai-mock 8081:8080
+	$(E2E_KUBECTL) -n mocks port-forward svc/openai-mock 8081:8080
 pf-kubeai-mock: ## port-forward kubeai-mock to localhost:8082
-	kubectl -n mocks port-forward svc/kubeai-mock 8082:8080
+	$(E2E_KUBECTL) -n mocks port-forward svc/kubeai-mock 8082:8080
 
 .PHONY: mock-mode
 mock-mode: ## flip a mock auth mode (usage: make mock-mode INSTANCE=openai-mock MODE=reject-401)
