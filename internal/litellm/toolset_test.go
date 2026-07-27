@@ -3,7 +3,11 @@
 package litellm
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -99,5 +103,104 @@ func TestMCPToolsetEntry_Unmarshal(t *testing.T) {
 	}
 	if len(arr[0].Tools) != 1 || arr[0].Tools[0].ServerID != "probe-srv" {
 		t.Errorf("Tools = %v", arr[0].Tools)
+	}
+}
+
+func TestClient_CreateMCPToolset(t *testing.T) {
+	var gotPath, gotMethod string
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotMethod = r.URL.Path, r.Method
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"toolset_id":"generated-uuid","toolset_name":"ts","tools":[]}`))
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv.URL)
+	out, err := c.CreateMCPToolset(context.Background(), &MCPToolsetRequest{
+		ToolsetName: "ts",
+		Tools:       []MCPToolsetTool{},
+	})
+	if err != nil {
+		t.Fatalf("CreateMCPToolset: %v", err)
+	}
+	if gotMethod != http.MethodPost || gotPath != "/v1/mcp/toolset" {
+		t.Errorf("got %s %s, want POST /v1/mcp/toolset", gotMethod, gotPath)
+	}
+	if out.ToolsetID != "generated-uuid" {
+		t.Errorf("ToolsetID = %q, want generated-uuid", out.ToolsetID)
+	}
+}
+
+// PUT sends the id in the body and hits the COLLECTION path. A path-style
+// update (/v1/mcp/toolset/<id>) is a 405 on LiteLLM 1.93.0.
+func TestClient_UpdateMCPToolset_IDInBodyNotPath(t *testing.T) {
+	var gotPath string
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = w.Write([]byte(`{"toolset_id":"the-id","toolset_name":"ts","tools":[]}`))
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv.URL)
+	if _, err := c.UpdateMCPToolset(context.Background(), &MCPToolsetUpdateRequest{
+		ToolsetID: "the-id",
+		Tools:     []MCPToolsetTool{},
+	}); err != nil {
+		t.Fatalf("UpdateMCPToolset: %v", err)
+	}
+	if gotPath != "/v1/mcp/toolset" {
+		t.Errorf("path = %q, want /v1/mcp/toolset (id goes in the BODY)", gotPath)
+	}
+	if gotBody["toolset_id"] != "the-id" {
+		t.Errorf("body toolset_id = %v, want the-id", gotBody["toolset_id"])
+	}
+}
+
+func TestClient_UpdateMCPToolset_EmptyIDRejected(t *testing.T) {
+	c := newTestClient(t, "http://unused")
+	_, err := c.UpdateMCPToolset(context.Background(), &MCPToolsetUpdateRequest{ToolsetID: ""})
+	if err == nil {
+		t.Fatal("want error on empty toolset_id, got nil")
+	}
+}
+
+func TestClient_DeleteMCPToolset_EscapesID(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.EscapedPath()
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv.URL)
+	if err := c.DeleteMCPToolset(context.Background(), "a/b?c"); err != nil {
+		t.Fatalf("DeleteMCPToolset: %v", err)
+	}
+	if gotPath != "/v1/mcp/toolset/a%2Fb%3Fc" {
+		t.Errorf("path = %q; id must be PathEscaped so it cannot alter the route", gotPath)
+	}
+}
+
+func TestClient_DeleteMCPToolset_EmptyIDRejected(t *testing.T) {
+	c := newTestClient(t, "http://unused")
+	if err := c.DeleteMCPToolset(context.Background(), ""); err == nil {
+		t.Fatal("want error on empty toolset_id (would collapse to the collection route)")
+	}
+}
+
+func TestClient_ListMCPToolsets_EmptyIsNotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv.URL)
+	_, err := c.ListMCPToolsets(context.Background())
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("err = %v, want ErrNotFound on empty array (REL-05)", err)
 	}
 }
