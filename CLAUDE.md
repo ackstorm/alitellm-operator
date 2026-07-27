@@ -797,6 +797,23 @@ CI's Envtest job, which is the reliable signal.
   (per-kind gates were explicitly out of scope); `make e2e-full` against a
   real cluster is the decisive gate, not a local `-race` full-package run.
 
+### ❌ Admin-merging a PR over a red required check
+```
+PR #112 merged with Envtest: FAILURE (metric rename half-applied to
+metrics_scrape_test.go). Post-merge CI never runs on main (PR-only
+invariant), so main stayed silently broken — EVERY subsequent PR failed
+Envtest with TestMetricsExposeS10Set, and a release cut would have died
+at run-tests.
+```
+✅ Fix the check before merging, or land a follow-up IMMEDIATELY. When two
+unrelated PRs fail the SAME test, suspect main, not the PRs — check
+`gh pr view <merged-pr> --json statusCheckRollup` for a red check that was
+merged over.
+WHY IT FAILS: branch protection's required checks only gate the PR; an
+admin merge bypasses them, and the PR-only CI matrix means nothing
+re-validates main after the merge. The breakage surfaces one PR later,
+attributed to the wrong author.
+
 ### ❌ Steady-state early-return that skips the Ready-condition heal
 ```go
 // Step 9 (guardrail, pre-fix):
