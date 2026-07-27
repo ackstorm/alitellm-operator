@@ -190,6 +190,25 @@ type PermissionSpec struct {
 	//
 	// +optional
 	AgentGroups []string `json:"agentGroups,omitempty"`
+
+	// McpToolsets is the list of LiteLLMMCPToolset NAMES this team may use.
+	// The operator resolves each name to its toolset_id UUID via
+	// GET /v1/mcp/toolset before projecting onto
+	// object_permission.mcp_toolsets — LiteLLM matches on the UUID. An
+	// unresolved name requeues the Team (reason=ToolsetNotFound), mirroring
+	// the agents ordering dependency.
+	//
+	// Multiple toolsets are UNIONED by LiteLLM, not last-wins, so listing
+	// several here composes their tool grants. There is no access-group
+	// concept for toolsets in LiteLLM 1.93.0 — the toolset IS the grouping
+	// primitive, and listing several here is the group.
+	//
+	// NO deny-all sentinel: unlike `models` and `agents`, LiteLLM's toolset
+	// check is fail-CLOSED ("None means no grants configured → deny"), so an
+	// empty list correctly grants nothing and is emitted as a plain `[]`.
+	//
+	// +optional
+	McpToolsets []string `json:"mcpToolsets,omitempty"`
 }
 
 // TeamSpec defines the desired state of Team per spec §6.7 (`_FINALv3` shape).

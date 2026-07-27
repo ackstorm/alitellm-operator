@@ -23,21 +23,32 @@ const (
 	agentDenyAllSentinel = "00000000-0000-0000-0000-000000000000"
 )
 
+// missingRefs collects spec.permission entries that name a LiteLLM resource
+// the operator could not resolve to an id. The caller parks + requeues the
+// Team on a non-empty list (ordering dependency with the CRs that create
+// those resources) rather than silently under-granting.
+type missingRefs struct {
+	Agents   []string
+	Toolsets []string
+}
+
 // projectPermission renders a typed spec.permission block into the two
 // LiteLLM team body fields it maps to: the top-level `models` list (merged
 // specific model names + model access-group names) and the nested
 // `object_permission` object (mcp_servers, mcp_access_groups, agents,
-// agent_access_groups).
+// agent_access_groups, mcp_toolsets).
 //
 // agentNameToID resolves human-friendly A2A agent NAMES to the agent_id
 // UUIDs LiteLLM enforces on object_permission.agents (names are silently
-// ignored by LiteLLM). Names absent from the map are returned in
-// missingAgents so the caller can requeue (reason=AgentNotFound) instead of
-// silently dropping agents; the successfully-resolved agents are still
+// ignored by LiteLLM). toolsetNameToID does the same for MCP toolset names →
+// toolset_id UUIDs on object_permission.mcp_toolsets. Names absent from
+// either map are returned in the corresponding missingRefs slice so the
+// caller can requeue (reason=AgentNotFound / ToolsetNotFound) instead of
+// silently dropping the grant; successfully-resolved entries are still
 // projected.
 //
 // ALWAYS-EMIT contract (security-critical — reverses the original omit-empty
-// design). When the block is present the operator OWNS `models` AND all four
+// design). When the block is present the operator OWNS `models` AND all five
 // `object_permission` sub-fields, and emits EVERY one of them
 // UNCONDITIONALLY, never omitted. This is mandatory because LiteLLM's POST
 // /team/update MERGES per-field on the persistent object_permission row (same
@@ -50,18 +61,27 @@ const (
 // as "field absent" → stale-value kept).
 //
 // DENY-BY-DEFAULT contract (security-critical). Emitting `[]` is correct for
-// mcp_servers / mcp_access_groups / agent_access_groups — LiteLLM treats an
-// empty list there as fail-CLOSED (0 resources). But for `models` and
-// object_permission.agents an empty list is fail-OPEN: LiteLLM reads it as "no
-// filter" and the team inherits the full master-key ceiling (verified in prod:
-// a brand-new team with models=[] object_permission=None saw all 427 models
-// and all 7 agents). So when the block is present but the list resolves empty,
-// those two fields project their deny-all sentinel instead of `[]` — a single
-// value no real resource can match. The other three stay `[]`.
+// mcp_servers / mcp_access_groups / agent_access_groups / mcp_toolsets —
+// LiteLLM treats an empty list there as fail-CLOSED (0 resources). But for
+// `models` and object_permission.agents an empty list is fail-OPEN: LiteLLM
+// reads it as "no filter" and the team inherits the full master-key ceiling
+// (verified in prod: a brand-new team with models=[] object_permission=None
+// saw all 427 models and all 7 agents). So when the block is present but the
+// list resolves empty, those two fields project their deny-all sentinel
+// instead of `[]` — a single value no real resource can match. The other four
+// stay `[]`.
+//
+// mcp_toolsets specifically takes NO sentinel, and that asymmetry is
+// load-bearing: LiteLLM's toolset check reads "granted is None or id not in
+// granted → deny", so an empty list already denies everything (verified on
+// 1.93.0 — an ungranted key gets `403 API key does not have access to toolset
+// '<uuid>'`). Adding a sentinel here in the name of consistency would inject a
+// bogus UUID into a filter that is already correct, so do not.
 func projectPermission(
 	perm *litellmv1alpha1.PermissionSpec,
 	agentNameToID map[string]string,
-) (models []string, objectPermission map[string]any, missingAgents []string) {
+	toolsetNameToID map[string]string,
+) (models []string, objectPermission map[string]any, missing missingRefs) {
 	// models = specific model names + model access-group names, merged.
 	// make(…, 0, …) guarantees a non-nil slice so an emptied block serializes
 	// as JSON `[]`, not `null`.
@@ -79,7 +99,7 @@ func projectPermission(
 	for _, name := range perm.Agents {
 		id, ok := agentNameToID[name]
 		if !ok {
-			missingAgents = append(missingAgents, name)
+			missing.Agents = append(missing.Agents, name)
 			continue
 		}
 		resolved = append(resolved, id)
@@ -93,6 +113,19 @@ func projectPermission(
 		resolved = []string{agentDenyAllSentinel}
 	}
 
+	// MCP toolset names → toolset_id UUIDs. NO deny-by-default sentinel: the
+	// LiteLLM toolset check is already fail-CLOSED on an empty list (see the
+	// contract note above), so `[]` is the correct "grant nothing".
+	resolvedToolsets := make([]string, 0, len(perm.McpToolsets))
+	for _, name := range perm.McpToolsets {
+		id, ok := toolsetNameToID[name]
+		if !ok {
+			missing.Toolsets = append(missing.Toolsets, name)
+			continue
+		}
+		resolvedToolsets = append(resolvedToolsets, id)
+	}
+
 	// Every sub-field emitted unconditionally (as [] when empty) — see the
 	// ALWAYS-EMIT contract above.
 	objectPermission = map[string]any{
@@ -100,9 +133,10 @@ func projectPermission(
 		"mcp_access_groups":   emptyIfNil(perm.McpGroups),
 		"agents":              resolved,
 		"agent_access_groups": emptyIfNil(perm.AgentGroups),
+		"mcp_toolsets":        resolvedToolsets, // non-nil; [] is a valid fail-closed clear
 	}
 
-	return models, objectPermission, missingAgents
+	return models, objectPermission, missing
 }
 
 // emptyIfNil coerces a nil slice to a non-nil empty slice so encoding/json

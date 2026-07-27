@@ -31,7 +31,7 @@ func TestProjectPermission_MergesModelsAndGroups(t *testing.T) {
 		Models:      []string{"gpt-4o", "claude-opus"},
 		ModelGroups: []string{"anthropic"},
 	}
-	models, op, missing := projectPermission(perm, nil)
+	models, op, missing := projectPermission(perm, nil, nil)
 	if want := []string{"gpt-4o", "claude-opus", "anthropic"}; !reflect.DeepEqual(models, want) {
 		t.Errorf("models: want %v, got %v", want, models)
 	}
@@ -46,8 +46,8 @@ func TestProjectPermission_MergesModelsAndGroups(t *testing.T) {
 	if got := opStrings(t, op, "agents"); !reflect.DeepEqual(got, []string{agentDenyAllSentinel}) {
 		t.Errorf("agents: want deny-all sentinel [%s], got %v", agentDenyAllSentinel, got)
 	}
-	if len(missing) != 0 {
-		t.Errorf("missingAgents: want none, got %v", missing)
+	if len(missing.Agents) != 0 {
+		t.Errorf("missing.Agents: want none, got %v", missing.Agents)
 	}
 }
 
@@ -56,7 +56,7 @@ func TestProjectPermission_McpAndGroups(t *testing.T) {
 		McpServers: []string{"hindsight"},
 		McpGroups:  []string{"team-a"},
 	}
-	_, op, _ := projectPermission(perm, nil)
+	_, op, _ := projectPermission(perm, nil, nil)
 	if got := opStrings(t, op, "mcp_servers"); !reflect.DeepEqual(got, []string{"hindsight"}) {
 		t.Errorf("mcp_servers: got %v", got)
 	}
@@ -75,9 +75,9 @@ func TestProjectPermission_McpAndGroups(t *testing.T) {
 func TestProjectPermission_AgentsResolvedToUUIDs(t *testing.T) {
 	perm := &litellmv1alpha1.PermissionSpec{Agents: []string{"planner", "coder"}}
 	m := map[string]string{"planner": "uuid-1", "coder": "uuid-2"}
-	_, op, missing := projectPermission(perm, m)
-	if len(missing) != 0 {
-		t.Fatalf("missingAgents: want none, got %v", missing)
+	_, op, missing := projectPermission(perm, m, nil)
+	if len(missing.Agents) != 0 {
+		t.Fatalf("missing.Agents: want none, got %v", missing.Agents)
 	}
 	if got := opStrings(t, op, "agents"); !reflect.DeepEqual(got, []string{"uuid-1", "uuid-2"}) {
 		t.Errorf("agents: want resolved UUIDs, got %v", got)
@@ -87,9 +87,9 @@ func TestProjectPermission_AgentsResolvedToUUIDs(t *testing.T) {
 func TestProjectPermission_UnresolvedAgentReported(t *testing.T) {
 	perm := &litellmv1alpha1.PermissionSpec{Agents: []string{"planner", "ghost"}}
 	m := map[string]string{"planner": "uuid-1"}
-	_, op, missing := projectPermission(perm, m)
-	if !reflect.DeepEqual(missing, []string{"ghost"}) {
-		t.Errorf("missingAgents: want [ghost], got %v", missing)
+	_, op, missing := projectPermission(perm, m, nil)
+	if !reflect.DeepEqual(missing.Agents, []string{"ghost"}) {
+		t.Errorf("missing.Agents: want [ghost], got %v", missing.Agents)
 	}
 	// Resolved agents still projected (caller decides to requeue on missing).
 	if got := opStrings(t, op, "agents"); !reflect.DeepEqual(got, []string{"uuid-1"}) {
@@ -99,7 +99,7 @@ func TestProjectPermission_UnresolvedAgentReported(t *testing.T) {
 
 func TestProjectPermission_AgentGroupsProjectedVerbatim(t *testing.T) {
 	perm := &litellmv1alpha1.PermissionSpec{AgentGroups: []string{"grp-a"}}
-	_, op, _ := projectPermission(perm, nil)
+	_, op, _ := projectPermission(perm, nil, nil)
 	if got := opStrings(t, op, "agent_access_groups"); !reflect.DeepEqual(got, []string{"grp-a"}) {
 		t.Errorf("agent_access_groups: got %v", got)
 	}
@@ -113,9 +113,9 @@ func TestProjectPermission_AgentGroupsProjectedVerbatim(t *testing.T) {
 // fail-closed / no-op in LiteLLM 1.83.10). Nothing may be omitted or `null`.
 func TestProjectPermission_DenyByDefault_EmptyBlock(t *testing.T) {
 	perm := &litellmv1alpha1.PermissionSpec{} // every sublist empty
-	models, op, missing := projectPermission(perm, nil)
-	if len(missing) != 0 {
-		t.Fatalf("missingAgents: want none, got %v", missing)
+	models, op, missing := projectPermission(perm, nil, nil)
+	if len(missing.Agents) != 0 {
+		t.Fatalf("missing.Agents: want none, got %v", missing.Agents)
 	}
 	if !reflect.DeepEqual(models, []string{modelDenyAllSentinel}) {
 		t.Errorf("models: want deny-all sentinel [%s], got %v", modelDenyAllSentinel, models)
@@ -155,7 +155,7 @@ func TestProjectPermission_DenyByDefault_EmptyBlock(t *testing.T) {
 // models via the sentinel.
 func TestProjectPermission_ModelsSentinelWhenUnset(t *testing.T) {
 	perm := &litellmv1alpha1.PermissionSpec{McpServers: []string{"hindsight"}}
-	models, _, _ := projectPermission(perm, nil)
+	models, _, _ := projectPermission(perm, nil, nil)
 	if !reflect.DeepEqual(models, []string{modelDenyAllSentinel}) {
 		t.Errorf("models: want deny-all sentinel [%s], got %v", modelDenyAllSentinel, models)
 	}
@@ -165,7 +165,7 @@ func TestProjectPermission_ModelsSentinelWhenUnset(t *testing.T) {
 // projected verbatim — the sentinel is ONLY for the shrunk-to-empty case.
 func TestProjectPermission_ModelsShrinkNoSentinel(t *testing.T) {
 	perm := &litellmv1alpha1.PermissionSpec{Models: []string{"a"}}
-	models, _, _ := projectPermission(perm, nil)
+	models, _, _ := projectPermission(perm, nil, nil)
 	if !reflect.DeepEqual(models, []string{"a"}) {
 		t.Errorf("models: want [a] (non-empty → no sentinel), got %v", models)
 	}
@@ -177,11 +177,67 @@ func TestProjectPermission_ModelsShrinkNoSentinel(t *testing.T) {
 // the len(perm.Agents)==0 branch; the caller aborts (AgentNotFound) on missing.
 func TestProjectPermission_AllAgentsMissingNoSentinel(t *testing.T) {
 	perm := &litellmv1alpha1.PermissionSpec{Agents: []string{"ghost"}}
-	_, op, missing := projectPermission(perm, map[string]string{})
-	if !reflect.DeepEqual(missing, []string{"ghost"}) {
-		t.Fatalf("missingAgents: want [ghost], got %v", missing)
+	_, op, missing := projectPermission(perm, map[string]string{}, nil)
+	if !reflect.DeepEqual(missing.Agents, []string{"ghost"}) {
+		t.Fatalf("missing.Agents: want [ghost], got %v", missing.Agents)
 	}
 	if got := opStrings(t, op, "agents"); len(got) != 0 {
 		t.Errorf("agents: want empty (missing path, not sentinel), got %v", got)
+	}
+}
+
+// mcp_toolsets is FAIL-CLOSED in LiteLLM (the handler denies when the grant
+// list is None or lacks the id), so it is emitted as [] when empty — it must
+// NOT get a deny-all sentinel the way models/agents do.
+func TestProjectPermission_McpToolsetsEmptyIsPlainEmptyList(t *testing.T) {
+	perm := &litellmv1alpha1.PermissionSpec{Models: []string{"gpt-4"}}
+	_, op, _ := projectPermission(perm, nil, nil)
+	if got := opStrings(t, op, "mcp_toolsets"); len(got) != 0 {
+		t.Errorf("mcp_toolsets = %v, want [] (fail-closed; NO sentinel)", got)
+	}
+}
+
+// Names are resolved to toolset_id UUIDs — LiteLLM matches on the id.
+func TestProjectPermission_McpToolsetsResolvedToUUIDs(t *testing.T) {
+	perm := &litellmv1alpha1.PermissionSpec{
+		Models:      []string{"gpt-4"},
+		McpToolsets: []string{"research-tools"},
+	}
+	toolsetNameToID := map[string]string{"research-tools": "ts-uuid-1"}
+	_, op, missing := projectPermission(perm, nil, toolsetNameToID)
+	if len(missing.Toolsets) != 0 {
+		t.Fatalf("unexpected missing: %v", missing.Toolsets)
+	}
+	if got := opStrings(t, op, "mcp_toolsets"); !reflect.DeepEqual(got, []string{"ts-uuid-1"}) {
+		t.Errorf("mcp_toolsets = %v, want [ts-uuid-1]", got)
+	}
+}
+
+// An unresolved name is reported so the caller can requeue — it must NOT be
+// silently dropped (that would be a silent under-grant) and must NOT be
+// replaced by a sentinel.
+func TestProjectPermission_McpToolsetsMissingReported(t *testing.T) {
+	perm := &litellmv1alpha1.PermissionSpec{McpToolsets: []string{"nope"}}
+	_, op, missing := projectPermission(perm, nil, map[string]string{})
+	if !reflect.DeepEqual(missing.Toolsets, []string{"nope"}) {
+		t.Errorf("missing.Toolsets = %v, want [nope]", missing.Toolsets)
+	}
+	if got := opStrings(t, op, "mcp_toolsets"); len(got) != 0 {
+		t.Errorf("mcp_toolsets = %v, want empty (missing path, never a sentinel)", got)
+	}
+}
+
+// Serialization canary for the new field: it must reach the wire as [] when
+// empty, never null (LiteLLM's per-field merge treats null as "absent" and
+// keeps the stale grant).
+func TestProjectPermission_McpToolsetsSerializesAsEmptyArray(t *testing.T) {
+	perm := &litellmv1alpha1.PermissionSpec{}
+	_, op, _ := projectPermission(perm, nil, nil)
+	raw, err := json.Marshal(op)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(raw), `"mcp_toolsets":[]`) {
+		t.Errorf("marshaled object_permission missing `\"mcp_toolsets\":[]`. got=%s", raw)
 	}
 }

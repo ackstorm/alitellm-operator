@@ -511,16 +511,41 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			}
 		}
 
-		models, objectPermission, missing := projectPermission(perm, agentNameToID)
-		if len(missing) > 0 {
+		// Same shape for MCP toolset names → toolset_id UUIDs.
+		var toolsetNameToID map[string]string
+		if len(perm.McpToolsets) > 0 {
+			toolsets, terr := snap.Client.ListMCPToolsets(ctx)
+			if terr != nil && !errors.Is(terr, litellm.ErrNotFound) {
+				return r.classifyMutationError(ctx, &team, logger, terr, "GET /v1/mcp/toolset")
+			}
+			// ErrNotFound → zero toolsets registered → empty map → all names
+			// missing → ToolsetNotFound requeue below.
+			toolsetNameToID = make(map[string]string, len(toolsets))
+			for _, ts := range toolsets {
+				toolsetNameToID[ts.ToolsetName] = ts.ToolsetID
+			}
+		}
+
+		models, objectPermission, missing := projectPermission(perm, agentNameToID, toolsetNameToID)
+		if len(missing.Agents) > 0 {
 			msg := fmt.Sprintf("spec.permission.agents not yet registered in LiteLLM: %s",
-				strings.Join(missing, ", "))
+				strings.Join(missing.Agents, ", "))
 			if werr := r.writeStatus(ctx, &team, metav1.ConditionFalse, reasonAgentNotFound, msg); werr != nil {
 				logStatusUpdateErr(logger, werr, "reason", reasonAgentNotFound)
 			}
 			metrics.ReconcileTotal.WithLabelValues(teamKind, "success").Inc()
 			// Ordering dependency with LiteLLMA2AAgent CRs — requeue like
 			// SecretNotFound rather than hard-fail.
+			return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
+		}
+		if len(missing.Toolsets) > 0 {
+			msg := fmt.Sprintf("spec.permission.mcpToolsets not yet registered in LiteLLM: %s",
+				strings.Join(missing.Toolsets, ", "))
+			if werr := r.writeStatus(ctx, &team, metav1.ConditionFalse, reasonToolsetNotFound, msg); werr != nil {
+				logStatusUpdateErr(logger, werr, "reason", reasonToolsetNotFound)
+			}
+			metrics.ReconcileTotal.WithLabelValues(teamKind, "success").Inc()
+			// Ordering dependency with LiteLLMMCPToolset CRs — requeue.
 			return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
 		}
 
