@@ -231,7 +231,7 @@ func (r *LiteLLMConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			}
 			metrics.ConnectionReady.WithLabelValues("Absent").Set(1)
 
-			// OBS-03: drop the cr_status_age_seconds label before the CR is gone (T-07-01-01).
+			// OBS-03: drop the alitellm_operator_cr_status_age_seconds label before the CR is gone (T-07-01-01).
 			metrics.CRStatusAgeTracker.Forget("LiteLLMConnection", conn.Name)
 			controllerutil.RemoveFinalizer(&conn, connectionFinalizer)
 			if err := r.Update(ctx, &conn); err != nil {

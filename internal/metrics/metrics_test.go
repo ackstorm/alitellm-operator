@@ -12,27 +12,27 @@ import (
 )
 
 // Phase 4 — _FINALv3 metric surface deltas:
-// - discovery_registered_count → discovery_generated_count (rename)
-// - discovery_failed_total.reason ∈ {ChildCRWriteFailed} (narrowed from
+// - discovery_registered_count → alitellm_operator_discovery_generated_count (rename)
+// - alitellm_operator_discovery_failed_total.reason ∈ {ChildCRWriteFailed} (narrowed from
 // {LiteLLMRejected, LiteLLMUnavailable})
-// - child_cr_writes_total{kind, action, result} (new)
+// - alitellm_operator_child_cr_writes_total{kind, action, result} (new)
 // The tests below are kept in lockstep with metrics.go via these literals.
 
 // TestAllS10MetricNamesAreRegistered — OBS-01: every metric name from spec
 // §10 is registered against controller-runtime's metrics registry by init.
 func TestAllS10MetricNamesAreRegistered(t *testing.T) {
 	want := []string{
-		"reconcile_total",
-		"discovery_refresh_total",
-		"discovery_generated_count",
-		"discovery_failed_total",
-		"drift_corrected_total",
-		"connection_ready",
-		"cr_status_age_seconds",
-		"child_cr_writes_total",
+		"alitellm_operator_reconcile_outcome_total",
+		"alitellm_operator_discovery_refresh_total",
+		"alitellm_operator_discovery_generated_count",
+		"alitellm_operator_discovery_failed_total",
+		"alitellm_operator_drift_corrected_total",
+		"alitellm_operator_connection_ready",
+		"alitellm_operator_cr_status_age_seconds",
+		"alitellm_operator_child_cr_writes_total",
 	}
 
-	// cr_status_age_seconds is emitted by a custom prometheus.Collector
+	// alitellm_operator_cr_status_age_seconds is emitted by a custom prometheus.Collector
 	// whose Collect() yields nothing when the timestamps map is empty.
 	// Pre-touch + Forget so the family is present in Gather output
 	// regardless of test execution order under -shuffle=on.
@@ -63,9 +63,9 @@ func TestAllS10MetricNamesAreRegistered(t *testing.T) {
 // domains ∈ {model, mcp, a2a, team, guardrail} × actions ∈ {create_missing,
 // update_drifted, delete_vanished, duplicate_pruned} = 20 combos.
 func TestDriftCorrectedTotalLabelCombosArePreTouched(t *testing.T) {
-	count := testutil.CollectAndCount(DriftCorrectedTotal, "drift_corrected_total")
+	count := testutil.CollectAndCount(DriftCorrectedTotal, "alitellm_operator_drift_corrected_total")
 	if count < 12 {
-		t.Fatalf("drift_corrected_total: want >= 12 label-combos pre-touched, got %d", count)
+		t.Fatalf("alitellm_operator_drift_corrected_total: want >= 12 label-combos pre-touched, got %d", count)
 	}
 }
 
@@ -73,7 +73,7 @@ func TestDriftCorrectedTotalLabelCombosArePreTouched(t *testing.T) {
 // connection_ready are all present in /metrics output (6 entries: Synced,
 // Connecting, Absent, Unreachable, BadMasterKey, SecretNotFound).
 func TestConnectionReadyReasonsPreTouched(t *testing.T) {
-	count := testutil.CollectAndCount(ConnectionReady, "connection_ready")
+	count := testutil.CollectAndCount(ConnectionReady, "alitellm_operator_connection_ready")
 	if count < 6 {
 		t.Fatalf("connection_ready: want >= 6 reason combos pre-touched, got %d", count)
 	}
@@ -82,7 +82,7 @@ func TestConnectionReadyReasonsPreTouched(t *testing.T) {
 // TestReconcileTotalResultsPreTouched — §10 reconcile_total{result} ∈
 // {success, error, requeued} × all 7 kinds = 21 combos minimum.
 func TestReconcileTotalResultsPreTouched(t *testing.T) {
-	count := testutil.CollectAndCount(ReconcileTotal, "reconcile_total")
+	count := testutil.CollectAndCount(ReconcileTotal, "alitellm_operator_reconcile_outcome_total")
 	if count < 21 {
 		t.Fatalf("reconcile_total: want >= 21 kind×result combos pre-touched, got %d", count)
 	}
@@ -113,7 +113,7 @@ func TestVarsAreNonNil(t *testing.T) {
 // itself registers other "go_*", "process_*", "workqueue_*" series which
 // are not part of §10's contract).
 func TestNoUnexpectedMetricNamesInS10Surface(t *testing.T) {
-	// cr_status_age_seconds is emitted by a custom prometheus.Collector
+	// alitellm_operator_cr_status_age_seconds is emitted by a custom prometheus.Collector
 	// whose Collect() yields nothing when the timestamps map is empty.
 	// Prometheus omits empty families from Gather output, so the metric
 	// family would be missing if this test runs before any test that
@@ -127,11 +127,11 @@ func TestNoUnexpectedMetricNamesInS10Surface(t *testing.T) {
 		t.Fatalf("Registry.Gather: %v", err)
 	}
 	s10 := map[string]bool{
-		"reconcile_total":         true,
-		"discovery_refresh_total": true, "discovery_generated_count": true,
-		"discovery_failed_total": true,
-		"drift_corrected_total":  true, "connection_ready": true,
-		"cr_status_age_seconds": true, "child_cr_writes_total": true,
+		"alitellm_operator_reconcile_outcome_total": true,
+		"alitellm_operator_discovery_refresh_total": true, "alitellm_operator_discovery_generated_count": true,
+		"alitellm_operator_discovery_failed_total": true,
+		"alitellm_operator_drift_corrected_total":  true, "alitellm_operator_connection_ready": true,
+		"alitellm_operator_cr_status_age_seconds": true, "alitellm_operator_child_cr_writes_total": true,
 	}
 	// Sanity: at least all 8 §10 metric names exist in the gathered set.
 	hits := 0
@@ -150,7 +150,7 @@ func TestNoUnexpectedMetricNamesInS10Surface(t *testing.T) {
 }
 
 // TestDiscoveryFailedReasonsRestrictedToChildCRWriteFailed — _FINALv3 D-10:
-// the discovery_failed_total{reason} label enum is narrowed to a single
+// the alitellm_operator_discovery_failed_total{reason} label enum is narrowed to a single
 // value, "ChildCRWriteFailed". Pre-touched combos cross all allKinds × 1
 // reason = 7. Asserts every gathered label tuple carries the new reason
 // literal (no stale LiteLLMRejected / LiteLLMUnavailable values from the
@@ -164,7 +164,7 @@ func TestDiscoveryFailedReasonsRestrictedToChildCRWriteFailed(t *testing.T) {
 	var found bool
 	var metricCount int
 	for _, mf := range mfs {
-		if mf.GetName() != "discovery_failed_total" {
+		if mf.GetName() != "alitellm_operator_discovery_failed_total" {
 			continue
 		}
 		found = true
@@ -173,7 +173,7 @@ func TestDiscoveryFailedReasonsRestrictedToChildCRWriteFailed(t *testing.T) {
 			for _, lp := range m.GetLabel() {
 				if lp.GetName() == "reason" {
 					if got := lp.GetValue(); got != "ChildCRWriteFailed" {
-						t.Errorf("discovery_failed_total{reason=%q}: only %q is allowed in _FINALv3 (D-10)",
+						t.Errorf("alitellm_operator_discovery_failed_total{reason=%q}: only %q is allowed in _FINALv3 (D-10)",
 							got, "ChildCRWriteFailed")
 					}
 				}
@@ -181,24 +181,24 @@ func TestDiscoveryFailedReasonsRestrictedToChildCRWriteFailed(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatal("discovery_failed_total metric family not registered")
+		t.Fatal("alitellm_operator_discovery_failed_total metric family not registered")
 	}
 	// Pre-touched combos: allKinds (7) × discoveryFailedReasons (1) = 7.
 	if metricCount < 7 {
-		t.Errorf("discovery_failed_total: want >= 7 pre-touched combos, got %d", metricCount)
+		t.Errorf("alitellm_operator_discovery_failed_total: want >= 7 pre-touched combos, got %d", metricCount)
 	}
 }
 
 // TestChildCRWritesTotalLabelCombosArePreTouched — Phase 4 OBS-04: the
-// child_cr_writes_total metric family pre-touches every {kind, action,
+// alitellm_operator_child_cr_writes_total metric family pre-touches every {kind, action,
 // result} combination from discoveryParentKinds × childCRWriteActions ×
 // childCRWriteResults at init time. 2 × 3 × 2 = 12 combos.
 //
 // Mirrors TestDriftCorrectedTotalLabelCombosArePreTouched.
 func TestChildCRWritesTotalLabelCombosArePreTouched(t *testing.T) {
-	count := testutil.CollectAndCount(ChildCRWritesTotal, "child_cr_writes_total")
+	count := testutil.CollectAndCount(ChildCRWritesTotal, "alitellm_operator_child_cr_writes_total")
 	if count < 12 {
-		t.Fatalf("child_cr_writes_total: want >= 12 {kind, action, result} combos pre-touched, got %d", count)
+		t.Fatalf("alitellm_operator_child_cr_writes_total: want >= 12 {kind, action, result} combos pre-touched, got %d", count)
 	}
 }
 

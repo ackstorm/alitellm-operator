@@ -1,0 +1,42 @@
+{{- if .Values.metrics.dashboards.enabled }}
+{{- $root := . }}
+{{- range $path, $_ := .Files.Glob "dashboards/*/*.json" }}
+{{- $group := base (dir $path) }}
+{{- $name := base $path | trimSuffix ".json" }}
+{{- $folder := index $root.Values.metrics.dashboards.folders $group | default $root.Values.metrics.dashboards.folder }}
+---
+# Grafana dashboard ConfigMap — opt-in via metrics.dashboards.enabled. One
+# ConfigMap per JSON under the chart's dashboards/<group>/ dir (mirrored from
+# examples/grafana by `make helm-sync`; Helm cannot read files outside the chart).
+# Unlike the ServiceMonitor this needs NO Prometheus Operator CRD — the
+# kube-prometheus-stack Grafana sidecar watches plain ConfigMaps carrying the
+# configured label and reloads them, so the dashboards ship and update with the
+# release instead of being hand-imported and drifting.
+#
+# <group> selects the Grafana folder via metrics.dashboards.folders, keeping the
+# operator's own metrics (which we own) in a different folder from the LiteLLM
+# proxy ones (which we only consume). The sidecar honours the grafana_folder
+# annotation ONLY when it runs with
+# sidecar.dashboards.folderAnnotation=grafana_folder; without it the annotation
+# is inert and everything lands in the sidecar provider's default folder.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alitellm-operator-dashboard-{{ $name }}
+  namespace: {{ $root.Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: {{ $root.Release.Service }}
+    {{ $root.Values.metrics.dashboards.label }}: {{ $root.Values.metrics.dashboards.labelValue | quote }}
+    {{- with $root.Values.metrics.dashboards.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with $folder }}
+  annotations:
+    grafana_folder: {{ . | quote }}
+  {{- end }}
+data:
+  {{ base $path }}: |-
+{{ $root.Files.Get $path | indent 4 }}
+{{- end }}
+{{- end }}

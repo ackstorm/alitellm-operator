@@ -489,7 +489,7 @@ func TestTeamReconciler_AC_T1_BudgetProjection(t *testing.T) {
 
 // TestTeamReconciler_UpdateOnDrift_Params — behavior #3.
 // After Synced, mutate spec.params (non-overlay key) → next reconcile
-// issues exactly one POST /team/update; drift_corrected_total{action=
+// issues exactly one POST /team/update; alitellm_operator_drift_corrected_total{action=
 // update_drifted} increments by 1; teamID unchanged.
 //
 // Phase 10 update (TRL-02/TRL-04): the drift-driver key changed from
@@ -556,7 +556,7 @@ func TestTeamReconciler_UpdateOnDrift_Params(t *testing.T) {
 	after := testutil.ToFloat64(
 		metrics.DriftCorrectedTotal.WithLabelValues("team", "update_drifted"))
 	if delta := after - before; delta < 1 {
-		t.Errorf("drift_corrected_total{action=update_drifted}: want +1, got delta=%v", delta)
+		t.Errorf("alitellm_operator_drift_corrected_total{action=update_drifted}: want +1, got delta=%v", delta)
 	}
 	// Verify the new value made it to the wire.
 	body := mockServer.LastTeamBody("team-update-drift")
@@ -1617,7 +1617,7 @@ func TestTeamReconciler_AC_DC1_HandManagedCoexistence(t *testing.T) {
 // TestTeamReconciler_DriftSuppressedOnFirstCreate — behavior #14
 // (first half) + Phase 5 two-gate suppression carry-forward.
 // On the very first reconcile (ObservedGeneration == 0 →
-// firstReconcile=true), drift_corrected_total{domain=team,
+// firstReconcile=true), alitellm_operator_drift_corrected_total{domain=team,
 // action=create_missing} MUST NOT increment.
 func TestTeamReconciler_DriftSuppressedOnFirstCreate(t *testing.T) {
 	ctx := context.Background()
@@ -1650,7 +1650,7 @@ func TestTeamReconciler_DriftSuppressedOnFirstCreate(t *testing.T) {
 	after := testutil.ToFloat64(
 		metrics.DriftCorrectedTotal.WithLabelValues("team", "create_missing"))
 	if delta := after - before; delta != 0 {
-		t.Errorf("OWN-04 violation: drift_corrected_total{domain=team,action=create_missing} incremented by %v on first reconcile (want 0)",
+		t.Errorf("OWN-04 violation: alitellm_operator_drift_corrected_total{domain=team,action=create_missing} incremented by %v on first reconcile (want 0)",
 			delta)
 	}
 }
@@ -2259,7 +2259,7 @@ func waitForTeamReaped(ctx context.Context, name string, timeout time.Duration) 
 // TestTeamReconciler_AC_T3_DeleteHappyPath — behavior #1.
 // Create Team/foo with budget; wait Ready; delete CR. Within 30s the mock
 // observes POST /team/delete carrying the pinned team_id; the finalizer
-// is removed; the CR is reaped; drift_corrected_total{team,delete_vanished}
+// is removed; the CR is reaped; alitellm_operator_drift_corrected_total{team,delete_vanished}
 // increments by ≥1.
 func TestTeamReconciler_AC_T3_DeleteHappyPath(t *testing.T) {
 	ctx := context.Background()
@@ -2333,7 +2333,7 @@ func TestTeamReconciler_AC_T3_DeleteHappyPath(t *testing.T) {
 	after := testutil.ToFloat64(
 		metrics.DriftCorrectedTotal.WithLabelValues("team", "delete_vanished"))
 	if delta := after - before; delta < 1 {
-		t.Errorf("drift_corrected_total{team,delete_vanished}: want +≥1, got delta=%v", delta)
+		t.Errorf("alitellm_operator_drift_corrected_total{team,delete_vanished}: want +≥1, got delta=%v", delta)
 	}
 }
 
@@ -2345,7 +2345,7 @@ func TestTeamReconciler_AC_T3_DeleteHappyPath(t *testing.T) {
 // — the resolve step's ListTeamsByAlias("orphan-search") returns empty,
 // the operator's status pin is also stale (the team is gone), and the
 // operator MUST proceed to finalizer-remove without issuing POST
-// /team/delete (nothing to delete). drift_corrected_total{delete_vanished}
+// /team/delete (nothing to delete). alitellm_operator_drift_corrected_total{delete_vanished}
 // is NOT incremented (the operator never observed a 200 or 404 on
 // /team/delete — it skipped the call entirely).
 //
@@ -2431,7 +2431,7 @@ func TestTeamReconciler_AC_T3_DeleteEmptyExactMatch(t *testing.T) {
 	mockServer.DeleteTeamOutOfBand(createdTeamID)
 
 	// Snapshot drift counter — we expect either 0 increment (operator
-	// used the stale pin, got 404 = success, drift_corrected_total
+	// used the stale pin, got 404 = success, alitellm_operator_drift_corrected_total
 	// incremented OR the operator skipped the call). Either is fine
 	// for AC-T3; the load-bearing assertion is "finalizer removed; CR
 	// reaped; hand-managed entry preserved".
@@ -2466,7 +2466,7 @@ func TestTeamReconciler_AC_T3_DeleteEmptyExactMatch(t *testing.T) {
 	afterDriftVanished := testutil.ToFloat64(
 		metrics.DriftCorrectedTotal.WithLabelValues("team", "delete_vanished"))
 	if afterDriftVanished < beforeDriftVanished {
-		t.Errorf("drift_corrected_total decremented (impossible): before=%v after=%v",
+		t.Errorf("alitellm_operator_drift_corrected_total decremented (impossible): before=%v after=%v",
 			beforeDriftVanished, afterDriftVanished)
 	}
 }
@@ -2597,7 +2597,7 @@ func TestTeamReconciler_AC_T3_DeleteListReturns404(t *testing.T) {
 // #4. Apply Team/foo, wait Ready. SetMode("not-found-delete-team") so the
 // LIST endpoint returns the entry but DELETE returns 404. Delete the CR.
 // Within 30s the finalizer is removed, the CR is reaped, and
-// drift_corrected_total{team,delete_vanished} increments by ≥1 (404-on-
+// alitellm_operator_drift_corrected_total{team,delete_vanished} increments by ≥1 (404-on-
 // DELETE is treated as SUCCESS per spec §7.5 line 1332).
 func TestTeamReconciler_AC_T3_DeleteReturns404IsSuccess(t *testing.T) {
 	ctx := context.Background()
@@ -2652,7 +2652,7 @@ func TestTeamReconciler_AC_T3_DeleteReturns404IsSuccess(t *testing.T) {
 	after := testutil.ToFloat64(
 		metrics.DriftCorrectedTotal.WithLabelValues("team", "delete_vanished"))
 	if delta := after - before; delta < 1 {
-		t.Errorf("drift_corrected_total{team,delete_vanished}: want +≥1 (404-on-DELETE is success), got delta=%v", delta)
+		t.Errorf("alitellm_operator_drift_corrected_total{team,delete_vanished}: want +≥1 (404-on-DELETE is success), got delta=%v", delta)
 	}
 
 	// The mock recorded the team_id in deleteTeamCalls even though it
@@ -2666,7 +2666,7 @@ func TestTeamReconciler_AC_T3_DeleteReturns404IsSuccess(t *testing.T) {
 // Apply Team/foo, wait Ready. SetMode("401-delete-team"). Delete the CR.
 // Within 30s: the operator issues POST /team/delete with the pinned
 // team_id, receives 401; the finalizer is removed anyway (REL-06
-// anti-storm); the CR is reaped; drift_corrected_total{delete_vanished}
+// anti-storm); the CR is reaped; alitellm_operator_drift_corrected_total{delete_vanished}
 // is NOT incremented (the delete never confirmed).
 //
 // We deliberately do NOT assert on connCache.Snapshot Ready
@@ -2746,12 +2746,12 @@ func TestTeamReconciler_AC_T3_Delete401AntiStorm(t *testing.T) {
 			pinnedTeamID, newCalls)
 	}
 
-	// drift_corrected_total{delete_vanished} MUST NOT have incremented
+	// alitellm_operator_drift_corrected_total{delete_vanished} MUST NOT have incremented
 	// — the 401 path never confirms the delete.
 	after := testutil.ToFloat64(
 		metrics.DriftCorrectedTotal.WithLabelValues("team", "delete_vanished"))
 	if delta := after - before; delta != 0 {
-		t.Errorf("drift_corrected_total{delete_vanished}: want +0 (401 path does NOT count), got delta=%v", delta)
+		t.Errorf("alitellm_operator_drift_corrected_total{delete_vanished}: want +0 (401 path does NOT count), got delta=%v", delta)
 	}
 }
 

@@ -996,7 +996,7 @@ func TestMCPServerDiscoveryReconciler_Adoption(t *testing.T) {
 
 // TestMCPServerDiscoveryReconciler_VanishDetection asserts vanish:
 // generate a child for ToolHive object A; remove A → next reconcile
-// deletes the child; child_cr_writes_total{kind=MCPServerDiscovery,
+// deletes the child; alitellm_operator_child_cr_writes_total{kind=MCPServerDiscovery,
 // action=delete, result=success} increments by 1.
 func TestMCPServerDiscoveryReconciler_VanishDetection(t *testing.T) {
 	ctx := context.Background()
@@ -1773,7 +1773,7 @@ func TestMCPServerDiscoveryReconciler_AC_SEC4_Propagate(t *testing.T) {
 // the source ToolHive object; trigger Discovery's refresh; Discovery
 // deletes the child (kubectl delete equivalent — vanish detection).
 // The CHILD MCPServer reconciler's finalizer issues DELETE /v1/mcp/server
-// and increments drift_corrected_total{domain=mcp,action=delete_vanished}.
+// and increments alitellm_operator_drift_corrected_total{domain=mcp,action=delete_vanished}.
 // MSDisc itself never touches the drift counter (CONTEXT.md L27 — drift
 // counters live on the child controller, NOT on Discovery).
 func TestMCPServerDiscoveryReconciler_AC_DC1_VanishIncrementsOnChild(t *testing.T) {
@@ -1856,21 +1856,21 @@ func TestMCPServerDiscoveryReconciler_AC_DC1_VanishIncrementsOnChild(t *testing.
 		t.Errorf("child MCPServer %q not removed within 45s after upstream ToolHive vanish", dotted)
 	}
 
-	// Assert: drift_corrected_total{domain=mcp,action=delete_vanished}
+	// Assert: alitellm_operator_drift_corrected_total{domain=mcp,action=delete_vanished}
 	// incremented on the CHILD MCPServer controller (NOT on MSDisc).
 	driftAfter := testutil.ToFloat64(
 		metrics.DriftCorrectedTotal.WithLabelValues("mcp", "delete_vanished"))
 	if delta := driftAfter - driftBefore; delta < 1 {
-		t.Errorf("AC-DC1 vanish-on-child: drift_corrected_total{domain=mcp,action=delete_vanished} delta=%v (want >=1 from child finalizer DELETE)",
+		t.Errorf("AC-DC1 vanish-on-child: alitellm_operator_drift_corrected_total{domain=mcp,action=delete_vanished} delta=%v (want >=1 from child finalizer DELETE)",
 			delta)
 	}
 
-	// Assert: child_cr_writes_total{kind=MCPServerDiscovery,action=delete,result=success}
+	// Assert: alitellm_operator_child_cr_writes_total{kind=MCPServerDiscovery,action=delete,result=success}
 	// incremented on MSDisc.
 	childWritesAfter := testutil.ToFloat64(
 		metrics.ChildCRWritesTotal.WithLabelValues("LiteLLMMCPServerDiscovery", "delete", "success"))
 	if delta := childWritesAfter - childWritesBefore; delta < 1 {
-		t.Errorf("AC-DC1 vanish-on-child: child_cr_writes_total{kind=MCPServerDiscovery,action=delete,result=success} delta=%v (want >=1 from MSDisc vanish-delete)",
+		t.Errorf("AC-DC1 vanish-on-child: alitellm_operator_child_cr_writes_total{kind=MCPServerDiscovery,action=delete,result=success} delta=%v (want >=1 from MSDisc vanish-delete)",
 			delta)
 	}
 }

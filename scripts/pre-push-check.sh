@@ -11,7 +11,7 @@
 #   6. origin remote matches expected
 #  13. govulncheck   (HIGH advisories vs ack-list — wrapper-enforced 1:1)
 #  14. go mod tidy   (go.mod / go.sum drift blocks push)
-#  14b. helm-sync     (config/crd → deploy/helm/.../crd-sources drift blocks push)
+#  14b. helm-sync     (config/crd + examples/grafana → deploy/helm/... drift blocks push)
 #  15. license-header SPDX gate (every in-scope *.go starts with SPDX line)
 #  16. golangci-lint full sweep (full lint runs here; no pre-commit stage)
 #  17. make test-unit (pure-logic regression — ~5-10s warm)
@@ -290,7 +290,7 @@ else
 fi
 
 # --- 14b. chart / CRD drift (helm-sync) ---
-hdr "14b. helm-sync drift (config/crd → deploy/helm/.../crd-sources)"
+hdr "14b. helm-sync drift (config/crd + examples/grafana → deploy/helm/...)"
 # `make helm-sync` regenerates CRDs (controller-gen → config/crd/bases),
 # rebuilds dist/install.yaml, copies CRDs into the chart's crd-sources/,
 # and re-renders templates/install.yaml. Any divergence means a PR landed
@@ -303,8 +303,9 @@ hdr "14b. helm-sync drift (config/crd → deploy/helm/.../crd-sources)"
 # `controller:latest` (build-installer dep), so it is included in the
 # snapshot/restore set.
 HELM_SNAP=$(mktemp -d)
-mkdir -p "$HELM_SNAP/crd-sources" "$HELM_SNAP/templates" "$HELM_SNAP/config-manager"
+mkdir -p "$HELM_SNAP/crd-sources" "$HELM_SNAP/templates" "$HELM_SNAP/config-manager" "$HELM_SNAP/dashboards"
 cp -a deploy/helm/alitellm-operator/crd-sources/.        "$HELM_SNAP/crd-sources/"      2>/dev/null || true
+cp -a deploy/helm/alitellm-operator/dashboards/.         "$HELM_SNAP/dashboards/"       2>/dev/null || true
 cp    deploy/helm/alitellm-operator/templates/install.yaml "$HELM_SNAP/templates/install.yaml" 2>/dev/null || true
 cp    config/manager/kustomization.yaml                  "$HELM_SNAP/config-manager/kustomization.yaml" 2>/dev/null || true
 if ./scripts/dev.sh make helm-sync >/tmp/helm-sync.txt 2>&1; then
@@ -313,15 +314,18 @@ if ./scripts/dev.sh make helm-sync >/tmp/helm-sync.txt 2>&1; then
   # diffing the chart — the kustomization edit is a side effect, not
   # drift we care about.
   cp "$HELM_SNAP/config-manager/kustomization.yaml" config/manager/kustomization.yaml
-  if git diff --quiet -- deploy/helm/alitellm-operator/crd-sources deploy/helm/alitellm-operator/templates/install.yaml 2>/dev/null; then
-    ok "chart crd-sources + templates/install.yaml in sync"
+  if git diff --quiet -- deploy/helm/alitellm-operator/crd-sources deploy/helm/alitellm-operator/dashboards deploy/helm/alitellm-operator/templates/install.yaml 2>/dev/null; then
+    ok "chart crd-sources + dashboards + templates/install.yaml in sync"
   else
     fail "make helm-sync produced uncommitted drift — run 'make helm-sync' and commit the result"
-    git --no-pager diff --stat -- deploy/helm/alitellm-operator/crd-sources deploy/helm/alitellm-operator/templates/install.yaml | head -20
+    git --no-pager diff --stat -- deploy/helm/alitellm-operator/crd-sources deploy/helm/alitellm-operator/dashboards deploy/helm/alitellm-operator/templates/install.yaml | head -20
     # Restore so pre-push does not mutate the working tree.
     rm -rf deploy/helm/alitellm-operator/crd-sources
     mkdir -p deploy/helm/alitellm-operator/crd-sources
     cp -a "$HELM_SNAP/crd-sources/." deploy/helm/alitellm-operator/crd-sources/
+    rm -rf deploy/helm/alitellm-operator/dashboards
+    mkdir -p deploy/helm/alitellm-operator/dashboards
+    cp -a "$HELM_SNAP/dashboards/." deploy/helm/alitellm-operator/dashboards/ 2>/dev/null || true
     [[ -f "$HELM_SNAP/templates/install.yaml" ]] && cp "$HELM_SNAP/templates/install.yaml" deploy/helm/alitellm-operator/templates/install.yaml
   fi
 else

@@ -45,13 +45,13 @@ type CRStatusAgeCollector struct {
 }
 
 // NewCRStatusAgeTracker constructs a zero-entry CRStatusAgeCollector and
-// initialises the cr_status_age_seconds descriptor.
+// initialises the alitellm_operator_cr_status_age_seconds descriptor.
 func NewCRStatusAgeTracker() *CRStatusAgeCollector {
 	return &CRStatusAgeCollector{
 		timestamps: make(map[crStatusAgeKey]time.Time),
 		maxEntries: crStatusAgeDefaultMaxEntries,
 		desc: prometheus.NewDesc(
-			"cr_status_age_seconds",
+			"alitellm_operator_cr_status_age_seconds",
 			"Wall-clock age of each CR's most recent successful status write (spec §10).",
 			[]string{"kind", "name"},
 			nil,
@@ -99,7 +99,7 @@ func (t *CRStatusAgeCollector) Forget(kind, name string) {
 }
 
 // Describe implements prometheus.Collector. Emits the single descriptor
-// for cr_status_age_seconds.
+// for alitellm_operator_cr_status_age_seconds.
 func (t *CRStatusAgeCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- t.desc
 }

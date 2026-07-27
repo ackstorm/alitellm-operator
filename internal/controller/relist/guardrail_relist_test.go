@@ -130,7 +130,7 @@ func ensureLiteLLMConnectionDefault(t *testing.T, ctx context.Context) {
 // TestGuardRail_SafetyRelist_CreateMissing locks the §7.6 safety-relist
 // drift recovery: an out-of-band-deleted guardrail (mock row gone +
 // status.guardrailID cleared) is re-created by the background relist
-// runnable, bumping drift_corrected_total{guardrail,create_missing}.
+// runnable, bumping alitellm_operator_drift_corrected_total{guardrail,create_missing}.
 //
 // Runs in this isolated package/process, so the relist over a single
 // guardrail CR recovers in ~2-3s — no shared-apiserver contention to slip

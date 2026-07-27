@@ -371,7 +371,7 @@ func TestA2AAgentReconciler_NoCallOnUnchangedSpec(t *testing.T) {
 
 // TestA2AAgentReconciler_DeleteViaFinalizer — kubectl delete A2AAgent →
 // mock records exactly 1 DELETE /v1/agents/{agent_id} with the pinned
-// agentID; drift_corrected_total{domain=a2a, action=delete_vanished}
+// agentID; alitellm_operator_drift_corrected_total{domain=a2a, action=delete_vanished}
 // increments by 1.
 func TestA2AAgentReconciler_DeleteViaFinalizer(t *testing.T) {
 	ctx := context.Background()
@@ -432,7 +432,7 @@ func TestA2AAgentReconciler_DeleteViaFinalizer(t *testing.T) {
 	after := testutil.ToFloat64(
 		metrics.DriftCorrectedTotal.WithLabelValues("a2a", "delete_vanished"))
 	if after-before < 1 {
-		t.Errorf("drift_corrected_total{domain=a2a,action=delete_vanished}: want +1, got delta=%v", after-before)
+		t.Errorf("alitellm_operator_drift_corrected_total{domain=a2a,action=delete_vanished}: want +1, got delta=%v", after-before)
 	}
 }
 
@@ -1372,7 +1372,7 @@ func TestA2AAgentReconciler_AC_DC1_HandManagedUntouched(t *testing.T) {
 
 // TestA2AAgentReconciler_DriftSuppressedOnFirstCreate — Phase 5 plan
 // 05-05. OWN-04: on the very first reconcile (ObservedGeneration == 0),
-// drift_corrected_total{domain=a2a,action=create_missing} MUST NOT
+// alitellm_operator_drift_corrected_total{domain=a2a,action=create_missing} MUST NOT
 // increment.
 func TestA2AAgentReconciler_DriftSuppressedOnFirstCreate(t *testing.T) {
 	ctx := context.Background()
@@ -1401,13 +1401,13 @@ func TestA2AAgentReconciler_DriftSuppressedOnFirstCreate(t *testing.T) {
 	after := testutil.ToFloat64(
 		metrics.DriftCorrectedTotal.WithLabelValues("a2a", "create_missing"))
 	if delta := after - before; delta != 0 {
-		t.Errorf("OWN-04 violation: drift_corrected_total{domain=a2a,action=create_missing} incremented by %v on first reconcile (want 0)", delta)
+		t.Errorf("OWN-04 violation: alitellm_operator_drift_corrected_total{domain=a2a,action=create_missing} incremented by %v on first reconcile (want 0)", delta)
 	}
 }
 
 // TestA2AAgentReconciler_DriftIncrementOnUpdate — Phase 5.
 // After a successful first reconcile, mutate spec.endpoint → next
-// reconcile issues a PUT and drift_corrected_total{domain=a2a,
+// reconcile issues a PUT and alitellm_operator_drift_corrected_total{domain=a2a,
 // action=update_drifted} increments.
 func TestA2AAgentReconciler_DriftIncrementOnUpdate(t *testing.T) {
 	ctx := context.Background()
@@ -1449,13 +1449,13 @@ func TestA2AAgentReconciler_DriftIncrementOnUpdate(t *testing.T) {
 	after := testutil.ToFloat64(
 		metrics.DriftCorrectedTotal.WithLabelValues("a2a", "update_drifted"))
 	if delta := after - before; delta < 1 {
-		t.Errorf("drift_corrected_total{domain=a2a,action=update_drifted}: want >=1, got delta=%v", delta)
+		t.Errorf("alitellm_operator_drift_corrected_total{domain=a2a,action=update_drifted}: want >=1, got delta=%v", delta)
 	}
 }
 
 // TestA2AAgentReconciler_DriftIncrementOnFinalizerDelete — Phase 5 plan
 // 05-05. kubectl delete A2AAgent → finalizer issues DELETE /v1/agents/<id>;
-// drift_corrected_total{domain=a2a,action=delete_vanished} increments.
+// alitellm_operator_drift_corrected_total{domain=a2a,action=delete_vanished} increments.
 func TestA2AAgentReconciler_DriftIncrementOnFinalizerDelete(t *testing.T) {
 	ctx := context.Background()
 	resetMockA2A()
@@ -1495,7 +1495,7 @@ func TestA2AAgentReconciler_DriftIncrementOnFinalizerDelete(t *testing.T) {
 	after := testutil.ToFloat64(
 		metrics.DriftCorrectedTotal.WithLabelValues("a2a", "delete_vanished"))
 	if delta := after - before; delta < 1 {
-		t.Errorf("drift_corrected_total{domain=a2a,action=delete_vanished}: want >=1, got delta=%v", delta)
+		t.Errorf("alitellm_operator_drift_corrected_total{domain=a2a,action=delete_vanished}: want >=1, got delta=%v", delta)
 	}
 }
 

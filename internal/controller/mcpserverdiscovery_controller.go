@@ -358,7 +358,7 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 			}
 			// All children drained. MSDisc finalizer issues NO LiteLLM
 			// call — just remove the finalizer.
-			// OBS-03: drop the cr_status_age_seconds label before the CR is gone (T-07-01-01).
+			// OBS-03: drop the alitellm_operator_cr_status_age_seconds label before the CR is gone (T-07-01-01).
 			metrics.CRStatusAgeTracker.Forget(mcpServerDiscoveryKind, md.Name)
 			// FIX3.txt LOW-3: drop drain-log throttle state.
 			r.forgetCascadeDrain(md.Name)

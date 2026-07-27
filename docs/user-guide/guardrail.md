@@ -203,7 +203,7 @@ the current sibling count.
   in production, 100ms in envtests) periodically re-enqueues every CR.
   The reconciler's Step 8.6 existence probe detects rows that vanished
   in LiteLLM and falls through to CREATE, incrementing
-  `drift_corrected_total{domain=guardrail,action=create_missing}`.
+  `alitellm_operator_drift_corrected_total{domain=guardrail,action=create_missing}`.
 - **Config-loaded rows**: if a guardrail with the same `guardrailName`
   was loaded from LiteLLM's config YAML, the operator REFUSES to
   mutate it (`ConflictsWithConfigGuardrail`). Either rename the CR's

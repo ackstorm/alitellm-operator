@@ -160,7 +160,7 @@ Per-reconcile SHA-256 hash of the rendered post-substitution body
   1.83.10).
 - Row vanished in LiteLLM (out-of-band DELETE) → `POST /v1/mcp/server`,
   re-pin `serverID`, increment
-  `drift_corrected_total{domain=mcpserver,action=create_missing}`.
+  `alitellm_operator_drift_corrected_total{domain=mcpserver,action=create_missing}`.
 
 The vanish probe uses the shared LIST cache (`CachedListMCPServers`)
 to coalesce probes across sibling CRs — see

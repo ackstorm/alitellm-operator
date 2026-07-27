@@ -730,7 +730,7 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		// match what the post-restart alias lookup will re-adopt.
 		newTeamID = team.Name
 		// Two-gate first-reconcile suppression:
-		// drift_corrected_total{action=create_missing} only increments
+		// alitellm_operator_drift_corrected_total{action=create_missing} only increments
 		// when !firstReconcile AND ObservedGeneration > 0 (the latter
 		// condition is structurally redundant under the former, but is
 		// retained verbatim from the Phase 5 pattern as defense in
@@ -809,12 +809,12 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 // - ListTeamsByAlias("default") → empty: CREATE arm (POST /team/new).
 // - ListTeamsByAlias("default") → non-empty: UPDATE arm (POST /team/update)
 // with the smallest-team_id (spec §7.1 dedup) and the empty body.
-// - drift_corrected_total{action=create_missing} is NOT incremented on
+// - alitellm_operator_drift_corrected_total{action=create_missing} is NOT incremented on
 // the very FIRST synthetic reconcile (the implicit default is
 // bootstrapping, not correcting drift — same spirit as OWN-04
 // first-reconcile suppression). Subsequent CREATE arms (after an
 // out-of-band delete in LiteLLM) DO increment the counter.
-// - drift_corrected_total{action=update_drifted} increments only if the
+// - alitellm_operator_drift_corrected_total{action=update_drifted} increments only if the
 // UPDATE arm fires AND the rendered hash differs from the cached
 // implicitDefaultHash (i.e. someone mutated the team out-of-band).
 func (r *TeamReconciler) reconcileImplicitDefault(ctx context.Context, logger logr.Logger) (ctrl.Result, error) {
@@ -876,7 +876,7 @@ func (r *TeamReconciler) reconcileImplicitDefault(ctx context.Context, logger lo
 
 	// Track whether this is the very first time the implicit reconcile
 	// runs (no cached hash → first call since process start). Used to
-	// suppress drift_corrected_total{action=create_missing} on the
+	// suppress alitellm_operator_drift_corrected_total{action=create_missing} on the
 	// initial bootstrap (mirrors the per-CR OWN-04 first-reconcile spirit).
 	firstBootstrap := cachedHash == "" && cachedTeamID == ""
 
@@ -922,7 +922,7 @@ func (r *TeamReconciler) reconcileImplicitDefault(ctx context.Context, logger lo
 			return r.classifyMutationError(ctx, nil, logger, uerr, "POST /team/update (implicit default)")
 		}
 		newTeamID = existing.TeamID
-		// drift_corrected_total{action=update_drifted} fires only when
+		// alitellm_operator_drift_corrected_total{action=update_drifted} fires only when
 		// the rendered hash differs from the cached one (drift detected).
 		// On the very first bootstrap with a pre-existing LiteLLM entry,
 		// firstBootstrap=true → no increment (same spirit as OWN-04).
@@ -1091,13 +1091,13 @@ func (r *TeamReconciler) reconcileDeletion(ctx context.Context, team *litellmv1a
 		// (the team is already absent). Then POST /team/delete and
 		// classify the response per spec §7.5 + §7.7:
 		//
-		// - 200/2xx → success; increment drift_corrected_total{
+		// - 200/2xx → success; increment alitellm_operator_drift_corrected_total{
 		// team,delete_vanished} and proceed to
 		// RemoveFinalizer.
 		// - 404 on POST → success per spec §7.5 line 1332 ("a 404 on a
 		// delete is treated as success: the LiteLLM
 		// resource is considered cleaned up"). Same
-		// drift_corrected_total increment + finalizer
+		// alitellm_operator_drift_corrected_total increment + finalizer
 		// removal.
 		// - 4xx non-401 → LiteLLMRejected status write; finalizer is
 		// NOT removed (CR stays in Terminating). Next
@@ -1231,7 +1231,7 @@ func (r *TeamReconciler) reconcileDeletion(ctx context.Context, team *litellmv1a
 	}
 
 	// Remove the finalizer + Update.
-	// OBS-03: drop the cr_status_age_seconds label before the CR is gone (T-07-01-01).
+	// OBS-03: drop the alitellm_operator_cr_status_age_seconds label before the CR is gone (T-07-01-01).
 	metrics.CRStatusAgeTracker.Forget(teamKind, team.Name)
 	// Issue #23: idempotent Forget — clears DeletionBlocked gauge
 	// whenever the finalizer actually leaves.

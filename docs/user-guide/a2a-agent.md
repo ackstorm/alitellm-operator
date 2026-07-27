@@ -109,7 +109,7 @@ Per-reconcile SHA-256 hash over the rendered merged body (params +
 agentCard + overlays). On mismatch the reconciler issues
 `PUT /v1/agents/<agentID>` (wholesale-replace per LiteLLM 1.83.10).
 Vanish-probe path: row missing → `POST /v1/agents`, re-pin `agentID`,
-increment `drift_corrected_total{domain=a2aagent,action=create_missing}`.
+increment `alitellm_operator_drift_corrected_total{domain=a2aagent,action=create_missing}`.
 
 ## Status: what to read
 

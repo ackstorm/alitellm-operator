@@ -82,10 +82,10 @@ func TestCRStatusAgeTracker_Collect_EmitsSamples(t *testing.T) {
 
 	mfs := gatherFromTracker(t, tracker)
 	if len(mfs) == 0 {
-		t.Fatal("expected cr_status_age_seconds metric family; got none")
+		t.Fatal("expected alitellm_operator_cr_status_age_seconds metric family; got none")
 	}
 	mf := mfs[0]
-	if mf.GetName() != "cr_status_age_seconds" { //nolint:goconst // Prometheus metric name literal asserted twice in same test scope; const would only add indirection
+	if mf.GetName() != "alitellm_operator_cr_status_age_seconds" { //nolint:goconst // Prometheus metric name literal asserted twice in same test scope; const would only add indirection
 		t.Fatalf("unexpected metric family name %q", mf.GetName())
 	}
 	if len(mf.GetMetric()) != 1 {
@@ -113,8 +113,8 @@ func TestCRStatusAgeTracker_Forget_DropsFromScrape(t *testing.T) {
 
 	mfs := gatherFromTracker(t, tracker)
 	for _, mf := range mfs {
-		if mf.GetName() == "cr_status_age_seconds" && len(mf.GetMetric()) > 0 {
-			t.Fatal("expected no cr_status_age_seconds samples after Forget; got some")
+		if mf.GetName() == "alitellm_operator_cr_status_age_seconds" && len(mf.GetMetric()) > 0 {
+			t.Fatal("expected no alitellm_operator_cr_status_age_seconds samples after Forget; got some")
 		}
 	}
 }
@@ -140,8 +140,8 @@ func TestCRStatusAgeTracker_NoLeak_1000Cycles(t *testing.T) {
 
 	mfs := gatherFromTracker(t, tracker)
 	for _, mf := range mfs {
-		if mf.GetName() == "cr_status_age_seconds" && len(mf.GetMetric()) > 0 {
-			t.Errorf("expected 0 cr_status_age_seconds samples after all Forgets; got %d", len(mf.GetMetric()))
+		if mf.GetName() == "alitellm_operator_cr_status_age_seconds" && len(mf.GetMetric()) > 0 {
+			t.Errorf("expected 0 alitellm_operator_cr_status_age_seconds samples after all Forgets; got %d", len(mf.GetMetric()))
 		}
 	}
 }
@@ -178,7 +178,7 @@ func TestCRStatusAgeTracker_DescribeReturnsDesc(t *testing.T) {
 		t.Fatal("Describe sent nil *prometheus.Desc")
 	}
 	s := desc.String()
-	if !strings.Contains(s, "cr_status_age_seconds") {
+	if !strings.Contains(s, "alitellm_operator_cr_status_age_seconds") {
 		t.Errorf("Desc string %q does not contain metric name", s)
 	}
 }
@@ -192,7 +192,7 @@ func TestCRStatusAgeTracker_RegistrationInGlobalRegistry(t *testing.T) {
 	}
 	// Calling RecordSuccess on the global tracker must not panic.
 	CRStatusAgeTracker.RecordSuccess("Test", "smoke")
-	// The global registry should expose cr_status_age_seconds after RecordSuccess.
+	// The global registry should expose alitellm_operator_cr_status_age_seconds after RecordSuccess.
 	// We do not gather from ctrlmetrics.Registry here to avoid test-suite
 	// import cycles — the nil-check above is the structural smoke.
 }

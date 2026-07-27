@@ -21,7 +21,7 @@ import (
 // metrics server, bound in suite_test.go via MetricsAddr).
 // 2. Parse the scrape (Prometheus text exposition format).
 // 3. Assert each of the 8 §10 metric names is present.
-// 4. Assert drift_corrected_total has ≥12 enumerated label combos
+// 4. Assert alitellm_operator_drift_corrected_total has ≥12 enumerated label combos
 // (4 domains × 3 actions).
 // 5. Assert connection_ready has ≥6 reason combos.
 func TestMetricsExposeS10Set(t *testing.T) {
@@ -59,14 +59,14 @@ func TestMetricsExposeS10Set(t *testing.T) {
 
 	// All 8 §10 metric names must be present in the scrape.
 	wantNames := []string{
-		"drift_corrected_total",
+		"alitellm_operator_drift_corrected_total",
 		"reconcile_total",
-		"discovery_refresh_total",
-		"discovery_generated_count",
-		"discovery_failed_total",
+		"alitellm_operator_discovery_refresh_total",
+		"alitellm_operator_discovery_generated_count",
+		"alitellm_operator_discovery_failed_total",
 		"connection_ready",
-		"cr_status_age_seconds",
-		"child_cr_writes_total",
+		"alitellm_operator_cr_status_age_seconds",
+		"alitellm_operator_child_cr_writes_total",
 	}
 	for _, name := range wantNames {
 		// Look for "# HELP <name>" — Prometheus emits a HELP line per
@@ -79,7 +79,7 @@ func TestMetricsExposeS10Set(t *testing.T) {
 		}
 	}
 
-	// drift_corrected_total: the full enumeration is now 5 domains ×
+	// alitellm_operator_drift_corrected_total: the full enumeration is now 5 domains ×
 	// 4 actions (incl. duplicate_pruned) = 20 combos. This loop spot-checks
 	// the original 12-combo subset (4 domains × 3 actions); the guardrail
 	// domain and duplicate_pruned action are covered by the pre-touch test.
@@ -88,11 +88,11 @@ func TestMetricsExposeS10Set(t *testing.T) {
 	for _, d := range driftDomains {
 		for _, a := range driftActions {
 			// Prometheus text format renders the labelset as e.g.:
-			// drift_corrected_total{action="create_missing",domain="model"} 0
+			// alitellm_operator_drift_corrected_total{action="create_missing",domain="model"} 0
 			// Label order is alphabetical (action before domain).
-			want := `drift_corrected_total{action="` + a + `",domain="` + d + `"}`
+			want := `alitellm_operator_drift_corrected_total{action="` + a + `",domain="` + d + `"}`
 			if !strings.Contains(scrape, want) {
-				t.Errorf("drift_corrected_total label combo missing: %s", want)
+				t.Errorf("alitellm_operator_drift_corrected_total label combo missing: %s", want)
 			}
 		}
 	}

@@ -354,7 +354,7 @@ func (r *GuardRailReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// out-of-band DELETE (UI / curl) goes undetected — by-name discovery
 	// would surface a SIBLING in an LB pool, masking the missing row.
 	// On not-found, clear persistedID locally so the CREATE branch fires
-	// below and drift_corrected_total{action=create_missing} increments.
+	// below and alitellm_operator_drift_corrected_total{action=create_missing} increments.
 	//
 	// Skipped on first reconcile (Hash == "") so initial bootstrap pays no
 	// probe cost — CREATE fires anyway because GuardrailID is empty.
@@ -779,7 +779,7 @@ func (r *GuardRailReconciler) SetupWithManager(mgr ctrl.Manager, safetyRelistCh 
 // Enqueuing them drives guardrail out-of-band DELETE recovery: the
 // reconciler's existence probe (Step 8.6) detects rows that vanished in
 // LiteLLM and falls through to CREATE, incrementing
-// drift_corrected_total{domain=guardrail,action=create_missing}.
+// alitellm_operator_drift_corrected_total{domain=guardrail,action=create_missing}.
 func ListGuardRailRequests(ctx context.Context, c client.Client, namespace string) ([]reconcile.Request, error) {
 	var list litellmv1alpha1.LiteLLMGuardRailList
 	if err := c.List(ctx, &list, client.InNamespace(namespace)); err != nil {

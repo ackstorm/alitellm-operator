@@ -142,7 +142,7 @@ func (m *MockServer) LastGuardrailBody(name string) map[string]any {
 // the LiteLLM Admin UI or curl). Used by the safety-re-list envtest to
 // verify the operator's existence probe detects the missing row and
 // fires a CREATE on the next reconcile + bumps the
-// drift_corrected_total{action=create_missing} counter.
+// alitellm_operator_drift_corrected_total{action=create_missing} counter.
 func (m *MockServer) DeleteGuardrailOutOfBand(guardrailID string) {
 	gs := m.ensureGuardrailState()
 	gs.mu.Lock()

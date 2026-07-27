@@ -331,7 +331,7 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 				}
 			}
 
-			// OBS-03: drop the cr_status_age_seconds label before the CR is gone
+			// OBS-03: drop the alitellm_operator_cr_status_age_seconds label before the CR is gone
 			// so /metrics cardinality never grows monotonically (T-07-01-01).
 			metrics.CRStatusAgeTracker.Forget(modelKind, model.Name)
 			// Drop recreate-churn history for the departing CR.
@@ -660,7 +660,7 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	// OWN-04 first-reconcile sentinel: when observedGeneration == 0 OR
 	// lastRendered.hash == "", this is the first reconcile for the CR. Per
 	// OWN-04, first-reconcile name-collision with a pre-existing LiteLLM entry
-	// is silently overwritten — NO drift_corrected_total increment, NO Event,
+	// is silently overwritten — NO alitellm_operator_drift_corrected_total increment, NO Event,
 	// NO Warning. The sentinel suppresses both create_missing and update_drifted
 	// increments on this path.
 	firstReconcile := model.Status.ObservedGeneration == 0 || model.Status.LastRendered.Hash == ""
@@ -679,7 +679,7 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		// for this LiteLLMModel name, adopt its id and skip the POST. OWN-04 silent-
 		// overwrite semantics already permit name collisions on first
 		// reconcile, so adoption is consistent and does NOT increment
-		// drift_corrected_total.
+		// alitellm_operator_drift_corrected_total.
 		//
 		// Recreate circuit breaker: a recreate (not first reconcile) means the
 		// existence probe cleared a populated ModelID. If this repeats faster
@@ -1185,7 +1185,7 @@ func setDiff(a, b []string) []string {
 // drives the §7.6 safety re-list: the Model reconciler re-runs the full
 // hash-compare + LiteLLM existence check (D-03 existence-only scope),
 // recovering from out-of-band DELETEs the event-driven watch would miss
-// (drift_corrected_total{action=create_missing}).
+// (alitellm_operator_drift_corrected_total{action=create_missing}).
 func ListModelRequests(ctx context.Context, c client.Client, namespace string) ([]reconcile.Request, error) {
 	var modelList litellmv1alpha1.LiteLLMModelList
 	if err := c.List(ctx, &modelList, client.InNamespace(namespace)); err != nil {

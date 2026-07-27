@@ -994,7 +994,7 @@ rows over 9 days** and `ackstorm.default` **7186 rows in 5h** (the latter was a
 *router*-model storm, separately fixed in v0.7.10 by skipping router models in
 Step 7b). The fix is order-independent set-membership (Fix A) plus a best-effort
 prune of the extras keeping the tracked id (Fix B, metric
-`drift_corrected_total{domain=model,action=duplicate_pruned}`). Router models
+`alitellm_operator_drift_corrected_total{domain=model,action=duplicate_pruned}`). Router models
 (`litellm_params.model` starts `auto_router/`) remain skipped — never pruned or
 probed. Operational check (should stay empty):
 ```sql

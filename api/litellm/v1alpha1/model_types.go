@@ -251,7 +251,7 @@ type LastRenderedStatus struct {
 	// At is the timestamp of the last SUCCESSFUL render (NOT every reconcile
 	// attempt — transient failures do not update this field). Reconcile
 	// attempt frequency is observable via controller-runtime workqueue metrics
-	// and cr_status_age_seconds (§10 / OBS-03).
+	// and alitellm_operator_cr_status_age_seconds (§10 / OBS-03).
 	//
 	// +optional
 	At *metav1.Time `json:"at,omitempty"`

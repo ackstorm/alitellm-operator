@@ -32,7 +32,9 @@ func NewDeletionBlockedTracker() *DeletionBlockedTracker {
 		desc: prometheus.NewDesc(
 			"alitellm_operator_deletion_blocked",
 			"1 per CR currently in Terminating because deletionPolicy=Delete and LiteLLM ack is missing.",
-			[]string{"kind", "namespace", "name"},
+			// cr_namespace, NOT namespace — a metric label colliding with the target
+			// label reaches the TSDB renamed to exported_namespace.
+			[]string{"kind", "cr_namespace", "name"},
 			nil,
 		),
 	}
