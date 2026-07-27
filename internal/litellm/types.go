@@ -232,6 +232,73 @@ type MCPServerListResponse struct {
 	Data []MCPServerEntry `json:"data"`
 }
 
+// ── MCP Toolset wire types (LiteLLM 1.93.0) ──────────────────────────────
+//
+// A toolset is a named collection of specific tools drawn from one or more
+// MCP servers — a curated subset instead of a whole-server grant.
+//
+//	POST   /v1/mcp/toolset          body MCPToolsetRequest        → 201
+//	GET    /v1/mcp/toolset          → bare array of MCPToolsetEntry
+//	PUT    /v1/mcp/toolset          body MCPToolsetUpdateRequest  (id in BODY)
+//	GET    /v1/mcp/toolset/{id}
+//	DELETE /v1/mcp/toolset/{id}     → 202
+//
+// Verified on LiteLLM 1.93.0 (2026-07-27):
+//   - `toolset_id` is NOT pinnable — a supplied value is ignored and the
+//     server mints a UUID (same as A2A `agent_id`, unlike team_id/server_id).
+//   - `toolset_name` IS unique — a duplicate returns 409.
+//   - There is ZERO referential validation: a nonexistent server_id or
+//     tool_name is accepted with 201 and degrades to granting nothing.
+
+// MCPToolsetTool is one {server, tool} pair inside a toolset. Both fields are
+// required by the LiteLLM schema. LiteLLM does NOT validate that either value
+// refers to anything real.
+type MCPToolsetTool struct {
+	ServerID string `json:"server_id"`
+	ToolName string `json:"tool_name"`
+}
+
+// MCPToolsetRequest is the POST /v1/mcp/toolset request body.
+//
+// ALWAYS-EMIT contract on Tools: the field carries NO omitempty, and callers
+// MUST pass a non-nil slice, so an emptied toolset serializes as `[]` (an
+// explicit clear) rather than being omitted or sent as `null`. Mirrors the
+// team object_permission ALWAYS-EMIT rule — LiteLLM replaces a present field
+// and keeps the stale value for an absent one.
+type MCPToolsetRequest struct {
+	ToolsetName string           `json:"toolset_name"`
+	Description string           `json:"description,omitempty"`
+	Tools       []MCPToolsetTool `json:"tools"`
+}
+
+// MCPToolsetUpdateRequest is the PUT /v1/mcp/toolset request body. NOTE the
+// id travels in the BODY, not the path — diverges from every other LiteLLM
+// update endpoint the operator calls.
+type MCPToolsetUpdateRequest struct {
+	ToolsetID   string           `json:"toolset_id"`
+	ToolsetName string           `json:"toolset_name,omitempty"`
+	Description string           `json:"description,omitempty"`
+	Tools       []MCPToolsetTool `json:"tools"`
+}
+
+// MCPToolsetEntry is one row of GET /v1/mcp/toolset (bare array; wrapped in
+// MCPToolsetListResponse for length-check uniformity per REL-05).
+type MCPToolsetEntry struct {
+	ToolsetID   string           `json:"toolset_id"`
+	ToolsetName string           `json:"toolset_name"`
+	Description string           `json:"description,omitempty"`
+	Tools       []MCPToolsetTool `json:"tools,omitempty"`
+	CreatedAt   string           `json:"created_at,omitempty"`
+	UpdatedAt   string           `json:"updated_at,omitempty"`
+	Raw         json.RawMessage  `json:"-"`
+}
+
+// MCPToolsetListResponse wraps the bare-array GET /v1/mcp/toolset response in
+// a Data envelope (uniform length-check pattern).
+type MCPToolsetListResponse struct {
+	Data []MCPToolsetEntry `json:"data"`
+}
+
 // AgentConfig is the POST /v1/agents and PUT /v1/agents/{id} request
 // body. agent_name and agent_card_params are required by the OpenAPI
 // schema; LiteLLMParams + ObjectPermission etc. are optional.
