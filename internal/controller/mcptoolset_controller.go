@@ -255,12 +255,10 @@ func (r *MCPToolsetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		clear, probeErr := probeVanishedResourceID(ctx,
 			ts.Status.LastRendered.ToolsetID,
 			func(c context.Context) (string, error) {
+				// ErrNotFound (empty list) is classified as "vanished" by
+				// probeVanishedResourceID itself — do not pre-translate it here.
 				entries, lerr := snap.Client.ListMCPToolsets(c)
 				if lerr != nil {
-					if errors.Is(lerr, litellm.ErrNotFound) {
-						// Empty toolset set — the entry is confirmed absent.
-						return "", nil
-					}
 					return "", lerr
 				}
 				for _, e := range entries {
