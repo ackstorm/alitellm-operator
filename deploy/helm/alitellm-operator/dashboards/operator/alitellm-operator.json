@@ -103,7 +103,7 @@
         "justifyMode": "auto",
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "mean"
           ],
           "fields": "",
           "values": false
@@ -160,7 +160,7 @@
         "justifyMode": "auto",
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "mean"
           ],
           "fields": "",
           "values": false
@@ -218,7 +218,7 @@
         "justifyMode": "auto",
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "mean"
           ],
           "fields": "",
           "values": false
@@ -276,7 +276,7 @@
         "justifyMode": "auto",
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "mean"
           ],
           "fields": "",
           "values": false
@@ -379,7 +379,7 @@
         "justifyMode": "auto",
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "mean"
           ],
           "fields": "",
           "values": false
@@ -392,7 +392,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(rate(controller_runtime_reconcile_errors_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum(rate(controller_runtime_reconcile_errors_total{namespace=~\"$namespace\", job=~\".*alitellm-operator.*\"}[5m]))",
           "refId": "A"
         }
       ]
@@ -1105,7 +1105,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, controller) (rate(controller_runtime_reconcile_time_seconds_bucket{namespace=~\"$namespace\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le, controller) (rate(controller_runtime_reconcile_time_seconds_bucket{namespace=~\"$namespace\", job=~\".*alitellm-operator.*\"}[5m])))",
           "refId": "A",
           "legendFormat": "{{controller}}"
         }
@@ -1155,7 +1155,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (name) (workqueue_depth{namespace=~\"$namespace\"})",
+          "expr": "sum by (name) (workqueue_depth{namespace=~\"$namespace\", job=~\".*alitellm-operator.*\"})",
           "refId": "A",
           "legendFormat": "depth {{name}}"
         },
@@ -1164,7 +1164,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (name) (rate(workqueue_retries_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum by (name) (rate(workqueue_retries_total{namespace=~\"$namespace\", job=~\".*alitellm-operator.*\"}[5m]))",
           "refId": "B",
           "legendFormat": "retries/s {{name}}"
         }

@@ -103,7 +103,7 @@
         "justifyMode": "auto",
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "mean"
           ],
           "fields": "",
           "values": false
@@ -165,7 +165,7 @@
         "justifyMode": "auto",
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "mean"
           ],
           "fields": "",
           "values": false
@@ -210,7 +210,7 @@
         "justifyMode": "auto",
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "mean"
           ],
           "fields": "",
           "values": false
@@ -580,7 +580,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (requested_model) (rate(litellm_proxy_total_requests_metric_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "label_replace(sum by (requested_model) (rate(litellm_proxy_total_requests_metric_total{namespace=~\"$namespace\"}[5m])), \"requested_model\", \"(unlabelled)\", \"requested_model\", \"^$\")",
           "refId": "A",
           "legendFormat": "{{requested_model}}"
         }

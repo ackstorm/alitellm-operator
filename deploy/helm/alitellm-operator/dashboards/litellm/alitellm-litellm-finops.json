@@ -121,7 +121,7 @@
         "justifyMode": "auto",
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "mean"
           ],
           "fields": "",
           "values": false
@@ -210,7 +210,7 @@
         "justifyMode": "auto",
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "mean"
           ],
           "fields": "",
           "values": false
@@ -250,12 +250,8 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "red",
+                "color": "text",
                 "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 0.2
               },
               {
                 "color": "green",
@@ -288,7 +284,8 @@
           "expr": "sum(increase(litellm_input_cached_tokens_metric_total{namespace=~\"$namespace\"}[$__range])) / clamp_min(sum(increase(litellm_input_tokens_metric_total{namespace=~\"$namespace\"}[$__range])), 1)",
           "refId": "A"
         }
-      ]
+      ],
+      "description": "0 is normal when no prompt caching is in use — LiteLLM emits litellm_input_cached_tokens_metric_total flat at 0, so this is not an error state."
     },
     {
       "datasource": {
@@ -341,7 +338,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (model) (rate(litellm_spend_metric_total{namespace=~\"$namespace\"}[5m])) * 3600",
+          "expr": "sum by (model) (rate(litellm_spend_metric_total{namespace=~\"$namespace\", model!~\"MCP:.*\"}[5m])) * 3600",
           "refId": "A",
           "legendFormat": "{{model}}"
         }
@@ -447,7 +444,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum by (model) (increase(litellm_spend_metric_total{namespace=~\"$namespace\"}[$__range]))",
+          "expr": "sum by (model) (increase(litellm_spend_metric_total{namespace=~\"$namespace\", model!~\"MCP:.*\"}[$__range]))",
           "refId": "A",
           "legendFormat": "{{model}}"
         }
