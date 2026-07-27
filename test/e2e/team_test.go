@@ -74,6 +74,30 @@ func litellmTeamsByAlias(alias string) []map[string]interface{} {
 
 const litellmBase = "http://litellm.litellm-system.svc.cluster.local:4000"
 
+// litellmTeamObjectPermission returns the EXPANDED object_permission object
+// for a team, read from GET /team/info.
+//
+// Use this, not litellmTeamsByAlias, for any object_permission assertion:
+// /v2/team/list reports `object_permission: null` even when the row exists
+// (it carries only object_permission_id), so an assertion against the list
+// endpoint can never pass. Verified on LiteLLM 1.93.0.
+func litellmTeamObjectPermission(teamID string) map[string]interface{} {
+	GinkgoHelper()
+	body := curlPodJSON("litellm-system", "team-info-poke", '{',
+		"curl", "-sS", "--max-time", "10",
+		"-H", "Authorization: Bearer sk-test-master-key",
+		litellmBase+"/team/info?team_id="+url.QueryEscape(teamID),
+	)
+	var resp struct {
+		TeamInfo struct {
+			ObjectPermission map[string]interface{} `json:"object_permission"`
+		} `json:"team_info"`
+	}
+	ExpectWithOffset(1, json.Unmarshal(body, &resp)).
+		To(Succeed(), "raw=%s", string(body))
+	return resp.TeamInfo.ObjectPermission
+}
+
 // generateTeamKey mints a team-scoped virtual key via POST /key/generate
 // (master-key authed) so a spec can prove LiteLLM ENFORCES the team's model
 // scope on real inference. Returns the `sk-...` value. NOTE: this is
@@ -666,5 +690,77 @@ var _ = Describe("LiteLLMTeam", Ordered, ContinueOnFailure, func() {
 			"denial must cite team_model_access_denied, got: %s", out)
 		Expect(out).To(ContainSubstring("__deny_all__"),
 			"denial must reference the deny-all sentinel, got: %s", out)
+	})
+
+	// TEAM-06: spec.permission.mcpToolsets carries toolset NAMES; the operator
+	// resolves each to its toolset_id UUID before projecting onto
+	// object_permission.mcp_toolsets, because LiteLLM matches on the UUID and
+	// silently ignores a name.
+	It("TEAM-06 grants MCP toolsets by name, projecting resolved UUIDs", func() {
+		const teamName = "e2e-team-toolset-grant"
+		const tsName = "e2e-team-toolset-target"
+		fg := metav1.DeletePropagationForeground
+		_ = dyn.Resource(teamGVR).Namespace(ns).
+			Delete(ctx, teamName, metav1.DeleteOptions{PropagationPolicy: &fg})
+		_ = dyn.Resource(mcpToolsetGVR).Namespace(ns).
+			Delete(ctx, tsName, metav1.DeleteOptions{PropagationPolicy: &fg})
+
+		// The toolset must exist in LiteLLM before the Team references it —
+		// otherwise the Team parks ToolsetNotFound and requeues (by design).
+		ts := toolsetCR(ns, tsName, []interface{}{
+			map[string]interface{}{
+				"server": "some-server",
+				"tools":  []interface{}{"a_tool"},
+			},
+		})
+		_, err := dyn.Resource(mcpToolsetGVR).Namespace(ns).
+			Create(ctx, ts, metav1.CreateOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() {
+			_ = dyn.Resource(mcpToolsetGVR).Namespace(ns).
+				Delete(context.Background(), tsName, metav1.DeleteOptions{PropagationPolicy: &fg})
+		})
+
+		var wantToolsetID string
+		Eventually(func(g Gomega) {
+			obj, err := dyn.Resource(mcpToolsetGVR).Namespace(ns).
+				Get(ctx, tsName, metav1.GetOptions{})
+			g.Expect(err).NotTo(HaveOccurred())
+			wantToolsetID = toolsetID(obj)
+			g.Expect(wantToolsetID).NotTo(BeEmpty(), "toolsetID not yet populated")
+		}, 60*time.Second, 2*time.Second).Should(Succeed())
+
+		cr := newTeamCR(teamName, ns)
+		spec, _ := cr.Object["spec"].(map[string]interface{})
+		spec["permission"] = map[string]interface{}{
+			"mcpToolsets": []interface{}{tsName},
+		}
+		_, err = dyn.Resource(teamGVR).Namespace(ns).Create(ctx, cr, metav1.CreateOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() {
+			_ = dyn.Resource(teamGVR).Namespace(ns).
+				Delete(context.Background(), teamName, metav1.DeleteOptions{PropagationPolicy: &fg})
+		})
+
+		Eventually(func(g Gomega) {
+			obj, err := dyn.Resource(teamGVR).Namespace(ns).Get(ctx, teamName, metav1.GetOptions{})
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(teamID(obj)).NotTo(BeEmpty(), "teamID not yet populated")
+		}, 60*time.Second, 2*time.Second).Should(Succeed())
+
+		// The grant must carry the UUID, NOT the human name.
+		//
+		// Read it from GET /team/info, NOT /v2/team/list: the list endpoint
+		// returns `object_permission: null` even when the row exists (it
+		// reports only the object_permission_id), so asserting there always
+		// fails. /team/info expands the row.
+		Eventually(func(g Gomega) {
+			op := litellmTeamObjectPermission(teamName)
+			g.Expect(op).NotTo(BeNil(), "object_permission absent from /team/info")
+			granted, _ := op["mcp_toolsets"].([]interface{})
+			g.Expect(granted).To(ConsistOf(wantToolsetID),
+				"object_permission.mcp_toolsets must carry the resolved UUID %q, not the name %q; got %v",
+				wantToolsetID, tsName, op["mcp_toolsets"])
+		}, 60*time.Second, 3*time.Second).Should(Succeed())
 	})
 })
