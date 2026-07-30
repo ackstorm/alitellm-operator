@@ -80,14 +80,19 @@ On any Ginkgo failure, `AfterEach` dumps to `/tmp/e2e-*.log` inside the devtools
 container (operator + LiteLLM Pod logs, all CRs YAML, events). CI uploads them
 as artifacts under the `e2e-forensics` name.
 
-## Dual-vintage ToolHive CRDs
+## ToolHive v1beta1 CRD fixture
 
-Phase 9 (Task 09-08) added v1beta1 coverage to the MCPServerDiscovery suite.
+The operator reads ToolHive at **v1beta1 only** (v1alpha1 support was removed on
+2026-07-30 — see `internal/toolhive/types.go`).
 
-The published `toolhive-operator-crds` OCI chart (pinned in `CHART_PINS.md`) ships
-`v1alpha1` only. The `v1beta1` CRD version is hydrated from
+The `toolhive-operator-crds` OCI chart version **currently pinned** in
+`test/e2e/cluster/01-deps/toolhive.values.yaml` (`0.0.55`, see `CHART_PINS.md`)
+ships `v1alpha1` only — newer upstream charts do carry v1beta1, see below. The
+`v1beta1` CRD version is therefore hydrated from
 `test/e2e/cluster/01-deps/toolhive-v1beta1-crds.yaml`, which is vendored from
 `stacklok/toolhive v0.28.0` (commit `748a64228710ce241a225f5530022ce2c96cc23e`).
+The fixture is therefore **required**, not supplementary: without it the informer
+never registers and every MCPServerDiscovery parks on `SourceUnreachable`.
 
 `scripts/cluster.sh sync` installs the fixture via `kubectl apply` immediately
 after the ToolHive OCI chart finishes. The apply is idempotent — re-running
@@ -99,14 +104,10 @@ kubectl get crd mcpservers.toolhive.stacklok.dev \
 # Expected output: v1alpha1 v1beta1
 ```
 
-The operator's dedup rule (v1alpha1 wins on same-name collision across both
-versions) is exercised in `internal/toolhive/informer_test.go::TestInformer_DualVersionDedup`
-(envtest). The end-to-end behavioral-parity assertion lives in
-`test/e2e/mcpserverdiscovery_test.go` as the `"propagates v1beta1 ToolHive
-MCPServer into child MCPServer (dual-version coverage)"` It block.
-
-When `stacklok/toolhive` publishes a chart that natively carries v1beta1,
-drop this fixture and revisit dedup defaults.
+Upstream `toolhive-operator-crds` 0.41.0 ships v1beta1 natively (v1alpha1 marked
+`deprecated: true`, storage moved to v1beta1). Bumping `crdsChartVersion` in
+`test/e2e/cluster/01-deps/toolhive.values.yaml` to >= 0.41.0 retires this fixture
+and the `cluster.sh` step that applies it.
 
 ## Devtools container
 

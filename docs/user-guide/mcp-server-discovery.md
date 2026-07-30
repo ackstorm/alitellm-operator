@@ -8,6 +8,26 @@ into LiteLLM via the `LiteLLMMCPServer` controller (Pipeline A).
 
 In v1alpha1 only `spec.type: toolhive` is supported.
 
+## Prerequisite: ToolHive serving v1beta1
+
+The operator reads ToolHive at **`toolhive.stacklok.dev/v1beta1` only**. This
+requires the **`toolhive-operator-crds` chart >= 0.41.0**, which marks v1alpha1
+`deprecated: true` and moves `storage: true` to v1beta1 for all three kinds.
+ToolHive `v1alpha1` support was removed on 2026-07-30.
+
+On a cluster that serves v1alpha1 only, the CRDs exist and report Established,
+but the operator's informer cannot register — every discovery CR parks on
+`Ready=False, reason=SourceUnreachable`. Existing generated children are left
+in place untouched (the D-09 atomic refresh never prunes from an unreadable
+source), so upgrading the chart restores discovery with no CR edits.
+
+```bash
+# Confirm v1beta1 is served before filing a discovery bug:
+kubectl get crd mcpservers.toolhive.stacklok.dev \
+  -o jsonpath='{.spec.versions[*].name}'
+# Must include: v1beta1
+```
+
 ## Quick reference
 
 | Field                         | Required | Notes                                                                                       |

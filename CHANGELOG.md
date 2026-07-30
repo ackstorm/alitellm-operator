@@ -18,6 +18,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in place (`POST /model/update`), never recreates.
 
 ### Changed
+- **BREAKING (discovery): ToolHive `v1alpha1` support removed — the operator
+  now reads `toolhive.stacklok.dev/v1beta1` ONLY.** `LiteLLMMCPServerDiscovery`
+  requires the **`toolhive-operator-crds` chart >= 0.41.0** (or any ToolHive
+  install that serves v1beta1). Upstream 0.41.0 marks v1alpha1
+  `deprecated: true` on `MCPServer`, `VirtualMCPServer` and `MCPRemoteProxy`
+  and moves `storage: true` to v1beta1, so v1beta1 is what every current
+  ToolHive install serves.
+  - **Upgrade impact:** on a cluster serving v1alpha1 only, the informer never
+    registers and every `LiteLLMMCPServerDiscovery` goes
+    `Ready=False, reason=SourceUnreachable`. Per the D-09 atomic-refresh
+    contract, existing generated children are left in place untouched (not
+    pruned) until the source becomes readable again. Upgrade the
+    `toolhive-operator-crds` chart to recover; no CR edits are needed.
+  - The dual-version informer set and its `v1alpha1`-wins dedup store
+    (`dedup_reason=alpha_wins`) are gone with it — the informer registers 3
+    GVKs instead of 6, and `List` no longer merges across versions.
 - **BREAKING (observability): Prometheus metric prefix renamed
   `litellm_` → `alitellm_`.** The operator-owned metrics that carried
   the upstream-confusing `litellm_` prefix now use the project's

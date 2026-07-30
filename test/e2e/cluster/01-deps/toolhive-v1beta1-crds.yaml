@@ -2,21 +2,27 @@
 # Path: deploy/charts/operator-crds/templates/
 # Upstream commit SHA: 748a64228710ce241a225f5530022ce2c96cc23e
 # Vendored: 2026-05-20 (Phase 9 Task 09-08)
-# Rationale: Published toolhive-operator-crds OCI chart ships v1alpha1 only;
-# v1beta1 declared in v0.28.0 templates but no published chart carries it yet.
-# This fixture supplements the OCI chart install so Tier 2 can exercise both
-# vintages of the operator's MCPServerDiscovery code path.
+#
+# LOAD-BEARING as of 2026-07-30: the operator now reads ToolHive at v1beta1
+# ONLY (v1alpha1 support removed — see internal/toolhive/types.go). The
+# toolhive-operator-crds chart version pinned in toolhive.values.yaml (0.0.55)
+# still ships v1alpha1 only, so without this fixture the informer never
+# registers and every MCPServerDiscovery parks on SourceUnreachable.
+# Upstream 0.41.0 ships v1beta1 natively (v1alpha1 deprecated, storage moved
+# to v1beta1); bumping the pin there is the follow-up that retires this file.
 #
 # Usage: kubectl apply -f test/e2e/cluster/01-deps/toolhive-v1beta1-crds.yaml
 # (run after toolhive-operator-crds Helm chart install; idempotent)
 #
 # The OCI chart installs mcpservers.toolhive.stacklok.dev with v1alpha1 only
 # (storage: true). This file applies a multi-version CRD that preserves
-# v1alpha1 as storage version and adds v1beta1 (served: true, storage: false)
-# so the operator's dual-version informer can register both informers against
-# a live cluster. Schema is deliberately permissive (x-kubernetes-preserve-
-# unknown-fields: true) — Tier 2 exercises API reachability + reconciler
-# behavior, not CRD schema validation.
+# v1alpha1 as storage version — the pinned ToolHive operator 0.5.5 reconciles
+# it — and adds v1beta1 (served: true, storage: false) for our informer to
+# read. No conversion webhook is needed: the schemas are field-identical, so
+# the default `strategy: None` serves the same object under both versions.
+# Schema is deliberately permissive (x-kubernetes-preserve-unknown-fields:
+# true) — Tier 2 exercises API reachability + reconciler behavior, not CRD
+# schema validation.
 #
 # mcpremoteproxies is included so Tier 2 covers the third discoverable kind.
 # Upstream ships all three in the same operator-crds chart, so the informer

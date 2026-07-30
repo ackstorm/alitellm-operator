@@ -42,6 +42,6 @@ kubectl apply -f virtualmcpserver-dev.yaml -f virtualmcpserver-search.yaml
 
 ## See Also
 
-- `internal/toolhive/informer.go` — dual-version (v1alpha1 + v1beta1) informer with `alpha_wins` dedup
+- `internal/toolhive/informer.go` — v1beta1 informer (v1alpha1 support removed 2026-07-30)
 - `test/e2e/mcpserverdiscovery_test.go` — v1beta1 propagation test
 - ToolHive upstream: <https://github.com/stacklok/toolhive>

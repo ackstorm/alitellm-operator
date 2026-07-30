@@ -161,9 +161,19 @@ Common causes: master-key Secret missing in watch namespace, wrong
 
 **MCPServerDiscovery `Ready=False, reason=SourceUnreachable`**
 
-ToolHive CRDs (`toolhive.stacklok.dev/v1beta1`) are absent. Either
-install ToolHive or remove the discovery CR — the lazy informer
-converges automatically when ToolHive lands.
+Nothing is serving `toolhive.stacklok.dev/v1beta1`. Two causes:
+
+1. ToolHive is not installed. Install it, or remove the discovery CR — the
+   lazy informer converges automatically when ToolHive lands.
+2. ToolHive IS installed, but on a `toolhive-operator-crds` chart older than
+   **0.41.0**, which serves `v1alpha1` only. The CRDs report Established, so
+   `kubectl get crd` looks healthy. Check the served versions and upgrade the
+   chart:
+
+```bash
+kubectl get crd mcpservers.toolhive.stacklok.dev \
+  -o jsonpath='{.spec.versions[*].name}'   # must include v1beta1
+```
 
 **Logs / events**
 
