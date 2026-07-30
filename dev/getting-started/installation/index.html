@@ -1958,12 +1958,21 @@ use the 10m default.</p>
 <p>Common causes: master-key Secret missing in watch namespace, wrong
 <code>spec.endpoint</code>, network policy blocking the operator → LiteLLM path.</p>
 <p><strong>MCPServerDiscovery <code>Ready=False, reason=SourceUnreachable</code></strong></p>
-<p>ToolHive CRDs (<code>toolhive.stacklok.dev/v1beta1</code>) are absent. Either
-install ToolHive or remove the discovery CR — the lazy informer
-converges automatically when ToolHive lands.</p>
+<p>Nothing is serving <code>toolhive.stacklok.dev/v1beta1</code>. Two causes:</p>
+<ol>
+<li>ToolHive is not installed. Install it, or remove the discovery CR — the
+   lazy informer converges automatically when ToolHive lands.</li>
+<li>ToolHive IS installed, but on a <code>toolhive-operator-crds</code> chart older than
+   <strong>0.41.0</strong>, which serves <code>v1alpha1</code> only. The CRDs report Established, so
+   <code>kubectl get crd</code> looks healthy. Check the served versions and upgrade the
+   chart:</li>
+</ol>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>crd<span class="w"> </span>mcpservers.toolhive.stacklok.dev<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.spec.versions[*].name}&#39;</span><span class="w">   </span><span class="c1"># must include v1beta1</span>
+</code></pre></div>
 <p><strong>Logs / events</strong></p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>kubectl<span class="w"> </span>-n<span class="w"> </span>litellm<span class="w"> </span>logs<span class="w"> </span>deploy/alitellm-operator<span class="w"> </span>-f
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>kubectl<span class="w"> </span>-n<span class="w"> </span>&lt;watch-ns&gt;<span class="w"> </span>get<span class="w"> </span>events<span class="w"> </span>--sort-by<span class="o">=</span>.lastTimestamp<span class="w"> </span><span class="p">|</span><span class="w"> </span>tail<span class="w"> </span>-20
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>kubectl<span class="w"> </span>-n<span class="w"> </span>litellm<span class="w"> </span>logs<span class="w"> </span>deploy/alitellm-operator<span class="w"> </span>-f
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>kubectl<span class="w"> </span>-n<span class="w"> </span>&lt;watch-ns&gt;<span class="w"> </span>get<span class="w"> </span>events<span class="w"> </span>--sort-by<span class="o">=</span>.lastTimestamp<span class="w"> </span><span class="p">|</span><span class="w"> </span>tail<span class="w"> </span>-20
 </code></pre></div>
 <p>For deeper investigation, see
 <a href="../../developer-guide/architecture/">Architecture</a>.</p>
