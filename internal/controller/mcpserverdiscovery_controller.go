@@ -412,14 +412,29 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	// ─── Step 3: Source-reachable gate (MSDISC-06 / D-08) ──────────────────
-	// ToolHive CRDs absent at startup → Informer.IsReady == false.
+	// ToolHive v1beta1 unregistered at startup → Informer.IsReady == false.
 	// MSDisc surfaces Ready=False, reason=SourceUnreachable and requeues
 	// on the informer's retry cadence (1m by default).
+	//
+	// The message carries toolhive.ErrNotReady verbatim because this gate —
+	// not Informer.List — is what users actually read. `List` returns
+	// ErrNotReady only when !IsReady(), which this branch already
+	// short-circuits, so a message hard-coded here would be the ONLY thing
+	// surfaced and the informer's wording would be dead text. It matters
+	// since v1alpha1 was dropped: "CRDs not installed" is wrong for a cluster
+	// whose ToolHive CRDs are Established but serve v1alpha1 only, and sends
+	// the admin to a `kubectl get crd` that looks healthy.
 	informer := r.getToolHive()
 	if informer == nil || !informer.IsReady() {
+		// Spec §6.5 mandates the "ToolHive CRDs not installed" phrasing; the
+		// trailing clause is what disambiguates the v1alpha1-only case.
+		const unreachableMsg = "ToolHive CRDs not installed, or installed " +
+			"without toolhive.stacklok.dev/v1beta1 — the operator reads v1beta1 " +
+			"only and requires toolhive-operator-crds >= 0.41.0 (a v1alpha1-only " +
+			"install reports the CRDs as Established)"
 		r.writeBothConditions(ctx, &md,
-			metav1.ConditionFalse, "SourceUnreachable", "ToolHive CRDs not installed",
-			metav1.ConditionFalse, "Unreachable", "ToolHive CRDs not installed")
+			metav1.ConditionFalse, "SourceUnreachable", unreachableMsg,
+			metav1.ConditionFalse, "Unreachable", unreachableMsg)
 		metrics.ReconcileTotal.WithLabelValues(mcpServerDiscoveryKind, "success").Inc()
 		// Use the informer's retry cadence (D-08) — 1 minute. Faster
 		// requeue is unnecessary; the informer wakes us when CRDs land.

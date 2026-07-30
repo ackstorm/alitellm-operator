@@ -881,19 +881,16 @@ func contains(s, sub string) bool {
 var _ = http.StatusOK
 
 // installToolhiveCRDsForSuite installs minimal toolhive.stacklok.dev
-// MCPServer + VirtualMCPServer CRDs serving BOTH v1alpha1 and v1beta1
-// into the shared envtest API server so MCPServerDiscoveryReconciler
-// envtests can create unstructured ToolHive objects under either version.
-// Mirrors internal/toolhive/informer_test.go's installToolhiveCRDs helper
-// but lives here so the controller suite owns its own CRD installation
+// MCPServer + VirtualMCPServer + MCPRemoteProxy CRDs at v1beta1 into the
+// shared envtest API server so MCPServerDiscoveryReconciler envtests can
+// create unstructured ToolHive objects. Mirrors
+// internal/toolhive/informer_test.go's installToolhiveCRDs helper but
+// lives here so the controller suite owns its own CRD installation
 // lifecycle.
 //
-// Version setup:
-//   - v1alpha1: served=true, storage=true (canonical, matches
-//     toolhive.MCPServerGVK / VirtualMCPServerGVK constants).
-//   - v1beta1:  served=true, storage=false (so the informer's dual-version
-//     registration path is exercised; objects created under v1alpha1 are
-//     visible under v1beta1 list calls via apiserver auto-conversion).
+// v1beta1 only: upstream toolhive-operator-crds 0.41.0 deprecated
+// v1alpha1 and moved storage to v1beta1, and the operator dropped
+// v1alpha1 support to match (see internal/toolhive/types.go).
 //
 // Idempotent: calling InstallCRDs over an existing CRD upserts.
 func installToolhiveCRDsForSuite(ctx context.Context, cfg *rest.Config) error {
@@ -929,8 +926,7 @@ func installToolhiveCRDsForSuite(ctx context.Context, cfg *rest.Config) error {
 				},
 				Scope: apiextensionsv1.NamespaceScoped,
 				Versions: []apiextensionsv1.CustomResourceDefinitionVersion{
-					mkVersion("v1alpha1", true),
-					mkVersion("v1beta1", false),
+					mkVersion("v1beta1", true),
 				},
 			},
 		}

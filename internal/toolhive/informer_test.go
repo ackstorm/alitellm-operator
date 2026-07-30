@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sync"
 	"testing"
 	"time"
 
@@ -152,35 +151,27 @@ func newManager(t *testing.T, te *testEnv) manager.Manager {
 	return mgr
 }
 
-// toolhiveCRDManifest constructs a minimal CRD definition for a single
-// ToolHive kind (MCPServer or VirtualMCPServer) under
-// toolhive.stacklok.dev. The schema is intentionally permissive
-// (x-kubernetes-preserve-unknown-fields: true at the object root) — the
-// informer doesn't care about validation, only that the CRD exists so
-// GetInformer succeeds.
-//
-// versions is the list of versions to include in the CRD spec. Pass
-// one or more of "v1alpha1", "v1beta1". The first version in the list
-// is used as the storage version.
-func toolhiveCRDManifest(kind, listKind, plural, singular string, versions []string) *apiextensionsv1.CustomResourceDefinition {
+// toolhiveCRDManifest constructs a minimal v1beta1 CRD definition for a
+// single ToolHive kind under toolhive.stacklok.dev. The schema is
+// intentionally permissive (x-kubernetes-preserve-unknown-fields: true at
+// the object root) — the informer doesn't care about validation, only that
+// the CRD exists so GetInformer succeeds.
+func toolhiveCRDManifest(kind, listKind, plural, singular string) *apiextensionsv1.CustomResourceDefinition {
 	preserve := true
-	crdVersions := make([]apiextensionsv1.CustomResourceDefinitionVersion, 0, len(versions))
-	for idx, v := range versions {
-		crdVersions = append(crdVersions, apiextensionsv1.CustomResourceDefinitionVersion{
-			Name:    v,
-			Served:  true,
-			Storage: idx == 0, // first version is storage
-			Schema: &apiextensionsv1.CustomResourceValidation{
-				OpenAPIV3Schema: &apiextensionsv1.JSONSchemaProps{
-					Type:                   "object",
-					XPreserveUnknownFields: &preserve,
-				},
+	crdVersions := []apiextensionsv1.CustomResourceDefinitionVersion{{
+		Name:    "v1beta1",
+		Served:  true,
+		Storage: true,
+		Schema: &apiextensionsv1.CustomResourceValidation{
+			OpenAPIV3Schema: &apiextensionsv1.JSONSchemaProps{
+				Type:                   "object",
+				XPreserveUnknownFields: &preserve,
 			},
-			Subresources: &apiextensionsv1.CustomResourceSubresources{
-				Status: &apiextensionsv1.CustomResourceSubresourceStatus{},
-			},
-		})
-	}
+		},
+		Subresources: &apiextensionsv1.CustomResourceSubresources{
+			Status: &apiextensionsv1.CustomResourceSubresourceStatus{},
+		},
+	}}
 	return &apiextensionsv1.CustomResourceDefinition{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: plural + ".toolhive.stacklok.dev",
@@ -200,20 +191,15 @@ func toolhiveCRDManifest(kind, listKind, plural, singular string, versions []str
 }
 
 // installToolhiveCRDs registers the MCPServer, VirtualMCPServer and
-// MCPRemoteProxy CRDs with both v1alpha1 and v1beta1 versions into the
-// envtest API server. Idempotent — re-installs over an existing CRD by
-// name are upserts. Used by TestInformer_LazyRetry and
-// TestInformer_ListReturnsLiveObjects.
-//
-// The dual-version CRD ensures the informer can register either
-// version depending on cluster vintage, and existing tests that create
-// objects via toolhive.MCPServerGVK (v1alpha1) succeed.
+// MCPRemoteProxy CRDs at v1beta1 into the envtest API server. Idempotent
+// — re-installs over an existing CRD by name are upserts. Used by
+// TestInformer_LazyRetry and TestInformer_ListReturnsLiveObjects.
 func installToolhiveCRDs(t *testing.T, te *testEnv) {
 	t.Helper()
 	crds := []*apiextensionsv1.CustomResourceDefinition{
-		toolhiveCRDManifest("MCPServer", "MCPServerList", "mcpservers", "mcpserver", []string{"v1alpha1", "v1beta1"}),
-		toolhiveCRDManifest("VirtualMCPServer", "VirtualMCPServerList", "virtualmcpservers", "virtualmcpserver", []string{"v1alpha1", "v1beta1"}),
-		toolhiveCRDManifest("MCPRemoteProxy", "MCPRemoteProxyList", "mcpremoteproxies", "mcpremoteproxy", []string{"v1alpha1", "v1beta1"}),
+		toolhiveCRDManifest("MCPServer", "MCPServerList", "mcpservers", "mcpserver"),
+		toolhiveCRDManifest("VirtualMCPServer", "VirtualMCPServerList", "virtualmcpservers", "virtualmcpserver"),
+		toolhiveCRDManifest("MCPRemoteProxy", "MCPRemoteProxyList", "mcpremoteproxies", "mcpremoteproxy"),
 	}
 	_, err := envtest.InstallCRDs(te.cfg, envtest.CRDInstallOptions{
 		CRDs:    crds,
@@ -341,7 +327,7 @@ func TestInformer_LazyRetryRegistersOnCRDInstall(t *testing.T) {
 // Setup: envtest with ToolHive CRDs preinstalled (via the manager
 // options' CRDInstallOptions, simulating a cluster where ToolHive
 // already exists at startup).
-// Action: create a toolhive.stacklok.dev/v1alpha1 MCPServer object via
+// Action: create a toolhive.stacklok.dev/v1beta1 MCPServer object via
 // the dynamic client; wait for cache to observe it.
 // Assertions:
 // - List(MCPServerGVK) returns 1 item with the expected
@@ -485,239 +471,6 @@ func TestInformer_StartIsNonBlocking(t *testing.T) {
 	}
 }
 
-// TestInformer_DualVersionDedup — Phase 9, Task 09-07 dedup behavior.
-//
-// When a CRD is installed with both v1alpha1 and v1beta1 served, the
-// Informer registers informers for BOTH versions. A single MCPServer
-// object stored under v1alpha1 is visible via BOTH the v1alpha1 and the
-// v1beta1 list endpoints (the API server serves the same underlying object
-// under both versions). The dedup store must collapse these duplicates to
-// a single entry in List results — the v1alpha1 instance wins
-// (alpha_wins rule).
-//
-// Setup: envtest with both v1alpha1 and v1beta1 versions in the CRD.
-// Action:
-//   - Create ONE MCPServer named "example" under v1alpha1 (which the API
-//     server also serves as v1beta1 since both are in the same CRD).
-//   - Wait for both informers to become Ready.
-//   - Poll List(MCPServerGVK) until it converges to exactly 1 item.
-//
-// Assertions:
-//   - List(MCPServerGVK) returns exactly 1 item (not 2, despite the object
-//     being visible under both v1alpha1 and v1beta1 list endpoints).
-//   - The dedup_reason=alpha_wins log line was emitted when the v1beta1
-//     duplicate was collapsed (verified via log capture on the dedup store).
-//   - After deleting the object, List returns 0 items (the deletion is
-//     processed correctly even when it arrives from the v1beta1 informer
-//     as a no-op for the v1beta1-already-absent loser).
-func TestInformer_DualVersionDedup(t *testing.T) {
-	te := setupEnvtest(t)
-
-	// Install CRDs with both v1alpha1 and v1beta1 versions so both
-	// informers can register and the API server serves the same objects
-	// under both GVKs.
-	installToolhiveCRDs(t, te)
-
-	// Use a log recorder that captures info lines so we can assert
-	// the dedup_reason=alpha_wins entry was emitted. We use a simple
-	// slice recorder — no third-party test-zap dependency needed.
-	recorder := &logRecorder{}
-	log := logr.New(recorder)
-
-	mgr := newManager(t, te)
-	inf := &toolhive.Informer{
-		Manager:       mgr,
-		Log:           log,
-		RetryInterval: 200 * time.Millisecond,
-	}
-	if err := mgr.Add(inf); err != nil {
-		t.Fatalf("mgr.Add: %v", err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	mgrDone := make(chan error, 1)
-	go func() { mgrDone <- mgr.Start(ctx) }()
-
-	// Wait for Ready (both v1alpha1 and v1beta1 informers registered).
-	if err := wait.PollUntilContextTimeout(ctx, 100*time.Millisecond, 30*time.Second, true,
-		func(_ context.Context) (bool, error) {
-			return inf.IsReady(), nil
-		}); err != nil {
-		t.Fatalf("informer did not become Ready: %v", err)
-	}
-
-	// Ensure test namespace exists.
-	nsObj := &unstructured.Unstructured{}
-	nsObj.SetAPIVersion("v1")
-	nsObj.SetKind("Namespace")
-	nsObj.SetName("dedup-test")
-	if err := te.k8sClient.Create(ctx, nsObj); err != nil {
-		if !containsAlreadyExists(err.Error()) {
-			t.Fatalf("create namespace dedup-test: %v", err)
-		}
-	}
-
-	const (
-		testNS   = "dedup-test"
-		testName = "example"
-	)
-
-	// Create ONE MCPServer/example under v1alpha1. The API server also
-	// serves this object via the v1beta1 endpoint (dual-version CRD),
-	// so the informer's v1beta1 informer will also observe it. The
-	// dedup store must collapse these to a single entry.
-	mcpAlpha := &unstructured.Unstructured{}
-	mcpAlpha.SetGroupVersionKind(toolhive.MCPServerGVKv1alpha1)
-	mcpAlpha.SetNamespace(testNS)
-	mcpAlpha.SetName(testName)
-	_ = unstructured.SetNestedField(mcpAlpha.Object, "https://alpha.example.com", "status", "url")
-	_ = unstructured.SetNestedField(mcpAlpha.Object, "http", "status", "transport")
-	if err := te.k8sClient.Create(ctx, mcpAlpha); err != nil {
-		t.Fatalf("create v1alpha1 MCPServer: %v", err)
-	}
-
-	// Poll until the list stabilizes at exactly 1 item. We require 3
-	// consecutive stable reads to confirm the dedup is consistent.
-	const stabilityChecks = 3
-	stableCount := 0
-	if err := wait.PollUntilContextTimeout(ctx, 300*time.Millisecond, 20*time.Second, true,
-		func(_ context.Context) (bool, error) {
-			list, lerr := inf.List(ctx, toolhive.MCPServerGVK)
-			if lerr != nil {
-				stableCount = 0
-				return false, nil
-			}
-			// Count only objects in testNS (other tests run concurrently
-			// in the shared API server and may have objects in other ns).
-			nsCount := 0
-			for _, item := range list.Items {
-				if item.GetNamespace() == testNS {
-					nsCount++
-				}
-			}
-			if nsCount == 1 {
-				stableCount++
-				return stableCount >= stabilityChecks, nil
-			}
-			stableCount = 0
-			return false, nil
-		}); err != nil {
-		list, _ := inf.List(ctx, toolhive.MCPServerGVK)
-		nsCount := 0
-		if list != nil {
-			for _, item := range list.Items {
-				if item.GetNamespace() == testNS {
-					nsCount++
-				}
-			}
-		}
-		t.Fatalf("expected exactly 1 MCPServer in namespace %q after dedup (alpha_wins), got %d; err: %v",
-			testNS, nsCount, err)
-	}
-
-	// Assert the survivor is the v1alpha1 instance (alpha_wins rule).
-	finalList, err := inf.List(ctx, toolhive.MCPServerGVK)
-	if err != nil {
-		t.Fatalf("List after dedup convergence: %v", err)
-	}
-	var nsItems []unstructured.Unstructured
-	for _, item := range finalList.Items {
-		if item.GetNamespace() == testNS {
-			nsItems = append(nsItems, item)
-		}
-	}
-	if len(nsItems) != 1 {
-		t.Fatalf("expected 1 item in namespace %q, got %d", testNS, len(nsItems))
-	}
-	if nsItems[0].GetName() != testName {
-		t.Fatalf("expected name %q, got %q", testName, nsItems[0].GetName())
-	}
-
-	// Assert that the dedup_reason=alpha_wins log line was emitted.
-	// The List() method creates a per-call dedupStore; the alpha_wins
-	// log fires when the v1beta1 duplicate is collapsed.
-	if !recorder.hasKeyValue("dedup_reason", "alpha_wins") {
-		t.Error("expected info log with dedup_reason=alpha_wins to be emitted; it was not")
-	}
-
-	// Delete the object and assert List returns 0 items afterward.
-	if err := te.k8sClient.Delete(ctx, mcpAlpha); err != nil {
-		t.Fatalf("delete v1alpha1 MCPServer: %v", err)
-	}
-
-	// Poll until list empties.
-	if err := wait.PollUntilContextTimeout(ctx, 300*time.Millisecond, 10*time.Second, true,
-		func(_ context.Context) (bool, error) {
-			list, lerr := inf.List(ctx, toolhive.MCPServerGVK)
-			if lerr != nil {
-				return false, nil
-			}
-			for _, item := range list.Items {
-				if item.GetNamespace() == testNS {
-					return false, nil
-				}
-			}
-			return true, nil
-		}); err != nil {
-		t.Fatalf("expected List to return 0 items in %q after delete: %v", testNS, err)
-	}
-
-	cancel()
-	select {
-	case <-mgrDone:
-	case <-time.After(5 * time.Second):
-		t.Fatal("manager did not stop after cancel")
-	}
-}
-
-// logRecorder is a minimal logr.LogSink that records info-level key-value
-// pairs so tests can assert that specific structured log entries were
-// emitted (e.g. dedup_reason=alpha_wins). The informer's Start goroutine
-// and the test goroutine both poke the sink (Info from informer; reads
-// via hasKeyValue from the test), so the slice + map traversal sit
-// behind a mutex.
-type logRecorder struct {
-	mu      sync.Mutex
-	entries []map[string]interface{}
-}
-
-func (r *logRecorder) Init(_ logr.RuntimeInfo)                   {}
-func (r *logRecorder) Enabled(_ int) bool                        { return true }
-func (r *logRecorder) Error(_ error, _ string, _ ...interface{}) {}
-
-func (r *logRecorder) Info(_ int, _ string, keysAndValues ...interface{}) {
-	m := make(map[string]interface{})
-	for i := 0; i+1 < len(keysAndValues); i += 2 {
-		k, ok := keysAndValues[i].(string)
-		if !ok {
-			continue
-		}
-		m[k] = keysAndValues[i+1]
-	}
-	r.mu.Lock()
-	r.entries = append(r.entries, m)
-	r.mu.Unlock()
-}
-
-func (r *logRecorder) WithValues(_ ...interface{}) logr.LogSink { return r }
-func (r *logRecorder) WithName(_ string) logr.LogSink           { return r }
-
-// hasKeyValue returns true if any recorded log entry has the given key
-// with the given string value.
-func (r *logRecorder) hasKeyValue(key, value string) bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	for _, e := range r.entries {
-		if v, ok := e[key]; ok {
-			if s, ok := v.(string); ok && s == value {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // containsAlreadyExists is a cheap substring check for AlreadyExists
 // errors. Avoids pulling apierrors transitively.
 func containsAlreadyExists(s string) bool {
@@ -739,10 +492,9 @@ func containsSubstring(s, sub string) bool {
 }
 
 // TestInformer_FIX2_L11_RegisteredGVKsFull — FIX2.txt LOW-11
-// (2026-05-22). After the Task-4 broadening of tryRegister (no per-kind
-// short-circuit), RegisteredGVKs returns all 6 GVKs (v1alpha1 + v1beta1
-// for each of MCPServer, VirtualMCPServer and MCPRemoteProxy) when both
-// versions are served. The startup audit log lists this set honestly.
+// (2026-05-22). RegisteredGVKs returns one v1beta1 GVK per discoverable
+// kind (MCPServer, VirtualMCPServer, MCPRemoteProxy). The startup audit
+// log lists this set honestly.
 func TestInformer_FIX2_L11_RegisteredGVKsFull(t *testing.T) {
 	te := setupEnvtest(t)
 	installToolhiveCRDs(t, te)
@@ -768,15 +520,18 @@ func TestInformer_FIX2_L11_RegisteredGVKsFull(t *testing.T) {
 	}
 
 	got := inf.RegisteredGVKs()
-	if len(got) != 6 {
-		t.Fatalf("RegisteredGVKs(): got %d, want 6 (both versions per kind). got=%v", len(got), got)
+	if len(got) != 3 {
+		t.Fatalf("RegisteredGVKs(): got %d, want 3 (one per kind). got=%v", len(got), got)
 	}
 	perKind := map[string]int{}
 	for _, gvk := range got {
+		if gvk.Version != "v1beta1" {
+			t.Fatalf("expected only v1beta1 GVKs, got %v", gvk)
+		}
 		perKind[gvk.Kind]++
 	}
-	if perKind["MCPServer"] != 2 || perKind["VirtualMCPServer"] != 2 || perKind["MCPRemoteProxy"] != 2 {
-		t.Fatalf("expected 2 GVKs per kind (v1alpha1 + v1beta1); got per-kind counts: %v", perKind)
+	if perKind["MCPServer"] != 1 || perKind["VirtualMCPServer"] != 1 || perKind["MCPRemoteProxy"] != 1 {
+		t.Fatalf("expected 1 GVK per kind; got per-kind counts: %v", perKind)
 	}
 
 	cancel()
