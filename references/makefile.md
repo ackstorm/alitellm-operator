@@ -174,7 +174,7 @@ the Makefile, and `scripts/cluster.sh` only knows `up`, `hydrate`, `sync`,
 |--------|-----|-------------|
 | `build-operator` | A | Build the `alitellm-operator` binary. |
 | `run` | A | Run a controller from your host (via the container Go toolchain). |
-| `build-installer` | A | Generate consolidated `dist/install.yaml` (CRDs + deployment). |
+| `build-installer` | A | Generate consolidated `dist/install.yaml` (CRDs + deployment). Image = the pin in `config/manager/kustomization.yaml` unless `IMG=…` overrides it; either way the tracked file is left byte-identical (`kustomize_pin_image`). |
 | `build-image` | B | Build the operator container image (`IMG=…`). |
 | `build-image-mock` | B | Build `litellm-mock:e2e` (LiteLLM-shaped mock). |
 | `docker-push` | B | Push the operator image (`IMG=…`). |

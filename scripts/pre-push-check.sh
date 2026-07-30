@@ -299,21 +299,12 @@ hdr "14b. helm-sync drift (config/crd + examples/grafana → deploy/helm/...)"
 # (endpoint validation) and PR #38 (DuplicateDiscovery → Conflict rename).
 #
 # Snapshot the touched files BEFORE syncing so we can restore on drift.
-# `make helm-sync` also flips config/manager/kustomization.yaml back to
-# `controller:latest` (build-installer dep), so it is included in the
-# snapshot/restore set.
 HELM_SNAP=$(mktemp -d)
-mkdir -p "$HELM_SNAP/crd-sources" "$HELM_SNAP/templates" "$HELM_SNAP/config-manager" "$HELM_SNAP/dashboards"
+mkdir -p "$HELM_SNAP/crd-sources" "$HELM_SNAP/templates" "$HELM_SNAP/dashboards"
 cp -a deploy/helm/alitellm-operator/crd-sources/.        "$HELM_SNAP/crd-sources/"      2>/dev/null || true
 cp -a deploy/helm/alitellm-operator/dashboards/.         "$HELM_SNAP/dashboards/"       2>/dev/null || true
 cp    deploy/helm/alitellm-operator/templates/install.yaml "$HELM_SNAP/templates/install.yaml" 2>/dev/null || true
-cp    config/manager/kustomization.yaml                  "$HELM_SNAP/config-manager/kustomization.yaml" 2>/dev/null || true
 if ./scripts/dev.sh make helm-sync >/tmp/helm-sync.txt 2>&1; then
-  # build-installer always rewrites config/manager/kustomization.yaml's
-  # image pin to controller:latest. Restore it unconditionally before
-  # diffing the chart — the kustomization edit is a side effect, not
-  # drift we care about.
-  cp "$HELM_SNAP/config-manager/kustomization.yaml" config/manager/kustomization.yaml
   if git diff --quiet -- deploy/helm/alitellm-operator/crd-sources deploy/helm/alitellm-operator/dashboards deploy/helm/alitellm-operator/templates/install.yaml 2>/dev/null; then
     ok "chart crd-sources + dashboards + templates/install.yaml in sync"
   else
@@ -329,7 +320,6 @@ if ./scripts/dev.sh make helm-sync >/tmp/helm-sync.txt 2>&1; then
     [[ -f "$HELM_SNAP/templates/install.yaml" ]] && cp "$HELM_SNAP/templates/install.yaml" deploy/helm/alitellm-operator/templates/install.yaml
   fi
 else
-  cp "$HELM_SNAP/config-manager/kustomization.yaml" config/manager/kustomization.yaml 2>/dev/null || true
   fail "make helm-sync exited non-zero (see /tmp/helm-sync.txt)"
   sed -n '1,30p' /tmp/helm-sync.txt
 fi

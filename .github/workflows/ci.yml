@@ -48,18 +48,10 @@ jobs:
       # refreshing the published chart. v0.7.0 shipped stale CRDs for
       # PR #25 (endpoint validation) and PR #38 (DuplicateDiscovery →
       # Conflict rename) because nothing enforced this invariant.
-      #
-      # build-installer (helm-sync dep) rewrites
-      # config/manager/kustomization.yaml's image pin to
-      # `controller:latest` as a side effect. Restore the working-tree
-      # value before the diff check so the gate only catches real chart
-      # drift, not the kustomize image flip.
       - name: Chart / CRD drift (make helm-sync-check)
         run: |
-          cp config/manager/kustomization.yaml /tmp/kust-snap.yaml
           ./scripts/dev.sh make helm-sync >/tmp/helm-sync.log 2>&1 || {
             echo "::error::make helm-sync failed"; cat /tmp/helm-sync.log; exit 1; }
-          cp /tmp/kust-snap.yaml config/manager/kustomization.yaml
           if ! git diff --quiet -- deploy/helm/alitellm-operator/crd-sources deploy/helm/alitellm-operator/templates/install.yaml; then
             echo "::error::CHART DRIFT: run 'make helm-sync' and commit the result"
             git --no-pager diff --stat -- deploy/helm/alitellm-operator/crd-sources deploy/helm/alitellm-operator/templates/install.yaml

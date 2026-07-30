@@ -1,5 +1,9 @@
-# Image URL to use all building/pushing image targets
-IMG ?= controller:latest
+# Image URL to use all building/pushing image targets.
+# IMG_DEFAULT is the sentinel meaning "no override": the kustomize targets then
+# keep the release pin already committed in config/manager/kustomization.yaml
+# instead of rewriting that tracked file (see kustomize_pin_image).
+IMG_DEFAULT := controller:latest
+IMG ?= $(IMG_DEFAULT)
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set).
 # Guarded with `command -v go` so host-only targets (hooks, cluster-up, ...) do
@@ -322,8 +326,13 @@ release-bump: ## Internal: bump version across all manifests. Used by release.ym
 	@sed -i -E 's/^version: .*/version: $(VERSION)/' deploy/helm/alitellm-operator/Chart.yaml
 	@sed -i -E 's/^appVersion: .*/appVersion: v$(VERSION)/' deploy/helm/alitellm-operator/Chart.yaml
 	@sed -i -E 's|^([[:space:]]+)tag: v.*|\1tag: v$(VERSION)|' deploy/helm/alitellm-operator/values.yaml
-	@sed -i -E 's|^([[:space:]]+)newTag: v.*|\1newTag: v$(VERSION)|' config/manager/kustomization.yaml
-	@sed -i -E 's|^([[:space:]]+)newTag: v.*|\1newTag: v$(VERSION)|' deploy/kustomize/kustomization.yaml
+	@# `newTag: .*` (not `newTag: v.*`): a non-`v` tag must be repaired, not
+	@# silently skipped. The grep asserts the post-condition either way.
+	@sed -i -E 's|^([[:space:]]+)newTag: .*|\1newTag: v$(VERSION)|' config/manager/kustomization.yaml
+	@sed -i -E 's|^([[:space:]]+)newTag: .*|\1newTag: v$(VERSION)|' deploy/kustomize/kustomization.yaml
+	@for f in config/manager/kustomization.yaml deploy/kustomize/kustomization.yaml; do \
+		grep -q "newTag: v$(VERSION)$$" $$f || (echo "ERROR: $$f not bumped to v$(VERSION)" >&2; exit 1); \
+	done
 	@echo "Manifests bumped to v$(VERSION)."
 
 .PHONY: release-cut
@@ -391,13 +400,26 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 	- $(CONTAINER_TOOL) buildx rm workspace-builder
 	rm Dockerfile.cross
 
+# kustomize_pin_image runs $(1) with config/manager/kustomization.yaml pinned to
+# $(IMG). `kustomize edit set image` WRITES that tracked file, so the snapshot is
+# restored by a trap — covering failure and Ctrl-C, not just the happy path. With
+# no IMG override the edit is skipped entirely and the committed release pin
+# (owned by release-bump) is what the build renders.
+define kustomize_pin_image
+	snap=$$(mktemp); cp config/manager/kustomization.yaml "$$snap"; \
+	trap 'cp "$$snap" config/manager/kustomization.yaml; rm -f "$$snap"' EXIT INT TERM; \
+	if [ "$(IMG)" != "$(IMG_DEFAULT)" ]; then \
+		(cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)); \
+	fi; \
+	$(1)
+endef
+
 .PHONY: build-installer
 build-installer: ## Generate a consolidated YAML with CRDs and deployment.
 	$(call container_target,_build-installer)
 _build-installer: gen-manifests gen-code kustomize
 	mkdir -p dist
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUSTOMIZE) build config/default > dist/install.yaml
+	$(call kustomize_pin_image,$(KUSTOMIZE) build config/default > dist/install.yaml)
 
 ##@ Deployment
 
@@ -421,8 +443,7 @@ _uninstall: gen-manifests kustomize
 deploy: ## Deploy controller to the K8s cluster specified in ~/.kube/config.
 	$(call container_target,_deploy)
 _deploy: gen-manifests kustomize
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUSTOMIZE) build config/default | $(KUBECTL) apply -f -
+	$(call kustomize_pin_image,$(KUSTOMIZE) build config/default | $(KUBECTL) apply -f -)
 
 .PHONY: undeploy
 undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
