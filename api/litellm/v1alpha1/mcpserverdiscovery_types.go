@@ -137,9 +137,9 @@ type MCPServerDiscoverySpec struct {
 // informer reconfig on live namespace-list change.
 type MCPServerDiscoveryToolhive struct {
 	// Namespaces enumerates the Kubernetes namespaces from which
-	// ToolHive `MCPServer` / `VirtualMCPServer` objects should be
-	// considered for discovery. ToolHive objects in OTHER namespaces
-	// are silently ignored.
+	// ToolHive `MCPServer` / `VirtualMCPServer` / `MCPRemoteProxy`
+	// objects should be considered for discovery. ToolHive objects in
+	// OTHER namespaces are silently ignored.
 	//
 	// MUST contain at least one entry (MinItems=1). Each entry MUST be
 	// a non-empty DNS-1123-friendly string (MinLength=1); CRD-layer
@@ -152,17 +152,18 @@ type MCPServerDiscoveryToolhive struct {
 	Namespaces []string `json:"namespaces"`
 
 	// Kinds enumerates the ToolHive resource kinds to watch. Defaults
-	// to both `MCPServer` and `VirtualMCPServer` (per spec §6.5). A user
+	// to all three of `MCPServer`, `VirtualMCPServer` and
+	// `MCPRemoteProxy` (spec §6.5, extended with MCPRemoteProxy). A user
 	// who wants Discovery limited to one kind (e.g. only `MCPServer`)
 	// specifies a singleton list.
 	//
 	// Empty list is REJECTED at admission via the Enum constraint on
 	// each item — but the default ensures the omitted-field case is
-	// "watch both", not "watch nothing".
+	// "watch all", not "watch nothing".
 	//
 	// +optional
-	// +kubebuilder:default={MCPServer,VirtualMCPServer}
-	// +kubebuilder:validation:items:Enum=MCPServer;VirtualMCPServer
+	// +kubebuilder:default={MCPServer,VirtualMCPServer,MCPRemoteProxy}
+	// +kubebuilder:validation:items:Enum=MCPServer;VirtualMCPServer;MCPRemoteProxy
 	// +listType=atomic
 	Kinds []string `json:"kinds,omitempty"`
 }

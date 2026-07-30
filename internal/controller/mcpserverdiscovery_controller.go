@@ -35,9 +35,10 @@
 //
 // - Source: ToolHive informer (not HTTP provider). The reconciler reads
 // `mcpservers.toolhive.stacklok.dev` + `virtualmcpservers.toolhive.
-// stacklok.dev` snapshots via the cluster-scoped informer cache.
-// ToolHive CRDs absent at boot → MSDISC-06 Ready=False, reason=
-// SourceUnreachable.
+// stacklok.dev` + `mcpremoteproxies.toolhive.stacklok.dev` snapshots via
+// the cluster-scoped informer cache. All three CRDs ship in the same
+// upstream toolhive-operator-crds chart. ToolHive CRDs absent at boot →
+// MSDISC-06 Ready=False, reason=SourceUnreachable.
 // - Naming: hyphen-separated two-part name `<spec.prefix>-<source-name>`
 // (FIX4.txt H-2 v0.3.0 — matches LiteLLMModelDiscovery's
 // `<prefix>-<source-name>` convention exactly; pre-v0.3.0 was the
@@ -432,8 +433,8 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 	// untouched.
 	kinds := md.Spec.Toolhive.Kinds
 	if len(kinds) == 0 {
-		// Default per CRD: both kinds.
-		kinds = []string{"MCPServer", "VirtualMCPServer"}
+		// Default per CRD: all kinds.
+		kinds = []string{"MCPServer", "VirtualMCPServer", "MCPRemoteProxy"}
 	}
 	kindSet := make(map[string]struct{}, len(kinds))
 	for _, k := range kinds {
@@ -444,8 +445,7 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 		nsSet[ns] = struct{}{}
 	}
 
-	// Gather raw unstructured objects from both GVKs, filtered by the
-	// configured kinds.
+	// Gather raw unstructured objects from every configured kind's GVK.
 	var raw []*unstructured.Unstructured
 	if _, want := kindSet["MCPServer"]; want {
 		list, err := informer.List(ctx, toolhive.MCPServerGVK)
@@ -468,6 +468,20 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 				metav1.ConditionFalse, "SourceUnreachable", err.Error(),
 				metav1.ConditionFalse, "Unreachable", err.Error())
 			logger.V(1).Info("ToolHive List(VirtualMCPServer) failed; D-09 atomic refresh — children untouched",
+				"error", err)
+			return ctrl.Result{}, err
+		}
+		for i := range list.Items {
+			raw = append(raw, &list.Items[i])
+		}
+	}
+	if _, want := kindSet["MCPRemoteProxy"]; want {
+		list, err := informer.List(ctx, toolhive.MCPRemoteProxyGVK)
+		if err != nil {
+			r.writeBothConditions(ctx, &md,
+				metav1.ConditionFalse, "SourceUnreachable", err.Error(),
+				metav1.ConditionFalse, "Unreachable", err.Error())
+			logger.V(1).Info("ToolHive List(MCPRemoteProxy) failed; D-09 atomic refresh — children untouched",
 				"error", err)
 			return ctrl.Result{}, err
 		}

@@ -199,10 +199,10 @@ func toolhiveCRDManifest(kind, listKind, plural, singular string, versions []str
 	}
 }
 
-// installToolhiveCRDs registers both MCPServer and VirtualMCPServer
-// CRDs with both v1alpha1 and v1beta1 versions into the envtest API
-// server. Idempotent — re-installs over an existing CRD by name are
-// upserts. Used by TestInformer_LazyRetry and
+// installToolhiveCRDs registers the MCPServer, VirtualMCPServer and
+// MCPRemoteProxy CRDs with both v1alpha1 and v1beta1 versions into the
+// envtest API server. Idempotent — re-installs over an existing CRD by
+// name are upserts. Used by TestInformer_LazyRetry and
 // TestInformer_ListReturnsLiveObjects.
 //
 // The dual-version CRD ensures the informer can register either
@@ -213,6 +213,7 @@ func installToolhiveCRDs(t *testing.T, te *testEnv) {
 	crds := []*apiextensionsv1.CustomResourceDefinition{
 		toolhiveCRDManifest("MCPServer", "MCPServerList", "mcpservers", "mcpserver", []string{"v1alpha1", "v1beta1"}),
 		toolhiveCRDManifest("VirtualMCPServer", "VirtualMCPServerList", "virtualmcpservers", "virtualmcpserver", []string{"v1alpha1", "v1beta1"}),
+		toolhiveCRDManifest("MCPRemoteProxy", "MCPRemoteProxyList", "mcpremoteproxies", "mcpremoteproxy", []string{"v1alpha1", "v1beta1"}),
 	}
 	_, err := envtest.InstallCRDs(te.cfg, envtest.CRDInstallOptions{
 		CRDs:    crds,
@@ -739,9 +740,9 @@ func containsSubstring(s, sub string) bool {
 
 // TestInformer_FIX2_L11_RegisteredGVKsFull — FIX2.txt LOW-11
 // (2026-05-22). After the Task-4 broadening of tryRegister (no per-kind
-// short-circuit), RegisteredGVKs returns all 4 GVKs (v1alpha1 + v1beta1
-// for both MCPServer and VirtualMCPServer) when both versions are
-// served. The startup audit log lists this set honestly.
+// short-circuit), RegisteredGVKs returns all 6 GVKs (v1alpha1 + v1beta1
+// for each of MCPServer, VirtualMCPServer and MCPRemoteProxy) when both
+// versions are served. The startup audit log lists this set honestly.
 func TestInformer_FIX2_L11_RegisteredGVKsFull(t *testing.T) {
 	te := setupEnvtest(t)
 	installToolhiveCRDs(t, te)
@@ -767,14 +768,14 @@ func TestInformer_FIX2_L11_RegisteredGVKsFull(t *testing.T) {
 	}
 
 	got := inf.RegisteredGVKs()
-	if len(got) != 4 {
-		t.Fatalf("RegisteredGVKs(): got %d, want 4 (both versions per kind). got=%v", len(got), got)
+	if len(got) != 6 {
+		t.Fatalf("RegisteredGVKs(): got %d, want 6 (both versions per kind). got=%v", len(got), got)
 	}
 	perKind := map[string]int{}
 	for _, gvk := range got {
 		perKind[gvk.Kind]++
 	}
-	if perKind["MCPServer"] != 2 || perKind["VirtualMCPServer"] != 2 {
+	if perKind["MCPServer"] != 2 || perKind["VirtualMCPServer"] != 2 || perKind["MCPRemoteProxy"] != 2 {
 		t.Fatalf("expected 2 GVKs per kind (v1alpha1 + v1beta1); got per-kind counts: %v", perKind)
 	}
 

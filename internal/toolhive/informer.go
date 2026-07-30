@@ -6,15 +6,15 @@
 //
 // # Dual-version registration
 //
-// The Informer registers 4 dynamic informers: v1alpha1 and v1beta1 for each
-// of MCPServer and VirtualMCPServer. Registration is attempted per-GVK — a
-// missing CRD for one version does not prevent the other from registering.
-// Each kind is considered "ready" once at least one of its two version
-// informers has successfully registered.
+// The Informer registers 6 dynamic informers: v1alpha1 and v1beta1 for each
+// of MCPServer, VirtualMCPServer and MCPRemoteProxy. Registration is attempted
+// per-GVK — a missing CRD for one version does not prevent the other from
+// registering. Each kind is considered "ready" once at least one of its two
+// version informers has successfully registered.
 //
 // # Dedup store
 //
-// The dedupStore aggregates discovered objects from all 4 informers keyed by
+// The dedupStore aggregates discovered objects from all 6 informers keyed by
 // {kind, namespace, name}. On collision (same key from both v1alpha1 and
 // v1beta1), v1alpha1 wins and the v1beta1 entry is logged at info level with
 // dedup_reason=alpha_wins. This ensures identical List output for deployments
@@ -57,7 +57,7 @@ var ErrNotReady = errors.New("toolhive: informers not yet registered (CRDs may b
 // Group is intentionally omitted — both v1alpha1 and v1beta1 share the
 // same group ("toolhive.stacklok.dev").
 type dedupKey struct {
-	Kind      string // "MCPServer" or "VirtualMCPServer"
+	Kind      string // "MCPServer", "VirtualMCPServer" or "MCPRemoteProxy"
 	Namespace string
 	Name      string
 }
@@ -378,10 +378,11 @@ func (i *Informer) retryLoop(ctx context.Context) {
 	}
 }
 
-// tryRegister attempts to register all 4 dynamic informers. Each GVK is
+// tryRegister attempts to register all 6 dynamic informers. Each GVK is
 // tried independently; a failure for one version does not prevent other
-// versions from being registered. Returns true if each kind (MCPServer and
-// VirtualMCPServer) has at least one version successfully registered.
+// versions from being registered. Returns true if each kind (MCPServer,
+// VirtualMCPServer and MCPRemoteProxy) has at least one version successfully
+// registered.
 //
 // The pattern is controller-runtime's recommended dynamic-informer approach:
 // construct an *unstructured.Unstructured with the GVK set, call
@@ -399,12 +400,14 @@ func (i *Informer) retryLoop(ctx context.Context) {
 // All such errors mean "try again later". Per Phase 5 D-08, the Informer
 // does NOT inspect apiextensions to determine whether CRDs exist.
 func (i *Informer) tryRegister(ctx context.Context) bool {
-	// All 4 GVKs we want to register.
+	// All 6 GVKs we want to register.
 	gvks := []schema.GroupVersionKind{
 		MCPServerGVKv1alpha1,
 		MCPServerGVKv1beta1,
 		VirtualMCPServerGVKv1alpha1,
 		VirtualMCPServerGVKv1beta1,
+		MCPRemoteProxyGVKv1alpha1,
+		MCPRemoteProxyGVKv1beta1,
 	}
 
 	i.readyMu.Lock()
@@ -440,7 +443,10 @@ func (i *Informer) tryRegister(ctx context.Context) bool {
 		i.registered = append(i.registered, gvk)
 	}
 
-	return i.kindReady["MCPServer"] && i.kindReady["VirtualMCPServer"]
+	// All three kinds ship in the same upstream toolhive-operator-crds
+	// chart, so "ToolHive is installed" means all three CRDs exist.
+	// MCPRemoteProxy gets no special case.
+	return i.kindReady["MCPServer"] && i.kindReady["VirtualMCPServer"] && i.kindReady["MCPRemoteProxy"]
 }
 
 // IsReady reports whether the Informer has successfully registered at
@@ -460,7 +466,9 @@ func (i *Informer) IsReady() bool {
 // The GVK parameter specifies the kind to query. Passing MCPServerGVK or
 // MCPServerGVKv1alpha1 queries MCPServer objects from both versions.
 // Passing VirtualMCPServerGVK or VirtualMCPServerGVKv1alpha1 queries
-// VirtualMCPServer objects from both versions.
+// VirtualMCPServer objects from both versions. Passing MCPRemoteProxyGVK
+// or MCPRemoteProxyGVKv1alpha1 queries MCPRemoteProxy objects from both
+// versions.
 //
 // On success, returns an UnstructuredList of every deduped object the
 // informer has observed (cluster-scoped). The caller filters by
@@ -483,7 +491,7 @@ func (i *Informer) List(ctx context.Context, gvk schema.GroupVersionKind) (*unst
 	}
 
 	// Determine the canonical kind name from the GVK.
-	kind := gvk.Kind // "MCPServer" or "VirtualMCPServer"
+	kind := gvk.Kind // "MCPServer", "VirtualMCPServer" or "MCPRemoteProxy"
 
 	// Determine the two list GVKs (one per version) for this kind.
 	var listGVKs []schema.GroupVersionKind
@@ -492,6 +500,8 @@ func (i *Informer) List(ctx context.Context, gvk schema.GroupVersionKind) (*unst
 		listGVKs = []schema.GroupVersionKind{MCPServerListGVKv1alpha1, MCPServerListGVKv1beta1}
 	case "VirtualMCPServer":
 		listGVKs = []schema.GroupVersionKind{VirtualMCPServerListGVKv1alpha1, VirtualMCPServerListGVKv1beta1}
+	case "MCPRemoteProxy":
+		listGVKs = []schema.GroupVersionKind{MCPRemoteProxyListGVKv1alpha1, MCPRemoteProxyListGVKv1beta1}
 	default:
 		// Fallback: single query with the list GVK derived from the input.
 		fallback := gvk

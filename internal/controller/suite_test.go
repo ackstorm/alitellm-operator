@@ -292,8 +292,12 @@ func setupAndRun(m *testing.M) int {
 	// installToolhiveCRDs helper — minimal CRD shape with
 	// x-kubernetes-preserve-unknown-fields: true at the object root so
 	// the MSDisc envtests can create unstructured ToolHive MCPServer /
-	// VirtualMCPServer objects with status.url + status.transport fields
-	// (used by reconcile flow). The
+	// VirtualMCPServer / MCPRemoteProxy objects with status.url +
+	// status.transport fields (used by reconcile flow).
+	//
+	// All three kinds MUST be installed: the informer reports ready only
+	// once every discoverable kind has registered, so omitting one leaves
+	// every MSDisc CR stuck on SourceUnreachable. The
 	// dev / prod namespaces (referenced by spec.toolhive.namespaces[]
 	// in MSDisc CRs) are also created here so child rendering can
 	// proceed without a manual namespace-create.
@@ -936,6 +940,7 @@ func installToolhiveCRDsForSuite(ctx context.Context, cfg *rest.Config) error {
 		CRDs: []*apiextensionsv1.CustomResourceDefinition{
 			mkCRD("MCPServer", "MCPServerList", "mcpservers", "mcpserver"),
 			mkCRD("VirtualMCPServer", "VirtualMCPServerList", "virtualmcpservers", "virtualmcpserver"),
+			mkCRD("MCPRemoteProxy", "MCPRemoteProxyList", "mcpremoteproxies", "mcpremoteproxy"),
 		},
 		MaxTime: 30 * time.Second,
 	})

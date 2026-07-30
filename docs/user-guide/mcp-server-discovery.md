@@ -2,9 +2,9 @@
 
 Pipeline B CR. Points the operator at the cluster's ToolHive
 deployment and auto-generates `LiteLLMMCPServer` child CRs for each
-`MCPServer` / `VirtualMCPServer` object ToolHive owns. Discovery
-NEVER calls LiteLLM — each generated child reconciles into LiteLLM
-via the `LiteLLMMCPServer` controller (Pipeline A).
+`MCPServer` / `VirtualMCPServer` / `MCPRemoteProxy` object ToolHive
+owns. Discovery NEVER calls LiteLLM — each generated child reconciles
+into LiteLLM via the `LiteLLMMCPServer` controller (Pipeline A).
 
 In v1alpha1 only `spec.type: toolhive` is supported.
 
@@ -15,7 +15,7 @@ In v1alpha1 only `spec.type: toolhive` is supported.
 | `spec.type`                   | yes      | Only `toolhive` in v1alpha1.                                                                |
 | `spec.prefix`                 | yes      | DNS-1123 label prepended to each child's `metadata.name`. MaxLength=30.                     |
 | `spec.toolhive.namespaces`    | yes      | Namespaces to watch for ToolHive objects. MinItems=1.                                       |
-| `spec.toolhive.kinds`         | no       | List of `MCPServer`, `VirtualMCPServer`. Default: both.                                     |
+| `spec.toolhive.kinds`         | no       | List of `MCPServer`, `VirtualMCPServer`, `MCPRemoteProxy`. Default: all three.              |
 | `spec.params`                 | no       | Pass-through bag propagated VERBATIM into every child's `spec.params`.                      |
 | `spec.secrets[]`              | no       | Substitution map propagated into every child's `spec.secrets[]`.                            |
 | `spec.filters.include`        | no       | RE2 patterns — anchored, include-FIRST, against the generated child name `<spec.prefix>-<source-name>`. |
@@ -89,6 +89,11 @@ the reconciler surfaces `Ready=False, reason=SourceUnreachable` and
 retries every minute. When ToolHive lands, the lazy informer
 registers and discovery converges automatically — no operator restart
 required.
+
+All three discoverable kinds — `mcpservers`, `virtualmcpservers` and
+`mcpremoteproxies` — ship in the same upstream `toolhive-operator-crds`
+chart, so no kind is treated as optional: either ToolHive is installed
+and all three are watched, or none is.
 
 ## Child name generation (FIX4 H-2 v0.3.0 — breaking)
 

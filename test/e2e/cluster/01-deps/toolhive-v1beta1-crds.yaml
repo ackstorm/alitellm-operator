@@ -17,6 +17,10 @@
 # a live cluster. Schema is deliberately permissive (x-kubernetes-preserve-
 # unknown-fields: true) — Tier 2 exercises API reachability + reconciler
 # behavior, not CRD schema validation.
+#
+# mcpremoteproxies is included so Tier 2 covers the third discoverable kind.
+# Upstream ships all three in the same operator-crds chart, so the informer
+# requires all three to register before it reports ready.
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -244,6 +248,111 @@ spec:
             x-kubernetes-preserve-unknown-fields: true
           status:
             description: VirtualMCPServerStatus defines the observed state of VirtualMCPServer.
+            type: object
+            x-kubernetes-preserve-unknown-fields: true
+        type: object
+    served: true
+    storage: false
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.3
+  name: mcpremoteproxies.toolhive.stacklok.dev
+spec:
+  conversion:
+    strategy: None
+  group: toolhive.stacklok.dev
+  names:
+    categories:
+    - toolhive
+    kind: MCPRemoteProxy
+    listKind: MCPRemoteProxyList
+    plural: mcpremoteproxies
+    shortNames:
+    - mcpremoteproxy
+    - mcpremoteproxies
+    singular: mcpremoteproxy
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .spec.remoteUrl
+      name: Remote URL
+      type: string
+    - jsonPath: .status.url
+      name: URL
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: Ready
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    deprecated: true
+    deprecationWarning: toolhive.stacklok.dev/v1alpha1 is deprecated; use v1beta1
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: MCPRemoteProxy is the deprecated v1alpha1 version of the MCPRemoteProxy resource.
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: MCPRemoteProxySpec defines the desired state of MCPRemoteProxy.
+            type: object
+            x-kubernetes-preserve-unknown-fields: true
+          status:
+            description: MCPRemoteProxyStatus defines the observed state of MCPRemoteProxy.
+            type: object
+            x-kubernetes-preserve-unknown-fields: true
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .spec.remoteUrl
+      name: Remote URL
+      type: string
+    - jsonPath: .status.url
+      name: URL
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: Ready
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1beta1
+    schema:
+      openAPIV3Schema:
+        description: MCPRemoteProxy is the Schema for the mcpremoteproxies API (v1beta1)
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: MCPRemoteProxySpec defines the desired state of MCPRemoteProxy.
+            type: object
+            x-kubernetes-preserve-unknown-fields: true
+          status:
+            description: MCPRemoteProxyStatus defines the observed state of MCPRemoteProxy.
             type: object
             x-kubernetes-preserve-unknown-fields: true
         type: object

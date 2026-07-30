@@ -518,7 +518,8 @@ func main() {
 
 	// Phase 5 — ToolHive lazy dynamic informer (D-08).
 	// Registers cluster-scoped unstructured informers for
-	// toolhive.stacklok.dev/v1beta1 MCPServer and VirtualMCPServer. The
+	// toolhive.stacklok.dev/v1beta1 MCPServer, VirtualMCPServer and
+	// MCPRemoteProxy. The
 	// Informer satisfies manager.Runnable: Start tries an initial
 	// registration synchronously, then (on failure) spawns a 1-minute
 	// retry goroutine so manager.Setup does NOT crash when ToolHive
