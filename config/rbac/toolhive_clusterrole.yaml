@@ -34,6 +34,7 @@ rules:
   resources:
   - mcpservers
   - virtualmcpservers
+  - mcpremoteproxies
   verbs:
   - get
   - list
