@@ -181,15 +181,8 @@ jobs:
         # Drift here should be impossible if the PR CI lint gate is
         # healthy — this is belt + suspenders for admin-merge / hotfix
         # paths that bypass branch protection.
-        #
-        # build-installer (helm-sync dep) rewrites
-        # config/manager/kustomization.yaml's image pin to
-        # `controller:latest` as a side effect. Snapshot and restore so
-        # the diff check only catches real chart drift.
         run: |
-          cp config/manager/kustomization.yaml /tmp/kust-snap.yaml
           make helm-sync
-          cp /tmp/kust-snap.yaml config/manager/kustomization.yaml
           if ! git diff --quiet -- deploy/helm/alitellm-operator/crd-sources deploy/helm/alitellm-operator/templates/install.yaml; then
             echo "::error::CHART DRIFT at release time — main is in a broken state. Run 'make helm-sync' on a branch, PR + merge, then re-cut the release."
             git --no-pager diff --stat -- deploy/helm/alitellm-operator/crd-sources deploy/helm/alitellm-operator/templates/install.yaml

@@ -72,19 +72,28 @@ with open(input_file, 'r') as f:
     content = f.read()
 
 # ─── Substitution 1: Image reference ────────────────────────────────────────
-# Replace: `        image: controller:latest`
+# Replace: `        image: <whatever kustomize rendered>`
 # With:    `        image: {{ .Values.image.repo }}:{{ .Values.image.tag }}`
 # And add: `        imagePullPolicy: {{ .Values.image.pullPolicy }}`
 #
 # The pattern targets ONLY the Deployment container image line (8-space indent
-# in the kustomize default output). CRD-embedded strings don't contain
-# "image: controller:latest" so this is safe.
-content = re.sub(
-    r'^(        image: )controller:latest$',
+# in the kustomize default output); no CRD-embedded string matches it. The value
+# is matched loosely because dist/install.yaml now carries the release pin from
+# config/manager/kustomization.yaml (or an explicit IMG=), not `controller:latest`.
+# The count assertion turns any future layout change into a loud failure instead
+# of a chart that ships a hardcoded image.
+content, _n_image = re.subn(
+    r'^(        image: )\S+$',
     r'\1{{ .Values.image.repo }}:{{ .Values.image.tag }}\n        imagePullPolicy: {{ .Values.image.pullPolicy }}',
     content,
     flags=re.MULTILINE,
 )
+if _n_image != 1:
+    print(
+        f"ERROR: expected exactly 1 deployment image line, found {_n_image}",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 # ─── CR-04 (D-7.1-04): Escape {{TOKEN}} literals inside CRD description: blocks
 # Rewrite {{TOKEN}} → {{ "{{TOKEN}}" }} so Helm's text/template engine treats

@@ -797,6 +797,34 @@ CI's Envtest job, which is the reliable signal.
   (per-kind gates were explicitly out of scope); `make e2e-full` against a
   real cluster is the decisive gate, not a local `-race` full-package run.
 
+### ❌ `kustomize edit set image` in a build recipe — it WRITES a tracked file
+```make
+_build-installer: gen-manifests gen-code kustomize
+	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+	$(KUSTOMIZE) build config/default > dist/install.yaml
+```
+`kustomize edit` is a write, not a read: a plain `make build-installer` flipped
+the committed `newTag: v0.8.0` pin to `controller:latest` and left
+`config/manager/kustomization.yaml` dirty (also via `helm-sync`, which depends on
+it). Three snapshot/restore workarounds had grown around it (`ci.yml`,
+`release.yml`, `pre-push-check.sh`), and `release-bump` could not repair the
+damage — its `newTag: v.*` sed does not match `newTag: latest`, so a
+`controller:latest` landing on `main` would be shipped silently.
+✅ Route every kustomize image pin through `kustomize_pin_image` (Makefile):
+```make
+_build-installer: gen-manifests gen-code kustomize
+	mkdir -p dist
+	$(call kustomize_pin_image,$(KUSTOMIZE) build config/default > dist/install.yaml)
+```
+It snapshots the file, restores it via a `trap … EXIT INT TERM` (so failure and
+Ctrl-C are covered too), and skips the edit entirely when `IMG` is unset — the
+committed release pin is then what `dist/install.yaml` carries, NOT
+`controller:latest`. `_deploy` shares the macro. Any NEW target that needs an
+image override MUST use it rather than editing `config/manager/` in place.
+WHY IT MATTERS: `dist/` is gitignored and the Helm chart re-templates the image,
+so the visible damage is a dirty tree plus the raw `kustomize build config/default`
+install path pointing at a tag that exists in no registry.
+
 ### ❌ Admin-merging a PR over a red required check
 ```
 PR #112 merged with Envtest: FAILURE (metric rename half-applied to
