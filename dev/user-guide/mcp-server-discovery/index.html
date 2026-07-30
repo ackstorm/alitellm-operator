@@ -1758,9 +1758,9 @@
 <h1 id="litellmmcpserverdiscovery">LiteLLMMCPServerDiscovery<a class="headerlink" href="#litellmmcpserverdiscovery" title="Permanent link">&para;</a></h1>
 <p>Pipeline B CR. Points the operator at the cluster's ToolHive
 deployment and auto-generates <code>LiteLLMMCPServer</code> child CRs for each
-<code>MCPServer</code> / <code>VirtualMCPServer</code> object ToolHive owns. Discovery
-NEVER calls LiteLLM — each generated child reconciles into LiteLLM
-via the <code>LiteLLMMCPServer</code> controller (Pipeline A).</p>
+<code>MCPServer</code> / <code>VirtualMCPServer</code> / <code>MCPRemoteProxy</code> object ToolHive
+owns. Discovery NEVER calls LiteLLM — each generated child reconciles
+into LiteLLM via the <code>LiteLLMMCPServer</code> controller (Pipeline A).</p>
 <p>In v1alpha1 only <code>spec.type: toolhive</code> is supported.</p>
 <h2 id="quick-reference">Quick reference<a class="headerlink" href="#quick-reference" title="Permanent link">&para;</a></h2>
 <table>
@@ -1790,7 +1790,7 @@ via the <code>LiteLLMMCPServer</code> controller (Pipeline A).</p>
 <tr>
 <td><code>spec.toolhive.kinds</code></td>
 <td>no</td>
-<td>List of <code>MCPServer</code>, <code>VirtualMCPServer</code>. Default: both.</td>
+<td>List of <code>MCPServer</code>, <code>VirtualMCPServer</code>, <code>MCPRemoteProxy</code>. Default: all three.</td>
 </tr>
 <tr>
 <td><code>spec.params</code></td>
@@ -1893,6 +1893,10 @@ the reconciler surfaces <code>Ready=False, reason=SourceUnreachable</code> and
 retries every minute. When ToolHive lands, the lazy informer
 registers and discovery converges automatically — no operator restart
 required.</p>
+<p>All three discoverable kinds — <code>mcpservers</code>, <code>virtualmcpservers</code> and
+<code>mcpremoteproxies</code> — ship in the same upstream <code>toolhive-operator-crds</code>
+chart, so no kind is treated as optional: either ToolHive is installed
+and all three are watched, or none is.</p>
 <h2 id="child-name-generation-fix4-h-2-v030-breaking">Child name generation (FIX4 H-2 v0.3.0 — breaking)<a class="headerlink" href="#child-name-generation-fix4-h-2-v030-breaking" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>&lt;spec.prefix&gt;-&lt;toolhive-object-name&gt;
 </code></pre></div>

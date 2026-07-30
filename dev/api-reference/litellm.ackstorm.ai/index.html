@@ -5217,15 +5217,15 @@ informer reconfig on live namespace-list change.</p>
 <tbody>
 <tr>
 <td><code>namespaces</code> <em>string array</em></td>
-<td>Namespaces enumerates the Kubernetes namespaces from which<br />ToolHive <code>MCPServer</code> / <code>VirtualMCPServer</code> objects should be<br />considered for discovery. ToolHive objects in OTHER namespaces<br />are silently ignored.<br />MUST contain at least one entry (MinItems=1). Each entry MUST be<br />a non-empty DNS-1123-friendly string (MinLength=1); CRD-layer<br />validation does NOT enforce DNS-1123 format because the cluster's<br />own namespace creation already enforces that contract.</td>
+<td>Namespaces enumerates the Kubernetes namespaces from which<br />ToolHive <code>MCPServer</code> / <code>VirtualMCPServer</code> / <code>MCPRemoteProxy</code><br />objects should be considered for discovery. ToolHive objects in<br />OTHER namespaces are silently ignored.<br />MUST contain at least one entry (MinItems=1). Each entry MUST be<br />a non-empty DNS-1123-friendly string (MinLength=1); CRD-layer<br />validation does NOT enforce DNS-1123 format because the cluster's<br />own namespace creation already enforces that contract.</td>
 <td></td>
 <td>MinItems: 1 <br />Required: {} <br /></td>
 </tr>
 <tr>
 <td><code>kinds</code> <em>string array</em></td>
-<td>Kinds enumerates the ToolHive resource kinds to watch. Defaults<br />to both <code>MCPServer</code> and <code>VirtualMCPServer</code> (per spec §6.5). A user<br />who wants Discovery limited to one kind (e.g. only <code>MCPServer</code>)<br />specifies a singleton list.<br />Empty list is REJECTED at admission via the Enum constraint on<br />each item — but the default ensures the omitted-field case is<br />"watch both", not "watch nothing".</td>
-<td>[MCPServer VirtualMCPServer]</td>
-<td>items:Enum: [MCPServer VirtualMCPServer] <br /></td>
+<td>Kinds enumerates the ToolHive resource kinds to watch. Defaults<br />to all three of <code>MCPServer</code>, <code>VirtualMCPServer</code> and<br /><code>MCPRemoteProxy</code> (spec §6.5, extended with MCPRemoteProxy). A user<br />who wants Discovery limited to one kind (e.g. only <code>MCPServer</code>)<br />specifies a singleton list.<br />Empty list is REJECTED at admission via the Enum constraint on<br />each item — but the default ensures the omitted-field case is<br />"watch all", not "watch nothing".</td>
+<td>[MCPServer VirtualMCPServer MCPRemoteProxy]</td>
+<td>items:Enum: [MCPServer VirtualMCPServer MCPRemoteProxy] <br /></td>
 </tr>
 </tbody>
 </table>
