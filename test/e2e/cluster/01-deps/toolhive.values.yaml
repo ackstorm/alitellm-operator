@@ -4,17 +4,23 @@
 # Chart:    oci://ghcr.io/stacklok/toolhive/toolhive-operator  (upstream, OCI-hosted)
 # CRDs:     oci://ghcr.io/stacklok/toolhive/toolhive-operator-crds  (installed in step 4a)
 #
-# IMPORTANT: the CRDs chart and Operator chart are on INDEPENDENT version
-# streams (CRDs ~0.0.x, Operator ~0.5.x). Pin each separately — see
-# test/e2e/CHART_PINS.md. Install order is always CRDs first (Established=True
-# is a prereq for the operator chart).
+# IMPORTANT: the two charts historically ran on INDEPENDENT version streams
+# (CRDs ~0.0.x, Operator ~0.5.x) and converged on the ToolHive release version
+# at 0.41.0. Keep pinning each separately — see test/e2e/CHART_PINS.md — the
+# convergence is not a guarantee. Install order is always CRDs first
+# (Established=True is a prereq for the operator chart).
+#
+# crdsChartVersion must stay >= 0.41.0: the operator reads ToolHive at v1beta1
+# ONLY, and 0.41.0 is the first CRDs release that serves it (v1alpha1 is kept
+# but deprecated, storage moved to v1beta1).
 #
 # Apply changes:  make cluster-sync
 
-crdsChartVersion:     0.0.55      # see test/e2e/CHART_PINS.md
-operatorChartVersion: 0.5.5       # independent of crdsChartVersion
+crdsChartVersion:     0.41.0      # >= 0.41.0 required (v1beta1); see test/e2e/CHART_PINS.md
+operatorChartVersion: 0.41.0      # pinned independently of crdsChartVersion
 
-# All operator-tunable knobs nest under `operator:` (chart 0.5.5 schema).
+# All operator-tunable knobs nest under `operator:` (unchanged from the 0.5.5
+# schema through 0.41.0).
 # A top-level `resources:` key — as used pre-2026-05-26 — is silently
 # dropped by the chart's templating.
 #
