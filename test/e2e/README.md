@@ -80,34 +80,29 @@ On any Ginkgo failure, `AfterEach` dumps to `/tmp/e2e-*.log` inside the devtools
 container (operator + LiteLLM Pod logs, all CRs YAML, events). CI uploads them
 as artifacts under the `e2e-forensics` name.
 
-## ToolHive v1beta1 CRD fixture
+## ToolHive v1beta1 — chart floor, no fixture
 
 The operator reads ToolHive at **v1beta1 only** (v1alpha1 support was removed on
-2026-07-30 — see `internal/toolhive/types.go`).
+2026-07-30 — see `internal/toolhive/types.go`), so `crdsChartVersion` in
+`test/e2e/cluster/01-deps/toolhive.values.yaml` has a hard floor of **0.41.0**,
+the first `toolhive-operator-crds` release that serves v1beta1 (v1alpha1 kept but
+`deprecated: true`, `storage: true` moved to v1beta1). Below that floor the
+informer never registers and every MCPServerDiscovery parks on
+`SourceUnreachable`.
 
-The `toolhive-operator-crds` OCI chart version **currently pinned** in
-`test/e2e/cluster/01-deps/toolhive.values.yaml` (`0.0.55`, see `CHART_PINS.md`)
-ships `v1alpha1` only — newer upstream charts do carry v1beta1, see below. The
-`v1beta1` CRD version is therefore hydrated from
-`test/e2e/cluster/01-deps/toolhive-v1beta1-crds.yaml`, which is vendored from
-`stacklok/toolhive v0.28.0` (commit `748a64228710ce241a225f5530022ce2c96cc23e`).
-The fixture is therefore **required**, not supplementary: without it the informer
-never registers and every MCPServerDiscovery parks on `SourceUnreachable`.
+Until 2026-07-31 the pin was `0.0.55` (v1alpha1 only) and v1beta1 was hydrated
+from a vendored `toolhive-v1beta1-crds.yaml`. Both charts are now pinned at
+`0.41.0` and that fixture is deleted — v1beta1 comes straight from the OCI chart.
 
-`scripts/cluster.sh sync` installs the fixture via `kubectl apply` immediately
-after the ToolHive OCI chart finishes. The apply is idempotent — re-running
-`make cluster-sync` is safe. After hydration, both CRD versions are served:
+`install_toolhive` in `scripts/cluster.sh` asserts the floor after the chart
+install rather than trusting the pin, and fails the run if any of the three
+discoverable kinds stops serving v1beta1:
 
 ```
 kubectl get crd mcpservers.toolhive.stacklok.dev \
   -o jsonpath='{.spec.versions[*].name}'
 # Expected output: v1alpha1 v1beta1
 ```
-
-Upstream `toolhive-operator-crds` 0.41.0 ships v1beta1 natively (v1alpha1 marked
-`deprecated: true`, storage moved to v1beta1). Bumping `crdsChartVersion` in
-`test/e2e/cluster/01-deps/toolhive.values.yaml` to >= 0.41.0 retires this fixture
-and the `cluster.sh` step that applies it.
 
 ## Devtools container
 

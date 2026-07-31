@@ -71,26 +71,14 @@ install_toolhive() {
     -f "${DEPS_DIR}/toolhive.values.yaml" \
     --wait --timeout 90s
 
-  # Step 2.5 — add v1beta1 versions to ToolHive CRDs (not in the PINNED chart).
-  # REQUIRED, not optional: the operator reads ToolHive at v1beta1 only, and the
-  # pinned OCI chart (0.0.55) ships v1alpha1 only. This fixture (vendored from
-  # stacklok/toolhive v0.28.0 @ 748a64228710ce241a225f5530022ce2c96cc23e) adds
-  # v1beta1 served=true, storage=false to all three discoverable kinds so the
-  # informer can register. The fixture keeps v1alpha1 (storage: true) so the
-  # pinned ToolHive operator still reconciles the objects. kubectl apply replaces
-  # the OCI chart's CRD with the multi-version fixture; safe in an ephemeral kind
-  # cluster. Idempotent. Retire once crdsChartVersion is bumped to >= 0.41.0,
-  # which ships v1beta1 natively.
-  echo "[cluster.sh] adding v1beta1 CRD versions (toolhive v1beta1 fixture)..."
-  kubectl apply --server-side --force-conflicts --field-manager=alitellm-cluster-bootstrap -f "${DEPS_DIR}/toolhive-v1beta1-crds.yaml"
-
-  # Assert, don't just report: the operator reads v1beta1 ONLY, so a fixture
-  # that silently failed to add it (chart bump, SSA three-way merge dropping the
-  # version) surfaces much later as a 90s Eventually timeout in
-  # mcpserverdiscovery_test.go that reads like a reconciler bug.
+  # Assert, don't just report: the operator reads v1beta1 ONLY, so a CRDs chart
+  # that stopped serving it (bad bump, a chart regression) surfaces much later
+  # as a 90s Eventually timeout in mcpserverdiscovery_test.go that reads like a
+  # reconciler bug. crdsChartVersion must stay >= 0.41.0, the first release that
+  # ships v1beta1 (storage) alongside the deprecated v1alpha1.
   for crd in mcpservers virtualmcpservers mcpremoteproxies; do
     versions="$(kubectl get crd "${crd}.toolhive.stacklok.dev" -o jsonpath='{.spec.versions[*].name}' 2>/dev/null || true)"
-    echo "[cluster.sh] ${crd} CRD versions after fixture: ${versions:-crd-not-found}"
+    echo "[cluster.sh] ${crd} CRD versions: ${versions:-crd-not-found}"
     case " ${versions} " in
       *" v1beta1 "*) ;;
       *) echo "[cluster.sh] FAIL: ${crd}.toolhive.stacklok.dev does not serve v1beta1 (got: ${versions:-none}); the operator cannot discover ToolHive without it" >&2
