@@ -9,6 +9,7 @@ import (
 
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 	"github.com/ackstorm/alitellm-operator/internal/filters"
+	"github.com/ackstorm/alitellm-operator/internal/normalize"
 )
 
 // wantErr asserts the type-of-error contract via errors.As (NOT
@@ -323,5 +324,56 @@ func TestApply_IncludeStrict_MultipleUnmatchedPatternsReported(t *testing.T) {
 	}
 	if uie.UnmatchedPatterns[1].Index != 2 || uie.UnmatchedPatterns[1].Pattern != "gemini-.*" {
 		t.Fatalf("want second unmatched at Index=2 Pattern=\"gemini-.*\", got %+v", uie.UnmatchedPatterns[1])
+	}
+}
+
+// ---- TestApplyWithAliases_MatchesUserVisibleName -----------------------
+//
+// Regression (OpenRouter `~` aliases): patterns must match what the user
+// SEES — `status.generatedChildren` holds the normalized child name, not
+// the raw upstream ID. `~anthropic/claude-sonnet-latest` normalizes to
+// `anthropic-claude-sonnet-latest`, so a raw-ID-only match silently kept
+// it while an identically-named sibling was excluded.
+func TestApplyWithAliases_MatchesUserVisibleName(t *testing.T) {
+	in := []string{
+		"anthropic/claude-sonnet-5",
+		"~anthropic/claude-sonnet-latest",
+		"qwen/qwen3-max",
+	}
+	// Mirrors the ModelDiscovery controller: normalized name + child name.
+	aliases := func(rawID string) []string {
+		n := normalize.Normalize(rawID)
+		return []string{n, "openrouter." + n}
+	}
+
+	tests := []struct {
+		name string
+		f    *litellmv1alpha1.ModelDiscoveryFilters
+		want []string
+	}{
+		{
+			name: "exclude written off the visible name drops the ~ alias too",
+			f:    &litellmv1alpha1.ModelDiscoveryFilters{Exclude: []string{"anthropic-.*"}},
+			want: []string{"qwen/qwen3-max"},
+		},
+		{
+			name: "raw-ID pattern still matches (backwards compatible)",
+			f:    &litellmv1alpha1.ModelDiscoveryFilters{Exclude: []string{"~.*"}},
+			want: []string{"anthropic/claude-sonnet-5", "qwen/qwen3-max"},
+		},
+		{
+			name: "include by full child name keeps raw IDs in the result",
+			f:    &litellmv1alpha1.ModelDiscoveryFilters{Include: []string{`openrouter\.anthropic-.*`}},
+			want: []string{"anthropic/claude-sonnet-5", "~anthropic/claude-sonnet-latest"},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := filters.ApplyWithAliases(in, aliases, tc.f)
+			wantErr(t, err, "")
+			if !equalSliceLoose(got, tc.want) {
+				t.Fatalf("want %v, got %v", tc.want, got)
+			}
+		})
 	}
 }
