@@ -614,6 +614,32 @@ WHY IT FAILED: baseUrl reached the LIST path (`baseURLFor`) but the child's
 `litellm_params` carried only `model: openai/<id>` + `api_key`, no `api_base`,
 so LiteLLM's openai provider fell back to `api.openai.com`.
 
+### ❌ Matching ModelDiscovery `filters` against the raw upstream ID only
+```yaml
+spec:
+  filters:
+    exclude: ["anthropic-.*"]   # ≤v0.8.1: did NOT drop ~anthropic/claude-sonnet-latest
+```
+Symptom: children keep reappearing for a vendor you excluded, and the offending
+entry in `status.generatedChildren`
+(`openrouter.anthropic-claude-sonnet-latest`) looks exactly like one the
+pattern already covers — the status offers NO string the filter would match.
+✅ `filters.ApplyWithAliases` matches each candidate against three forms — raw
+provider ID (`data[].id`), `normalize.Normalize(rawID)`, and the full child
+name (`<prefix>.<normalized>`) — and any hit counts. The reconciler resolves
+`prefix` + `childNameOf` in **Step 7** (before filtering) for this reason; Step
+8 only applies them. The kept set is still raw IDs, so rendering is unchanged
+and pre-existing raw-form patterns keep working.
+WHY: normalization is lossy (lowercase, `[/:_ ]` + every non-`[a-z0-9.-]` char →
+`-`, collapse runs, TRIM leading/trailing non-alnum), so OpenRouter's rolling
+aliases `~anthropic/claude-sonnet-latest` and the real `anthropic/claude-sonnet-5`
+normalize to indistinguishable child names — a user could not write a working
+pattern from anything the CR showed them. `MCPServerDiscovery` already filtered
+on the post-derivation child name (v0.3.0); this closes the same gap for models
+without breaking raw-ID patterns.
+ALSO: patterns are RE2, not glob — `openai-*` means "openai" + zero-or-more `-`,
+i.e. `^openai`. Glob-shaped patterns mostly work by accident; `.*` is the wildcard.
+
 ### ❌ Master key over plaintext `http://` to a remote LiteLLM (M-SEC2)
 `spec.endpoint: http://api.example.com` sends the master key
 (`Authorization: Bearer`) in cleartext. By default the connection reconciler

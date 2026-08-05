@@ -528,12 +528,35 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, listErr
 	}
 
-	// ─── Step 7: Apply filters.Apply (lazy regex compile) ──────────────────
+	// ─── Step 7: Apply filters (lazy regex compile) ────────────────────────
+	// The prefix is resolved HERE (not in Step 8) because it is part of the
+	// filter match surface — see childNameOf / the aliases closure below.
+	prefix := md.Spec.Prefix
+	if prefix == "" {
+		prefix = strings.ToLower(md.Spec.Type)
+	}
+	childNameOf := func(rawID string) string {
+		normalized := normalize.Normalize(rawID)
+		if md.Spec.DisablePrefix {
+			return normalized
+		}
+		return prefix + "." + normalized
+	}
+
 	candidateIDs := make([]string, 0, len(candidates))
 	for _, c := range candidates {
 		candidateIDs = append(candidateIDs, c.ID)
 	}
-	kept, filterErr := filters.Apply(candidateIDs, md.Spec.Filters)
+	// Patterns match the raw upstream ID OR either user-visible name form:
+	// the normalized ID and the full child name (`<prefix>.<normalized>`),
+	// which are what `status.generatedChildren` and LiteLLM show. Without
+	// this, a pattern written off the visible name silently misses every
+	// candidate whose distinguishing characters the normalizer eats
+	// (OpenRouter's `~anthropic/…` aliases → `anthropic-…`). Raw IDs stay in
+	// the match set, so patterns written against them keep working.
+	kept, filterErr := filters.ApplyWithAliases(candidateIDs, func(rawID string) []string {
+		return []string{normalize.Normalize(rawID), childNameOf(rawID)}
+	}, md.Spec.Filters)
 	if filterErr != nil {
 		var upstreamInvalid *filters.UpstreamInvalidError
 		var invalidConfig *filters.InvalidConfigError
@@ -560,10 +583,8 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	// (MDISC-04). spec.disablePrefix opts out of the prefix segment
 	// entirely — child names become the bare normalized ID. The CEL rule
 	// guarantees disablePrefix and a non-empty spec.prefix never coexist.
-	prefix := md.Spec.Prefix
-	if prefix == "" {
-		prefix = strings.ToLower(md.Spec.Type)
-	}
+	// `prefix` / `childNameOf` are resolved in Step 7 (the filter match
+	// surface needs them); Step 8 only applies them.
 	litellmProvider := md.Spec.Type
 	if litellmProvider == "kubeai" {
 		// Per spec §6.3 line 792: kubeai's litellm-provider mapping is
@@ -642,11 +663,7 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		// chars, invalid chars, leading/trailing non-alnum. Rejected
 		// names DO NOT cause a child CR write — they land in
 		// status.skippedCandidates[].
-		normalized := normalize.Normalize(rawID)
-		childName := prefix + "." + normalized
-		if md.Spec.DisablePrefix {
-			childName = normalized
-		}
+		childName := childNameOf(rawID)
 		// Adoption short-circuit (04-06): if this candidate's name belongs
 		// to a child whose ownerRef the user already stripped, the candidate
 		// is recorded as ExplicitModelExists above (in the adoption-recognition

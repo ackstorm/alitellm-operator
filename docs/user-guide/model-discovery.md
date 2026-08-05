@@ -19,8 +19,8 @@ child reconciles into LiteLLM via the `LiteLLMModel` controller
 | `spec.params`               | no              | Pass-through bag propagated VERBATIM into every child's `spec.params`.                 |
 | `spec.info`                 | no              | Pass-through bag propagated into every child's `spec.info`.                            |
 | `spec.secrets[]`            | no              | Substitution map propagated into every child's `spec.secrets[]` (NOT resolved here).   |
-| `spec.filters.include`      | no              | RE2 patterns — anchored, include-FIRST. Empty → admit all.                             |
-| `spec.filters.exclude`      | no              | RE2 patterns — applied AFTER include.                                                  |
+| `spec.filters.include`      | no              | RE2 patterns — anchored, include-FIRST. Empty → admit all. Matched against the raw ID, the normalized ID, AND the child name. |
+| `spec.filters.exclude`      | no              | RE2 patterns — applied AFTER include. Same three-form match surface as `include`.      |
 | `spec.refresh.interval`     | yes             | Cadence between refreshes. CEL floor `1m` enforced at admission.                       |
 
 ## Provider field matrix
@@ -223,6 +223,56 @@ Per spec §6.3:
 
 RE2 syntax, anchored from start. Invalid pattern → `Ready=False`,
 `reason=InvalidConfig` with offending pattern in `message`.
+
+RE2 is NOT glob: in `openai-*` the `*` means "zero or more `-`", so the
+pattern is equivalent to `^openai`. Glob-style patterns usually still do
+what you meant by accident — `.*` is the literal wildcard.
+
+### What a pattern is matched against
+
+Each candidate is matched against **three** forms — a pattern hitting any
+one of them keeps (include) or drops (exclude) that candidate:
+
+| Form | Example | Where you see it |
+|---|---|---|
+| raw upstream ID | `~anthropic/claude-sonnet-latest` | `GET <baseUrl>/models` → `data[].id`; child `spec.params.model` |
+| normalized ID | `anthropic-claude-sonnet-latest` | — |
+| child name | `openrouter.anthropic-claude-sonnet-latest` | `status.generatedChildren`; LiteLLM's model name |
+
+So a pattern copied out of `status.generatedChildren` works, and so does one
+written against the provider's raw ID. The kept set is always rendered from
+the raw ID — matching on a name form changes nothing downstream.
+
+Why three forms: normalization is lossy (it lowercases, maps every
+non-`[a-z0-9.-]` char to `-`, collapses runs, and trims leading/trailing
+non-alphanumerics), so a character that distinguishes two raw IDs can vanish
+from the visible name. OpenRouter is the sharp case — it publishes rolling
+aliases under a `~` prefix:
+
+```text
+anthropic/claude-sonnet-5        → openrouter.anthropic-claude-sonnet-5
+~anthropic/claude-sonnet-latest  → openrouter.anthropic-claude-sonnet-latest
+```
+
+`exclude: ["anthropic-.*"]` drops **both**: it misses the second candidate's
+raw ID (which starts with `~`) but matches its normalized name. Matching the
+raw form only — the behavior up to v0.8.1 — kept it, with nothing in the status
+to explain why.
+
+To list the raw IDs a provider publishes:
+
+```bash
+curl -s -H "Authorization: Bearer $KEY" https://openrouter.ai/api/v1/models \
+  | jq -r '.data[].id' | sort
+```
+
+or, for models already generated, read each child's `spec.params.model` (the
+raw ID verbatim, behind the `<litellmProvider>/` pricing prefix):
+
+```bash
+kubectl get litellmmodel -l litellm.ackstorm.ai/generated-by=openrouter-discovery \
+  -o custom-columns=CHILD:.metadata.name,UPSTREAM:.spec.params.model
+```
 
 ## Child name generation
 

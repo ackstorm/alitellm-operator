@@ -105,8 +105,43 @@ func (e *InvalidConfigError) Unwrap() error { return e.Err }
 // counts (<10 typical). Caching would introduce thread-safety burden
 // for no measurable win.
 func Apply(candidates []string, f *litellmv1alpha1.ModelDiscoveryFilters) ([]string, error) {
+	return ApplyWithAliases(candidates, nil, f)
+}
+
+// ApplyWithAliases is Apply with a widened match surface: `aliases`
+// returns the ADDITIONAL strings a candidate may be matched by, and a
+// pattern matching ANY form (raw ID or alias) keeps/drops the candidate.
+// A nil `aliases` is exactly Apply.
+//
+// This exists so a caller whose user-visible identifier differs from the
+// raw upstream ID can let users write patterns against what they SEE.
+// LiteLLMModelDiscovery passes the normalized name and the full child
+// name (`<prefix>.<normalized>`) — the two forms that show up in
+// `status.generatedChildren` and in LiteLLM — because the normalizer eats
+// characters that are load-bearing for a raw-ID-only match (OpenRouter's
+// `~anthropic/…` rolling aliases normalize to `anthropic-…`, so an
+// `anthropic.*` exclude written off the status list silently missed them).
+// The raw ID stays in the match set, so pre-existing patterns keep working.
+//
+// The kept set is returned as RAW IDs regardless of which form matched —
+// downstream rendering (child name, `litellm_params.model`) is unchanged.
+func ApplyWithAliases(
+	candidates []string,
+	aliases func(id string) []string,
+	f *litellmv1alpha1.ModelDiscoveryFilters,
+) ([]string, error) {
 	if f == nil {
 		return candidates, nil
+	}
+
+	// Match surface per candidate: raw ID first (cheapest + most common
+	// hit), then any caller-supplied alias.
+	forms := make([][]string, len(candidates))
+	for i, id := range candidates {
+		forms[i] = []string{id}
+		if aliases != nil {
+			forms[i] = append(forms[i], aliases(id)...)
+		}
 	}
 
 	// Step 1: compile includes (anchored-from-start).
@@ -130,16 +165,19 @@ func Apply(candidates []string, f *litellmv1alpha1.ModelDiscoveryFilters) ([]str
 		return nil, err
 	}
 
-	// Step 4: include narrowing.
-	var kept []string
+	// Step 4: include narrowing. Tracked as indices into `candidates` so
+	// the exclude step below can reach each survivor's alias forms.
+	var kept []int
 	if len(includeRes) == 0 {
 		// Empty include == absent: pass-through.
-		kept = append(kept, candidates...)
+		for i := range candidates {
+			kept = append(kept, i)
+		}
 	} else {
 		matchedIncludes := make([]bool, len(includeRes))
-		for _, id := range candidates {
-			if matchAnyAndTrack(id, includeRes, matchedIncludes) {
-				kept = append(kept, id)
+		for i := range candidates {
+			if matchAnyAndTrack(forms[i], includeRes, matchedIncludes) {
+				kept = append(kept, i)
 			}
 		}
 		// Strict include: surface every unmatched pattern (in
@@ -160,13 +198,10 @@ func Apply(candidates []string, f *litellmv1alpha1.ModelDiscoveryFilters) ([]str
 	}
 
 	// Step 5: exclude carving (lenient — no zero-match error).
-	if len(excludeRes) == 0 {
-		return kept, nil
-	}
 	out := make([]string, 0, len(kept))
-	for _, id := range kept {
-		if !matchesAny(id, excludeRes) {
-			out = append(out, id)
+	for _, i := range kept {
+		if len(excludeRes) == 0 || !matchesAny(forms[i], excludeRes) {
+			out = append(out, candidates[i])
 		}
 	}
 	return out, nil
@@ -199,10 +234,12 @@ func compileAnchored(patterns []string, location string) ([]*regexp.Regexp, erro
 // matchesAny is the matches_any predicate from spec §6.3 line 814:
 // returns true if s matches AT LEAST ONE compiled pattern (linear
 // scan with short-circuit). O(N*M) where N=candidates, M=patterns.
-func matchesAny(s string, res []*regexp.Regexp) bool {
+func matchesAny(forms []string, res []*regexp.Regexp) bool {
 	for _, re := range res {
-		if re.MatchString(s) {
-			return true
+		for _, s := range forms {
+			if re.MatchString(s) {
+				return true
+			}
 		}
 	}
 	return false
@@ -213,12 +250,15 @@ func matchesAny(s string, res []*regexp.Regexp) bool {
 // include step so we can later report the UNMATCHED include patterns
 // in the UpstreamInvalidError payload. Does NOT short-circuit (we
 // need full hit coverage across all patterns).
-func matchAnyAndTrack(s string, res []*regexp.Regexp, matched []bool) bool {
+func matchAnyAndTrack(forms []string, res []*regexp.Regexp, matched []bool) bool {
 	any := false
 	for i, re := range res {
-		if re.MatchString(s) {
-			matched[i] = true
-			any = true
+		for _, s := range forms {
+			if re.MatchString(s) {
+				matched[i] = true
+				any = true
+				break
+			}
 		}
 	}
 	return any
