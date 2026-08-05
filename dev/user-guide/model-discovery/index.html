@@ -1047,6 +1047,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Filter order — include first, then exclude">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-a-pattern-is-matched-against" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What a pattern is matched against
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1811,6 +1828,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Filter order — include first, then exclude">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-a-pattern-is-matched-against" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What a pattern is matched against
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1941,12 +1975,12 @@ child reconciles into LiteLLM via the <code>LiteLLMModel</code> controller
 <tr>
 <td><code>spec.filters.include</code></td>
 <td>no</td>
-<td>RE2 patterns — anchored, include-FIRST. Empty → admit all.</td>
+<td>RE2 patterns — anchored, include-FIRST. Empty → admit all. Matched against the raw ID, the normalized ID, AND the child name.</td>
 </tr>
 <tr>
 <td><code>spec.filters.exclude</code></td>
 <td>no</td>
-<td>RE2 patterns — applied AFTER include.</td>
+<td>RE2 patterns — applied AFTER include. Same three-form match surface as <code>include</code>.</td>
 </tr>
 <tr>
 <td><code>spec.refresh.interval</code></td>
@@ -2157,8 +2191,64 @@ run with <code>STORE_MODEL_IN_DB=True</code> or each child's <code>POST /model/n
 </ol>
 <p>RE2 syntax, anchored from start. Invalid pattern → <code>Ready=False</code>,
 <code>reason=InvalidConfig</code> with offending pattern in <code>message</code>.</p>
+<p>RE2 is NOT glob: in <code>openai-*</code> the <code>*</code> means "zero or more <code>-</code>", so the
+pattern is equivalent to <code>^openai</code>. Glob-style patterns usually still do
+what you meant by accident — <code>.*</code> is the literal wildcard.</p>
+<h3 id="what-a-pattern-is-matched-against">What a pattern is matched against<a class="headerlink" href="#what-a-pattern-is-matched-against" title="Permanent link">&para;</a></h3>
+<p>Each candidate is matched against <strong>three</strong> forms — a pattern hitting any
+one of them keeps (include) or drops (exclude) that candidate:</p>
+<table>
+<thead>
+<tr>
+<th>Form</th>
+<th>Example</th>
+<th>Where you see it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>raw upstream ID</td>
+<td><code>~anthropic/claude-sonnet-latest</code></td>
+<td><code>GET &lt;baseUrl&gt;/models</code> → <code>data[].id</code>; child <code>spec.params.model</code></td>
+</tr>
+<tr>
+<td>normalized ID</td>
+<td><code>anthropic-claude-sonnet-latest</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>child name</td>
+<td><code>openrouter.anthropic-claude-sonnet-latest</code></td>
+<td><code>status.generatedChildren</code>; LiteLLM's model name</td>
+</tr>
+</tbody>
+</table>
+<p>So a pattern copied out of <code>status.generatedChildren</code> works, and so does one
+written against the provider's raw ID. The kept set is always rendered from
+the raw ID — matching on a name form changes nothing downstream.</p>
+<p>Why three forms: normalization is lossy (it lowercases, maps every
+non-<code>[a-z0-9.-]</code> char to <code>-</code>, collapses runs, and trims leading/trailing
+non-alphanumerics), so a character that distinguishes two raw IDs can vanish
+from the visible name. OpenRouter is the sharp case — it publishes rolling
+aliases under a <code>~</code> prefix:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>anthropic/claude-sonnet-5        → openrouter.anthropic-claude-sonnet-5
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>~anthropic/claude-sonnet-latest  → openrouter.anthropic-claude-sonnet-latest
+</code></pre></div>
+<p><code>exclude: ["anthropic-.*"]</code> drops <strong>both</strong>: it misses the second candidate's
+raw ID (which starts with <code>~</code>) but matches its normalized name. Matching the
+raw form only — the behavior up to v0.8.1 — kept it, with nothing in the status
+to explain why.</p>
+<p>To list the raw IDs a provider publishes:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>curl<span class="w"> </span>-s<span class="w"> </span>-H<span class="w"> </span><span class="s2">&quot;Authorization: Bearer </span><span class="nv">$KEY</span><span class="s2">&quot;</span><span class="w"> </span>https://openrouter.ai/api/v1/models<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">&#39;.data[].id&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>sort
+</code></pre></div>
+<p>or, for models already generated, read each child's <code>spec.params.model</code> (the
+raw ID verbatim, behind the <code>&lt;litellmProvider&gt;/</code> pricing prefix):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>litellmmodel<span class="w"> </span>-l<span class="w"> </span>litellm.ackstorm.ai/generated-by<span class="o">=</span>openrouter-discovery<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">  </span>-o<span class="w"> </span>custom-columns<span class="o">=</span>CHILD:.metadata.name,UPSTREAM:.spec.params.model
+</code></pre></div>
 <h2 id="child-name-generation">Child name generation<a class="headerlink" href="#child-name-generation" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>&lt;prefix&gt;.&lt;normalized-raw-id&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>&lt;prefix&gt;.&lt;normalized-raw-id&gt;
 </code></pre></div>
 <ul>
 <li><code>prefix</code> defaults to lowercased(<code>spec.type</code>).</li>
@@ -2174,10 +2264,10 @@ Discovery's child → <code>reason=Conflict</code> (renamed from <code>Duplicate
 per ADR-0001 for cross-kind consistency; first-create-wins until a
 follow-up PR adds alpha-last-wins ownership transfer).</p>
 <h2 id="status-what-to-read">Status — what to read<a class="headerlink" href="#status-what-to-read" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>mdisc<span class="w"> </span>openai<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.status}{&quot;\n&quot;}&#39;</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="c1"># {&quot;discoveredCount&quot;:7,&quot;generatedCount&quot;:7,&quot;generatedChildren&quot;:[&quot;openai.gpt-4.1&quot;,...],&quot;lastRefreshAt&quot;:&quot;...&quot;,&quot;conditions&quot;:[...]}</span>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>kubectl<span class="w"> </span>get<span class="w"> </span>mdisc<span class="w">                       </span><span class="c1"># printer columns: Type Ready Reason Discovered Generated Age</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>mdisc<span class="w"> </span>openai<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.status}{&quot;\n&quot;}&#39;</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="c1"># {&quot;discoveredCount&quot;:7,&quot;generatedCount&quot;:7,&quot;generatedChildren&quot;:[&quot;openai.gpt-4.1&quot;,...],&quot;lastRefreshAt&quot;:&quot;...&quot;,&quot;conditions&quot;:[...]}</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>kubectl<span class="w"> </span>get<span class="w"> </span>mdisc<span class="w">                       </span><span class="c1"># printer columns: Type Ready Reason Discovered Generated Age</span>
 </code></pre></div>
 <p>Conditions written every reconcile:</p>
 <ul>
