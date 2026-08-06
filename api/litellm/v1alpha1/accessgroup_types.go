@@ -34,9 +34,10 @@ type AccessGroupSpec struct {
 	// MCPServers is the list of MCP server NAMES this group grants. Each name
 	// is resolved to a server_id via GET /v1/mcp/server before projection,
 	// because access_mcp_server_ids matches on ids and silently ignores names.
-	// An unresolved name parks the CR Ready=False reason=MCPServerNotFound and
-	// requeues (ordering dependency with LiteLLMMCPServer CRs — it self-heals
-	// once the server exists).
+	// An unresolved name parks the CR Ready=False reason=MCPServerNotFound;
+	// it is re-driven by the periodic SafetyRelistRunnable, not requeued
+	// (ordering dependency with LiteLLMMCPServer CRs — it self-heals once
+	// the server exists).
 	//
 	// +optional
 	MCPServers []string `json:"mcpServers,omitempty"`

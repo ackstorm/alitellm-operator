@@ -311,7 +311,7 @@ func (r *AccessGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	var serverIDs map[string]string
 	if len(ag.Spec.MCPServers) > 0 {
 		entries, lerr := snap.Client.CachedListMCPServers(ctx)
-		if lerr != nil && !errors.Is(lerr, litellm.ErrNotFound) {
+		if lerr != nil && !litellm.IsNotFound(lerr) {
 			return r.classifyMutationError(ctx, &ag, logger, lerr, "GET /v1/mcp/server")
 		}
 		serverIDs = make(map[string]string, len(entries))
@@ -322,7 +322,7 @@ func (r *AccessGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	var agentIDs map[string]string
 	if len(ag.Spec.Agents) > 0 {
 		entries, lerr := snap.Client.CachedListAgents(ctx)
-		if lerr != nil && !errors.Is(lerr, litellm.ErrNotFound) {
+		if lerr != nil && !litellm.IsNotFound(lerr) {
 			return r.classifyMutationError(ctx, &ag, logger, lerr, "GET /v1/agents")
 		}
 		agentIDs = make(map[string]string, len(entries))
