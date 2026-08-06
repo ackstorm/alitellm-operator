@@ -1,0 +1,214 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.0
+  name: litellmaccessgroups.litellm.ackstorm.ai
+spec:
+  group: litellm.ackstorm.ai
+  names:
+    categories:
+    - litellm
+    kind: LiteLLMAccessGroup
+    listKind: LiteLLMAccessGroupList
+    plural: litellmaccessgroups
+    shortNames:
+    - llag
+    singular: litellmaccessgroup
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: Ready
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Ready')].reason
+      name: Reason
+      type: string
+    - jsonPath: .status.lastRendered.accessGroupID
+      name: GroupID
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          LiteLLMAccessGroup is the Schema for the litellmaccessgroups API.
+
+          metadata.name IS the LiteLLM `access_group_name` (unique server-side — a
+          duplicate create returns 409), which is how the operator adopts a
+          pre-existing group after a restart.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              AccessGroupSpec defines the desired state of a LiteLLM access group — a
+              reusable bundle of models, MCP servers, and A2A agents that a team reaches
+              through LiteLLMTeam.spec.permission.accessGroups.
+
+              SCOPE: this CRD owns the three RESOURCE dimensions only. It never writes
+              assigned_team_ids or assigned_key_ids. Team attachment is written from the
+              team side (team.access_group_ids), which is the face LiteLLM enforces on;
+              keeping a single writer per surface is what lets the operator skip
+              delta-repair machinery entirely.
+
+              SECURITY: access groups only ADD. A group grant OVERRIDES a team's
+              deny-by-default sentinel (models: ["__deny_all__"]) — verified 2026-08-06 on
+              LiteLLM 1.93.0. Granting a model here makes it reachable by every team that
+              attaches this group, regardless of that team's own spec.permission.models.
+            properties:
+              agents:
+                description: |-
+                  Agents is the list of A2A agent NAMES this group grants. Each name is
+                  resolved to an agent_id via GET /v1/agents, same reason and same
+                  parking behaviour as MCPServers (reason=AgentNotFound).
+                items:
+                  type: string
+                type: array
+              deletionPolicy:
+                default: Orphan
+                description: |-
+                  DeletionPolicy controls finalizer behavior when the LiteLLM-side DELETE
+                  cannot be confirmed. Defaults to "Orphan" per REL-06 anti-storm.
+                enum:
+                - Orphan
+                - Delete
+                type: string
+              description:
+                description: Description is free text forwarded to LiteLLM's `description`
+                  field.
+                type: string
+              mcpServers:
+                description: |-
+                  MCPServers is the list of MCP server NAMES this group grants. Each name
+                  is resolved to a server_id via GET /v1/mcp/server before projection,
+                  because access_mcp_server_ids matches on ids and silently ignores names.
+                  An unresolved name parks the CR Ready=False reason=MCPServerNotFound and
+                  requeues (ordering dependency with LiteLLMMCPServer CRs — it self-heals
+                  once the server exists).
+                items:
+                  type: string
+                type: array
+              models:
+                description: |-
+                  Models is the list of LiteLLM model NAMES this group grants. Forwarded
+                  verbatim to access_model_names — LiteLLM matches on model_name, so no
+                  resolution step is needed and no CR reference is required.
+                items:
+                  type: string
+                type: array
+            type: object
+          status:
+            description: AccessGroupStatus defines the observed state of a LiteLLMAccessGroup.
+            properties:
+              conditions:
+                description: |-
+                  Conditions carries the standard metav1.Condition list. The single type
+                  is `Ready`, with reasons:
+                    - Synced             — rendered group matches LiteLLM.
+                    - LiteLLMUnavailable — LiteLLMConnection/default not usable.
+                    - LiteLLMRejected    — LiteLLM returned a 4xx (non-401) on mutation.
+                    - MCPServerNotFound  — a spec.mcpServers name does not resolve yet.
+                    - AgentNotFound      — a spec.agents name does not resolve yet.
+                    - RecreateThrottled  — created-but-not-listed storm breaker tripped.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              lastRendered:
+                description: LastRendered is the operator-side drift source of truth.
+                properties:
+                  accessGroupID:
+                    description: |-
+                      AccessGroupID is the LiteLLM-assigned UUID, read from the POST response
+                      or re-resolved by name via GET /v1/access_group.
+                    type: string
+                  at:
+                    description: At is the timestamp of the last SUCCESSFUL render.
+                    format: date-time
+                    type: string
+                  hash:
+                    description: Hash is the SHA-256 hex of the RFC 8785–canonicalized
+                      rendered body.
+                    type: string
+                type: object
+              observedGeneration:
+                description: ObservedGeneration is the metadata.generation most recently
+                  processed.
+                format: int64
+                type: integer
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
