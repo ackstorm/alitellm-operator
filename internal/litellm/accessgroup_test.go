@@ -5,10 +5,15 @@ package litellm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
+	"strings"
 	"testing"
+
+	"github.com/ackstorm/alitellm-operator/internal/litellm/mock"
 )
 
 // TestCreateAccessGroup_Accepts201AndSendsEmptyLists pins the two shapes that
@@ -92,5 +97,144 @@ func TestDeleteAccessGroup_RejectsEmptyID(t *testing.T) {
 	c := newTestClient(t, "http://127.0.0.1:1")
 	if err := c.DeleteAccessGroup(context.Background(), ""); err == nil {
 		t.Fatal("DeleteAccessGroup(\"\") = nil, want error — empty id collapses to the collection route")
+	}
+}
+
+// putAccessGroupPartial issues a raw PUT with the given JSON body against
+// the mock, bypassing litellm.Client.UpdateAccessGroup entirely.
+//
+// This is needed because AccessGroupUpdateRequest's three managed lists
+// carry no `omitempty` (types.go) and UpdateAccessGroup unconditionally
+// coerces nil -> []string{} via nonNilAccessGroupLists before marshaling
+// (by design: "the reconciler is their sole writer and always sends the
+// full computed set"). That means the typed client can NEVER omit one of
+// these fields — every call it makes sends all three keys. Proving the
+// mock's measured "an omitted field KEEPS the stored value" contract
+// therefore requires a partial body the typed client structurally cannot
+// produce.
+func putAccessGroupPartial(t *testing.T, baseURL, id, body string) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPut, baseURL+"/v1/access_group/"+id, strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("build partial PUT request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("partial PUT: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("partial PUT status = %d, want 200", resp.StatusCode)
+	}
+}
+
+// TestAccessGroupMock_UpdateSemantics locks the mock to the semantics MEASURED
+// against stock LiteLLM 1.93.0: omitted = KEEP, sent = REPLACE, [] = CLEAR.
+// Every access-group envtest depends on the mock being faithful here.
+//
+// The KEEP/CLEAR-of-one-field cases are driven through a raw partial PUT
+// (see putAccessGroupPartial) rather than through UpdateAccessGroup, because
+// the typed client always sends all three managed lists (see that helper's
+// doc comment) — this test also locks THAT client behavior explicitly in
+// its final section, so the "the client can't actually omit" fact doesn't
+// silently bit-rot.
+func TestAccessGroupMock_UpdateSemantics(t *testing.T) {
+	srv := mock.NewServer(t)
+	c := newTestClient(t, srv.URL())
+
+	ctx := context.Background()
+	created, err := c.CreateAccessGroup(ctx, &AccessGroupCreateRequest{
+		AccessGroupName:    "ag-semantics",
+		AccessModelNames:   []string{"m1", "m2"},
+		AccessMCPServerIDs: []string{"s1"},
+		AccessAgentIDs:     []string{"a1"},
+	})
+	if err != nil {
+		t.Fatalf("CreateAccessGroup: %v", err)
+	}
+	if created.AccessGroupID == "" {
+		t.Fatal("CreateAccessGroup returned an empty access_group_id")
+	}
+
+	// REPLACE: send models only. MCP + agents must survive untouched (KEEP).
+	putAccessGroupPartial(t, srv.URL(), created.AccessGroupID, `{"access_model_names":["m3"]}`)
+	got, err := c.GetAccessGroupByName(ctx, "ag-semantics")
+	if err != nil || got == nil {
+		t.Fatalf("GetAccessGroupByName: got=%v err=%v", got, err)
+	}
+	if !slices.Equal(got.AccessModelNames, []string{"m3"}) {
+		t.Errorf("AccessModelNames = %v, want [m3] (sent list must REPLACE)", got.AccessModelNames)
+	}
+	if !slices.Equal(got.AccessMCPServerIDs, []string{"s1"}) {
+		t.Errorf("AccessMCPServerIDs = %v, want [s1] (omitted field must KEEP)", got.AccessMCPServerIDs)
+	}
+	if !slices.Equal(got.AccessAgentIDs, []string{"a1"}) {
+		t.Errorf("AccessAgentIDs = %v, want [a1] (omitted field must KEEP)", got.AccessAgentIDs)
+	}
+
+	// CLEAR: an explicit empty slice must empty the list, not be dropped —
+	// MCP stays omitted, so it must still KEEP.
+	putAccessGroupPartial(t, srv.URL(), created.AccessGroupID, `{"access_model_names":[]}`)
+	got, err = c.GetAccessGroupByName(ctx, "ag-semantics")
+	if err != nil || got == nil {
+		t.Fatalf("GetAccessGroupByName after clear: got=%v err=%v", got, err)
+	}
+	if len(got.AccessModelNames) != 0 {
+		t.Errorf("AccessModelNames = %v, want empty ([] must CLEAR, not be omitted)", got.AccessModelNames)
+	}
+	if !slices.Equal(got.AccessMCPServerIDs, []string{"s1"}) {
+		t.Errorf("AccessMCPServerIDs = %v, want [s1] still kept after a models-only clear", got.AccessMCPServerIDs)
+	}
+
+	// Lock what the REAL client actually produces: UpdateAccessGroup always
+	// sends all three managed lists (nonNilAccessGroupLists coerces every nil
+	// field to []string{} on every call, never omits), so a request literal
+	// that only sets AccessModelNames still WIPES the other two — there is
+	// no partial-update path through this client for these three fields by
+	// design.
+	if _, err := c.UpdateAccessGroup(ctx, created.AccessGroupID, &AccessGroupUpdateRequest{
+		AccessModelNames: []string{"m4"},
+	}); err != nil {
+		t.Fatalf("UpdateAccessGroup: %v", err)
+	}
+	got, err = c.GetAccessGroupByName(ctx, "ag-semantics")
+	if err != nil || got == nil {
+		t.Fatalf("GetAccessGroupByName after client update: got=%v err=%v", got, err)
+	}
+	if !slices.Equal(got.AccessModelNames, []string{"m4"}) {
+		t.Errorf("AccessModelNames = %v, want [m4]", got.AccessModelNames)
+	}
+	if len(got.AccessMCPServerIDs) != 0 {
+		t.Errorf("AccessMCPServerIDs = %v, want empty — UpdateAccessGroup sends the full computed set "+
+			"on every call and cannot omit a managed list", got.AccessMCPServerIDs)
+	}
+	if len(got.AccessAgentIDs) != 0 {
+		t.Errorf("AccessAgentIDs = %v, want empty — UpdateAccessGroup sends the full computed set "+
+			"on every call and cannot omit a managed list", got.AccessAgentIDs)
+	}
+}
+
+// TestAccessGroupMock_DuplicateNameConflict locks the 409 the CREATE arm's
+// name-adoption path depends on.
+func TestAccessGroupMock_DuplicateNameConflict(t *testing.T) {
+	srv := mock.NewServer(t)
+	c := newTestClient(t, srv.URL())
+
+	ctx := context.Background()
+	req := &AccessGroupCreateRequest{AccessGroupName: "ag-dup"}
+	if _, err := c.CreateAccessGroup(ctx, req); err != nil {
+		t.Fatalf("first CreateAccessGroup: %v", err)
+	}
+	_, err := c.CreateAccessGroup(ctx, req)
+	if err == nil {
+		t.Fatal("second CreateAccessGroup with a duplicate name: got nil error, want 409")
+	}
+	var rej *RejectedError
+	if !errors.As(err, &rej) {
+		t.Fatalf("err = %v, want *RejectedError", err)
+	}
+	if rej.Status != http.StatusConflict {
+		t.Errorf("duplicate-name status = %d, want 409 (%v)", rej.Status, err)
 	}
 }
