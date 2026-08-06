@@ -1158,9 +1158,10 @@ func (m *MockServer) writeAccessGroupCreate(w http.ResponseWriter, r *http.Reque
 		m.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusConflict)
-		_, _ = w.Write([]byte(fmt.Sprintf(
-			`{"detail":{"error":"An access group named '%s' already exists."}}`,
-			req.AccessGroupName)))
+		body, _ := json.Marshal(map[string]any{"detail": map[string]any{
+			"error": fmt.Sprintf("An access group named '%s' already exists.", req.AccessGroupName),
+		}})
+		_, _ = w.Write(body)
 		return true
 	}
 
@@ -2116,11 +2117,11 @@ func (m *MockServer) statefulBody(r *http.Request) []byte {
 		for _, e := range m.accessGroups {
 			out = append(out, e)
 		}
-		m.mu.Unlock()
 		sort.Slice(out, func(i, j int) bool {
 			return out[i].AccessGroupName < out[j].AccessGroupName
 		})
 		blob, err := json.Marshal(out)
+		m.mu.Unlock()
 		if err != nil {
 			return []byte(`[]`)
 		}
