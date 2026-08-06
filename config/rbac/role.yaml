@@ -24,6 +24,7 @@ rules:
   - litellm.ackstorm.ai
   resources:
   - litellma2aagents
+  - litellmaccessgroups
   - litellmconnections
   - litellmguardrails
   - litellmmcpserverdiscoveries
@@ -45,6 +46,7 @@ rules:
   - litellm.ackstorm.ai
   resources:
   - litellma2aagents/finalizers
+  - litellmaccessgroups/finalizers
   - litellmconnections/finalizers
   - litellmguardrails/finalizers
   - litellmmcpserverdiscoveries/finalizers
@@ -60,6 +62,7 @@ rules:
   - litellm.ackstorm.ai
   resources:
   - litellma2aagents/status
+  - litellmaccessgroups/status
   - litellmconnections/status
   - litellmguardrails/status
   - litellmmcpserverdiscoveries/status
