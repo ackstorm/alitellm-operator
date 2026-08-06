@@ -165,6 +165,7 @@ spec:
     agents:      ["planner"]       # A2A agent NAMES (resolved to UUIDs by the operator)
     agentGroups: ["grp-a"]         # A2A agent access-group names (see no-op note)
     mcpToolsets: ["research"]      # LiteLLMMCPToolset NAMES (resolved to UUIDs)
+    accessGroups: ["shared"]       # LiteLLMAccessGroup NAMES (resolved to UUIDs)
 ```
 
 Projection to LiteLLM:
@@ -177,6 +178,7 @@ Projection to LiteLLM:
 | `agents`       | `object_permission.agents` (name→UUID resolved) |
 | `agentGroups`  | `object_permission.agent_access_groups` (**no-op**, see below) |
 | `mcpToolsets`  | `object_permission.mcp_toolsets` (name→UUID resolved) |
+| `accessGroups` | top-level `team.access_group_ids` (name→UUID resolved) |
 
 **Agent name resolution.** LiteLLM enforces `object_permission.agents` on
 agent `agent_id` UUIDs and silently ignores names. The operator resolves each
@@ -221,7 +223,7 @@ present block leaves those lists empty:
 |-------|---------------|--------|
 | `models` (+ `modelGroups`) | `["__deny_all__"]` | 0 real models (a phantom entry appears in `/models`) |
 | `agents` | `["00000000-0000-0000-0000-000000000000"]` (null UUID) | 0 agents |
-| `mcpServers` / `mcpGroups` / `agentGroups` / `mcpToolsets` | `[]` | already fail-closed / no-op — no sentinel needed |
+| `mcpServers` / `mcpGroups` / `agentGroups` / `mcpToolsets` / `accessGroups` | `[]` | already fail-closed / no-op — no sentinel needed |
 
 `mcpToolsets` deliberately takes **no** sentinel. LiteLLM's toolset check reads
 "granted is None or id not in granted → deny", so an empty list already denies
@@ -240,6 +242,39 @@ by the sentinel.
 **Precedence.** With `spec.permission` present, any `models` or
 `object_permission` key inside `spec.params` is dropped and a
 `ProjectionOverride` Warning Event fires — the typed block always wins.
+
+### `accessGroups`
+
+Names of `LiteLLMAccessGroup` resources to attach to this
+team. The operator resolves each name to its server-minted `access_group_id`
+via `GET /v1/access_group` and writes the resolved list to
+`team.access_group_ids`.
+
+```yaml
+spec:
+  permission:
+    accessGroups: [anthropic-tier, internal-mcp]
+```
+
+A name that does not resolve parks the team `Ready=False`,
+`reason=AccessGroupNotFound` and requeues — create the `LiteLLMAccessGroup`
+first, and the team self-heals. This is the same ordering dependency that
+`agents` and `mcpToolsets` have.
+
+Do not confuse `accessGroups` with `modelGroups`: `modelGroups` carries LEGACY
+model-TAG names and merges into `models`, while `accessGroups` carries unified
+access-group names from the `/v1/access_group` object family. The two
+namespaces are disjoint.
+
+!!! warning "Access groups BYPASS deny-by-default"
+
+    A `spec.permission` block with an empty `models` list emits the
+    `__deny_all__` sentinel, which denies every model (see the
+    **Deny-by-default** note above). An attached access group **overrides**
+    that: LiteLLM treats group grants as additive, so a group granting
+    `gpt-4o` makes `gpt-4o` reachable by this team's keys even though
+    `models` is `["__deny_all__"]`. Measured on LiteLLM 1.93.0.
+    Treat `accessGroups` as a grant, never as a filter.
 
 ### Migration from `spec.params.object_permission`
 

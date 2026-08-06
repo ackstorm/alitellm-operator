@@ -2980,6 +2980,97 @@ func TestTeamPermission_AgentNotFoundRequeues(t *testing.T) {
 	}
 }
 
+// TestTeamPermission_ResolvesAccessGroupNamesToIDs — access-group NAMES in the
+// block are resolved to access_group_id UUIDs (via GET /v1/access_group) and
+// land on the TOP-LEVEL access_group_ids, never inside object_permission.
+func TestTeamPermission_ResolvesAccessGroupNamesToIDs(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetTeams()
+	mockServer.ResetAgents()
+	mockServer.ResetAccessGroups()
+	teamReconciler.ResetImplicitDefaultCache()
+	ensureNoTeam(t, ctx, "team-perm-ag")
+	resetConnCacheSnapshot()
+
+	groupID := mockServer.SeedAccessGroup("shared-tier")
+
+	cleanupConn := setupReadyConnectionTeam(t, ctx)
+	t.Cleanup(func() {
+		cleanupConn()
+		ensureNoTeam(t, context.Background(), "team-perm-ag")
+		mockServer.ResetAccessGroups()
+	})
+
+	cr := teamSampleCR("team-perm-ag")
+	cr.Spec.Permission = &litellmv1alpha1.PermissionSpec{AccessGroups: []string{"shared-tier"}}
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create Team: %v", err)
+	}
+
+	pollTeamCondition(t, ctx, "team-perm-ag", reasonSynced, 30*time.Second)
+	body := mockServer.LastTeamBody("team-perm-ag")
+	if body == nil {
+		t.Fatalf("LastTeamBody nil")
+	}
+	ids, ok := body["access_group_ids"].([]any)
+	if !ok {
+		t.Fatalf("body.access_group_ids: want array, got %T (%v)", body["access_group_ids"], body["access_group_ids"])
+	}
+	if len(ids) != 1 || ids[0] != groupID {
+		t.Errorf("body.access_group_ids: want [%s] (resolved id), got %v", groupID, ids)
+	}
+	// The team↔group relation is written ONLY from the team side. The operator
+	// must never touch the group's assigned_team_ids (LiteLLM does not
+	// propagate the team-side write back, and a second writer would need
+	// delta-repair machinery this operator deliberately avoids).
+	for _, g := range mockServer.AccessGroups() {
+		if g.AccessGroupID == groupID && len(g.AssignedTeamIDs) != 0 {
+			t.Errorf("group.assigned_team_ids: want untouched [], got %v", g.AssignedTeamIDs)
+		}
+	}
+}
+
+// TestTeamPermission_AccessGroupNotFoundRequeues — a group name absent from
+// GET /v1/access_group parks the Team Ready=False/AccessGroupNotFound before
+// any /team/new, mirroring the AgentNotFound ordering dependency.
+func TestTeamPermission_AccessGroupNotFoundRequeues(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetTeams()
+	mockServer.ResetAgents()
+	mockServer.ResetAccessGroups()
+	teamReconciler.ResetImplicitDefaultCache()
+	ensureNoTeam(t, ctx, "team-perm-ag-ghost")
+	resetConnCacheSnapshot()
+
+	cleanupConn := setupReadyConnectionTeam(t, ctx)
+	t.Cleanup(func() {
+		cleanupConn()
+		ensureNoTeam(t, context.Background(), "team-perm-ag-ghost")
+		mockServer.ResetAccessGroups()
+	})
+
+	cr := teamSampleCR("team-perm-ag-ghost")
+	cr.Spec.Permission = &litellmv1alpha1.PermissionSpec{AccessGroups: []string{"ghost-group"}}
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create Team: %v", err)
+	}
+
+	tm := pollTeamCondition(t, ctx, "team-perm-ag-ghost", reasonAccessGroupNotFound, 30*time.Second)
+	c := apimeta.FindStatusCondition(tm.Status.Conditions, conditionTypeReady)
+	if c == nil || c.Status != metav1.ConditionFalse || c.Reason != reasonAccessGroupNotFound {
+		t.Fatalf("Ready condition: want False/AccessGroupNotFound, got %+v", c)
+	}
+	if got := mockServer.MutationsByTeamAlias("team-perm-ag-ghost"); got != 0 {
+		t.Errorf("MutationsByTeamAlias: want 0 (parked before /team/new), got %d", got)
+	}
+}
+
 // TestTeamPermission_OverridesParamsModels — a permission block deletes a
 // colliding spec.params.models key (permission wins).
 func TestTeamPermission_OverridesParamsModels(t *testing.T) {

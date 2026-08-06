@@ -1535,6 +1535,11 @@ func (in *PermissionSpec) DeepCopyInto(out *PermissionSpec) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.AccessGroups != nil {
+		in, out := &in.AccessGroups, &out.AccessGroups
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	if in.McpServers != nil {
 		in, out := &in.McpServers, &out.McpServers
 		*out = make([]string, len(*in))
