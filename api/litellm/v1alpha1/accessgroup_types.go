@@ -122,6 +122,8 @@ type AccessGroupLastRenderedStatus struct {
 // metadata.name IS the LiteLLM `access_group_name` (unique server-side — a
 // duplicate create returns 409), which is how the operator adopts a
 // pre-existing group after a restart.
+//
+// Finalizer: `accessgroups.litellm.ackstorm.ai/finalizer`
 type LiteLLMAccessGroup struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
