@@ -245,7 +245,7 @@ by the sentinel.
 
 ### `accessGroups`
 
-Names of `LiteLLMAccessGroup` resources to attach to this
+Names of [`LiteLLMAccessGroup`](access-group.md) resources to attach to this
 team. The operator resolves each name to its server-minted `access_group_id`
 via `GET /v1/access_group` and writes the resolved list to
 `team.access_group_ids`.
@@ -274,7 +274,8 @@ namespaces are disjoint.
     that: LiteLLM treats group grants as additive, so a group granting
     `gpt-4o` makes `gpt-4o` reachable by this team's keys even though
     `models` is `["__deny_all__"]`. Measured on LiteLLM 1.93.0.
-    Treat `accessGroups` as a grant, never as a filter.
+    Treat `accessGroups` as a grant, never as a filter. Full rationale in
+    the [LiteLLMAccessGroup guide](access-group.md#access-groups-only-add).
 
 ### Migration from `spec.params.object_permission`
 

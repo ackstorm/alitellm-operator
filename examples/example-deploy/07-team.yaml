@@ -82,6 +82,12 @@ spec:
   #   mcpServers:  ["hindsight"]
   #   mcpGroups:   ["team-a"]
   #   agents:      ["planner"]
+  #   mcpToolsets: ["example-research-tools"]
+  # accessGroups attaches LiteLLMAccessGroup CRs by NAME (resolved to
+  # access_group_id UUIDs). ⚠️ Groups only ADD: an attached group's grants
+  # override this team's own deny-by-default. See
+  # docs/user-guide/access-group.md and 14-accessgroup.yaml.
+  #   accessGroups: ["shared-tooling"]
   # Pass-through bag — operator's 7 structural overlays
   # (team_alias, max_budget, budget_duration, rpm_limit, tpm_limit,
   # rpm_limit_type, tpm_limit_type) plus team_id ALL win over

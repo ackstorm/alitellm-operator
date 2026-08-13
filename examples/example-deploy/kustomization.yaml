@@ -41,3 +41,4 @@ resources:
   - 09-modelalias.yaml
   - 12-modeldiscovery-elevenlabs.yaml
   - 13-mcptoolset.yaml
+  - 14-accessgroup.yaml

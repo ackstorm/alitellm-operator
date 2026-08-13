@@ -1,6 +1,6 @@
 # User Guide
 
-`alitellm-operator` reconciles nine Kubernetes Custom Resources under the
+`alitellm-operator` reconciles ten Kubernetes Custom Resources under the
 `litellm.ackstorm.ai/v1alpha1` API group. Each CR maps to one declarative
 intent against an upstream LiteLLM proxy.
 
@@ -15,6 +15,7 @@ intent against an upstream LiteLLM proxy.
 | [LiteLLMMCPToolset](mcp-toolset.md)            | Curated subset of MCP tools, granted to teams.                         |
 | [LiteLLMModelDiscovery](model-discovery.md)    | Auto-discover available models from a provider.                        |
 | [LiteLLMGuardRail](guardrail.md)               | Content filter / DLP guardrail (BLOCK / MASK, pre_call or post_call).  |
+| [LiteLLMAccessGroup](access-group.md)          | Reusable bundle of models / MCP servers / agents, attached to teams.   |
 
 See [API Reference](../api-reference/litellm.ackstorm.ai.md) for the full schema of each
 resource (generated from the CRD bases).
