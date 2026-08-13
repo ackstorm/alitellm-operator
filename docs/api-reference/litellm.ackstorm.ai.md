@@ -152,7 +152,7 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `hash` _string_ | Hash is the SHA-256 hex of the RFC 8785–canonicalized rendered body. |  |  |
+| `hash` _string_ | Hash is the SHA-256 hex of the RFC 8785–approximated canonical JSON of<br />the rendered body (shared canonicalJSON helper; spec.description is<br />excluded — it is not part of the authorization surface). |  |  |
 | `accessGroupID` _string_ | AccessGroupID is the LiteLLM-assigned UUID, read from the POST response<br />or re-resolved by name via GET /v1/access_group. |  |  |
 | `at` _[Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#time-v1-meta)_ | At is the timestamp of the last SUCCESSFUL render. |  |  |
 
@@ -184,7 +184,7 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `description` _string_ | Description is free text forwarded to LiteLLM's `description` field. |  |  |
-| `models` _string array_ | Models is the list of LiteLLM model NAMES this group grants. Forwarded<br />verbatim to access_model_names — LiteLLM matches on model_name, so no<br />resolution step is needed and no CR reference is required. |  |  |
+| `models` _string array_ | Models is the list of LiteLLM model NAMES this group grants. Forwarded<br />to access_model_names without resolution — LiteLLM matches on model_name,<br />so no lookup step is needed and no CR reference is required. The list is<br />sorted before projection so a reordered spec does not read as drift;<br />declaration order is therefore NOT preserved. |  |  |
 | `mcpServers` _string array_ | MCPServers is the list of MCP server NAMES this group grants. Each name<br />is resolved to a server_id via GET /v1/mcp/server before projection,<br />because access_mcp_server_ids matches on ids and silently ignores names.<br />An unresolved name parks the CR Ready=False reason=MCPServerNotFound;<br />it is re-driven by the periodic SafetyRelistRunnable, not requeued<br />(ordering dependency with LiteLLMMCPServer CRs — it self-heals once<br />the server exists). |  |  |
 | `agents` _string array_ | Agents is the list of A2A agent NAMES this group grants. Each name is<br />resolved to an agent_id via GET /v1/agents, same reason and same<br />parking behaviour as MCPServers (reason=AgentNotFound). |  |  |
 | `deletionPolicy` _string_ | DeletionPolicy controls finalizer behavior when the LiteLLM-side DELETE<br />cannot be confirmed. Defaults to "Orphan" per REL-06 anti-storm. | Orphan | Enum: [Orphan Delete] <br /> |

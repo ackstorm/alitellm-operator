@@ -12,9 +12,11 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-// Expected 10 operator-owned kinds (spec §10 kind enum +
+// Expected 11 operator-owned kinds (spec §10 kind enum +
 // LiteLLMGuardRail added in v0.3.1 + LiteLLMModelAlias added in v0.5.0 +
-// LiteLLMMCPToolset, which needs LiteLLM 1.93.0+).
+// LiteLLMMCPToolset and LiteLLMAccessGroup, which need LiteLLM 1.93.0+).
+//
+// This set is EXHAUSTIVE — adding a CRD without adding it here fails AC-N1.
 var expectedKinds = map[string]bool{
 	"LiteLLMConnection":         true,
 	"LiteLLMModel":              true,
@@ -26,11 +28,12 @@ var expectedKinds = map[string]bool{
 	"LiteLLMGuardRail":          true,
 	"LiteLLMModelAlias":         true,
 	"LiteLLMMCPToolset":         true,
+	"LiteLLMAccessGroup":        true,
 }
 
 var _ = Describe("Scope and metrics", Ordered, ContinueOnFailure, func() {
 
-	It("exposes exactly 10 in-scope CRDs and no dropped-kind controllers in logs (AC-N1+N2)", func() {
+	It("exposes exactly 11 in-scope CRDs and no dropped-kind controllers in logs (AC-N1+N2)", func() {
 		out, err := exec.Command("kubectl", "get", "crds",
 			"-o", `jsonpath={range .items[?(@.spec.group=="litellm.ackstorm.ai")]}{.spec.names.kind}{"\n"}{end}`,
 		).CombinedOutput()

@@ -5,7 +5,6 @@ package controller
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -82,26 +81,12 @@ func renderAccessGroup(
 	models := append([]string{}, spec.Models...)
 	sort.Strings(models)
 
-	servers := make([]string, 0, len(spec.MCPServers))
-	for _, name := range spec.MCPServers {
-		id, ok := serverIDs[name]
-		if !ok {
-			missing.MCPServers = append(missing.MCPServers, name)
-			continue
-		}
-		servers = append(servers, id)
-	}
+	servers, missingServers := resolveNames(spec.MCPServers, serverIDs)
+	missing.MCPServers = missingServers
 	sort.Strings(servers)
 
-	agents := make([]string, 0, len(spec.Agents))
-	for _, name := range spec.Agents {
-		id, ok := agentIDs[name]
-		if !ok {
-			missing.Agents = append(missing.Agents, name)
-			continue
-		}
-		agents = append(agents, id)
-	}
+	agents, missingAgents := resolveNames(spec.Agents, agentIDs)
+	missing.Agents = missingAgents
 	sort.Strings(agents)
 
 	return renderedAccessGroup{
@@ -119,7 +104,7 @@ func renderAccessGroup(
 // branch because it bumps metadata.generation (the steady state also requires
 // observedGeneration == generation).
 func accessGroupHash(r renderedAccessGroup) string {
-	blob, err := json.Marshal(r)
+	blob, err := canonicalJSON(r)
 	if err != nil {
 		// Marshaling three []string cannot fail; fall back to a value that
 		// never compares equal so a bug forces a re-render rather than a
@@ -308,6 +293,15 @@ func (r *AccessGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	//
 	// Only listed when the corresponding spec list is non-empty — a group of
 	// pure model names costs zero extra LiteLLM calls.
+	//
+	// DELIBERATE deviation from the Team reconciler, which uses the UNCACHED
+	// ListMCPServers / ListA2AAgents for the same job: the 30s cache means a
+	// server or agent registered moments ago can still read as missing, so the
+	// CR parks Ready=False reason=MCPServerNotFound for up to one TTL longer
+	// than a fresh list would. That is acceptable here because parking is
+	// self-healing (the SafetyRelistRunnable re-drives it) and the operator
+	// invalidates the cache on its OWN mutations, so the stale window only
+	// covers out-of-band registrations.
 	var serverIDs map[string]string
 	if len(ag.Spec.MCPServers) > 0 {
 		entries, lerr := snap.Client.CachedListMCPServers(ctx)

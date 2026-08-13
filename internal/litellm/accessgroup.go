@@ -14,8 +14,10 @@ import (
 // (verified 1.93.0), so the caller must read it from the response, exactly
 // like MCP toolset_id and A2A agent_id. The endpoint answers 201.
 //
-// The reconciler is expected to call GetAccessGroupByName first and only POST
-// on a nil result: "already exists" semantics live at the controller layer.
+// access_group_name is unique server-side, so a duplicate create answers 409.
+// This client does NOT pre-check: the reconciler POSTs unconditionally and
+// adopts the existing group by name on 409 (that is how it re-attaches after a
+// restart). "already exists" semantics live at the controller layer.
 func (c *Client) CreateAccessGroup(ctx context.Context, req *AccessGroupCreateRequest) (*AccessGroupEntry, error) {
 	if req.AccessGroupName == "" {
 		return nil, fmt.Errorf("litellm: CreateAccessGroup: empty access_group_name")

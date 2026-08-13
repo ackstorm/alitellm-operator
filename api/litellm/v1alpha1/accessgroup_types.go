@@ -25,8 +25,10 @@ type AccessGroupSpec struct {
 	Description string `json:"description,omitempty"`
 
 	// Models is the list of LiteLLM model NAMES this group grants. Forwarded
-	// verbatim to access_model_names — LiteLLM matches on model_name, so no
-	// resolution step is needed and no CR reference is required.
+	// to access_model_names without resolution — LiteLLM matches on model_name,
+	// so no lookup step is needed and no CR reference is required. The list is
+	// sorted before projection so a reordered spec does not read as drift;
+	// declaration order is therefore NOT preserved.
 	//
 	// +optional
 	Models []string `json:"models,omitempty"`
@@ -93,7 +95,9 @@ type AccessGroupStatus struct {
 // metadata.name. Adoption of a pre-existing group therefore goes through the
 // unique `access_group_name`, which is metadata.name.
 type AccessGroupLastRenderedStatus struct {
-	// Hash is the SHA-256 hex of the RFC 8785–canonicalized rendered body.
+	// Hash is the SHA-256 hex of the RFC 8785–approximated canonical JSON of
+	// the rendered body (shared canonicalJSON helper; spec.description is
+	// excluded — it is not part of the authorization surface).
 	//
 	// +optional
 	Hash string `json:"hash,omitempty"`

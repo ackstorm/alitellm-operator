@@ -105,15 +105,8 @@ func projectPermission(
 		models = []string{modelDenyAllSentinel}
 	}
 
-	resolved := make([]string, 0, len(perm.Agents))
-	for _, name := range perm.Agents {
-		id, ok := agentNameToID[name]
-		if !ok {
-			missing.Agents = append(missing.Agents, name)
-			continue
-		}
-		resolved = append(resolved, id)
-	}
+	resolved, missingAgents := resolveNames(perm.Agents, agentNameToID)
+	missing.Agents = missingAgents
 	// DENY-BY-DEFAULT: an unset agents list fails OPEN in LiteLLM (empty →
 	// no filter → every agent). Substitute the null-UUID sentinel. Scoped to
 	// the len(perm.Agents)==0 branch ONLY — a non-empty list whose names don't
@@ -126,30 +119,16 @@ func projectPermission(
 	// MCP toolset names → toolset_id UUIDs. NO deny-by-default sentinel: the
 	// LiteLLM toolset check is already fail-CLOSED on an empty list (see the
 	// contract note above), so `[]` is the correct "grant nothing".
-	resolvedToolsets := make([]string, 0, len(perm.McpToolsets))
-	for _, name := range perm.McpToolsets {
-		id, ok := toolsetNameToID[name]
-		if !ok {
-			missing.Toolsets = append(missing.Toolsets, name)
-			continue
-		}
-		resolvedToolsets = append(resolvedToolsets, id)
-	}
+	resolvedToolsets, missingToolsets := resolveNames(perm.McpToolsets, toolsetNameToID)
+	missing.Toolsets = missingToolsets
 
 	// Unified access-group names → access_group_id UUIDs. NO deny-by-default
 	// sentinel: an empty access_group_ids grants nothing (there is no group to
 	// widen through), so the field is already fail-CLOSED — same reasoning as
 	// mcp_toolsets. A sentinel here would inject a bogus id into a filter that
 	// is already correct.
-	resolvedAccessGroups := make([]string, 0, len(perm.AccessGroups))
-	for _, name := range perm.AccessGroups {
-		id, ok := accessGroupNameToID[name]
-		if !ok {
-			missing.AccessGroups = append(missing.AccessGroups, name)
-			continue
-		}
-		resolvedAccessGroups = append(resolvedAccessGroups, id)
-	}
+	resolvedAccessGroups, missingAccessGroups := resolveNames(perm.AccessGroups, accessGroupNameToID)
+	missing.AccessGroups = missingAccessGroups
 
 	// Every sub-field emitted unconditionally (as [] when empty) — see the
 	// ALWAYS-EMIT contract above.

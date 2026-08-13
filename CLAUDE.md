@@ -61,11 +61,15 @@ ackstorm material.
                        └──────────────────┘
 ```
 
-Owned CRDs: `LiteLLMTeam`, `LiteLLMModel`, `LiteLLMModelDiscovery`,
+Owned CRDs (11 — the exhaustive set e2e `AC-N1` asserts in
+`test/e2e/scope_test.go`; adding a kind without updating that set fails e2e):
+`LiteLLMTeam`, `LiteLLMModel`, `LiteLLMModelDiscovery`, `LiteLLMModelAlias`,
 `LiteLLMMCPServer`, `LiteLLMMCPServerDiscovery`, `LiteLLMMCPToolset`,
-`LiteLLMA2AAgent`, `LiteLLMConnection`. API group `litellm.ackstorm.ai`,
-version `v1alpha1`. `LiteLLMMCPToolset` requires LiteLLM **1.93.0+**
-(`/v1/mcp/toolset` does not exist before that).
+`LiteLLMA2AAgent`, `LiteLLMGuardRail`, `LiteLLMConnection`,
+`LiteLLMAccessGroup`. API group
+`litellm.ackstorm.ai`, version `v1alpha1`. `LiteLLMMCPToolset` requires
+LiteLLM **1.93.0+** (`/v1/mcp/toolset` does not exist before that); so does
+`LiteLLMAccessGroup` (`/v1/access_group`).
 
 Critical paths:
 - CRD apply → reconciler → LiteLLM HTTP call → status condition update
@@ -127,6 +131,7 @@ alitellm-operator/
 | API reference rendering                | `docs/Makefile` (`gen-crd-ref-docs`) + `docs/.crd-ref-docs.yaml` |
 | Docs site, mkdocs, mike, gh-pages flow | `references/docs/documentation.md`       |
 | CI / PR / release lifecycle (push/PR matrix) | `references/docs/workflow.md`        |
+| Access groups / team attachment         | `docs/user-guide/access-group.md` (two disjoint namespaces + the only-ADD bypass) |
 | OLM packaging                          | NOT supported — explicit scope decision (no OperatorHub) |
 
 ## CI gating — one-line summary
@@ -1207,6 +1212,88 @@ expanded object from `GET /team/info?team_id=<id>` (under `team_info`) — see
 `litellmTeamObjectPermission` in `test/e2e/team_test.go`. Verified on LiteLLM
 1.93.0. Top-level `models` IS present on the list endpoint, which is why the
 TEAM-05 sentinel assertion works there and a `mcp_toolsets` one cannot.
+
+### ❌ Conflating the two "access group" namespaces
+```yaml
+# LEGACY per-model TAG namespace — /access_group/{list,new}
+kind: LiteLLMModel
+spec:
+  info:
+    access_groups: ["anthropic"]      # also what DEFAULT_ACCESS_GROUP writes
+---
+# UNIFIED object namespace — /v1/access_group
+kind: LiteLLMAccessGroup
+metadata:
+  name: anthropic                     # UNRELATED to the tag above
+```
+Symptom: a `LiteLLMAccessGroup` is `Ready=Synced` but never shows up in
+`GET /access_group/list`, and a team granting it via `permission.modelGroups`
+gets nothing.
+✅ They are DISJOINT families. `permission.accessGroups` → unified group NAMES →
+resolved ids → team top-level `access_group_ids`. `permission.modelGroups` →
+legacy TAG names → merged into `team.models`. Full table:
+`docs/user-guide/access-group.md` § "Two access-group namespaces".
+WHY: `/v1/access_group` (alias `/v1/unified_access_group`) is a first-class row
+holding models + MCP servers + agents; `/access_group/list` just enumerates the
+free-text tags stamped on `model_info.access_groups`. Nothing bridges them.
+
+### ❌ Expecting an access group to RESTRICT anything
+```yaml
+kind: LiteLLMTeam
+spec:
+  permission:
+    models: []                        # → ["__deny_all__"] sentinel
+    accessGroups: [shared-tooling]    # grants gpt-4o
+```
+The team is NOT denied `gpt-4o`. Verified live 2026-08-06 on LiteLLM 1.93.0
+(e2e `AG-04`): the same team's key answers `team_model_access_denied` before the
+attachment, and after it the response carries NEITHER that marker nor the
+`__deny_all__` echo — while `team.models` is still `["__deny_all__"]`. Assert
+the markers' ABSENCE, never `status == 200`: on the e2e mock a correctly
+authorized call never returns 200, so a `== 200` assertion inverts the verdict.
+✅ Groups compose ADDITIVELY and OVERRIDE the deny-by-default sentinel. Treat
+every attachment as a widening of the team's ceiling; there is no way to use one
+to narrow access. DOCUMENTED, not fixed — suppressing it would mean the operator
+second-guessing an explicit grant the user wrote.
+
+### ❌ Asserting a team attachment from the GROUP side
+```go
+grp, _ := litellmAccessGroupByName(name)
+Expect(grp.AssignedTeamIDs).To(ConsistOf(teamID))   // ALWAYS []
+```
+✅ Read the team mirror: `GET /team/info?team_id=<id>` →
+`team_info.access_group_ids` (helper `litellmTeamAccessGroupIDs` in
+`test/e2e/accessgroup_test.go`). `/v2/team/list` does not carry it either.
+WHY IT FAILS: a team-side write to `team.access_group_ids` does NOT propagate to
+`access_group.assigned_team_ids` — measured on 1.93.0, the group keeps reading
+`[]`. The team field is the one LiteLLM enforces on.
+
+### ❌ `omitempty` on an operator-MANAGED access-group list
+```go
+AccessModelNames []string `json:"access_model_names,omitempty"`   // WRONG
+```
+✅ No `omitempty` on `AccessModelNames` / `AccessMCPServerIDs` /
+`AccessAgentIDs` in `AccessGroupCreateRequest` / `AccessGroupUpdateRequest`, and
+`nonNilAccessGroupLists` coerces nil → `[]` before every call.
+WHY IT FAILS: `PUT /v1/access_group/{id}` merges per field — OMITTED = KEEP,
+non-empty = REPLACE, `[]` (and `null`) = CLEAR. With `omitempty` a shrink-to-
+empty serializes away, so the stale grant survives and the revocation silently
+fails. Same trap as the v0.7.25 `object_permission` leak. Guarded by e2e `AG-02`.
+
+### ❌ Writing `assigned_team_ids` from the operator
+```go
+req.AssignedTeamIDs = []string{teamID}   // do NOT model this field
+```
+✅ `AssignedTeamIDs` / `AssignedKeyIDs` are DELIBERATELY absent from both request
+structs. Attachment is written from the team side only.
+WHY: it would make the operator a second writer of one relation, and LiteLLM
+rewrites the team mirror only on an ENTER/LEAVE delta — an idempotent re-PUT
+cannot repair a mirror that is already broken, so convergence would be
+unreachable. Omitting the fields means KEEP, so a human-managed assignment
+survives our updates untouched. `assigned_key_ids` is additionally out of scope:
+an agent-permission collapse was measured on the ACH platform in production (NOT
+re-verified here) when a KEY carries both a team and a group with differing agent
+lists — the effective set becomes every agent on the proxy.
 
 ## Repository-specific patterns
 
