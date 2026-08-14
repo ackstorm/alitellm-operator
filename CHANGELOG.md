@@ -8,6 +8,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`LiteLLMAccessGroup` CRD** — reconciles LiteLLM's *unified* access groups
+  (`/v1/access_group`), a first-class object holding models + MCP servers +
+  agents. **Requires LiteLLM 1.93.0+** (the endpoint does not exist before
+  that), the same floor `LiteLLMMCPToolset` already carries. MCP server and
+  agent NAMES are resolved to ids before projection because LiteLLM matches
+  those dimensions on ids and silently ignores names; an unresolved name parks
+  the CR `Ready=False reason=MCPServerNotFound` / `AgentNotFound` and
+  self-heals via the safety re-list (ordering dependency with the CRs that
+  create them). The id is server-minted, so adoption of a pre-existing group
+  goes by the unique `access_group_name`, and a duplicate create (409) adopts
+  rather than fails — that is how an operator restart re-attaches.
+- **`LiteLLMTeam.spec.permission.accessGroups`** — attaches unified access
+  groups to a team by NAME, resolved to ids and projected onto the team's
+  top-level `access_group_ids`. Obeys the existing ALWAYS-EMIT contract, so
+  emptying the list revokes the attachment instead of silently keeping it.
+
+  Two behaviours to know before you use either:
+  - **Access groups only ever WIDEN.** A team whose `permission.models`
+    resolves empty projects the `__deny_all__` sentinel, and an attached group
+    grants through it anyway — verified live on 1.93.0. There is no way to use
+    a group to *narrow* access; treat every attachment as raising the team's
+    ceiling.
+  - **Two disjoint access-group namespaces.** `permission.accessGroups`
+    (unified objects) and `permission.modelGroups` / `spec.info.access_groups`
+    (the legacy free-text tags `DEFAULT_ACCESS_GROUP` writes) are unrelated
+    families with nothing bridging them. See `docs/user-guide/access-group.md`.
+
+  The operator deliberately does not write `assigned_team_ids` /
+  `assigned_key_ids` — attachment is written from the team side only.
 - **`LiteLLMModelDiscovery.spec.litellmProvider`** — optional override for the
   LiteLLM `custom_llm_provider` prefix stamped on each generated child's
   `litellm_params.model` (the pricing / cost-tracking key). Decouples *how*
