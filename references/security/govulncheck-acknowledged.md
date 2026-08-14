@@ -1,7 +1,7 @@
 # Acknowledged govulncheck residuals
 
-**Date:** 2026-05-21
-**Toolchain at acknowledgement:** Go 1.26.3 (`Dockerfile.devtools` + `go.mod` `toolchain` directive), `golang.org/x/net@v0.53.0`
+**Date:** 2026-08-14
+**Toolchain at acknowledgement:** Go 1.26.6 (`Dockerfile.devtools` + `go.mod` `toolchain` directive), `golang.org/x/net@v0.53.0`
 **Scanner:** `govulncheck@v1.3.0` (pinned in `Dockerfile.devtools::GOVULNCHECK_VERSION`)
 **Invocation:** `./scripts/dev.sh govulncheck ./...`
 
@@ -20,16 +20,25 @@ new reachable advisory must be:
 1. Fixed by patching the dependency or stdlib, OR
 2. Added below with a reviewer-approved justification.
 
-## Acknowledged advisories (1)
+## Acknowledged advisories (0)
 
 | # | OSV ID | CVE | Module | Symbol the operator touches | Fixed in | Justification |
 |---|--------|-----|--------|------------------------------|----------|---------------|
-| 1 | GO-2026-5856 | — | crypto/tls (stdlib) | generic TLS handshake via `http.Transport.RoundTrip` / `httptest.NewServer` (`internal/litellm/transport.go`, `internal/providers/elevenlabs.go`, mock server, test utils) | go1.26.5 | Encrypted Client Hello privacy leak in `crypto/tls`. The operator never configures ECH (`tls.Config.EncryptedClientHelloConfigList` is unset everywhere), so the leak path is not exercised; reachable only through ordinary outbound TLS. Fixed in go1.26.5 — accept as residual until the toolchain bump lands across the four pinned surfaces. |
+| — | — | — | — | — | — | *(none — the gate expects ZERO reachable advisories)* |
 
-**Reachable count: 1.**
+**Reachable count: 0.**
 
 ## History
 
+- 2026-08-14: Bumped the Go toolchain 1.26.4 -> 1.26.6 across all four
+  pinned surfaces. Cleared SEVEN reachable stdlib advisories at once —
+  `GO-2026-5026` + `GO-2026-6089` (net/http), `GO-2026-5972`
+  (encoding/asn1), `GO-2026-6088` (encoding/xml), `GO-2026-6218`
+  (net/url), `GO-2026-6090` (crypto/tls) and the previously acknowledged
+  `GO-2026-5856`. All were reachable through real operator paths
+  (`internal/litellm/transport.go`, `internal/providers/{anthropic,bedrock}.go`),
+  not test-only, and all are fixed in go1.26.6. The list is now EMPTY:
+  any new reachable advisory blocks the gate until fixed or acknowledged.
 - 2026-07-10: Acknowledged `GO-2026-5856` (crypto/tls Encrypted Client
   Hello privacy leak, fixed in go1.26.5) as residual — the operator
   never enables ECH, so the leak path is unreachable in practice; drop

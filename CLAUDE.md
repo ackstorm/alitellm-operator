@@ -190,9 +190,9 @@ make shell                       # interactive shell in the devtools container
   PR that changes Dockerfile.devtools racing the image workflow, GHCR
   unavailable), the composite action falls back to a local build — slower
   but always correct.
-- Pinned: Go 1.26.4 (Dockerfile.devtools `golang:1.26.4-bookworm`,
-  Dockerfile `golang:1.26.4`, release.yml `GO_VERSION: '1.26.4'`; go.mod
-  `go 1.26.0` / `toolchain go1.26.4`), kubebuilder v4.4.0,
+- Pinned: Go 1.26.6 (Dockerfile.devtools `golang:1.26.6-bookworm`,
+  Dockerfile `golang:1.26.6`, release.yml `GO_VERSION: '1.26.6'`; go.mod
+  `go 1.26.0` / `toolchain go1.26.6`), kubebuilder v4.4.0,
   controller-runtime v0.19.4, k8s.io/* v0.31.0, govulncheck v1.3.0. PR
   CI and release run the same toolchain (issue #43 close); any future
   bump MUST update all four surfaces in the same change.
