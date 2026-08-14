@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://ackstorm.github.io/alitellm-operator/dev/developer-guide/architecture/">
+        <link rel="canonical" href="https://ackstorm.github.io/alitellm-operator/dev/user-guide/access-group/">
       
       
-        <link rel="prev" href="../../concepts/deletion-semantics/">
+        <link rel="prev" href="../guardrail/">
       
       
-        <link rel="next" href="../development/">
+        <link rel="next" href="../../concepts/conflict-resolution/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Architecture - alitellm-operator</title>
+        <title>LiteLLMAccessGroup - alitellm-operator</title>
       
     
     
@@ -78,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#architecture" class="md-skip">
+        <a href="#litellmaccessgroup" class="md-skip">
           Skip to content
         </a>
       
@@ -116,7 +116,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Architecture
+              LiteLLMAccessGroup
             
           </span>
         </div>
@@ -269,11 +269,13 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
-        <a href="../../user-guide/" class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
           
   
   
@@ -309,13 +311,11 @@
   
   
   
-    
-  
   
     
     
-      <li class="md-tabs__item md-tabs__item--active">
-        <a href="./" class="md-tabs__link">
+      <li class="md-tabs__item">
+        <a href="../../developer-guide/architecture/" class="md-tabs__link">
           
   
   
@@ -579,28 +579,31 @@
       
   
   
+    
   
   
+  
     
     
     
     
+      
+        
+        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
-        
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
-        
-          
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
             
   
   
@@ -618,7 +621,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -636,7 +639,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user-guide/" class="md-nav__link">
+      <a href="../" class="md-nav__link">
         
   
   
@@ -664,7 +667,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user-guide/connection/" class="md-nav__link">
+      <a href="../connection/" class="md-nav__link">
         
   
   
@@ -692,7 +695,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user-guide/team/" class="md-nav__link">
+      <a href="../team/" class="md-nav__link">
         
   
   
@@ -720,7 +723,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user-guide/model/" class="md-nav__link">
+      <a href="../model/" class="md-nav__link">
         
   
   
@@ -748,7 +751,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user-guide/a2a-agent/" class="md-nav__link">
+      <a href="../a2a-agent/" class="md-nav__link">
         
   
   
@@ -776,7 +779,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user-guide/mcp-server/" class="md-nav__link">
+      <a href="../mcp-server/" class="md-nav__link">
         
   
   
@@ -804,7 +807,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user-guide/mcp-server-discovery/" class="md-nav__link">
+      <a href="../mcp-server-discovery/" class="md-nav__link">
         
   
   
@@ -832,7 +835,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user-guide/mcp-toolset/" class="md-nav__link">
+      <a href="../mcp-toolset/" class="md-nav__link">
         
   
   
@@ -860,7 +863,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user-guide/model-discovery/" class="md-nav__link">
+      <a href="../model-discovery/" class="md-nav__link">
         
   
   
@@ -888,7 +891,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user-guide/guardrail/" class="md-nav__link">
+      <a href="../guardrail/" class="md-nav__link">
         
   
   
@@ -913,10 +916,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../user-guide/access-group/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMAccessGroup
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -932,6 +962,125 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#quick-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#minimal-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Minimal example
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-three-dimensions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The three dimensions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#naming-and-ids" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Naming and ids
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#attaching-a-group-to-a-team" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Attaching a group to a team
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#access-groups-only-add" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Access groups only ADD
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#two-access-group-namespaces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two access-group namespaces
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deletion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deletion
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1065,31 +1214,28 @@
       
   
   
-    
   
   
-  
     
     
     
     
-      
-        
-        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
         
           
-          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
             
   
   
@@ -1107,7 +1253,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1122,37 +1268,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Architecture
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../developer-guide/architecture/" class="md-nav__link">
         
   
   
@@ -1168,147 +1287,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#what-litellm-is" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        What LiteLLM is
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#what-the-operator-owns" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        What the operator owns
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#two-reconciliation-pipelines" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Two reconciliation pipelines
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#per-kind-reconciler-shape" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Per-kind reconciler shape
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#litellm-http-client" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        LiteLLM HTTP client
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#list-cache-vanish-probe-coalescing" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        List cache (vanish-probe coalescing)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#vanish-probe-shared-helper" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Vanish probe (shared helper)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#safety-re-list" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Safety re-list
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#pipeline-b-ssa-applied-child-crs" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Pipeline B: SSA-applied child CRs
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#operator-restart-drift-reconciliation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Operator restart → drift reconciliation
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#where-to-read-next" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Where to read next
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1321,7 +1299,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../development/" class="md-nav__link">
+      <a href="../../developer-guide/development/" class="md-nav__link">
         
   
   
@@ -1349,7 +1327,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../release-process/" class="md-nav__link">
+      <a href="../../developer-guide/release-process/" class="md-nav__link">
         
   
   
@@ -1377,7 +1355,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../contributions/" class="md-nav__link">
+      <a href="../../developer-guide/contributions/" class="md-nav__link">
         
   
   
@@ -1665,10 +1643,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#what-litellm-is" class="md-nav__link">
+  <a href="#quick-reference" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What LiteLLM is
+        Quick reference
       
     </span>
   </a>
@@ -1676,10 +1654,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#what-the-operator-owns" class="md-nav__link">
+  <a href="#minimal-example" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What the operator owns
+        Minimal example
       
     </span>
   </a>
@@ -1687,10 +1665,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#two-reconciliation-pipelines" class="md-nav__link">
+  <a href="#the-three-dimensions" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Two reconciliation pipelines
+        The three dimensions
       
     </span>
   </a>
@@ -1698,10 +1676,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#per-kind-reconciler-shape" class="md-nav__link">
+  <a href="#naming-and-ids" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Per-kind reconciler shape
+        Naming and ids
       
     </span>
   </a>
@@ -1709,10 +1687,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#litellm-http-client" class="md-nav__link">
+  <a href="#attaching-a-group-to-a-team" class="md-nav__link">
     <span class="md-ellipsis">
       
-        LiteLLM HTTP client
+        Attaching a group to a team
       
     </span>
   </a>
@@ -1720,10 +1698,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#list-cache-vanish-probe-coalescing" class="md-nav__link">
+  <a href="#access-groups-only-add" class="md-nav__link">
     <span class="md-ellipsis">
       
-        List cache (vanish-probe coalescing)
+        Access groups only ADD
       
     </span>
   </a>
@@ -1731,10 +1709,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#vanish-probe-shared-helper" class="md-nav__link">
+  <a href="#two-access-group-namespaces" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Vanish probe (shared helper)
+        Two access-group namespaces
       
     </span>
   </a>
@@ -1742,10 +1720,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#safety-re-list" class="md-nav__link">
+  <a href="#deletion" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Safety re-list
+        Deletion
       
     </span>
   </a>
@@ -1753,32 +1731,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#pipeline-b-ssa-applied-child-crs" class="md-nav__link">
+  <a href="#troubleshooting" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Pipeline B: SSA-applied child CRs
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#operator-restart-drift-reconciliation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Operator restart → drift reconciliation
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#where-to-read-next" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Where to read next
+        Troubleshooting
       
     </span>
   </a>
@@ -1805,156 +1761,300 @@
   
 
 
-<h1 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h1>
-<h2 id="what-litellm-is">What LiteLLM is<a class="headerlink" href="#what-litellm-is" title="Permanent link">&para;</a></h2>
-<p>The following diagram indicates the general architecture of LiteLLM
-acting as a proxy:</p>
-<p><img alt="Architecture" src="../../assets/lite-llm-architecture.png" /></p>
-<h2 id="what-the-operator-owns">What the operator owns<a class="headerlink" href="#what-the-operator-owns" title="Permanent link">&para;</a></h2>
-<p>The following diagram indicates the architecture and responsibilities
-of the operator, as defined in the scope:</p>
-<p><img alt="Architecture" src="../../assets/lite-llm-architecture2.png" /></p>
-<h2 id="two-reconciliation-pipelines">Two reconciliation pipelines<a class="headerlink" href="#two-reconciliation-pipelines" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>┌──────────────┐ reconcile ┌──────────────────┐  HTTP   ┌──────────────┐
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>│ Explicit CRs │──────────▶│  Pipeline A      │────────▶│ LiteLLM API  │
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>│ (Model, Team,│           │  controllers     │         │ (in-cluster) │
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>│  MCPServer,  │           │ (per-kind        │         └──────────────┘
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>│  A2AAgent,   │           │  reconciler)     │
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>│  GuardRail)  │           └──────────────────┘
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>└──────────────┘
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>       ▲
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>       │ owns (SSA + ownerRef)
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>       │
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>┌──────┴─────────┐ reconcile ┌──────────────────┐
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>│ Discovery CRs  │──────────▶│  Pipeline B      │
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>│ (ModelDisc.,   │           │  upstream-list   │
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>│  MCPSrvDisc.)  │           │  → child CR      │
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>└────────────────┘           │  fan-out         │
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>                             └──────────────────┘
+<h1 id="litellmaccessgroup">LiteLLMAccessGroup<a class="headerlink" href="#litellmaccessgroup" title="Permanent link">&para;</a></h1>
+<p>An <strong>access group</strong> is a reusable bundle of models, MCP servers, and A2A agents
+that teams attach by name. Define the bundle once, attach it to as many teams as
+you like, and change the bundle in one place. Projected via
+<code>POST /v1/access_group</code> / <code>PUT /v1/access_group/&lt;id&gt;</code> /
+<code>DELETE /v1/access_group/&lt;id&gt;</code>.</p>
+<p>Requires LiteLLM <strong>1.93.0 or newer</strong> — the <code>/v1/access_group</code> endpoints do not
+exist before that.</p>
+<div class="admonition danger">
+<p class="admonition-title">Access groups only ADD — they never restrict</p>
+<p>Attaching a group <strong>widens</strong> a team's ceiling and <strong>overrides</strong> the
+operator's deny-by-default sentinel. See
+<a href="#access-groups-only-add">Access groups only ADD</a> before you use one.</p>
+</div>
+<h2 id="quick-reference">Quick reference<a class="headerlink" href="#quick-reference" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Required</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>metadata.name</code></td>
+<td>yes</td>
+<td>Used verbatim as LiteLLM <code>access_group_name</code>. Unique server-side.</td>
+</tr>
+<tr>
+<td><code>spec.description</code></td>
+<td>no</td>
+<td>Free text, forwarded verbatim.</td>
+</tr>
+<tr>
+<td><code>spec.models[]</code></td>
+<td>no</td>
+<td>Model <strong>names</strong>, forwarded as-is. No resolution, no validation.</td>
+</tr>
+<tr>
+<td><code>spec.mcpServers[]</code></td>
+<td>no</td>
+<td>MCP server <strong>names</strong>, resolved to <code>server_id</code> UUIDs.</td>
+</tr>
+<tr>
+<td><code>spec.agents[]</code></td>
+<td>no</td>
+<td>A2A agent <strong>names</strong>, resolved to <code>agent_id</code> UUIDs.</td>
+</tr>
+<tr>
+<td><code>spec.deletionPolicy</code></td>
+<td>no</td>
+<td><code>Orphan</code> (default) or <code>Delete</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>After <code>kubectl apply</code>, expect:</p>
+<ul>
+<li><code>status.conditions[type=Ready].status=True</code> / <code>reason=Synced</code>.</li>
+<li><code>status.lastRendered.accessGroupID</code> — the LiteLLM-assigned UUID, used by the
+  finalizer and by every team that attaches this group.</li>
+<li><code>status.lastRendered.hash</code> = SHA-256 of the rendered body.</li>
+</ul>
+<h2 id="minimal-example">Minimal example<a class="headerlink" href="#minimal-example" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">litellm.ackstorm.ai/v1alpha1</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">LiteLLMAccessGroup</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nt">metadata</span><span class="p">:</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">shared-tooling</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">default</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Models and tools shared across product teams</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">  </span><span class="nt">models</span><span class="p">:</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">gpt-4o</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">claude-sonnet-4</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">  </span><span class="nt">mcpServers</span><span class="p">:</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">hindsight</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">  </span><span class="nt">agents</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[]</span>
 </code></pre></div>
+<h2 id="the-three-dimensions">The three dimensions<a class="headerlink" href="#the-three-dimensions" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>CR field</th>
+<th>LiteLLM field</th>
+<th>Resolved?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>models</code></td>
+<td><code>access_model_names</code></td>
+<td><strong>No</strong> — LiteLLM matches on <code>model_name</code>.</td>
+</tr>
+<tr>
+<td><code>mcpServers</code></td>
+<td><code>access_mcp_server_ids</code></td>
+<td><strong>Yes</strong> — name → <code>server_id</code> via <code>GET /v1/mcp/server</code>.</td>
+</tr>
+<tr>
+<td><code>agents</code></td>
+<td><code>access_agent_ids</code></td>
+<td><strong>Yes</strong> — name → <code>agent_id</code> via <code>GET /v1/agents</code>.</td>
+</tr>
+</tbody>
+</table>
+<p><code>models</code> needs no resolution because LiteLLM keys model access on the
+human-readable <code>model_name</code>, so a name written here works whether or not a
+<code>LiteLLMModel</code> CR manages it.</p>
+<p>The other two are matched on UUIDs and LiteLLM silently ignores a name, so the
+operator resolves them. A name that does not resolve parks the CR
+<code>Ready=False, reason=MCPServerNotFound</code> (or <code>AgentNotFound</code>) and lists the
+missing names in the condition message. This is an ordering dependency with the
+<code>LiteLLMMCPServer</code> / <code>LiteLLMA2AAgent</code> CRs — it self-heals once they exist, on
+the next safety-relist tick.</p>
+<p><strong>No validation of <code>models</code>.</strong> LiteLLM does not check that a listed model
+exists, and neither does the operator. A typo yields an inert grant, not an
+error — the same deliberate non-validation as
+<a href="../mcp-toolset/"><code>LiteLLMMCPToolset</code></a>. Read back <code>GET /v1/access_group</code> to
+diagnose an empty-looking grant.</p>
+<h2 id="naming-and-ids">Naming and ids<a class="headerlink" href="#naming-and-ids" title="Permanent link">&para;</a></h2>
+<p><code>metadata.name</code> <strong>is</strong> the LiteLLM <code>access_group_name</code>, and it is unique
+server-side: a duplicate create answers <code>409</code>.</p>
+<p><code>access_group_id</code> is <strong>server-minted</strong>. LiteLLM 1.93.0 ignores a
+caller-supplied one, so the operator reads the id back from the create response
+and stores it in <code>status.lastRendered.accessGroupID</code> — the same posture as
+<code>LiteLLMMCPToolset</code>'s <code>toolset_id</code> and <code>LiteLLMA2AAgent</code>'s <code>agent_id</code>, and
+unlike <code>LiteLLMTeam</code>'s <code>team_id</code> / <code>LiteLLMMCPServer</code>'s <code>server_id</code>, which the
+operator pins to <code>metadata.name</code>.</p>
+<p>Because the id cannot be derived from the name, <strong>adoption is by name</strong>: on an
+operator restart (or when a group with that name was created out of band), the
+<code>409</code> is caught, the group is looked up by name, and the operator's rendered
+state is pushed onto it with a <code>PUT</code>. Nothing is orphaned and no duplicate is
+created.</p>
+<h2 id="attaching-a-group-to-a-team">Attaching a group to a team<a class="headerlink" href="#attaching-a-group-to-a-team" title="Permanent link">&para;</a></h2>
+<p>A group grants nobody anything on its own. Reference it from a team via
+<a href="../team/#accessgroups"><code>spec.permission.accessGroups</code></a>, which takes group
+<strong>names</strong>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">litellm.ackstorm.ai/v1alpha1</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">LiteLLMTeam</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="nt">metadata</span><span class="p">:</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">research-team</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="nt">permission</span><span class="p">:</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">    </span><span class="nt">models</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;gpt-4o&quot;</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">    </span><span class="nt">accessGroups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;shared-tooling&quot;</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+<p>The operator resolves each name to its <code>access_group_id</code> and writes the list to
+the team's <strong>top-level</strong> <code>access_group_ids</code> (not to <code>object_permission</code>). An
+unresolved name parks the team <code>Ready=False, reason=AccessGroupNotFound</code> and
+requeues — create the <code>LiteLLMAccessGroup</code> first and the team self-heals.</p>
+<p><strong>Verify an attachment from the team side only.</strong> Read
+<code>GET /team/info?team_id=&lt;id&gt;</code> and look at <code>team_info.access_group_ids</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">&quot;Authorization: Bearer </span><span class="nv">$MASTER_KEY</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="s2">&quot;</span><span class="nv">$LITELLM</span><span class="s2">/team/info?team_id=&lt;team_id&gt;&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span><span class="s1">&#39;.team_info.access_group_ids&#39;</span>
+</code></pre></div>
+<p>The group side does <strong>not</strong> mirror it: after a team-side write,
+<code>access_group.assigned_team_ids</code> keeps reading <code>[]</code> (measured on 1.93.0).
+That non-propagation is why the operator writes only the team mirror — the team
+field is the one LiteLLM actually enforces on, and keeping a single writer per
+surface avoids a repair problem LiteLLM makes unsolvable: it rewrites the mirror
+only on an ENTER/LEAVE delta, so an idempotent re-<code>PUT</code> cannot fix a mirror that
+is already broken.</p>
+<h2 id="access-groups-only-add">Access groups only ADD<a class="headerlink" href="#access-groups-only-add" title="Permanent link">&para;</a></h2>
+<div class="admonition danger">
+<p class="admonition-title">A group grant overrides the team's deny-by-default sentinel</p>
+<p>A <code>spec.permission</code> block that leaves <code>models</code> empty projects the
+<code>["__deny_all__"]</code> sentinel, which denies every model
+(<a href="../team/#resource-permissions-specpermission">Deny-by-default</a>). An
+attached access group <strong>overrides</strong> that: LiteLLM composes group grants
+additively, so a group granting <code>gpt-4o</code> makes <code>gpt-4o</code> reachable by that
+team's keys even though <code>team.models</code> is still <code>["__deny_all__"]</code>.</p>
+<p>Measured on stock LiteLLM 1.93.0 and covered by the <code>AG-04</code> e2e spec: the
+same team is denied <code>team_model_access_denied</code> before the attachment and
+succeeds after it, with its own <code>models</code> list unchanged.</p>
+</div>
+<p>Consequences to plan around:</p>
 <ul>
-<li><strong>Pipeline A</strong> reconciles each explicit CR into LiteLLM via REST.
-  Wholesale-replace semantics on update; vanish-detect + create-missing
-  on safety re-list.</li>
-<li><strong>Pipeline B</strong> queries upstream provider APIs (anthropic, bedrock,
-  gemini, openai, kubeai) or ToolHive, and emits child CRs that
-  Pipeline A then reconciles. Discovery never calls LiteLLM directly.</li>
+<li><strong>A group is a grant, never a filter.</strong> Adding a group can only widen a team.
+  There is no way to use one to narrow access.</li>
+<li><strong>Editing a group edits every attached team, at once.</strong> Adding a model to
+  <code>spec.models</code> grants it to every team carrying the group, in one reconcile.
+  Treat a widely-attached group as a production change.</li>
+<li><strong>Revocation goes through the group.</strong> Shrinking <code>spec.models</code> — including to
+  empty — really does revoke, because the operator always sends the full list
+  on every <code>PUT</code> (an omitted list would be a <em>keep</em>, not a <em>clear</em>). Removing
+  the group from a team's <code>accessGroups</code> revokes for that team alone.</li>
+<li><strong>The team's own sentinel keeps protecting whatever the group does not
+  grant.</strong> The bypass is scoped to the group's contents, not a blanket
+  disabling of the filter.</li>
 </ul>
-<h2 id="per-kind-reconciler-shape">Per-kind reconciler shape<a class="headerlink" href="#per-kind-reconciler-shape" title="Permanent link">&para;</a></h2>
-<p>Every controller in <code>internal/controller/&lt;kind&gt;_controller.go</code>
-follows the same shape:</p>
-<ol>
-<li><code>Reconcile(ctx, req) (Result, error)</code> fetches the CR; bails early
-   on <code>IsNotFound</code>.</li>
-<li>Resolves dependencies — <code>LiteLLMConnection/default</code> cache snapshot,
-   <code>spec.secrets[]</code> resolution, <code>{{NAME}}</code> substitution.</li>
-<li>Constructs the LiteLLM request body via <code>internal/litellm/
-   &lt;kind&gt;_request.go</code> (pure data, no side effects).</li>
-<li>SHA-256 hash over the rendered post-substitution body
-   (RFC 8785 canonical JSON).</li>
-<li>Vanish probe — existence check against LiteLLM (see "List cache"
-   below).</li>
-<li>If hash unchanged AND row exists → no-op (steady state).
-   If hash changed → <code>PUT /...</code> (drift correction).
-   If row vanished → <code>POST /...</code> + re-pin status ID.</li>
-<li>Status update via <code>meta.SetStatusCondition</code> (<code>Ready</code>,
-   <code>LiteLLMUnavailable</code>, <code>LiteLLMRejected</code>, <code>SecretNotFound</code>,
-   <code>UnresolvedPlaceholder</code>, …).</li>
-<li>No requeue on return — the per-kind <code>SafetyRelistRunnable</code> (see
-   "Safety re-list" below) owns the periodic vanish-probe tick from
-   outside <code>Reconcile</code>, at <code>safetyRelistInterval</code> (default 10m,
-   configurable per process).</li>
-</ol>
-<p>The split between <code>internal/controller/</code> (k8s reconcile loop) and
-<code>internal/litellm/</code> (HTTP surface) is load-bearing: the request
-constructors are pure functions and unit-testable without envtest.</p>
-<h2 id="litellm-http-client">LiteLLM HTTP client<a class="headerlink" href="#litellm-http-client" title="Permanent link">&para;</a></h2>
-<p><code>internal/litellm/client.go</code>:</p>
+<p>This behaviour is LiteLLM's, not the operator's, and it is documented rather
+than worked around: suppressing it would mean the operator second-guessing an
+explicit grant the user wrote.</p>
+<h2 id="two-access-group-namespaces">Two access-group namespaces<a class="headerlink" href="#two-access-group-namespaces" title="Permanent link">&para;</a></h2>
+<p>"Access group" names two unrelated things in LiteLLM. They are <strong>disjoint</strong> —
+a group created in one never appears in the other.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th><strong>Unified access group</strong> (this CRD)</th>
+<th><strong>Legacy model tag</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Endpoints</td>
+<td><code>/v1/access_group</code> (GET, POST) and <code>/v1/access_group/&lt;id&gt;</code> (PUT, DELETE)</td>
+<td><code>GET /access_group/list</code>, <code>POST /access_group/new</code></td>
+</tr>
+<tr>
+<td>Object</td>
+<td>A first-class row with an id, holding models + MCP servers + agents</td>
+<td>A free-text tag stamped on a single model</td>
+</tr>
+<tr>
+<td>Written by</td>
+<td><code>LiteLLMAccessGroup</code> CRs</td>
+<td><code>LiteLLMModel.spec.info.access_groups</code>, and the <code>DEFAULT_ACCESS_GROUP</code> env default</td>
+</tr>
+<tr>
+<td>Attached via</td>
+<td><code>LiteLLMTeam.spec.permission.accessGroups</code> → <code>team.access_group_ids</code></td>
+<td><code>LiteLLMTeam.spec.permission.modelGroups</code> → merged into <code>team.models</code></td>
+</tr>
+<tr>
+<td>Covers</td>
+<td>Models, MCP servers, A2A agents</td>
+<td>Models only</td>
+</tr>
+</tbody>
+</table>
+<p>So:</p>
 <ul>
-<li>HTTP client with master-key Bearer auth and per-Connection scoped
-  cache instance.</li>
-<li><code>ClientOption</code> knobs: <code>WithRateLimit</code>, <code>WithListCacheTTL</code>.</li>
-<li>Domain methods per CRD: <code>CreateMCPServer</code>, <code>UpdateMCPServer</code>,
-  <code>DeleteMCPServer</code>, … and the cache-aware
-  <code>CachedListMCPServers(ctx)</code>, <code>CachedListAgents(ctx)</code>.</li>
+<li><code>spec.permission.accessGroups</code> takes <strong>unified</strong> group names — the ones this
+  CRD creates.</li>
+<li><code>spec.permission.modelGroups</code> takes <strong>legacy tag</strong> names — the ones
+  <code>model_info.access_groups</code> / <code>DEFAULT_ACCESS_GROUP</code> write. They merge into the
+  team's <code>models</code> list, which means they are subject to deny-by-default like any
+  other model entry; unified groups are not.</li>
 </ul>
-<h2 id="list-cache-vanish-probe-coalescing">List cache (vanish-probe coalescing)<a class="headerlink" href="#list-cache-vanish-probe-coalescing" title="Permanent link">&para;</a></h2>
-<p><code>internal/litellm/list_cache.go</code>. Single-flight cache keyed per
-endpoint (MCP servers, A2A agents).</p>
+<p>A <code>LiteLLMAccessGroup</code> named <code>anthropic</code> and a model tagged
+<code>model_info.access_groups: ["anthropic"]</code> are <strong>unrelated</strong>. Listing <code>anthropic</code>
+under <code>accessGroups</code> grants nothing from the tag, and listing it under
+<code>modelGroups</code> grants nothing from the CR.</p>
+<h2 id="deletion">Deletion<a class="headerlink" href="#deletion" title="Permanent link">&para;</a></h2>
+<p><code>spec.deletionPolicy</code> behaves as it does on the other kinds:</p>
 <ul>
-<li>TTL default: <code>DefaultListCacheTTL = 30 * time.Second</code>.</li>
-<li>Concurrent calls coalesce on an <code>inflight chan struct{}</code> — one HTTP
-  fetch serves N waiters.</li>
-<li>Invalidated on every successful <code>Create*</code> / <code>Update*</code> / <code>Delete*</code>
-  via <code>invalidateMCPCache()</code> / <code>invalidateAgentsCache()</code>.</li>
-<li>Used by the vanish-probe path in <code>mcpserver_controller.go</code> and
-  <code>a2aagent_controller.go</code> so 20 sibling CRs re-listing the same
-  endpoint produce 1 HTTP request per TTL window instead of 20.</li>
+<li><code>Orphan</code> (default) — if the LiteLLM-side <code>DELETE</code> cannot be confirmed
+  (LiteLLM unreachable, <code>401</code>, deterministic <code>4xx</code>), the finalizer still drains
+  and a Warning Event records the un-confirmed delete. The CR never wedges.</li>
+<li><code>Delete</code> — the finalizer is held until the delete is confirmed.</li>
 </ul>
-<p>Trade-off: vanish detection is delayed by up to TTL seconds when
-out-of-band DELETEs land in LiteLLM. Detection still happens within
-the next safety re-list interval; the cache only batches probes.</p>
-<h2 id="vanish-probe-shared-helper">Vanish probe (shared helper)<a class="headerlink" href="#vanish-probe-shared-helper" title="Permanent link">&para;</a></h2>
-<p><code>internal/controller/vanish_probe.go</code> exposes
-<code>probeVanishedResourceID(ctx, lookup, observedID) (verdict, err)</code>:</p>
-<ul>
-<li><code>verdict=keep</code> — row exists with the observed ID (hash short-
-  circuit safe).</li>
-<li><code>verdict=clear</code> — row missing / drifted / 401 / <code>ErrNotFound</code>;
-  reconciler clears the pinned ID, falls through to CREATE.</li>
-</ul>
-<p>Used by MCPServer, Team, A2AAgent, Model. Closure-based — each caller
-supplies its own <code>lookup(id) (found bool, err error)</code>.</p>
-<h2 id="safety-re-list">Safety re-list<a class="headerlink" href="#safety-re-list" title="Permanent link">&para;</a></h2>
-<p><code>internal/controller/shared_helpers.go</code> (<code>SafetyRelistRunnable</code>) +
-<code>internal/controller/safety_relist.go</code> (env parsing):</p>
-<ul>
-<li>Each of the five domain reconcilers (Model, Team, MCPServer,
-  A2AAgent, GuardRail) has exactly one <code>SafetyRelistRunnable</code> wired in
-  <code>cmd/main.go</code> — a <code>manager.Runnable</code> ticking on a <code>time.Ticker</code>
-  <em>outside</em> <code>Reconcile</code>, listing every CR of its kind and enqueueing
-  them. There are no <code>RequeueAfter</code> safety-relist paths: a requeue only
-  fires from the return site that carries it, so any early return would
-  silently lose the CR's periodic tick. The Runnable ticks regardless of
-  which branch a reconcile took.</li>
-<li><code>EnvSafetyRelistInterval = "LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL"</code>
-  → parsed once at startup, validated against <code>SafetyRelistFloor = 5s</code>,
-  and the single resolved value sets every <code>Runnable.Interval</code>.</li>
-<li>Helm: first-class <code>safetyRelistInterval</code> value on the operator chart
-  (<code>deploy/helm/alitellm-operator/values.yaml</code>).</li>
-</ul>
-<p>Default 10m balances responsiveness against outbound HTTP rate
-(~27/min steady state for the dogfood cluster).</p>
-<h2 id="pipeline-b-ssa-applied-child-crs">Pipeline B: SSA-applied child CRs<a class="headerlink" href="#pipeline-b-ssa-applied-child-crs" title="Permanent link">&para;</a></h2>
-<p>ModelDiscovery and MCPServerDiscovery use Server-Side Apply with
-<code>fieldManager=alitellm-operator-&lt;kind&gt;discovery</code> to author child CRs.
-Children carry:</p>
-<ul>
-<li><code>ownerReferences[controller=true, blockOwnerDeletion=true]</code> →
-  Discovery is the owner; deletion cascades.</li>
-<li><code>labels[litellm.ackstorm.ai/generated-by=&lt;discovery-name&gt;]</code> → the
-  controller selects owned children via this label, not via the
-  <code>status.generatedChildren[]</code> echo.</li>
-</ul>
-<p>Discovery itself never calls LiteLLM. Finalizer waits for owned
-children to drain; each child's Pipeline A finalizer issues the
-LiteLLM DELETE.</p>
-<h2 id="operator-restart-drift-reconciliation">Operator restart → drift reconciliation<a class="headerlink" href="#operator-restart-drift-reconciliation" title="Permanent link">&para;</a></h2>
-<p>Informers resync on startup; every CR re-enters the workqueue. The
-hash short-circuit lets steady-state reconciles return after a single
-cache read. Vanish probes catch any rows that disappeared from
-LiteLLM while the operator was down.</p>
-<h2 id="where-to-read-next">Where to read next<a class="headerlink" href="#where-to-read-next" title="Permanent link">&para;</a></h2>
-<ul>
-<li>Controller-runtime patterns: <code>internal/controller/doc.go</code> +
-  per-controller godoc.</li>
-<li>LiteLLM HTTP surface: <code>internal/litellm/*.go</code>.</li>
-<li>Reconciler scaffolding shared across kinds:
-  <code>bootsweep.go</code>, <code>connection_fanin.go</code>, <code>predicates.go</code>,
-  <code>safety_relist.go</code>, <code>status_log.go</code>.</li>
-<li>Development loop: <a href="../development/">Development</a>.</li>
-<li>Release pipeline: <a href="../release-process/">Release Process</a>.</li>
-</ul>
+<p><code>DELETE /v1/access_group/&lt;id&gt;</code> answers a clean <code>404</code> when the row is already
+gone, which the client folds into success — so a confirmed-absent group drains
+under either policy. (Contrast <code>/v1/mcp/toolset</code>, which raises a <code>500</code> on an
+absent row; see the <a href="../mcp-toolset/">MCP toolset guide</a>.)</p>
+<p>Deleting a group does <strong>not</strong> edit the teams that referenced it; LiteLLM drops
+the now-dangling id from enforcement.</p>
+<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Symptom</th>
+<th>Cause</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Ready=False reason=MCPServerNotFound</code> / <code>AgentNotFound</code></td>
+<td>A <code>spec.mcpServers</code> / <code>spec.agents</code> name is not registered yet. Create the CR; it self-heals.</td>
+</tr>
+<tr>
+<td>Team <code>Ready=False reason=AccessGroupNotFound</code></td>
+<td>The team names a group that does not exist yet. Create the <code>LiteLLMAccessGroup</code> first.</td>
+</tr>
+<tr>
+<td>Group is <code>Synced</code> but grants nothing</td>
+<td>A <code>spec.models</code> entry names no live model. Nothing validates it; check <code>GET /v1/access_group</code>.</td>
+</tr>
+<tr>
+<td>Group does not appear in <code>GET /access_group/list</code></td>
+<td>Expected — that is the legacy tag namespace. See <a href="#two-access-group-namespaces">Two access-group namespaces</a>.</td>
+</tr>
+<tr>
+<td><code>assigned_team_ids</code> is <code>[]</code> despite an attached team</td>
+<td>Expected — the group side does not mirror a team-side write. Read <code>GET /team/info</code>.</td>
+</tr>
+<tr>
+<td>A team can reach a model its <code>spec.permission.models</code> excludes</td>
+<td>An attached group grants it. Groups only ADD.</td>
+</tr>
+</tbody>
+</table>
 
 
 

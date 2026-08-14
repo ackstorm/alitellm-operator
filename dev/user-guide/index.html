@@ -922,6 +922,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="access-group/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMAccessGroup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1491,7 +1519,7 @@
 
 
 <h1 id="user-guide">User Guide<a class="headerlink" href="#user-guide" title="Permanent link">&para;</a></h1>
-<p><code>alitellm-operator</code> reconciles nine Kubernetes Custom Resources under the
+<p><code>alitellm-operator</code> reconciles ten Kubernetes Custom Resources under the
 <code>litellm.ackstorm.ai/v1alpha1</code> API group. Each CR maps to one declarative
 intent against an upstream LiteLLM proxy.</p>
 <table>
@@ -1537,6 +1565,10 @@ intent against an upstream LiteLLM proxy.</p>
 <tr>
 <td><a href="guardrail/">LiteLLMGuardRail</a></td>
 <td>Content filter / DLP guardrail (BLOCK / MASK, pre_call or post_call).</td>
+</tr>
+<tr>
+<td><a href="access-group/">LiteLLMAccessGroup</a></td>
+<td>Reusable bundle of models / MCP servers / agents, attached to teams.</td>
 </tr>
 </tbody>
 </table>

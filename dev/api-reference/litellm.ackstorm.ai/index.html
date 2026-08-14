@@ -909,6 +909,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/access-group/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMAccessGroup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1398,6 +1426,39 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#accessgrouplastrenderedstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AccessGroupLastRenderedStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#accessgroupspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AccessGroupSpec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#accessgroupstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AccessGroupStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#aliasentrystatus" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1501,6 +1562,28 @@
     <span class="md-ellipsis">
       
         LiteLLMA2AAgentList
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmaccessgroup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMAccessGroup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmaccessgrouplist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMAccessGroupList
       
     </span>
   </a>
@@ -2344,6 +2427,39 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#accessgrouplastrenderedstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AccessGroupLastRenderedStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#accessgroupspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AccessGroupSpec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#accessgroupstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AccessGroupStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#aliasentrystatus" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2447,6 +2563,28 @@
     <span class="md-ellipsis">
       
         LiteLLMA2AAgentList
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmaccessgroup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMAccessGroup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmaccessgrouplist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMAccessGroupList
       
     </span>
   </a>
@@ -3066,6 +3204,8 @@
 <ul>
 <li><a href="#litellma2aagent">LiteLLMA2AAgent</a></li>
 <li><a href="#litellma2aagentlist">LiteLLMA2AAgentList</a></li>
+<li><a href="#litellmaccessgroup">LiteLLMAccessGroup</a></li>
+<li><a href="#litellmaccessgrouplist">LiteLLMAccessGroupList</a></li>
 <li><a href="#litellmconnection">LiteLLMConnection</a></li>
 <li><a href="#litellmconnectionlist">LiteLLMConnectionList</a></li>
 <li><a href="#litellmguardrail">LiteLLMGuardRail</a></li>
@@ -3232,6 +3372,136 @@ committed for A2AAgent.</p>
 <tr>
 <td><code>at</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#time-v1-meta">Time</a></em></td>
 <td>At is the timestamp of the last SUCCESSFUL render (NOT every<br />reconcile attempt — transient failures do not update this field).</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="accessgrouplastrenderedstatus">AccessGroupLastRenderedStatus<a class="headerlink" href="#accessgrouplastrenderedstatus" title="Permanent link">&para;</a></h4>
+<p>AccessGroupLastRenderedStatus records the rendered state last applied.</p>
+<p>AccessGroupID is server-minted: LiteLLM 1.93.0 IGNORES a caller-supplied
+access_group_id and mints a UUID (verified). Same posture as MCP toolset_id
+and A2A agent_id, unlike team_id / MCP server_id which the operator pins to
+metadata.name. Adoption of a pre-existing group therefore goes through the
+unique <code>access_group_name</code>, which is metadata.name.</p>
+<p><em>Appears in:</em>
+- <a href="#accessgroupstatus">AccessGroupStatus</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>hash</code> <em>string</em></td>
+<td>Hash is the SHA-256 hex of the RFC 8785–approximated canonical JSON of<br />the rendered body (shared canonicalJSON helper; spec.description is<br />excluded — it is not part of the authorization surface).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>accessGroupID</code> <em>string</em></td>
+<td>AccessGroupID is the LiteLLM-assigned UUID, read from the POST response<br />or re-resolved by name via GET /v1/access_group.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>at</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#time-v1-meta">Time</a></em></td>
+<td>At is the timestamp of the last SUCCESSFUL render.</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="accessgroupspec">AccessGroupSpec<a class="headerlink" href="#accessgroupspec" title="Permanent link">&para;</a></h4>
+<p>AccessGroupSpec defines the desired state of a LiteLLM access group — a
+reusable bundle of models, MCP servers, and A2A agents that a team reaches
+through LiteLLMTeam.spec.permission.accessGroups.</p>
+<p>SCOPE: this CRD owns the three RESOURCE dimensions only. It never writes
+assigned_team_ids or assigned_key_ids. Team attachment is written from the
+team side (team.access_group_ids), which is the face LiteLLM enforces on;
+keeping a single writer per surface is what lets the operator skip
+delta-repair machinery entirely.</p>
+<p>SECURITY: access groups only ADD. A group grant OVERRIDES a team's
+deny-by-default sentinel (models: ["<strong>deny_all</strong>"]) — verified 2026-08-06 on
+LiteLLM 1.93.0. Granting a model here makes it reachable by every team that
+attaches this group, regardless of that team's own spec.permission.models.</p>
+<p><em>Appears in:</em>
+- <a href="#litellmaccessgroup">LiteLLMAccessGroup</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>description</code> <em>string</em></td>
+<td>Description is free text forwarded to LiteLLM's <code>description</code> field.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>models</code> <em>string array</em></td>
+<td>Models is the list of LiteLLM model NAMES this group grants. Forwarded<br />to access_model_names without resolution — LiteLLM matches on model_name,<br />so no lookup step is needed and no CR reference is required. The list is<br />sorted before projection so a reordered spec does not read as drift;<br />declaration order is therefore NOT preserved.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>mcpServers</code> <em>string array</em></td>
+<td>MCPServers is the list of MCP server NAMES this group grants. Each name<br />is resolved to a server_id via GET /v1/mcp/server before projection,<br />because access_mcp_server_ids matches on ids and silently ignores names.<br />An unresolved name parks the CR Ready=False reason=MCPServerNotFound;<br />it is re-driven by the periodic SafetyRelistRunnable, not requeued<br />(ordering dependency with LiteLLMMCPServer CRs — it self-heals once<br />the server exists).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>agents</code> <em>string array</em></td>
+<td>Agents is the list of A2A agent NAMES this group grants. Each name is<br />resolved to an agent_id via GET /v1/agents, same reason and same<br />parking behaviour as MCPServers (reason=AgentNotFound).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>deletionPolicy</code> <em>string</em></td>
+<td>DeletionPolicy controls finalizer behavior when the LiteLLM-side DELETE<br />cannot be confirmed. Defaults to "Orphan" per REL-06 anti-storm.</td>
+<td>Orphan</td>
+<td>Enum: [Orphan Delete] <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="accessgroupstatus">AccessGroupStatus<a class="headerlink" href="#accessgroupstatus" title="Permanent link">&para;</a></h4>
+<p>AccessGroupStatus defines the observed state of a LiteLLMAccessGroup.</p>
+<p><em>Appears in:</em>
+- <a href="#litellmaccessgroup">LiteLLMAccessGroup</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>observedGeneration</code> <em>integer</em></td>
+<td>ObservedGeneration is the metadata.generation most recently processed.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>conditions</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#condition-v1-meta">Condition</a> array</em></td>
+<td>Conditions carries the standard metav1.Condition list. The single type<br />is <code>Ready</code>, with reasons:<br />  - Synced             — rendered group matches LiteLLM.<br />  - LiteLLMUnavailable — LiteLLMConnection/default not usable.<br />  - LiteLLMRejected    — LiteLLM returned a 4xx (non-401) on mutation.<br />  - MCPServerNotFound  — a spec.mcpServers name does not resolve yet.<br />  - AgentNotFound      — a spec.agents name does not resolve yet.<br />  - RecreateThrottled  — created-but-not-listed storm breaker tripped.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>lastRendered</code> <em><a href="#accessgrouplastrenderedstatus">AccessGroupLastRenderedStatus</a></em></td>
+<td>LastRendered is the operator-side drift source of truth.</td>
 <td></td>
 <td></td>
 </tr>
@@ -3718,6 +3988,118 @@ internal/controller/a2aagent_controller.go.</p>
 </tr>
 <tr>
 <td><code>items</code> <em><a href="#litellma2aagent">LiteLLMA2AAgent</a> array</em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="litellmaccessgroup">LiteLLMAccessGroup<a class="headerlink" href="#litellmaccessgroup" title="Permanent link">&para;</a></h4>
+<p>LiteLLMAccessGroup is the Schema for the litellmaccessgroups API.</p>
+<p>metadata.name IS the LiteLLM <code>access_group_name</code> (unique server-side — a
+duplicate create returns 409), which is how the operator adopts a
+pre-existing group after a restart.</p>
+<p>Finalizer: <code>accessgroups.litellm.ackstorm.ai/finalizer</code></p>
+<p><em>Appears in:</em>
+- <a href="#litellmaccessgrouplist">LiteLLMAccessGroupList</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td><code>litellm.ackstorm.ai/v1alpha1</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td><code>LiteLLMAccessGroup</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td>Kind is a string value representing the REST resource this object represents.<br />Servers may infer this from the endpoint the client submits requests to.<br />Cannot be updated.<br />In CamelCase.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td>APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>metadata</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta">ObjectMeta</a></em></td>
+<td>Refer to Kubernetes API documentation for fields of <code>metadata</code>.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>spec</code> <em><a href="#accessgroupspec">AccessGroupSpec</a></em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>status</code> <em><a href="#accessgroupstatus">AccessGroupStatus</a></em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="litellmaccessgrouplist">LiteLLMAccessGroupList<a class="headerlink" href="#litellmaccessgrouplist" title="Permanent link">&para;</a></h4>
+<p>LiteLLMAccessGroupList contains a list of LiteLLMAccessGroup.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td><code>litellm.ackstorm.ai/v1alpha1</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td><code>LiteLLMAccessGroupList</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td>Kind is a string value representing the REST resource this object represents.<br />Servers may infer this from the endpoint the client submits requests to.<br />Cannot be updated.<br />In CamelCase.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td>APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>metadata</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#listmeta-v1-meta">ListMeta</a></em></td>
+<td>Refer to Kubernetes API documentation for fields of <code>metadata</code>.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>items</code> <em><a href="#litellmaccessgroup">LiteLLMAccessGroup</a> array</em></td>
 <td></td>
 <td></td>
 <td></td>
@@ -6077,6 +6459,12 @@ the empty case of the two fail-open fields.</p>
 <tr>
 <td><code>modelGroups</code> <em>string array</em></td>
 <td>ModelGroups is the list of model ACCESS-GROUP names this team may use.<br />Merged with Models into the single top-level <code>models</code> list.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>accessGroups</code> <em>string array</em></td>
+<td>AccessGroups is the list of LiteLLMAccessGroup NAMES this team is<br />attached to. Each name is resolved to an access_group_id via<br />GET /v1/access_group and projected onto the team's TOP-LEVEL<br /><code>access_group_ids</code> — NOT onto object_permission.<br />Distinct from ModelGroups: that field carries legacy model-TAG names<br />and merges into <code>models</code>. This one carries unified access-group names<br />from the /v1/access_group object family. The two namespaces are<br />disjoint (a unified group does not appear in /access_group/list).<br />SECURITY: an attached group only ADDS. A group granting a model<br />OVERRIDES this team's deny-by-default sentinel — verified 2026-08-06<br />on LiteLLM 1.93.0: a team with models:["<strong>deny_all</strong>"] plus an<br />attached group granting a model stops being denied. Treat every<br />attached group as a widening of this team's ceiling.<br />An unresolved name parks the Team Ready=False<br />reason=AccessGroupNotFound and requeues (ordering dependency with<br />LiteLLMAccessGroup CRs, same shape as AgentNotFound).</td>
 <td></td>
 <td></td>
 </tr>

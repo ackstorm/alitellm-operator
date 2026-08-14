@@ -833,6 +833,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#accessgroups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        accessGroups
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#migration-from-specparamsobject_permission" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1084,6 +1095,34 @@
     
   
     LiteLLMGuardRail
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../access-group/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMAccessGroup
   
 
     
@@ -1732,6 +1771,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#accessgroups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        accessGroups
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#migration-from-specparamsobject_permission" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1981,6 +2031,7 @@ out-of-band UI edits to them do NOT survive reconciliation.</p>
 <a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">    </span><span class="nt">agents</span><span class="p">:</span><span class="w">      </span><span class="p p-Indicator">[</span><span class="s">&quot;planner&quot;</span><span class="p p-Indicator">]</span><span class="w">       </span><span class="c1"># A2A agent NAMES (resolved to UUIDs by the operator)</span>
 <a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="w">    </span><span class="nt">agentGroups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;grp-a&quot;</span><span class="p p-Indicator">]</span><span class="w">         </span><span class="c1"># A2A agent access-group names (see no-op note)</span>
 <a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="w">    </span><span class="nt">mcpToolsets</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;research&quot;</span><span class="p p-Indicator">]</span><span class="w">      </span><span class="c1"># LiteLLMMCPToolset NAMES (resolved to UUIDs)</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="w">    </span><span class="nt">accessGroups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;shared&quot;</span><span class="p p-Indicator">]</span><span class="w">       </span><span class="c1"># LiteLLMAccessGroup NAMES (resolved to UUIDs)</span>
 </code></pre></div>
 <p>Projection to LiteLLM:</p>
 <table>
@@ -2014,6 +2065,10 @@ out-of-band UI edits to them do NOT survive reconciliation.</p>
 <tr>
 <td><code>mcpToolsets</code></td>
 <td><code>object_permission.mcp_toolsets</code> (name→UUID resolved)</td>
+</tr>
+<tr>
+<td><code>accessGroups</code></td>
+<td>top-level <code>team.access_group_ids</code> (name→UUID resolved)</td>
 </tr>
 </tbody>
 </table>
@@ -2071,7 +2126,7 @@ present block leaves those lists empty:</p>
 <td>0 agents</td>
 </tr>
 <tr>
-<td><code>mcpServers</code> / <code>mcpGroups</code> / <code>agentGroups</code> / <code>mcpToolsets</code></td>
+<td><code>mcpServers</code> / <code>mcpGroups</code> / <code>agentGroups</code> / <code>mcpToolsets</code> / <code>accessGroups</code></td>
 <td><code>[]</code></td>
 <td>already fail-closed / no-op — no sentinel needed</td>
 </tr>
@@ -2092,21 +2147,49 @@ by the sentinel.</p>
 <p><strong>Precedence.</strong> With <code>spec.permission</code> present, any <code>models</code> or
 <code>object_permission</code> key inside <code>spec.params</code> is dropped and a
 <code>ProjectionOverride</code> Warning Event fires — the typed block always wins.</p>
+<h3 id="accessgroups"><code>accessGroups</code><a class="headerlink" href="#accessgroups" title="Permanent link">&para;</a></h3>
+<p>Names of <a href="../access-group/"><code>LiteLLMAccessGroup</code></a> resources to attach to this
+team. The operator resolves each name to its server-minted <code>access_group_id</code>
+via <code>GET /v1/access_group</code> and writes the resolved list to
+<code>team.access_group_ids</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="nt">permission</span><span class="p">:</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="nt">accessGroups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">anthropic-tier</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">internal-mcp</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+<p>A name that does not resolve parks the team <code>Ready=False</code>,
+<code>reason=AccessGroupNotFound</code> and requeues — create the <code>LiteLLMAccessGroup</code>
+first, and the team self-heals. This is the same ordering dependency that
+<code>agents</code> and <code>mcpToolsets</code> have.</p>
+<p>Do not confuse <code>accessGroups</code> with <code>modelGroups</code>: <code>modelGroups</code> carries LEGACY
+model-TAG names and merges into <code>models</code>, while <code>accessGroups</code> carries unified
+access-group names from the <code>/v1/access_group</code> object family. The two
+namespaces are disjoint.</p>
+<div class="admonition warning">
+<p class="admonition-title">Access groups BYPASS deny-by-default</p>
+<p>A <code>spec.permission</code> block with an empty <code>models</code> list emits the
+<code>__deny_all__</code> sentinel, which denies every model (see the
+<strong>Deny-by-default</strong> note above). An attached access group <strong>overrides</strong>
+that: LiteLLM treats group grants as additive, so a group granting
+<code>gpt-4o</code> makes <code>gpt-4o</code> reachable by this team's keys even though
+<code>models</code> is <code>["__deny_all__"]</code>. Measured on LiteLLM 1.93.0.
+Treat <code>accessGroups</code> as a grant, never as a filter. Full rationale in
+the <a href="../access-group/#access-groups-only-add">LiteLLMAccessGroup guide</a>.</p>
+</div>
 <h3 id="migration-from-specparamsobject_permission">Migration from <code>spec.params.object_permission</code><a class="headerlink" href="#migration-from-specparamsobject_permission" title="Permanent link">&para;</a></h3>
 <p>Teams currently using <code>spec.params.object_permission</code> (or
 <code>spec.params.models</code>) continue to work unchanged as long as <code>spec.permission</code>
 is absent. To adopt the typed block, move each value:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># before</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span><span class="nt">models</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;gpt-4o&quot;</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">    </span><span class="nt">object_permission</span><span class="p">:</span>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">      </span><span class="nt">mcp_servers</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;hindsight&quot;</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="c1"># after</span>
-<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">  </span><span class="nt">permission</span><span class="p">:</span>
-<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">    </span><span class="nt">models</span><span class="p">:</span><span class="w">     </span><span class="p p-Indicator">[</span><span class="s">&quot;gpt-4o&quot;</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="w">    </span><span class="nt">mcpServers</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;hindsight&quot;</span><span class="p p-Indicator">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># before</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">    </span><span class="nt">models</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;gpt-4o&quot;</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">    </span><span class="nt">object_permission</span><span class="p">:</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">      </span><span class="nt">mcp_servers</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;hindsight&quot;</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="c1"># after</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="w">  </span><span class="nt">permission</span><span class="p">:</span>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="w">    </span><span class="nt">models</span><span class="p">:</span><span class="w">     </span><span class="p p-Indicator">[</span><span class="s">&quot;gpt-4o&quot;</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="w">    </span><span class="nt">mcpServers</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;hindsight&quot;</span><span class="p p-Indicator">]</span>
 </code></pre></div>
 <p>Note that <code>object_permission.agents</code> in the old form required raw UUIDs; the
 new <code>spec.permission.agents</code> takes human-friendly NAMES instead.</p>
@@ -2125,29 +2208,29 @@ new <code>spec.permission.agents</code> takes human-friendly NAMES instead.</p>
 <h2 id="specparams-pass-through-tags-enterprise-gate"><code>spec.params</code> pass-through + <code>tags</code> (Enterprise gate)<a class="headerlink" href="#specparams-pass-through-tags-enterprise-gate" title="Permanent link">&para;</a></h2>
 <p><code>spec.params</code> is forwarded verbatim to the top-level
 <code>NewTeamRequest</code> body. Common pitfall:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span><span class="nt">tags</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">prod</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">finance</span><span class="p p-Indicator">]</span><span class="w">   </span><span class="c1"># HTTP 403 on OSS LiteLLM</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span><span class="nt">tags</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">prod</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">finance</span><span class="p p-Indicator">]</span><span class="w">   </span><span class="c1"># HTTP 403 on OSS LiteLLM</span>
 </code></pre></div>
 <p>LiteLLM 1.83.10 OSS rejects <code>tags</code> on <code>/team/new</code> as Enterprise-only.
 Holders of a LiteLLM Enterprise license can keep <code>tags</code> in <code>params</code>
 unchanged — the operator pass-through forwards it without code change.</p>
 <p>For free-form metadata that the operator does NOT touch, use the
 LiteLLM <code>metadata</code> map inside <code>params</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span><span class="nt">metadata</span><span class="p">:</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">      </span><span class="nt">cost-center</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;1234&quot;</span>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">      </span><span class="nt">env</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">prod</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span><span class="nt">metadata</span><span class="p">:</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">      </span><span class="nt">cost-center</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;1234&quot;</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">      </span><span class="nt">env</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">prod</span>
 </code></pre></div>
 <h2 id="status-what-to-read">Status: what to read<a class="headerlink" href="#status-what-to-read" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>team<span class="w"> </span>finance<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.status.lastRendered}{&quot;\n&quot;}&#39;</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="c1"># {&quot;at&quot;:&quot;2026-05-24T...&quot;,&quot;hash&quot;:&quot;abc...&quot;,&quot;paramsKeys&quot;:[&quot;metadata&quot;],&quot;teamID&quot;:&quot;finance&quot;}</span>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="c1"># (teamID == metadata.name for operator-created teams; a UUID for teams</span>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="c1">#  that already existed under a server-assigned id — see team_id assignment)</span>
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>kubectl<span class="w"> </span>get<span class="w"> </span>team<span class="w"> </span>finance<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.status.conditions[?(@.type==&quot;Ready&quot;)]}{&quot;\n&quot;}&#39;</span>
-<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="c1"># {&quot;type&quot;:&quot;Ready&quot;,&quot;status&quot;:&quot;True&quot;,&quot;reason&quot;:&quot;Synced&quot;,&quot;message&quot;:&quot;&quot;}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>team<span class="w"> </span>finance<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.status.lastRendered}{&quot;\n&quot;}&#39;</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="c1"># {&quot;at&quot;:&quot;2026-05-24T...&quot;,&quot;hash&quot;:&quot;abc...&quot;,&quot;paramsKeys&quot;:[&quot;metadata&quot;],&quot;teamID&quot;:&quot;finance&quot;}</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="c1"># (teamID == metadata.name for operator-created teams; a UUID for teams</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="c1">#  that already existed under a server-assigned id — see team_id assignment)</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>kubectl<span class="w"> </span>get<span class="w"> </span>team<span class="w"> </span>finance<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.status.conditions[?(@.type==&quot;Ready&quot;)]}{&quot;\n&quot;}&#39;</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="c1"># {&quot;type&quot;:&quot;Ready&quot;,&quot;status&quot;:&quot;True&quot;,&quot;reason&quot;:&quot;Synced&quot;,&quot;message&quot;:&quot;&quot;}</span>
 </code></pre></div>
 <p>Other <code>Ready=False</code> reasons:</p>
 <ul>
