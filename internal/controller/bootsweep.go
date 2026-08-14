@@ -55,6 +55,7 @@ type BootSweeper struct {
 	MCPServerDiscoveryEvents chan event.GenericEvent
 	GuardRailEvents          chan event.GenericEvent
 	MCPToolsetEvents         chan event.GenericEvent
+	AccessGroupEvents        chan event.GenericEvent
 }
 
 // NewBootSweeper constructs a BootSweeper with all per-kind channels
@@ -73,6 +74,7 @@ func NewBootSweeper(c client.Client) *BootSweeper {
 		MCPServerDiscoveryEvents: mkChan(),
 		GuardRailEvents:          mkChan(),
 		MCPToolsetEvents:         mkChan(),
+		AccessGroupEvents:        mkChan(),
 	}
 }
 
@@ -99,6 +101,7 @@ func (b *BootSweeper) Start(ctx context.Context) error {
 		{&litellmv1alpha1.LiteLLMMCPServerDiscoveryList{}, b.MCPServerDiscoveryEvents},
 		{&litellmv1alpha1.LiteLLMGuardRailList{}, b.GuardRailEvents},
 		{&litellmv1alpha1.LiteLLMMCPToolsetList{}, b.MCPToolsetEvents},
+		{&litellmv1alpha1.LiteLLMAccessGroupList{}, b.AccessGroupEvents},
 	}
 
 	total, enqueued := 0, 0

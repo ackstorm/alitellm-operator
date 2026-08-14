@@ -11,6 +11,8 @@ Package v1alpha1 contains API Schema definitions for the litellm v1alpha1 API gr
 ### Resource Types
 - [LiteLLMA2AAgent](#litellma2aagent)
 - [LiteLLMA2AAgentList](#litellma2aagentlist)
+- [LiteLLMAccessGroup](#litellmaccessgroup)
+- [LiteLLMAccessGroupList](#litellmaccessgrouplist)
 - [LiteLLMConnection](#litellmconnection)
 - [LiteLLMConnectionList](#litellmconnectionlist)
 - [LiteLLMGuardRail](#litellmguardrail)
@@ -129,6 +131,81 @@ _Appears in:_
 | `hash` _string_ | Hash is the SHA-256 hex of the RFC 8785–canonicalized merged<br />post-substitution body (spec.params merged with spec.agentCard<br />and structural overlays \{agent_name, agent_card_params,<br />agent_card_params.url\}). An empty hash indicates the A2AAgent<br />has not yet been successfully reconciled. |  |  |
 | `agentID` _string_ | AgentID is the LiteLLM-assigned UUID (agent_id) for this A2A<br />agent entry. Pinned per Phase 5 D-02 so the reconciler can call<br />`DELETE /v1/agents/<agent_id>` directly on the finalizer path<br />without re-resolving by name. On first reconcile, resolved from<br />the POST /v1/agents response body's `agent_id` field.<br />Diverges from spec §6.6: documented in<br />spec/DEFECTS-1.82.6.md row `DEF-§6.4/§6.6-ID-PERSIST`. |  |  |
 | `at` _[Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#time-v1-meta)_ | At is the timestamp of the last SUCCESSFUL render (NOT every<br />reconcile attempt — transient failures do not update this field). |  |  |
+
+
+#### AccessGroupLastRenderedStatus
+
+
+
+AccessGroupLastRenderedStatus records the rendered state last applied.
+
+AccessGroupID is server-minted: LiteLLM 1.93.0 IGNORES a caller-supplied
+access_group_id and mints a UUID (verified). Same posture as MCP toolset_id
+and A2A agent_id, unlike team_id / MCP server_id which the operator pins to
+metadata.name. Adoption of a pre-existing group therefore goes through the
+unique `access_group_name`, which is metadata.name.
+
+
+
+_Appears in:_
+- [AccessGroupStatus](#accessgroupstatus)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `hash` _string_ | Hash is the SHA-256 hex of the RFC 8785–approximated canonical JSON of<br />the rendered body (shared canonicalJSON helper; spec.description is<br />excluded — it is not part of the authorization surface). |  |  |
+| `accessGroupID` _string_ | AccessGroupID is the LiteLLM-assigned UUID, read from the POST response<br />or re-resolved by name via GET /v1/access_group. |  |  |
+| `at` _[Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#time-v1-meta)_ | At is the timestamp of the last SUCCESSFUL render. |  |  |
+
+
+#### AccessGroupSpec
+
+
+
+AccessGroupSpec defines the desired state of a LiteLLM access group — a
+reusable bundle of models, MCP servers, and A2A agents that a team reaches
+through LiteLLMTeam.spec.permission.accessGroups.
+
+SCOPE: this CRD owns the three RESOURCE dimensions only. It never writes
+assigned_team_ids or assigned_key_ids. Team attachment is written from the
+team side (team.access_group_ids), which is the face LiteLLM enforces on;
+keeping a single writer per surface is what lets the operator skip
+delta-repair machinery entirely.
+
+SECURITY: access groups only ADD. A group grant OVERRIDES a team's
+deny-by-default sentinel (models: ["__deny_all__"]) — verified 2026-08-06 on
+LiteLLM 1.93.0. Granting a model here makes it reachable by every team that
+attaches this group, regardless of that team's own spec.permission.models.
+
+
+
+_Appears in:_
+- [LiteLLMAccessGroup](#litellmaccessgroup)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `description` _string_ | Description is free text forwarded to LiteLLM's `description` field. |  |  |
+| `models` _string array_ | Models is the list of LiteLLM model NAMES this group grants. Forwarded<br />to access_model_names without resolution — LiteLLM matches on model_name,<br />so no lookup step is needed and no CR reference is required. The list is<br />sorted before projection so a reordered spec does not read as drift;<br />declaration order is therefore NOT preserved. |  |  |
+| `mcpServers` _string array_ | MCPServers is the list of MCP server NAMES this group grants. Each name<br />is resolved to a server_id via GET /v1/mcp/server before projection,<br />because access_mcp_server_ids matches on ids and silently ignores names.<br />An unresolved name parks the CR Ready=False reason=MCPServerNotFound;<br />it is re-driven by the periodic SafetyRelistRunnable, not requeued<br />(ordering dependency with LiteLLMMCPServer CRs — it self-heals once<br />the server exists). |  |  |
+| `agents` _string array_ | Agents is the list of A2A agent NAMES this group grants. Each name is<br />resolved to an agent_id via GET /v1/agents, same reason and same<br />parking behaviour as MCPServers (reason=AgentNotFound). |  |  |
+| `deletionPolicy` _string_ | DeletionPolicy controls finalizer behavior when the LiteLLM-side DELETE<br />cannot be confirmed. Defaults to "Orphan" per REL-06 anti-storm. | Orphan | Enum: [Orphan Delete] <br /> |
+
+
+#### AccessGroupStatus
+
+
+
+AccessGroupStatus defines the observed state of a LiteLLMAccessGroup.
+
+
+
+_Appears in:_
+- [LiteLLMAccessGroup](#litellmaccessgroup)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `observedGeneration` _integer_ | ObservedGeneration is the metadata.generation most recently processed. |  |  |
+| `conditions` _[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#condition-v1-meta) array_ | Conditions carries the standard metav1.Condition list. The single type<br />is `Ready`, with reasons:<br />  - Synced             — rendered group matches LiteLLM.<br />  - LiteLLMUnavailable — LiteLLMConnection/default not usable.<br />  - LiteLLMRejected    — LiteLLM returned a 4xx (non-401) on mutation.<br />  - MCPServerNotFound  — a spec.mcpServers name does not resolve yet.<br />  - AgentNotFound      — a spec.agents name does not resolve yet.<br />  - RecreateThrottled  — created-but-not-listed storm breaker tripped. |  |  |
+| `lastRendered` _[AccessGroupLastRenderedStatus](#accessgrouplastrenderedstatus)_ | LastRendered is the operator-side drift source of truth. |  |  |
 
 
 #### AliasEntryStatus
@@ -398,6 +475,54 @@ LiteLLMA2AAgentList contains a list of LiteLLMA2AAgent.
 | `apiVersion` _string_ | APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources |  |  |
 | `metadata` _[ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#listmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
 | `items` _[LiteLLMA2AAgent](#litellma2aagent) array_ |  |  |  |
+
+
+#### LiteLLMAccessGroup
+
+
+
+LiteLLMAccessGroup is the Schema for the litellmaccessgroups API.
+
+metadata.name IS the LiteLLM `access_group_name` (unique server-side — a
+duplicate create returns 409), which is how the operator adopts a
+pre-existing group after a restart.
+
+Finalizer: `accessgroups.litellm.ackstorm.ai/finalizer`
+
+
+
+_Appears in:_
+- [LiteLLMAccessGroupList](#litellmaccessgrouplist)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `apiVersion` _string_ | `litellm.ackstorm.ai/v1alpha1` | | |
+| `kind` _string_ | `LiteLLMAccessGroup` | | |
+| `kind` _string_ | Kind is a string value representing the REST resource this object represents.<br />Servers may infer this from the endpoint the client submits requests to.<br />Cannot be updated.<br />In CamelCase.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds |  |  |
+| `apiVersion` _string_ | APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources |  |  |
+| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
+| `spec` _[AccessGroupSpec](#accessgroupspec)_ |  |  |  |
+| `status` _[AccessGroupStatus](#accessgroupstatus)_ |  |  |  |
+
+
+#### LiteLLMAccessGroupList
+
+
+
+LiteLLMAccessGroupList contains a list of LiteLLMAccessGroup.
+
+
+
+
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `apiVersion` _string_ | `litellm.ackstorm.ai/v1alpha1` | | |
+| `kind` _string_ | `LiteLLMAccessGroupList` | | |
+| `kind` _string_ | Kind is a string value representing the REST resource this object represents.<br />Servers may infer this from the endpoint the client submits requests to.<br />Cannot be updated.<br />In CamelCase.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds |  |  |
+| `apiVersion` _string_ | APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources |  |  |
+| `metadata` _[ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#listmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
+| `items` _[LiteLLMAccessGroup](#litellmaccessgroup) array_ |  |  |  |
 
 
 #### LiteLLMConnection
@@ -1724,6 +1849,7 @@ _Appears in:_
 | --- | --- | --- | --- |
 | `models` _string array_ | Models is the list of specific LiteLLM model NAMES this team may use.<br />Merged with ModelGroups into the single top-level `models` list. When a<br />present permission block leaves BOTH Models and ModelGroups empty the<br />operator projects the deny-all sentinel `["__deny_all__"]` (fail-closed)<br />— an empty `models` list fails OPEN in LiteLLM. See the deny-by-default<br />note above. |  |  |
 | `modelGroups` _string array_ | ModelGroups is the list of model ACCESS-GROUP names this team may use.<br />Merged with Models into the single top-level `models` list. |  |  |
+| `accessGroups` _string array_ | AccessGroups is the list of LiteLLMAccessGroup NAMES this team is<br />attached to. Each name is resolved to an access_group_id via<br />GET /v1/access_group and projected onto the team's TOP-LEVEL<br />`access_group_ids` — NOT onto object_permission.<br />Distinct from ModelGroups: that field carries legacy model-TAG names<br />and merges into `models`. This one carries unified access-group names<br />from the /v1/access_group object family. The two namespaces are<br />disjoint (a unified group does not appear in /access_group/list).<br />SECURITY: an attached group only ADDS. A group granting a model<br />OVERRIDES this team's deny-by-default sentinel — verified 2026-08-06<br />on LiteLLM 1.93.0: a team with models:["__deny_all__"] plus an<br />attached group granting a model stops being denied. Treat every<br />attached group as a widening of this team's ceiling.<br />An unresolved name parks the Team Ready=False<br />reason=AccessGroupNotFound and requeues (ordering dependency with<br />LiteLLMAccessGroup CRs, same shape as AgentNotFound). |  |  |
 | `mcpServers` _string array_ | McpServers is the list of specific MCP server NAMES (aliases) this team<br />may use. Projected onto object_permission.mcp_servers; LiteLLM resolves<br />names to server ids automatically. |  |  |
 | `mcpGroups` _string array_ | McpGroups is the list of MCP access-group names this team may use.<br />Projected onto object_permission.mcp_access_groups. |  |  |
 | `agents` _string array_ | Agents is the list of A2A agent NAMES (human-friendly) this team may<br />use. The operator resolves each name to its agent_id UUID via<br />GET /v1/agents before projecting onto object_permission.agents — LiteLLM<br />enforces on UUIDs and ignores names. An unresolved name requeues the<br />Team (reason=AgentNotFound). When a present permission block leaves this<br />list empty the operator projects the null-UUID deny-all sentinel<br />(fail-closed) — an empty agents list fails OPEN in LiteLLM. The sentinel<br />is scoped to the empty case only; it never substitutes for an unresolved<br />name. See the deny-by-default note above. |  |  |

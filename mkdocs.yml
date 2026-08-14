@@ -20,6 +20,7 @@ nav:
     - LiteLLMMCPToolset: user-guide/mcp-toolset.md
     - LiteLLMModelDiscovery: user-guide/model-discovery.md
     - LiteLLMGuardRail: user-guide/guardrail.md
+    - LiteLLMAccessGroup: user-guide/access-group.md
   - Concepts:
     - Conflict Resolution: concepts/conflict-resolution.md
     - Deletion Semantics: concepts/deletion-semantics.md

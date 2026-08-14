@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -79,6 +80,11 @@ const pathTeamDelete = "/team/delete"
 // update verb targets this same collection path (the toolset_id travels in
 // the body), unlike every other update endpoint the operator calls.
 const pathMCPToolset = "/v1/mcp/toolset"
+
+// pathAccessGroup is the access-group COLLECTION route. Item operations
+// (PUT/DELETE) append /{access_group_id}. LiteLLM answers POST with 201 and
+// GET with a BARE array.
+const pathAccessGroup = "/v1/access_group"
 
 // modelEntry is a stateful in-memory record of a model created via
 // POST /model/new. The mock tracks these to serve realistic GET /model/info
@@ -158,6 +164,21 @@ type toolsetEntry struct {
 	Description string
 	Tools       []any
 	LastBody    map[string]any
+}
+
+// accessGroupEntry is the mock's in-memory access group. Field names and
+// JSON tags mirror LiteLLM 1.93.0's wire shape so the operator's client can
+// decode this verbatim. Deliberately mock-local: the mock package is
+// stdlib-only and must not import internal/litellm.
+type accessGroupEntry struct {
+	AccessGroupID      string   `json:"access_group_id"`
+	AccessGroupName    string   `json:"access_group_name"`
+	Description        string   `json:"description"`
+	AccessModelNames   []string `json:"access_model_names"`
+	AccessMCPServerIDs []string `json:"access_mcp_server_ids"`
+	AccessAgentIDs     []string `json:"access_agent_ids"`
+	AssignedTeamIDs    []string `json:"assigned_team_ids"`
+	AssignedKeyIDs     []string `json:"assigned_key_ids"`
 }
 
 // MockServer wraps a httptest.Server with per-method counters and a
@@ -248,6 +269,13 @@ type MockServer struct {
 	toolsetSeq          atomic.Int64
 	perToolsetMutations map[string]int64
 
+	// Access group state. Mirrors the toolset shape: the server MINTS
+	// access_group_id (a caller-supplied one is ignored) and adoption goes
+	// through the unique access_group_name.
+	accessGroups      map[string]*accessGroupEntry // keyed by AccessGroupID
+	accessGroupByName map[string]string            // AccessGroupName → AccessGroupID
+	accessGroupSeq    atomic.Int64
+
 	// Team state. Two indices for O(1) lookups:
 	// teams — keyed by TeamID (the LiteLLM-assigned UUID,
 	// surfaced in POST/UPDATE response bodies + DELETE
@@ -326,6 +354,9 @@ func NewServer(t *testing.T) *MockServer {
 		toolsets:            make(map[string]*toolsetEntry),
 		toolsetByName:       make(map[string]string),
 		perToolsetMutations: make(map[string]int64),
+
+		accessGroups:      make(map[string]*accessGroupEntry),
+		accessGroupByName: make(map[string]string),
 
 		teams:            make(map[string]*teamEntry),
 		teamByAlias:      make(map[string]string),
@@ -599,6 +630,84 @@ func (m *MockServer) LastToolsetBody(name string) map[string]any {
 		cp[k] = v
 	}
 	return cp
+}
+
+// ── Access group helpers ──────────────────────────────
+
+// AccessGroupSnapshot is a read-only copy of one stored access group, handed
+// to tests. Exported (unlike accessGroupEntry) because envtests assert on it.
+type AccessGroupSnapshot struct {
+	AccessGroupID      string
+	AccessGroupName    string
+	Description        string
+	AccessModelNames   []string
+	AccessMCPServerIDs []string
+	AccessAgentIDs     []string
+	AssignedTeamIDs    []string
+}
+
+// ResetAccessGroups clears the in-memory access-group store. Call between
+// tests that need a clean slate for GET /v1/access_group responses.
+func (m *MockServer) ResetAccessGroups() {
+	m.mu.Lock()
+	m.accessGroups = make(map[string]*accessGroupEntry)
+	m.accessGroupByName = make(map[string]string)
+	m.mu.Unlock()
+}
+
+// AccessGroups returns a name-sorted snapshot of the stored access groups.
+func (m *MockServer) AccessGroups() []AccessGroupSnapshot {
+	m.mu.Lock()
+	out := make([]AccessGroupSnapshot, 0, len(m.accessGroups))
+	for _, e := range m.accessGroups {
+		out = append(out, AccessGroupSnapshot{
+			AccessGroupID:      e.AccessGroupID,
+			AccessGroupName:    e.AccessGroupName,
+			Description:        e.Description,
+			AccessModelNames:   append([]string{}, e.AccessModelNames...),
+			AccessMCPServerIDs: append([]string{}, e.AccessMCPServerIDs...),
+			AccessAgentIDs:     append([]string{}, e.AccessAgentIDs...),
+			AssignedTeamIDs:    append([]string{}, e.AssignedTeamIDs...),
+		})
+	}
+	m.mu.Unlock()
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].AccessGroupName < out[j].AccessGroupName
+	})
+	return out
+}
+
+// SeedAccessGroup inserts an access group into the mock's store as if it were
+// created out-of-band (NOT via POST /v1/access_group through the operator).
+// Returns the minted access_group_id. Used by the envtest that exercises the
+// 409-adoption path, where a group with the CR's name already exists.
+func (m *MockServer) SeedAccessGroup(name string) string {
+	id := fmt.Sprintf("mock-access-group-id-%d", m.accessGroupSeq.Add(1))
+	m.mu.Lock()
+	m.accessGroups[id] = &accessGroupEntry{
+		AccessGroupID:      id,
+		AccessGroupName:    name,
+		AccessModelNames:   []string{},
+		AccessMCPServerIDs: []string{},
+		AccessAgentIDs:     []string{},
+		AssignedTeamIDs:    []string{},
+		AssignedKeyIDs:     []string{},
+	}
+	m.accessGroupByName[name] = id
+	m.mu.Unlock()
+	return id
+}
+
+// DeleteAccessGroupOutOfBand removes an access group from the mock's store
+// WITHOUT going through the HTTP handler. Simulates an out-of-band DELETE in
+// LiteLLM, which the operator's vanish probe should detect.
+func (m *MockServer) DeleteAccessGroupOutOfBand(id string) {
+	m.mu.Lock()
+	if e, ok := m.accessGroups[id]; ok {
+		delete(m.accessGroupByName, e.AccessGroupName)
+	}
+	delete(m.accessGroups, id)
+	m.mu.Unlock()
 }
 
 // DeleteAgentOutOfBand removes an A2A agent from the mock's internal
@@ -1019,6 +1128,115 @@ func (m *MockServer) writeAbsentToolsetDelete500(w http.ResponseWriter, r *http.
 	return true
 }
 
+// writeAccessGroupCreate serves POST /v1/access_group. It lives here rather
+// than in statefulBody because the happy path writes StatusOK before
+// statefulBody runs, and this endpoint answers 201 — VERIFIED against stock
+// LiteLLM 1.93.0 on 2026-08-06. A duplicate access_group_name answers 409,
+// which is how the operator's CREATE arm learns to adopt by name.
+//
+// Gated on happy mode so the fault modes (401 / transient 5xx / slow) still
+// win, exactly like writeDuplicateToolsetConflict.
+//
+// Returns whether it wrote the response.
+func (m *MockServer) writeAccessGroupCreate(w http.ResponseWriter, r *http.Request, mode string) bool {
+	if mode != ModeHappy || r.Method != http.MethodPost || r.URL.Path != pathAccessGroup {
+		return false
+	}
+
+	body, _ := io.ReadAll(r.Body)
+	var req struct {
+		AccessGroupName    string   `json:"access_group_name"`
+		Description        string   `json:"description"`
+		AccessModelNames   []string `json:"access_model_names"`
+		AccessMCPServerIDs []string `json:"access_mcp_server_ids"`
+		AccessAgentIDs     []string `json:"access_agent_ids"`
+	}
+	_ = json.Unmarshal(body, &req)
+
+	m.mu.Lock()
+	if _, dup := m.accessGroupByName[req.AccessGroupName]; dup {
+		m.mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		body, _ := json.Marshal(map[string]any{"detail": map[string]any{
+			"error": fmt.Sprintf("An access group named '%s' already exists.", req.AccessGroupName),
+		}})
+		_, _ = w.Write(body)
+		return true
+	}
+
+	// The server MINTS the id; a caller-supplied access_group_id is ignored.
+	id := fmt.Sprintf("mock-access-group-id-%d", m.accessGroupSeq.Add(1))
+	e := &accessGroupEntry{
+		AccessGroupID:      id,
+		AccessGroupName:    req.AccessGroupName,
+		Description:        req.Description,
+		AccessModelNames:   nonNilStrings(req.AccessModelNames),
+		AccessMCPServerIDs: nonNilStrings(req.AccessMCPServerIDs),
+		AccessAgentIDs:     nonNilStrings(req.AccessAgentIDs),
+		AssignedTeamIDs:    []string{},
+		AssignedKeyIDs:     []string{},
+	}
+	m.accessGroups[id] = e
+	m.accessGroupByName[req.AccessGroupName] = id
+	out, _ := json.Marshal(e)
+	m.mu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_, _ = w.Write(out)
+	return true
+}
+
+// writeAccessGroupDelete404 answers DELETE /v1/access_group/<id> with 404 when
+// the group is already gone. Unlike the MCP toolset endpoint (which 500s on an
+// absent row — see writeAbsentToolsetDelete500), the access-group endpoint
+// behaves correctly, so the operator's confirmed-absent drain sees a clean 404.
+//
+// Returns whether it wrote the response.
+func (m *MockServer) writeAccessGroupDelete404(w http.ResponseWriter, r *http.Request, mode string) bool {
+	if mode != ModeHappy || r.Method != http.MethodDelete ||
+		!strings.HasPrefix(r.URL.Path, pathAccessGroup+"/") {
+		return false
+	}
+	id := strings.TrimPrefix(r.URL.Path, pathAccessGroup+"/")
+	m.mu.Lock()
+	_, present := m.accessGroups[id]
+	m.mu.Unlock()
+	if present {
+		return false
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNotFound)
+	_, _ = w.Write([]byte(fmt.Sprintf(
+		`{"detail":{"error":"Access group %s not found."}}`, id)))
+	return true
+}
+
+// writeAccessGroupResponse dispatches to the two access-group status-code
+// writers. Folded into a single call site (rather than two separate `if`s in
+// handle()) to keep handle()'s cyclomatic complexity under the gocyclo gate —
+// the two conditions are mutually exclusive (POST vs DELETE), so combining
+// them changes no behavior.
+//
+// Returns whether one of them wrote the response.
+func (m *MockServer) writeAccessGroupResponse(w http.ResponseWriter, r *http.Request, mode string) bool {
+	if m.writeAccessGroupCreate(w, r, mode) {
+		return true
+	}
+	return m.writeAccessGroupDelete404(w, r, mode)
+}
+
+// nonNilStrings coerces a nil slice to empty so the mock's JSON renders [],
+// never null — matching what LiteLLM returns for these fields.
+func nonNilStrings(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
+}
+
 // handle is the single HTTP handler routed to every request. It records
 // the call, increments the appropriate counter, and emits a mode-specific
 // response.
@@ -1117,6 +1335,9 @@ func (m *MockServer) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if m.writeAbsentToolsetDelete500(w, r, mode) {
+		return
+	}
+	if m.writeAccessGroupResponse(w, r, mode) {
 		return
 	}
 
@@ -1811,6 +2032,100 @@ func (m *MockServer) statefulBody(r *http.Request) []byte {
 		}
 		m.mu.Unlock()
 		return []byte(fmt.Sprintf(`[%s]`, strings.Join(entries, ",")))
+	}
+
+	// ── /v1/access_group ────────────────────────────────────────────────
+	// Semantics MEASURED against stock LiteLLM 1.93.0 on 2026-08-06:
+	//   - PUT  → an OMITTED field KEEPS the stored value, a sent list
+	//            REPLACES wholesale, and [] (or null) CLEARS.
+	//   - GET  → a BARE array, not {"access_groups": [...]}.
+	// POST (201) and DELETE-of-an-absent-id (404) are handled by the
+	// write* helpers in handle(), which can set a status code.
+	//
+	// assigned_team_ids / assigned_key_ids are stored but NEVER written by
+	// these routes: the operator does not manage that face (a team-side
+	// write does not propagate here), so they must survive a PUT untouched.
+
+	// PUT /v1/access_group/<id> — id from the path.
+	if method == http.MethodPut && strings.HasPrefix(path, pathAccessGroup+"/") {
+		id := strings.TrimPrefix(path, pathAccessGroup+"/")
+		// Decode into a raw map first so "field absent" (KEEP) is
+		// distinguishable from "field sent as []" (CLEAR). That distinction
+		// IS this endpoint's contract and is what the operator's struct tags
+		// depend on — an omitempty on a managed list would silently turn a
+		// clear into a keep.
+		body, _ := io.ReadAll(r.Body)
+		var raw map[string]json.RawMessage
+		_ = json.Unmarshal(body, &raw)
+
+		m.mu.Lock()
+		e, ok := m.accessGroups[id]
+		if !ok {
+			m.mu.Unlock()
+			return []byte(`{"detail":{"error":"Access group not found."}}`)
+		}
+		assign := func(key string, dst *[]string) {
+			blob, present := raw[key]
+			if !present {
+				return // absent = KEEP
+			}
+			var v []string
+			if err := json.Unmarshal(blob, &v); err != nil {
+				return
+			}
+			*dst = nonNilStrings(v) // sent = REPLACE; [] and null both CLEAR
+		}
+		assign("access_model_names", &e.AccessModelNames)
+		assign("access_mcp_server_ids", &e.AccessMCPServerIDs)
+		assign("access_agent_ids", &e.AccessAgentIDs)
+		if blob, present := raw["description"]; present {
+			var d string
+			if json.Unmarshal(blob, &d) == nil {
+				e.Description = d
+			}
+		}
+		if blob, present := raw["access_group_name"]; present {
+			var name string
+			if json.Unmarshal(blob, &name) == nil && name != "" && name != e.AccessGroupName {
+				delete(m.accessGroupByName, e.AccessGroupName)
+				e.AccessGroupName = name
+				m.accessGroupByName[name] = id
+			}
+		}
+		out, _ := json.Marshal(e)
+		m.mu.Unlock()
+		return out
+	}
+
+	// DELETE /v1/access_group/<id> — only reached when the group EXISTS
+	// (writeAccessGroupDelete404 intercepts the absent case).
+	if method == http.MethodDelete && strings.HasPrefix(path, pathAccessGroup+"/") {
+		id := strings.TrimPrefix(path, pathAccessGroup+"/")
+		m.mu.Lock()
+		if e, ok := m.accessGroups[id]; ok {
+			delete(m.accessGroupByName, e.AccessGroupName)
+		}
+		delete(m.accessGroups, id)
+		m.mu.Unlock()
+		return []byte(fmt.Sprintf(`{"access_group_id":%q,"deleted":true}`, id))
+	}
+
+	// GET /v1/access_group — BARE array of all groups.
+	if method == http.MethodGet && strings.HasPrefix(path, pathAccessGroup) {
+		m.mu.Lock()
+		out := make([]*accessGroupEntry, 0, len(m.accessGroups))
+		for _, e := range m.accessGroups {
+			out = append(out, e)
+		}
+		sort.Slice(out, func(i, j int) bool {
+			return out[i].AccessGroupName < out[j].AccessGroupName
+		})
+		blob, err := json.Marshal(out)
+		m.mu.Unlock()
+		if err != nil {
+			return []byte(`[]`)
+		}
+		return blob
 	}
 
 	// ── Guardrail routes ───────────────────────────

@@ -433,6 +433,36 @@ func main() {
 		os.Exit(1)
 	}
 
+	// AccessGroupReconciler: per-CR resolve/render/apply against
+	// /v1/access_group. No Secret indexer — the CRD has no spec.secrets.
+	accessGroupSafetyRelistCh := make(chan reconcile.Request, 256)
+	if err := mgr.Add(&controller.SafetyRelistRunnable{
+		Client:       mgr.GetClient(),
+		Namespace:    watchNS,
+		Interval:     relistInterval,
+		Log:          ctrl.Log.WithName("accessgroup-safety-relist"),
+		RequeueCh:    accessGroupSafetyRelistCh,
+		ListRequests: controller.ListAccessGroupRequests,
+		LogLabel:     "accessgroups",
+	}); err != nil {
+		setupLog.Error(err, "unable to add accessgroup SafetyRelistRunnable")
+		os.Exit(1)
+	}
+	if err := (&controller.AccessGroupReconciler{
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		Cache:             connCache, // typed as connection.ConnectionCache per D-12
+		Recorder:          mgr.GetEventRecorderFor("accessgroup-controller"),
+		Namespace:         watchNS,
+		Log:               ctrl.Log.WithName("controller").WithName("AccessGroup"),
+		BootEvents:        bootSweep.AccessGroupEvents,
+		ConnectionRebuilt: connCache.Subscribe(),
+		RecreateLimit:     controller.ResolveRecreateLimitPerMin(os.Getenv(controller.EnvRecreateLimitPerMin)),
+	}).SetupWithManager(mgr, accessGroupSafetyRelistCh); err != nil {
+		setupLog.Error(err, "unable to set up AccessGroup reconciler")
+		os.Exit(1)
+	}
+
 	// Phase 6 — TeamReconciler (Pipeline A): per-CR
 	// resolve/diff/apply against /team/new + /team/update via the alias-
 	// list resolution from spec §7.4 + the smallest-team_id duplicate

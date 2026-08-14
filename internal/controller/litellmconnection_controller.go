@@ -82,6 +82,15 @@ const (
 	// toolset GET /v1/mcp/toolset does not (yet) list. Non-terminal: the Team
 	// is requeued (ordering dependency with LiteLLMMCPToolset CRs).
 	reasonToolsetNotFound = "ToolsetNotFound"
+	// reasonAccessGroupNotFound — a spec.permission.accessGroups entry names a
+	// group GET /v1/access_group does not (yet) list. Non-terminal: the Team is
+	// requeued (ordering dependency with LiteLLMAccessGroup CRs).
+	reasonAccessGroupNotFound = "AccessGroupNotFound"
+	// reasonMCPServerNotFound — a LiteLLMAccessGroup spec.mcpServers entry
+	// names a server GET /v1/mcp/server does not (yet) list. Non-terminal:
+	// the SafetyRelistRunnable re-drives the CR (ordering dependency with
+	// LiteLLMMCPServer CRs).
+	reasonMCPServerNotFound = "MCPServerNotFound"
 )
 
 // EnvRequireHTTPSRemote, when "true", upgrades the M-SEC2 plaintext-http

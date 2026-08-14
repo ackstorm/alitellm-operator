@@ -145,6 +145,13 @@ var (
 	mcpToolsetReconciler  *MCPToolsetReconciler
 	toolsetSafetyRelistCh chan reconcile.Request
 
+	// AccessGroupReconciler + its safety-relist channel. Shares connCache
+	// with the other reconcilers. Tests exercise create/update/adoption,
+	// the ALWAYS-EMIT shrink-to-empty clear, the unresolved-name parking
+	// path, the finalizer delete, and the #102 stale Ready=False heal.
+	accessGroupReconciler     *AccessGroupReconciler
+	accessGroupSafetyRelistCh chan reconcile.Request
+
 	// Phase 6 — TeamReconciler. Shares connCache with the
 	// Phase 2/3/5 reconcilers. Tests exercise TEAM-01.06 + AC-T1
 	// (budget projection), AC-T6 (params pass-through + ProjectionOverride
@@ -558,6 +565,36 @@ func setupAndRun(m *testing.M) int {
 	}
 	if err := mcpToolsetReconciler.SetupWithManager(mgr, toolsetSafetyRelistCh); err != nil {
 		fmt.Fprintf(os.Stderr, "SetupWithManager(MCPToolset): %v\n", err)
+		return 1
+	}
+
+	// AccessGroupReconciler. No field indexer — the CRD has no spec.secrets.
+	// Same suiteRelistEnabled gate as its siblings (#74 contention).
+	accessGroupSafetyRelistCh = make(chan reconcile.Request, 256)
+	if err := mgr.Add(&SafetyRelistRunnable{
+		Client:       mgr.GetClient(),
+		Namespace:    WatchNamespace,
+		Interval:     100 * time.Millisecond,
+		Log:          logr.Discard(),
+		RequeueCh:    accessGroupSafetyRelistCh,
+		ListRequests: ListAccessGroupRequests,
+		LogLabel:     "accessgroups",
+		Gate:         suiteRelistEnabled.Load,
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "mgr.Add(accessgroup SafetyRelistRunnable): %v\n", err)
+		return 1
+	}
+	accessGroupReconciler = &AccessGroupReconciler{
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		Cache:             connCache,
+		Recorder:          mgr.GetEventRecorderFor("accessgroup-controller"),
+		Namespace:         WatchNamespace,
+		Log:               logr.Discard(),
+		ConnectionRebuilt: connCache.Subscribe(),
+	}
+	if err := accessGroupReconciler.SetupWithManager(mgr, accessGroupSafetyRelistCh); err != nil {
+		fmt.Fprintf(os.Stderr, "SetupWithManager(AccessGroup): %v\n", err)
 		return 1
 	}
 

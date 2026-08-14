@@ -251,3 +251,26 @@ func (r *SafetyRelistRunnable) Start(ctx context.Context) error {
 		}
 	}
 }
+
+// resolveNames partitions spec-supplied NAMES into the LiteLLM ids they map to
+// and the names that had no entry in ids. It is the one shape behind every
+// name→id projection the operator does (team agents / toolsets / access groups,
+// access-group MCP servers / agents): LiteLLM enforces those dimensions on ids
+// and SILENTLY IGNORES names, so an unresolvable name must be reported, never
+// dropped — dropping it would narrow a permission object with no signal.
+//
+// resolved is non-nil (so a caller emitting it under the ALWAYS-EMIT contract
+// serializes `[]`, not `null`); missing is nil when every name resolved, which
+// is what callers test with len() to decide whether to park the CR.
+func resolveNames(names []string, ids map[string]string) (resolved, missing []string) {
+	resolved = make([]string, 0, len(names))
+	for _, name := range names {
+		id, ok := ids[name]
+		if !ok {
+			missing = append(missing, name)
+			continue
+		}
+		resolved = append(resolved, id)
+	}
+	return resolved, missing
+}

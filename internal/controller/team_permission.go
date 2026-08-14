@@ -28,8 +28,9 @@ const (
 // Team on a non-empty list (ordering dependency with the CRs that create
 // those resources) rather than silently under-granting.
 type missingRefs struct {
-	Agents   []string
-	Toolsets []string
+	Agents       []string
+	Toolsets     []string
+	AccessGroups []string
 }
 
 // projectPermission renders a typed spec.permission block into the two
@@ -77,11 +78,20 @@ type missingRefs struct {
 // 1.93.0 — an ungranted key gets `403 API key does not have access to toolset
 // '<uuid>'`). Adding a sentinel here in the name of consistency would inject a
 // bogus UUID into a filter that is already correct, so do not.
+//
+// The third return value, accessGroupIDs, is NOT part of object_permission: it
+// projects onto the team's TOP-LEVEL `access_group_ids` from
+// spec.permission.accessGroups (unified access-group NAMES resolved to ids via
+// accessGroupNameToID). It joins mcp_toolsets in the no-sentinel group — an
+// access group is a GRANT that only ADDS permissions, so an empty list widens
+// nothing and is already fail-CLOSED. It still obeys the ALWAYS-EMIT contract
+// (non-nil, so an emptied list clears the attachment instead of keeping it).
 func projectPermission(
 	perm *litellmv1alpha1.PermissionSpec,
 	agentNameToID map[string]string,
 	toolsetNameToID map[string]string,
-) (models []string, objectPermission map[string]any, missing missingRefs) {
+	accessGroupNameToID map[string]string,
+) (models []string, objectPermission map[string]any, accessGroupIDs []string, missing missingRefs) {
 	// models = specific model names + model access-group names, merged.
 	// make(…, 0, …) guarantees a non-nil slice so an emptied block serializes
 	// as JSON `[]`, not `null`.
@@ -95,15 +105,8 @@ func projectPermission(
 		models = []string{modelDenyAllSentinel}
 	}
 
-	resolved := make([]string, 0, len(perm.Agents))
-	for _, name := range perm.Agents {
-		id, ok := agentNameToID[name]
-		if !ok {
-			missing.Agents = append(missing.Agents, name)
-			continue
-		}
-		resolved = append(resolved, id)
-	}
+	resolved, missingAgents := resolveNames(perm.Agents, agentNameToID)
+	missing.Agents = missingAgents
 	// DENY-BY-DEFAULT: an unset agents list fails OPEN in LiteLLM (empty →
 	// no filter → every agent). Substitute the null-UUID sentinel. Scoped to
 	// the len(perm.Agents)==0 branch ONLY — a non-empty list whose names don't
@@ -116,15 +119,16 @@ func projectPermission(
 	// MCP toolset names → toolset_id UUIDs. NO deny-by-default sentinel: the
 	// LiteLLM toolset check is already fail-CLOSED on an empty list (see the
 	// contract note above), so `[]` is the correct "grant nothing".
-	resolvedToolsets := make([]string, 0, len(perm.McpToolsets))
-	for _, name := range perm.McpToolsets {
-		id, ok := toolsetNameToID[name]
-		if !ok {
-			missing.Toolsets = append(missing.Toolsets, name)
-			continue
-		}
-		resolvedToolsets = append(resolvedToolsets, id)
-	}
+	resolvedToolsets, missingToolsets := resolveNames(perm.McpToolsets, toolsetNameToID)
+	missing.Toolsets = missingToolsets
+
+	// Unified access-group names → access_group_id UUIDs. NO deny-by-default
+	// sentinel: an empty access_group_ids grants nothing (there is no group to
+	// widen through), so the field is already fail-CLOSED — same reasoning as
+	// mcp_toolsets. A sentinel here would inject a bogus id into a filter that
+	// is already correct.
+	resolvedAccessGroups, missingAccessGroups := resolveNames(perm.AccessGroups, accessGroupNameToID)
+	missing.AccessGroups = missingAccessGroups
 
 	// Every sub-field emitted unconditionally (as [] when empty) — see the
 	// ALWAYS-EMIT contract above.
@@ -136,7 +140,7 @@ func projectPermission(
 		"mcp_toolsets":        resolvedToolsets, // non-nil; [] is a valid fail-closed clear
 	}
 
-	return models, objectPermission, missing
+	return models, objectPermission, resolvedAccessGroups, missing
 }
 
 // emptyIfNil coerces a nil slice to a non-nil empty slice so encoding/json

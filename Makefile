@@ -728,6 +728,10 @@ WAIT_TIMEOUT ?= 300s
 # targets fail closed instead of silently addressing prod.
 E2E_KUBECTL ?= ./scripts/dev.sh kubectl
 
+# E2E_KIND — same reasoning, different binary: `kind` is installed in the
+# devtools image, not on the host, so a bare `kind` here is "command not found".
+E2E_KIND ?= ./scripts/dev.sh kind
+
 .PHONY: wait-cr-ready
 wait-cr-ready: ## Wait for a CR Ready condition. Usage: make wait-cr-ready KIND=litellmconnection NAME=default NS=default
 	@test -n "$(KIND)" -a -n "$(NAME)" -a -n "$(NS)" || { echo "ERROR: KIND= NAME= NS= all required" >&2; exit 1; }
@@ -757,7 +761,11 @@ wait-container: ## Wait for named container exit + PASS/FAIL marker. Usage: make
 .PHONY: operator-redeploy
 operator-redeploy: ## rebuild operator image, kind-load, restart deploy (~20s inner loop)
 	$(MAKE) build-image IMG=alitellm-operator:e2e
-	kind load docker-image alitellm-operator:e2e --name alitellm-operator-test
+	# kind runs THROUGH the devtools container for the same reason kubectl does:
+	# the host has no `kind` binary (it lives at /usr/local/bin/kind in the
+	# image). dev.sh mounts /var/run/docker.sock, so `kind load` from inside
+	# still addresses the host docker daemon holding the cluster nodes.
+	$(E2E_KIND) load docker-image alitellm-operator:e2e --name alitellm-operator-test
 	# kubectl runs THROUGH the devtools container (see E2E_KUBECTL above): the
 	# kind kubeconfig lives at /workspace/.gocache/kube/config, so host kubectl
 	# has no context for the kind cluster (would fail "deployments not found").

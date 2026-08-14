@@ -526,7 +526,22 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			}
 		}
 
-		models, objectPermission, missing := projectPermission(perm, agentNameToID, toolsetNameToID)
+		// Same shape for unified access-group names → access_group_id UUIDs.
+		var accessGroupNameToID map[string]string
+		if len(perm.AccessGroups) > 0 {
+			groups, gerr := snap.Client.ListAccessGroups(ctx)
+			if gerr != nil && !errors.Is(gerr, litellm.ErrNotFound) {
+				return r.classifyMutationError(ctx, &team, logger, gerr, "GET /v1/access_group")
+			}
+			// ErrNotFound → zero groups registered → empty map → all names
+			// missing → AccessGroupNotFound requeue below.
+			accessGroupNameToID = make(map[string]string, len(groups))
+			for _, g := range groups {
+				accessGroupNameToID[g.AccessGroupName] = g.AccessGroupID
+			}
+		}
+
+		models, objectPermission, accessGroupIDs, missing := projectPermission(perm, agentNameToID, toolsetNameToID, accessGroupNameToID)
 		if len(missing.Agents) > 0 {
 			msg := fmt.Sprintf("spec.permission.agents not yet registered in LiteLLM: %s",
 				strings.Join(missing.Agents, ", "))
@@ -548,6 +563,16 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			// Ordering dependency with LiteLLMMCPToolset CRs — requeue.
 			return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
 		}
+		if len(missing.AccessGroups) > 0 {
+			msg := fmt.Sprintf("spec.permission.accessGroups not yet registered in LiteLLM: %s",
+				strings.Join(missing.AccessGroups, ", "))
+			if werr := r.writeStatus(ctx, &team, metav1.ConditionFalse, reasonAccessGroupNotFound, msg); werr != nil {
+				logStatusUpdateErr(logger, werr, "reason", reasonAccessGroupNotFound)
+			}
+			metrics.ReconcileTotal.WithLabelValues(teamKind, "success").Inc()
+			// Ordering dependency with LiteLLMAccessGroup CRs — requeue.
+			return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
+		}
 
 		// ALWAYS-EMIT (security-critical): with a present permission block the
 		// operator OWNS `models` + `object_permission` wholesale and MUST send
@@ -558,6 +583,12 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		// projectPermission's ALWAYS-EMIT contract.
 		body["models"] = models
 		body["object_permission"] = objectPermission
+		// ALWAYS-EMIT: access_group_ids is sent unconditionally whenever a
+		// spec.permission block is present, as [] when empty. POST /team/update
+		// merges per field — an OMITTED field keeps its stale value (measured on
+		// 1.93.0), so a shrink-to-empty would silently fail to revoke. This is the
+		// same trap as the v0.7.25 object_permission leak.
+		body["access_group_ids"] = emptyIfNil(accessGroupIDs)
 
 		if len(perm.AgentGroups) > 0 {
 			r.Recorder.Eventf(&team, corev1.EventTypeWarning, eventReasonAgentGroupsNoOp,

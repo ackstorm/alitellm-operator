@@ -157,6 +157,29 @@ type PermissionSpec struct {
 	// +optional
 	ModelGroups []string `json:"modelGroups,omitempty"`
 
+	// AccessGroups is the list of LiteLLMAccessGroup NAMES this team is
+	// attached to. Each name is resolved to an access_group_id via
+	// GET /v1/access_group and projected onto the team's TOP-LEVEL
+	// `access_group_ids` — NOT onto object_permission.
+	//
+	// Distinct from ModelGroups: that field carries legacy model-TAG names
+	// and merges into `models`. This one carries unified access-group names
+	// from the /v1/access_group object family. The two namespaces are
+	// disjoint (a unified group does not appear in /access_group/list).
+	//
+	// SECURITY: an attached group only ADDS. A group granting a model
+	// OVERRIDES this team's deny-by-default sentinel — verified 2026-08-06
+	// on LiteLLM 1.93.0: a team with models:["__deny_all__"] plus an
+	// attached group granting a model stops being denied. Treat every
+	// attached group as a widening of this team's ceiling.
+	//
+	// An unresolved name parks the Team Ready=False
+	// reason=AccessGroupNotFound and requeues (ordering dependency with
+	// LiteLLMAccessGroup CRs, same shape as AgentNotFound).
+	//
+	// +optional
+	AccessGroups []string `json:"accessGroups,omitempty"`
+
 	// McpServers is the list of specific MCP server NAMES (aliases) this team
 	// may use. Projected onto object_permission.mcp_servers; LiteLLM resolves
 	// names to server ids automatically.

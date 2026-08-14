@@ -446,3 +446,72 @@ type ConfigCallbacksResponse struct {
 	Status         string         `json:"status"`
 	RouterSettings map[string]any `json:"router_settings"`
 }
+
+// ── Access group wire types (LiteLLM 1.93.0) ─────────────────────────────
+//
+// Endpoint shapes, all VERIFIED 2026-08-06 against stock
+// ghcr.io/berriai/litellm-database:v1.93.0:
+//
+//	POST   /v1/access_group        body AccessGroupCreateRequest → 201 (NOT 200)
+//	GET    /v1/access_group        → BARE array of AccessGroupEntry
+//	PUT    /v1/access_group/{id}   body AccessGroupUpdateRequest
+//	DELETE /v1/access_group/{id}
+//
+// /v1/unified_access_group is an exact alias (identical handlers and schemas);
+// we use the shorter path. This family is DISJOINT from the legacy
+// /access_group/{list,new} family, which is the per-resource model TAG
+// namespace that model_controller.go writes via model_info.access_groups —
+// a unified group does NOT appear in /access_group/list.
+//
+// UPDATE SEMANTICS (measured): an OMITTED field keeps the stored value, a
+// non-empty list REPLACES wholesale, and `[]` CLEARS. `null` also clears.
+// The three lists the operator manages therefore carry NO `omitempty`: the
+// reconciler is their sole writer and always sends the full computed set, so
+// every PUT is authoritative. `omitempty` would drop a zero-length slice and
+// silently turn a "clear" into a "keep", wedging convergence. Callers MUST
+// pass a non-nil `[]string{}` for the empty case.
+//
+// AssignedTeamIDs / AssignedKeyIDs are DELIBERATELY ABSENT from both request
+// structs. The operator never writes them: team attachment is written from
+// the team side (team.access_group_ids), which is the face LiteLLM actually
+// enforces on. Writing the group side would make the operator a second writer
+// of that relation and would drag in the delta-repair problem — LiteLLM only
+// rewrites the team mirror on an ENTER/LEAVE delta, so an idempotent re-PUT
+// cannot repair a broken mirror. Omitting the fields means KEEP, so a
+// human-managed assignment survives our updates untouched.
+
+// AccessGroupCreateRequest is the POST /v1/access_group body. Only
+// access_group_name is required; the endpoint accepts an all-empty group.
+type AccessGroupCreateRequest struct {
+	AccessGroupName    string   `json:"access_group_name"`
+	Description        string   `json:"description,omitempty"`
+	AccessModelNames   []string `json:"access_model_names"`
+	AccessMCPServerIDs []string `json:"access_mcp_server_ids"`
+	AccessAgentIDs     []string `json:"access_agent_ids"`
+}
+
+// AccessGroupUpdateRequest is the PUT /v1/access_group/{id} body. Name and
+// Description are pointers so an unset value is genuinely omitted (keep);
+// the three managed lists are always serialized (see the note above).
+type AccessGroupUpdateRequest struct {
+	AccessGroupName    *string  `json:"access_group_name,omitempty"`
+	Description        *string  `json:"description,omitempty"`
+	AccessModelNames   []string `json:"access_model_names"`
+	AccessMCPServerIDs []string `json:"access_mcp_server_ids"`
+	AccessAgentIDs     []string `json:"access_agent_ids"`
+}
+
+// AccessGroupEntry is one row of GET /v1/access_group and the body returned
+// by POST/PUT. AssignedTeamIDs is read-only for the operator and is NOT a
+// reliable read of who is attached: a team-side write to team.access_group_ids
+// does not propagate here (measured — the group keeps reading []).
+type AccessGroupEntry struct {
+	AccessGroupID      string   `json:"access_group_id"`
+	AccessGroupName    string   `json:"access_group_name"`
+	Description        string   `json:"description,omitempty"`
+	AccessModelNames   []string `json:"access_model_names"`
+	AccessMCPServerIDs []string `json:"access_mcp_server_ids"`
+	AccessAgentIDs     []string `json:"access_agent_ids"`
+	AssignedTeamIDs    []string `json:"assigned_team_ids"`
+	AssignedKeyIDs     []string `json:"assigned_key_ids"`
+}
