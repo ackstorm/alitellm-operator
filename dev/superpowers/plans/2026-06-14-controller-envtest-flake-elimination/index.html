@@ -1724,7 +1724,7 @@ leak Task 4 must fix (see expanded Task 4 scope).</p>
 <li>[ ] <strong>Step 1.1: Add <code>Gate</code> to <code>SafetyRelistRunnable</code> and gate the tick</strong></li>
 </ul>
 <p>In <code>internal/controller/shared_helpers.go</code>, add the field after <code>LogLabel</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="w">    </span><span class="c1">// LogLabel names the kind in the V(1) debug lines (e.g. &quot;models&quot;).</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="w">    </span><span class="c1">// LogLabel names the kind in the V(1) debug lines (e.g. "models").</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span><span class="nx">LogLabel</span><span class="w"> </span><span class="kt">string</span>
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="c1">// Gate, when non-nil, is evaluated at the top of every tick. If it</span>
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="c1">// returns false the tick is a complete no-op (no List, no enqueue).</span>
@@ -1735,7 +1735,7 @@ leak Task 4 must fix (see expanded Task 4 scope).</p>
 </code></pre></div>
 <p>In <code>Start</code>, make the tick the first thing inside the <code>case &lt;-ticker.C:</code> branch:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="o">&lt;-</span><span class="nx">ticker</span><span class="p">.</span><span class="nx">C</span><span class="p">:</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">            </span><span class="k">if</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nx">Gate</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="p">!</span><span class="nx">r</span><span class="p">.</span><span class="nx">Gate</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">            </span><span class="k">if</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nx">Gate</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="o">!</span><span class="nx">r</span><span class="p">.</span><span class="nx">Gate</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">                </span><span class="k">continue</span>
 <a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">            </span><span class="p">}</span>
 <a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">            </span><span class="nx">reqs</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nx">ListRequests</span><span class="p">(</span><span class="nx">ctx</span><span class="p">,</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nx">Client</span><span class="p">,</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nx">Namespace</span><span class="p">)</span>
@@ -1744,7 +1744,7 @@ leak Task 4 must fix (see expanded Task 4 scope).</p>
 <li>[ ] <strong>Step 1.2: Add <code>Gate</code> to <code>TeamDefaultRunnable</code> and gate <code>enqueue</code></strong></li>
 </ul>
 <p>In <code>internal/controller/team_default_runnable.go</code>, add the field after <code>RequeueCh</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="w">    </span><span class="nx">RequeueCh</span><span class="w"> </span><span class="kd">chan</span><span class="o">&lt;-</span><span class="w"> </span><span class="nx">reconcile</span><span class="p">.</span><span class="nx">Request</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="w">    </span><span class="nx">RequeueCh</span><span class="w"> </span><span class="kt">chan</span><span class="o">&lt;-</span><span class="w"> </span><span class="nx">reconcile</span><span class="p">.</span><span class="nx">Request</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="c1">// Gate, when non-nil, gates every enqueue (initial + per-tick). If it</span>
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span><span class="c1">// returns false the enqueue is a no-op. Production leaves it nil (always</span>
@@ -1754,15 +1754,15 @@ leak Task 4 must fix (see expanded Task 4 scope).</p>
 </code></pre></div>
 <p>In the <code>enqueue</code> method, add the guard as the first statement:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">r</span><span class="w"> </span><span class="o">*</span><span class="nx">TeamDefaultRunnable</span><span class="p">)</span><span class="w"> </span><span class="nx">enqueue</span><span class="p">(</span><span class="nx">req</span><span class="w"> </span><span class="nx">reconcile</span><span class="p">.</span><span class="nx">Request</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nx">Gate</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="p">!</span><span class="nx">r</span><span class="p">.</span><span class="nx">Gate</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nx">Gate</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="kc">nil</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="o">!</span><span class="nx">r</span><span class="p">.</span><span class="nx">Gate</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">        </span><span class="k">return</span>
 <a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span><span class="p">}</span>
 <a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">    </span><span class="k">select</span><span class="w"> </span><span class="p">{</span>
 <a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="nx">r</span><span class="p">.</span><span class="nx">RequeueCh</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="nx">req</span><span class="p">:</span>
 <a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">        </span><span class="nx">r</span><span class="p">.</span><span class="nx">tickCount</span><span class="p">.</span><span class="nx">Add</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
 <a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">    </span><span class="k">default</span><span class="p">:</span>
-<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">        </span><span class="nx">r</span><span class="p">.</span><span class="nx">Log</span><span class="p">.</span><span class="nx">V</span><span class="p">(</span><span class="mi">1</span><span class="p">).</span><span class="nx">Info</span><span class="p">(</span><span class="s">&quot;TeamDefaultRunnable: requeue channel full; skipping tick&quot;</span><span class="p">,</span>
-<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">            </span><span class="s">&quot;namespace&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">req</span><span class="p">.</span><span class="nx">NamespacedName</span><span class="p">.</span><span class="nx">Namespace</span><span class="p">)</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">        </span><span class="nx">r</span><span class="p">.</span><span class="nx">Log</span><span class="p">.</span><span class="nx">V</span><span class="p">(</span><span class="mi">1</span><span class="p">).</span><span class="nx">Info</span><span class="p">(</span><span class="s">"TeamDefaultRunnable: requeue channel full; skipping tick"</span><span class="p">,</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">            </span><span class="s">"namespace"</span><span class="p">,</span><span class="w"> </span><span class="nx">req</span><span class="p">.</span><span class="nx">NamespacedName</span><span class="p">.</span><span class="nx">Namespace</span><span class="p">)</span>
 <a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="w">    </span><span class="p">}</span>
 <a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="p">}</span>
 </code></pre></div>
@@ -1772,7 +1772,7 @@ leak Task 4 must fix (see expanded Task 4 scope).</p>
 <p>In <code>internal/controller/suite_test.go</code>, near the other package-level test vars (top of file, after imports), add:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1">// suiteRelistEnabled gates the three suite-global background runnables</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="c1">// (model + guardrail SafetyRelistRunnable, TeamDefaultRunnable). Default</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="c1">// false: the runnables tick but do no work, so the ~292 tests that don&#39;t</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="c1">// false: the runnables tick but do no work, so the ~292 tests that don't</span>
 <a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1">// exercise drift recovery run free of the shared-workqueue contention floor</span>
 <a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="c1">// that produced the #74 -race -shuffle flakes. The handful of drift /</span>
 <a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="c1">// bootstrap tests opt in via enableSuiteRelist(t).</span>
@@ -1795,13 +1795,13 @@ leak Task 4 must fix (see expanded Task 4 scope).</p>
 <p>In <code>internal/controller/suite_test.go</code>, add <code>Gate: suiteRelistEnabled.Load,</code> to each of the three structs:</p>
 <p><code>modelSafetyRelist</code> (after <code>LogLabel: "models",</code>):
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="w">        </span><span class="nx">ListRequests</span><span class="p">:</span><span class="w"> </span><span class="nx">ListModelRequests</span><span class="p">,</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">        </span><span class="nx">LogLabel</span><span class="p">:</span><span class="w">     </span><span class="s">&quot;models&quot;</span><span class="p">,</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">        </span><span class="nx">LogLabel</span><span class="p">:</span><span class="w">     </span><span class="s">"models"</span><span class="p">,</span>
 <a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">        </span><span class="nx">Gate</span><span class="p">:</span><span class="w">         </span><span class="nx">suiteRelistEnabled</span><span class="p">.</span><span class="nx">Load</span><span class="p">,</span>
 <a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span><span class="p">}</span>
 </code></pre></div></p>
 <p><code>guardrailSafetyRelist</code> (after <code>LogLabel: "guardrails",</code>):
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="w">        </span><span class="nx">ListRequests</span><span class="p">:</span><span class="w"> </span><span class="nx">ListGuardRailRequests</span><span class="p">,</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">        </span><span class="nx">LogLabel</span><span class="p">:</span><span class="w">     </span><span class="s">&quot;guardrails&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">        </span><span class="nx">LogLabel</span><span class="p">:</span><span class="w">     </span><span class="s">"guardrails"</span><span class="p">,</span>
 <a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">        </span><span class="nx">Gate</span><span class="p">:</span><span class="w">         </span><span class="nx">suiteRelistEnabled</span><span class="p">.</span><span class="nx">Load</span><span class="p">,</span>
 <a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">    </span><span class="p">}</span>
 </code></pre></div></p>
@@ -1851,7 +1851,7 @@ Expected on completion: <code>ok ... internal/controller</code>, no <code>--- FA
 <li>[ ] <strong>Step 1.10: Commit</strong></li>
 </ul>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>git<span class="w"> </span>add<span class="w"> </span>internal/controller/shared_helpers.go<span class="w"> </span>internal/controller/team_default_runnable.go<span class="w"> </span>internal/controller/suite_test.go<span class="w"> </span>internal/controller/model_controller_test.go<span class="w"> </span>internal/controller/litellmguardrail_controller_test.go<span class="w"> </span>internal/controller/team_default_runnable_test.go
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;test(controller): gate suite-global relist runnables off by default (#74)</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">"test(controller): gate suite-global relist runnables off by default (#74)</span>
 <a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>
 <a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="s2">The model+guardrail SafetyRelistRunnable and TeamDefaultRunnable ticked at</span>
 <a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="s2">100ms for the whole package run (~30 enqueues/s into the shared workqueue),</span>
@@ -1859,7 +1859,7 @@ Expected on completion: <code>ok ... internal/controller</code>, no <code>--- FA
 <a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="s2">Gate predicate (production leaves it nil → identical behavior) and default</span>
 <a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="s2">the suite OFF; the ~4 drift/bootstrap tests opt in via enableSuiteRelist(t).</span>
 <a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>
-<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="s2">Co-Authored-By: Claude Opus 4.8 (1M context) &lt;noreply@anthropic.com&gt;&quot;</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="s2">Co-Authored-By: Claude Opus 4.8 (1M context) &lt;noreply@anthropic.com&gt;"</span>
 </code></pre></div>
 <hr />
 <h2 id="task-2-make-at-least-once-assertions-shape-based-dropped-superseded-by-task-1">Task 2: Make at-least-once assertions shape-based — DROPPED (superseded by Task 1)<a class="headerlink" href="#task-2-make-at-least-once-assertions-shape-based-dropped-superseded-by-task-1" title="Permanent link">&para;</a></h2>
@@ -1883,23 +1883,23 @@ The reconcile loop is at-least-once: a redundant idempotent mutation is correct 
 Apply this transformation (verb legitimately fires `>=1`):
 
 1. `team_controller_test.go:178` — `MutationsByTeamAlias("team-create-nobudget") != 1` →
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">got</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">mockServer</span><span class="p">.</span><span class="nx">MutationsByTeamAlias</span><span class="p">(</span><span class="s">&quot;team-create-nobudget&quot;</span><span class="p">);</span><span class="w"> </span><span class="nx">got</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Fatalf</span><span class="p">(</span><span class="s">&quot;post-create team mutations: got %d want &gt;=1&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">got</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">got</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">mockServer</span><span class="p">.</span><span class="nx">MutationsByTeamAlias</span><span class="p">(</span><span class="s">"team-create-nobudget"</span><span class="p">);</span><span class="w"> </span><span class="nx">got</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Fatalf</span><span class="p">(</span><span class="s">"post-create team mutations: got %d want &gt;=1"</span><span class="p">,</span><span class="w"> </span><span class="nx">got</span><span class="p">)</span>
 <a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">    </span><span class="p">}</span>
 </code></pre></div>
 2. `model_controller_test.go:436` — the `newCount != 1` (POST /model/new) check →
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">newCount</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Fatalf</span><span class="p">(</span><span class="s">&quot;POST /model/new count: got %d want &gt;=1&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">newCount</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">newCount</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Fatalf</span><span class="p">(</span><span class="s">"POST /model/new count: got %d want &gt;=1"</span><span class="p">,</span><span class="w"> </span><span class="nx">newCount</span><span class="p">)</span>
 <a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">    </span><span class="p">}</span>
 </code></pre></div>
 3. `mcpserver_controller_test.go:187` — `postCount != 1` →
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">postCount</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Fatalf</span><span class="p">(</span><span class="s">&quot;POST mcp/server count: got %d want &gt;=1&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">postCount</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">postCount</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Fatalf</span><span class="p">(</span><span class="s">"POST mcp/server count: got %d want &gt;=1"</span><span class="p">,</span><span class="w"> </span><span class="nx">postCount</span><span class="p">)</span>
 <a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">    </span><span class="p">}</span>
 </code></pre></div>
 4. `litellmguardrail_controller_test.go:195` — `MutationsByGuardrailName(name) != 1` →
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">got</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">mockServer</span><span class="p">.</span><span class="nx">MutationsByGuardrailName</span><span class="p">(</span><span class="nx">name</span><span class="p">);</span><span class="w"> </span><span class="nx">got</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Fatalf</span><span class="p">(</span><span class="s">&quot;post-create guardrail mutations: got %d want &gt;=1&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">got</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">got</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">mockServer</span><span class="p">.</span><span class="nx">MutationsByGuardrailName</span><span class="p">(</span><span class="nx">name</span><span class="p">);</span><span class="w"> </span><span class="nx">got</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Fatalf</span><span class="p">(</span><span class="s">"post-create guardrail mutations: got %d want &gt;=1"</span><span class="p">,</span><span class="w"> </span><span class="nx">got</span><span class="p">)</span>
 <a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">    </span><span class="p">}</span>
 </code></pre></div>
 
@@ -1909,16 +1909,16 @@ Apply this transformation (verb legitimately fires `>=1`):
 
 `model_controller_test.go:838` — `newCount != 1` (the POST /model/new AFTER the delete in `TestModel_SpecParamsKeyRemoval_DeleteAndRecreate`) → `newCount < 1`. **Leave line 835 (`deleteCount != 1`) and line 841 (`updateCount != 0`) EXACT** — delete is once-by-design and update-must-not-fire is a structural invariant.
 
-<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">newCount</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Fatalf</span><span class="p">(</span><span class="s">&quot;re-create POST /model/new: got %d want &gt;=1&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">newCount</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">newCount</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Fatalf</span><span class="p">(</span><span class="s">"re-create POST /model/new: got %d want &gt;=1"</span><span class="p">,</span><span class="w"> </span><span class="nx">newCount</span><span class="p">)</span>
 <a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">    </span><span class="p">}</span>
 </code></pre></div>
 
 - [ ] **Step 2.3: Tolerate at-least-once in the team idle-tick assertion**
 
 `team_default_runnable_test.go:131-133` — the exact `mutsAfterIdle != mutsAfterFirst` equality. With the suite-global team runnable now gated OFF during this test (it uses a LOCAL runnable, so global is silent), this is already robust, but make the intent explicit and at-least-once-safe:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">mutsAfterIdle</span><span class="w"> </span><span class="p">&lt;</span><span class="w"> </span><span class="nx">mutsAfterFirst</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Fatalf</span><span class="p">(</span><span class="s">&quot;idle ticks must not DECREASE mutations: after=%d first=%d&quot;</span><span class="p">,</span><span class="w"> </span><span class="nx">mutsAfterIdle</span><span class="p">,</span><span class="w"> </span><span class="nx">mutsAfterFirst</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="nx">mutsAfterIdle</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="nx">mutsAfterFirst</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="w">        </span><span class="nx">t</span><span class="p">.</span><span class="nx">Fatalf</span><span class="p">(</span><span class="s">"idle ticks must not DECREASE mutations: after=%d first=%d"</span><span class="p">,</span><span class="w"> </span><span class="nx">mutsAfterIdle</span><span class="p">,</span><span class="w"> </span><span class="nx">mutsAfterFirst</span><span class="p">)</span>
 <a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="w">    </span><span class="p">}</span>
 </code></pre></div>
 (The test's real assertion — that the hash-equal short-circuit suppresses NEW work — is covered by TickCount elsewhere; mutation count must merely not regress.)
@@ -1931,14 +1931,14 @@ Expected: all PASS.
 - [ ] **Step 2.5: Commit**
 
 <div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>git<span class="w"> </span>add<span class="w"> </span>internal/controller/model_controller_test.go<span class="w"> </span>internal/controller/mcpserver_controller_test.go<span class="w"> </span>internal/controller/team_controller_test.go<span class="w"> </span>internal/controller/litellmguardrail_controller_test.go<span class="w"> </span>internal/controller/team_default_runnable_test.go
-<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;test(controller): assert &gt;=1 on at-least-once create paths (#74)</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">"test(controller): assert &gt;=1 on at-least-once create paths (#74)</span>
 <a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>
 <a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="s2">Drift-correction/create verbs can legitimately fire more than once</span>
 <a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="s2">(at-least-once reconcile). Replace exact ==1 with &gt;=1 on the create-count</span>
 <a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="s2">assertions; keep delete-once and update-must-not-fire structural invariants</span>
 <a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="s2">exact.</span>
 <a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a>
-<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a><span class="s2">Co-Authored-By: Claude Opus 4.8 (1M context) &lt;noreply@anthropic.com&gt;&quot;</span>
+<a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a><span class="s2">Co-Authored-By: Claude Opus 4.8 (1M context) &lt;noreply@anthropic.com&gt;"</span>
 </code></pre></div>
 
 </details>
@@ -1951,7 +1951,7 @@ Expected: all PASS.
 <li>[ ] <strong>Step 3.1: Raise the const</strong></li>
 </ul>
 <p>Find <code>pollReadyConditionDeadline</code> (near line 84). Change:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="kd">const</span><span class="w"> </span><span class="nx">pollReadyConditionDeadline</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="mi">30</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nx">time</span><span class="p">.</span><span class="nx">Second</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="kd">const</span><span class="w"> </span><span class="nx">pollReadyConditionDeadline</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">30</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nx">time</span><span class="p">.</span><span class="nx">Second</span>
 </code></pre></div>
 (from <code>5 * time.Second</code>). The helpers already fast-break on the first satisfied poll, so the happy path stays ~sub-second; only a genuinely stuck condition now waits longer.</p>
 <ul>
@@ -1963,9 +1963,9 @@ Expected: all guardrail tests PASS.</p>
 <li>[ ] <strong>Step 3.3: Commit</strong></li>
 </ul>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>git<span class="w"> </span>add<span class="w"> </span>internal/controller/litellmguardrail_controller_test.go
-<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;test(guardrail): raise pollReadyConditionDeadline 5s-&gt;30s with fast-break (#74)</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">"test(guardrail): raise pollReadyConditionDeadline 5s-&gt;30s with fast-break (#74)</span>
 <a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>
-<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="s2">Co-Authored-By: Claude Opus 4.8 (1M context) &lt;noreply@anthropic.com&gt;&quot;</span>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="s2">Co-Authored-By: Claude Opus 4.8 (1M context) &lt;noreply@anthropic.com&gt;"</span>
 </code></pre></div>
 <hr />
 <h2 id="task-4-close-cross-test-state-isolation-gaps-deferred-to-a-dedicated-debug-pass">Task 4: Close cross-test state-isolation gaps — DEFERRED to a dedicated debug pass<a class="headerlink" href="#task-4-close-cross-test-state-isolation-gaps-deferred-to-a-dedicated-debug-pass" title="Permanent link">&para;</a></h2>
@@ -1997,7 +1997,7 @@ In `internal/litellm/mock/mock.go`, beside the other `ResetX` methods, add (matc
 <a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">s</span><span class="w"> </span><span class="o">*</span><span class="nx">MockServer</span><span class="p">)</span><span class="w"> </span><span class="nx">ResetRouterSettings</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
 <a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="w">    </span><span class="nx">s</span><span class="p">.</span><span class="nx">mu</span><span class="p">.</span><span class="nx">Lock</span><span class="p">()</span>
 <a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="w">    </span><span class="k">defer</span><span class="w"> </span><span class="nx">s</span><span class="p">.</span><span class="nx">mu</span><span class="p">.</span><span class="nx">Unlock</span><span class="p">()</span>
-<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a><span class="w">    </span><span class="nx">s</span><span class="p">.</span><span class="nx">routerSettings</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="kd">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="kt">any</span><span class="p">{}</span>
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a><span class="w">    </span><span class="nx">s</span><span class="p">.</span><span class="nx">routerSettings</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="kt">any</span><span class="p">{}</span>
 <a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a><span class="p">}</span>
 </code></pre></div>
 (Match the exact field name and mutex identifier already used by `ResetModels` — read that method first.)
@@ -2033,13 +2033,13 @@ Expected: 3/3 shuffles green for the targeted set.
 - [ ] **Step 4.6: Commit**
 
 <div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>git<span class="w"> </span>add<span class="w"> </span>internal/litellm/mock/mock.go<span class="w"> </span>internal/controller/modelalias_envtest_test.go<span class="w"> </span>internal/controller/suite_test.go<span class="w"> </span>internal/controller/*_test.go
-<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;test(controller): close mock-state isolation gaps (mode/router) (#74)</span>
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">"test(controller): close mock-state isolation gaps (mode/router) (#74)</span>
 <a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a>
 <a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a><span class="s2">Add ResetRouterSettings + a cleanup-guarded setMockMode helper so a</span>
-<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a><span class="s2">non-happy mock mode or stale router-alias state can&#39;t leak into a shuffled</span>
+<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a><span class="s2">non-happy mock mode or stale router-alias state can't leak into a shuffled</span>
 <a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a><span class="s2">neighbor — the contamination behind the fast-fail #74 flakes.</span>
 <a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a>
-<a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a><span class="s2">Co-Authored-By: Claude Opus 4.8 (1M context) &lt;noreply@anthropic.com&gt;&quot;</span>
+<a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a><span class="s2">Co-Authored-By: Claude Opus 4.8 (1M context) &lt;noreply@anthropic.com&gt;"</span>
 </code></pre></div>
 
 </details>
@@ -2069,9 +2069,9 @@ Expected: clean (new helpers/fields carry doc comments; no unused).</p>
 <li>[ ] <strong>Step 5.5: Commit docs</strong></li>
 </ul>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>git<span class="w"> </span>add<span class="w"> </span>CLAUDE.md
-<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;docs: record #74 suite-flake systemic fix (gated relist, shape asserts)</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">"docs: record #74 suite-flake systemic fix (gated relist, shape asserts)</span>
 <a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a>
-<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a><span class="s2">Co-Authored-By: Claude Opus 4.8 (1M context) &lt;noreply@anthropic.com&gt;&quot;</span>
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a><span class="s2">Co-Authored-By: Claude Opus 4.8 (1M context) &lt;noreply@anthropic.com&gt;"</span>
 </code></pre></div>
 <ul>
 <li>[ ] <strong>Step 5.6: Finish the branch</strong></li>

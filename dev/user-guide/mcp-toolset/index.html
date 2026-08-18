@@ -1824,7 +1824,7 @@ exist before that.</p>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">research-tools</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">default</span>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Curated</span><span class="nv"> </span><span class="s">research</span><span class="nv"> </span><span class="s">subset&quot;</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="s">"Curated</span><span class="nv"> </span><span class="s">research</span><span class="nv"> </span><span class="s">subset"</span>
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">  </span><span class="nt">from</span><span class="p">:</span>
 <a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">server</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">hindsight</span><span class="w">          </span><span class="c1"># a LiteLLMMCPServer CR in this namespace</span>
 <a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">      </span><span class="nt">tools</span><span class="p">:</span>
@@ -1845,11 +1845,11 @@ from a team:</p>
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">research-team</span>
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="nt">spec</span><span class="p">:</span>
 <a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="nt">permission</span><span class="p">:</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">    </span><span class="nt">models</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;gpt-4o&quot;</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">    </span><span class="nt">mcpToolsets</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;research-tools&quot;</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">    </span><span class="nt">models</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"gpt-4o"</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">    </span><span class="nt">mcpToolsets</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"research-tools"</span><span class="p p-Indicator">]</span>
 </code></pre></div>
 <p>A key that has not been granted the toolset gets:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>403 API key does not have access to toolset &#39;&lt;uuid&gt;&#39;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>403 API key does not have access to toolset '&lt;uuid&gt;'
 </code></pre></div>
 <p>Multiple toolsets listed on one team are <strong>unioned</strong> by LiteLLM, not
 last-wins. There is no access-group concept for toolsets in LiteLLM 1.93.0 —
@@ -1880,7 +1880,7 @@ dangling reference with no cascade — the toolset survives and resolves to an
 empty tool list.</p>
 <p><strong>Diagnosing an empty toolset.</strong> If a toolset seems to grant nothing, read it
 back and check the pairs actually landed:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">&quot;Authorization: Bearer </span><span class="nv">$LITELLM_KEY</span><span class="s2">&quot;</span><span class="w"> </span><span class="nv">$LITELLM</span>/v1/mcp/toolset
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">"Authorization: Bearer </span><span class="nv">$LITELLM_KEY</span><span class="s2">"</span><span class="w"> </span><span class="nv">$LITELLM</span>/v1/mcp/toolset
 </code></pre></div>
 <p>Why it is silent: LiteLLM's toolset resolution wraps the whole lookup in
 <code>try/except → return {}</code>, and an unknown <code>server_id</code> never matches a real

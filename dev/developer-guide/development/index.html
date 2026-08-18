@@ -1875,11 +1875,11 @@ to the kept-cluster iteration loop:</p>
 <a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>make<span class="w"> </span>wait-cr-ready<span class="w"> </span><span class="nv">KIND</span><span class="o">=</span>team<span class="w"> </span><span class="nv">NAME</span><span class="o">=</span>finance<span class="w"> </span><span class="nv">NS</span><span class="o">=</span>default
 <a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>
 <a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="c1"># 3. Iterate with focused tests</span>
-<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>make<span class="w"> </span>e2e-focus<span class="w"> </span><span class="nv">FOCUS</span><span class="o">=</span><span class="s2">&quot;rateLimits composite&quot;</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>make<span class="w"> </span>e2e-focus<span class="w"> </span><span class="nv">FOCUS</span><span class="o">=</span><span class="s2">"rateLimits composite"</span>
 <a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>
 <a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="c1"># 4. After code edit → hot-reload → re-test (~30s)</span>
 <a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>make<span class="w"> </span>operator-redeploy
-<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>make<span class="w"> </span>e2e-focus<span class="w"> </span><span class="nv">FOCUS</span><span class="o">=</span><span class="s2">&quot;...&quot;</span>
+<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>make<span class="w"> </span>e2e-focus<span class="w"> </span><span class="nv">FOCUS</span><span class="o">=</span><span class="s2">"..."</span>
 <a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>
 <a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a><span class="c1"># 5. Final gate from a fresh cluster</span>
 <a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>make<span class="w"> </span>cluster-reset<span class="w">       </span><span class="c1"># down + up</span>
@@ -1954,7 +1954,7 @@ that introduces the dependency change.</p>
 <a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>make<span class="w"> </span>pf-litellm<span class="w">         </span><span class="c1"># port-forward LiteLLM svc → localhost:4000</span>
 <a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>make<span class="w"> </span>pf-openai-mock<span class="w">     </span><span class="c1"># port-forward openai-mock → localhost:8081</span>
 <a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>make<span class="w"> </span>pf-kubeai-mock<span class="w">     </span><span class="c1"># port-forward kubeai-mock → localhost:8082</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>make<span class="w"> </span>mock-mode<span class="w"> </span><span class="nv">INSTANCE</span><span class="o">=</span>openai-mock<span class="w"> </span><span class="nv">MODE</span><span class="o">=</span>reject-401<span class="w">   </span><span class="c1"># flip a mock&#39;s auth mode</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>make<span class="w"> </span>mock-mode<span class="w"> </span><span class="nv">INSTANCE</span><span class="o">=</span>openai-mock<span class="w"> </span><span class="nv">MODE</span><span class="o">=</span>reject-401<span class="w">   </span><span class="c1"># flip a mock's auth mode</span>
 </code></pre></div>
 <h2 id="environment-variables-development">Environment variables (development)<a class="headerlink" href="#environment-variables-development" title="Permanent link">&para;</a></h2>
 <table>

@@ -1857,7 +1857,7 @@ directly on the host.</p>
 (teardown is explicit). After the first run, iterate against the kept
 cluster:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>make<span class="w"> </span>e2e-full<span class="w">                                   </span><span class="c1"># bring up + run e2e, cluster KEPT</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>make<span class="w"> </span>e2e-focus<span class="w"> </span><span class="nv">FOCUS</span><span class="o">=</span><span class="s2">&quot;rateLimits composite&quot;</span><span class="w">     </span><span class="c1"># ~30s-2m per iter</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>make<span class="w"> </span>e2e-focus<span class="w"> </span><span class="nv">FOCUS</span><span class="o">=</span><span class="s2">"rateLimits composite"</span><span class="w">     </span><span class="c1"># ~30s-2m per iter</span>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>make<span class="w"> </span>operator-redeploy<span class="w">                          </span><span class="c1"># hot-reload after code edit</span>
 </code></pre></div>
 <p>When done, <code>make cluster-down</code>; for a clean final gate, <code>make cluster-reset</code> then <code>make e2e-full</code>.</p>

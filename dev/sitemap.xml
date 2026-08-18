@@ -2,122 +2,122 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://ackstorm.github.io/alitellm-operator/dev/</loc>
-         <lastmod>2026-08-14</lastmod>
+         <lastmod>2026-08-18</lastmod>
     </url>
     <url>
          <loc>https://ackstorm.github.io/alitellm-operator/dev/metrics/</loc>
-         <lastmod>2026-08-14</lastmod>
+         <lastmod>2026-08-18</lastmod>
     </url>
     <url>
          <loc>https://ackstorm.github.io/alitellm-operator/dev/api-reference/litellm.ackstorm.ai/</loc>
-         <lastmod>2026-08-14</lastmod>
+         <lastmod>2026-08-18</lastmod>
     </url>
     <url>
          <loc>https://ackstorm.github.io/alitellm-operator/dev/community/code-of-conduct/</loc>
-         <lastmod>2026-08-14</lastmod>
+         <lastmod>2026-08-18</lastmod>
     </url>
     <url>
          <loc>https://ackstorm.github.io/alitellm-operator/dev/community/security/</loc>
-         <lastmod>2026-08-14</lastmod>
+         <lastmod>2026-08-18</lastmod>
     </url>
     <url>
          <loc>https://ackstorm.github.io/alitellm-operator/dev/concepts/conflict-resolution/</loc>
-         <lastmod>2026-08-14</lastmod>
+         <lastmod>2026-08-18</lastmod>
     </url>
     <url>
          <loc>https://ackstorm.github.io/alitellm-operator/dev/concepts/deletion-semantics/</loc>
-         <lastmod>2026-08-14</lastmod>
+         <lastmod>2026-08-18</lastmod>
     </url>
     <url>
          <loc>https://ackstorm.github.io/alitellm-operator/dev/developer-guide/architecture/</loc>
-         <lastmod>2026-08-14</lastmod>
+         <lastmod>2026-08-18</lastmod>
     </url>
     <url>
          <loc>https://ackstorm.github.io/alitellm-operator/dev/developer-guide/contributions/</loc>
-         <lastmod>2026-08-14</lastmod>
+         <lastmod>2026-08-18</lastmod>
     </url>
     <url>
          <loc>https://ackstorm.github.io/alitellm-operator/dev/developer-guide/development/</loc>
-         <lastmod>2026-08-14</lastmod>
+         <lastmod>2026-08-18</lastmod>
     </url>
     <url>
          <loc>https://ackstorm.github.io/alitellm-operator/dev/developer-guide/release-process/</loc>
-         <lastmod>2026-08-14</lastmod>
+         <lastmod>2026-08-18</lastmod>
     </url>
     <url>
          <loc>https://ackstorm.github.io/alitellm-operator/dev/getting-started/installation/</loc>
-         <lastmod>2026-08-14</lastmod>
+         <lastmod>2026-08-18</lastmod>
     </url>
     <url>
          <loc>https://ackstorm.github.io/alitellm-operator/dev/getting-started/quickstart/</loc>
-         <lastmod>2026-08-14</lastmod>
+         <lastmod>2026-08-18</lastmod>
     </url>
     <url>
          <loc>https://ackstorm.github.io/alitellm-operator/dev/releases/v0.3.0-migration/</loc>
-         <lastmod>2026-08-14</lastmod>
+         <lastmod>2026-08-18</lastmod>
     </url>
     <url>
          <loc>https://ackstorm.github.io/alitellm-operator/dev/superpowers/plans/2026-06-02-review-remediation/</loc>
-         <lastmod>2026-08-14</lastmod>
+         <lastmod>2026-08-18</lastmod>
     </url>
     <url>
          <loc>https://ackstorm.github.io/alitellm-operator/dev/superpowers/plans/2026-06-13-code-review-fixes/</loc>
-         <lastmod>2026-08-14</lastmod>
+         <lastmod>2026-08-18</lastmod>
     </url>
     <url>
          <loc>https://ackstorm.github.io/alitellm-operator/dev/superpowers/plans/2026-06-13-controller-dry-consolidation/</loc>
-         <lastmod>2026-08-14</lastmod>
+         <lastmod>2026-08-18</lastmod>
     </url>
     <url>
          <loc>https://ackstorm.github.io/alitellm-operator/dev/superpowers/plans/2026-06-14-controller-envtest-flake-elimination/</loc>
-         <lastmod>2026-08-14</lastmod>
+         <lastmod>2026-08-18</lastmod>
     </url>
     <url>
          <loc>https://ackstorm.github.io/alitellm-operator/dev/superpowers/plans/2026-06-25-mcp-server-id-pinning/</loc>
-         <lastmod>2026-08-14</lastmod>
+         <lastmod>2026-08-18</lastmod>
     </url>
     <url>
          <loc>https://ackstorm.github.io/alitellm-operator/dev/user-guide/</loc>
-         <lastmod>2026-08-14</lastmod>
+         <lastmod>2026-08-18</lastmod>
     </url>
     <url>
          <loc>https://ackstorm.github.io/alitellm-operator/dev/user-guide/a2a-agent/</loc>
-         <lastmod>2026-08-14</lastmod>
+         <lastmod>2026-08-18</lastmod>
     </url>
     <url>
          <loc>https://ackstorm.github.io/alitellm-operator/dev/user-guide/access-group/</loc>
-         <lastmod>2026-08-14</lastmod>
+         <lastmod>2026-08-18</lastmod>
     </url>
     <url>
          <loc>https://ackstorm.github.io/alitellm-operator/dev/user-guide/connection/</loc>
-         <lastmod>2026-08-14</lastmod>
+         <lastmod>2026-08-18</lastmod>
     </url>
     <url>
          <loc>https://ackstorm.github.io/alitellm-operator/dev/user-guide/guardrail/</loc>
-         <lastmod>2026-08-14</lastmod>
+         <lastmod>2026-08-18</lastmod>
     </url>
     <url>
          <loc>https://ackstorm.github.io/alitellm-operator/dev/user-guide/mcp-server-discovery/</loc>
-         <lastmod>2026-08-14</lastmod>
+         <lastmod>2026-08-18</lastmod>
     </url>
     <url>
          <loc>https://ackstorm.github.io/alitellm-operator/dev/user-guide/mcp-server/</loc>
-         <lastmod>2026-08-14</lastmod>
+         <lastmod>2026-08-18</lastmod>
     </url>
     <url>
          <loc>https://ackstorm.github.io/alitellm-operator/dev/user-guide/mcp-toolset/</loc>
-         <lastmod>2026-08-14</lastmod>
+         <lastmod>2026-08-18</lastmod>
     </url>
     <url>
          <loc>https://ackstorm.github.io/alitellm-operator/dev/user-guide/model-discovery/</loc>
-         <lastmod>2026-08-14</lastmod>
+         <lastmod>2026-08-18</lastmod>
     </url>
     <url>
          <loc>https://ackstorm.github.io/alitellm-operator/dev/user-guide/model/</loc>
-         <lastmod>2026-08-14</lastmod>
+         <lastmod>2026-08-18</lastmod>
     </url>
     <url>
          <loc>https://ackstorm.github.io/alitellm-operator/dev/user-guide/team/</loc>
-         <lastmod>2026-08-14</lastmod>
+         <lastmod>2026-08-18</lastmod>
     </url>
 </urlset>

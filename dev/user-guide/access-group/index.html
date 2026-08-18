@@ -1904,8 +1904,8 @@ created.</p>
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">research-team</span>
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="nt">spec</span><span class="p">:</span>
 <a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="nt">permission</span><span class="p">:</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">    </span><span class="nt">models</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;gpt-4o&quot;</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">    </span><span class="nt">accessGroups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;shared-tooling&quot;</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">    </span><span class="nt">models</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"gpt-4o"</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">    </span><span class="nt">accessGroups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"shared-tooling"</span><span class="p p-Indicator">]</span>
 </code></pre></div>
 <p>The operator resolves each name to its <code>access_group_id</code> and writes the list to
 the team's <strong>top-level</strong> <code>access_group_ids</code> (not to <code>object_permission</code>). An
@@ -1913,8 +1913,8 @@ unresolved name parks the team <code>Ready=False, reason=AccessGroupNotFound</co
 requeues — create the <code>LiteLLMAccessGroup</code> first and the team self-heals.</p>
 <p><strong>Verify an attachment from the team side only.</strong> Read
 <code>GET /team/info?team_id=&lt;id&gt;</code> and look at <code>team_info.access_group_ids</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">&quot;Authorization: Bearer </span><span class="nv">$MASTER_KEY</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="s2">&quot;</span><span class="nv">$LITELLM</span><span class="s2">/team/info?team_id=&lt;team_id&gt;&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span><span class="s1">&#39;.team_info.access_group_ids&#39;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">"Authorization: Bearer </span><span class="nv">$MASTER_KEY</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="s2">"</span><span class="nv">$LITELLM</span><span class="s2">/team/info?team_id=&lt;team_id&gt;"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span><span class="s1">'.team_info.access_group_ids'</span>
 </code></pre></div>
 <p>The group side does <strong>not</strong> mirror it: after a team-side write,
 <code>access_group.assigned_team_ids</code> keeps reading <code>[]</code> (measured on 1.93.0).

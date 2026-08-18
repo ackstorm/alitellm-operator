@@ -1954,14 +1954,14 @@ CR + its <code>masterKeySecretRef</code>.</p>
 <p>CRDs roll forward automatically (since v0.3.2). Verify a new schema
 landed with e.g.:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>crd<span class="w"> </span>litellmmcpserverdiscoveries.litellm.ackstorm.ai<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.spec.versions[0].schema.openAPIV3Schema.properties.spec.required}&#39;</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="c1"># Expected: [&quot;prefix&quot;,&quot;refresh&quot;,&quot;toolhive&quot;,&quot;type&quot;]  (v0.3.0+)</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.spec.versions[0].schema.openAPIV3Schema.properties.spec.required}'</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="c1"># Expected: ["prefix","refresh","toolhive","type"]  (v0.3.0+)</span>
 </code></pre></div>
 <h3 id="migrating-from-pre-v032-installs">Migrating from pre-v0.3.2 installs<a class="headerlink" href="#migrating-from-pre-v032-installs" title="Permanent link">&para;</a></h3>
 <p>Pre-v0.3.2 installs have CRDs that Helm does NOT own. The first
 upgrade to v0.3.2+ errors with <code>apiextensions.k8s.io/v1, Kind=CustomResourceDefinition "..." exists and cannot be imported into the current release: invalid ownership metadata</code>.</p>
 <p>One-time adoption:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">for</span><span class="w"> </span>crd<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="k">$(</span>kubectl<span class="w"> </span>get<span class="w"> </span>crd<span class="w"> </span>-o<span class="w"> </span>name<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s1">&#39;.litellm.ackstorm.ai$&#39;</span><span class="k">)</span><span class="p">;</span><span class="w"> </span><span class="k">do</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">for</span><span class="w"> </span>crd<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="k">$(</span>kubectl<span class="w"> </span>get<span class="w"> </span>crd<span class="w"> </span>-o<span class="w"> </span>name<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s1">'.litellm.ackstorm.ai$'</span><span class="k">)</span><span class="p">;</span><span class="w"> </span><span class="k">do</span>
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span>kubectl<span class="w"> </span>annotate<span class="w"> </span><span class="nv">$crd</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span>meta.helm.sh/release-name<span class="o">=</span>alitellm-operator<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span>meta.helm.sh/release-namespace<span class="o">=</span>&lt;release-ns&gt;<span class="w"> </span>--overwrite
@@ -1981,7 +1981,7 @@ Kustomization/Application that runs ahead of the chart release.</p>
 use the 10m default.</p>
 <p><strong>CRs stay <code>Ready=False, reason=LiteLLMUnavailable</code></strong></p>
 <p><code>LiteLLMConnection/default</code> is not <code>Ready=True</code>. Check:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>litellmconnection<span class="w"> </span>default<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.status.conditions[?(@.type==&quot;Ready&quot;)]}{&quot;\n&quot;}&#39;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>litellmconnection<span class="w"> </span>default<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.status.conditions[?(@.type=="Ready")]}{"\n"}'</span>
 </code></pre></div>
 <p>Common causes: master-key Secret missing in watch namespace, wrong
 <code>spec.endpoint</code>, network policy blocking the operator → LiteLLM path.</p>
@@ -1996,7 +1996,7 @@ use the 10m default.</p>
    chart:</li>
 </ol>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>crd<span class="w"> </span>mcpservers.toolhive.stacklok.dev<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">&#39;{.spec.versions[*].name}&#39;</span><span class="w">   </span><span class="c1"># must include v1beta1</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.spec.versions[*].name}'</span><span class="w">   </span><span class="c1"># must include v1beta1</span>
 </code></pre></div>
 <p><strong>Logs / events</strong></p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>kubectl<span class="w"> </span>-n<span class="w"> </span>litellm<span class="w"> </span>logs<span class="w"> </span>deploy/alitellm-operator<span class="w"> </span>-f
