@@ -530,6 +530,26 @@ WHY IT FAILS: Pushed secrets, license-header drift, govulncheck advisory
 regressions cannot be untrue-d from public history. The pre-push gate
 script is the contract; the git hook makes it unmissable.
 
+### ❌ Committing an unexplained `+78 /go.mod` batch in `go.sum`
+```
+ M go.sum      # 78 insertions, all `<module> <version>/go.mod h1:...`
+```
+Appears after a generator or test run, unrelated to any dependency change.
+`db87b4d` reverted one such batch that rode in on `3da34bc`; a second
+appeared during the v0.8.2 work.
+✅ Discard it — `git restore go.sum` — and check the pre-push gate's
+"go mod tidy drift" line, which reports go.sum tidy when it is genuinely
+clean. `go mod tidy` also removes these, which is what makes them spurious:
+nothing in the build needs them.
+WHY IT WAS POSSIBLE: `Dockerfile.devtools` used to set `GOFLAGS=-mod=mod`,
+which licenses an ordinary `go build` / `go test` to SILENTLY write missing
+module-graph hashes into `go.sum`. That ENV is now unset, so the container
+uses Go's `-mod=readonly` default and a genuine go.mod/go.sum need fails
+loudly instead. `go mod tidy` / `go get` ignore the setting and still work.
+NOT fully root-caused: the exact trigger stopped reproducing after the
+go1.26.4 → go1.26.6 bump + image rebuild, so treat a recurrence as new
+information rather than the same bug.
+
 ### ❌ Kubectl from host against the kind cluster
 ```bash
 kubectl get pods -n default

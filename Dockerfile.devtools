@@ -24,9 +24,16 @@ ARG KIND_VERSION=v0.25.0
 ARG HELM_VERSION=v3.16.3
 ARG GOVULNCHECK_VERSION=v1.3.0  # pinned 2026-05-20 per 13-01 audit (HRD-02)
 
+# GOFLAGS is deliberately NOT set to -mod=mod. Under -mod=mod an ordinary
+# `go build` / `go test` / generator run may SILENTLY write missing
+# module-graph hashes into go.sum — observed twice as an unexplained +78
+# `/go.mod` lines (db87b4d reverted one such batch from 3da34bc). Go's
+# default since 1.16 is -mod=readonly, which fails loudly instead, so a
+# genuine go.mod/go.sum need surfaces as an error to fix rather than as
+# committed noise. Commands that legitimately rewrite the module files
+# (`go mod tidy`, `go get`) ignore this setting and still work.
 ENV DEBIAN_FRONTEND=noninteractive \
     GOTOOLCHAIN=local \
-    GOFLAGS=-mod=mod \
     GOBIN=/usr/local/bin
 
 # OS deps: docker CLI + compose v1 (matches host's docker-compose), build essentials
