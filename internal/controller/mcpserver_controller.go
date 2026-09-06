@@ -614,6 +614,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			OAuth2Flow:                ext.OAuth2Flow,
 			AllowAllKeys:              ext.AllowAllKeys,
 			AvailableOnPublicInternet: ext.AvailableOnPublicInternet,
+			OAuthPassthrough:          ext.OAuthPassthrough,
 		}
 		// Recreate circuit breaker (finding #9): a recreate (not first
 		// reconcile) means the vanish probe cleared a populated ServerID. If
@@ -685,6 +686,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			OAuth2Flow:                ext.OAuth2Flow,
 			AllowAllKeys:              ext.AllowAllKeys,
 			AvailableOnPublicInternet: ext.AvailableOnPublicInternet,
+			OAuthPassthrough:          ext.OAuthPassthrough,
 		}
 		if _, err := snap.Client.UpdateMCPServer(ctx, updateReq); err != nil {
 			return r.classifyMutationError(ctx, &mcp, logger, err, "PUT /v1/mcp/server")
