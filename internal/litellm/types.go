@@ -174,6 +174,7 @@ type MCPServerRequest struct {
 	OAuth2Flow                string         `json:"oauth2_flow,omitempty"`
 	AllowAllKeys              *bool          `json:"allow_all_keys,omitempty"`
 	AvailableOnPublicInternet *bool          `json:"available_on_public_internet,omitempty"`
+	OAuthPassthrough          *bool          `json:"oauth_passthrough,omitempty"`
 	Extra                     map[string]any `json:"-"`
 }
 
@@ -205,6 +206,7 @@ type MCPServerUpdateRequest struct {
 	OAuth2Flow                string         `json:"oauth2_flow,omitempty"`
 	AllowAllKeys              *bool          `json:"allow_all_keys,omitempty"`
 	AvailableOnPublicInternet *bool          `json:"available_on_public_internet,omitempty"`
+	OAuthPassthrough          *bool          `json:"oauth_passthrough,omitempty"`
 	IsBYOK                    *bool          `json:"is_byok,omitempty"`
 	Extra                     map[string]any `json:"-"`
 }

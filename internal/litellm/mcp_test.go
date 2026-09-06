@@ -279,6 +279,7 @@ func TestMCPServerRequest_FullJSONShape(t *testing.T) {
 		OAuth2Flow:                "authorization_code",
 		AllowAllKeys:              &tr,
 		AvailableOnPublicInternet: &fa,
+		OAuthPassthrough:          &tr,
 	}
 	b, err := json.Marshal(req)
 	if err != nil {
@@ -306,9 +307,23 @@ func TestMCPServerRequest_FullJSONShape(t *testing.T) {
 		`"oauth2_flow":"authorization_code"`,
 		`"allow_all_keys":true`,
 		`"available_on_public_internet":false`,
+		`"oauth_passthrough":true`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("body missing %s\nfull body: %s", want, got)
 		}
+	}
+}
+
+// A nil OAuthPassthrough must not reach the wire at all. Sending an
+// explicit false would clear the flag on every server the operator
+// reconciles, so `omitempty` is load-bearing here.
+func TestMCPServerRequest_OAuthPassthroughOmittedWhenNil(t *testing.T) {
+	b, err := json.Marshal(MCPServerRequest{ServerName: "srv", Transport: "http"})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(b), "oauth_passthrough") {
+		t.Errorf("nil OAuthPassthrough leaked onto the wire: %s", b)
 	}
 }

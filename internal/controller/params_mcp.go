@@ -50,6 +50,7 @@ type extractedMCPParams struct {
 	OAuth2Flow                string
 	AllowAllKeys              *bool
 	AvailableOnPublicInternet *bool
+	OAuthPassthrough          *bool
 }
 
 // reservedMCPParamKeys are structural keys the operator owns. If a user
@@ -106,6 +107,7 @@ func extractMCPParams(p map[string]any) extractedMCPParams {
 
 	out.AllowAllKeys = boolPtrFromParams(p, "allow_all_keys")
 	out.AvailableOnPublicInternet = boolPtrFromParams(p, "available_on_public_internet")
+	out.OAuthPassthrough = boolPtrFromParams(p, "oauth_passthrough")
 
 	out.MCPAccessGroups = stringSliceFromParams(p, "mcp_access_groups")
 	if len(out.MCPAccessGroups) == 0 {

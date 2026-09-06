@@ -56,6 +56,7 @@ func TestExtractMCPParams_AllModeledFields(t *testing.T) {
 		"registration_url":             "https://auth.example/register",
 		"oauth2_flow":                  "authorization_code",
 		"available_on_public_internet": false, // explicit false (tri-state)
+		"oauth_passthrough":            true,
 	}
 	got := extractMCPParams(in)
 
@@ -102,6 +103,9 @@ func TestExtractMCPParams_AllModeledFields(t *testing.T) {
 	if got.AvailableOnPublicInternet == nil || *got.AvailableOnPublicInternet != false {
 		t.Errorf("AvailableOnPublicInternet: want *false (tri-state), got %v", got.AvailableOnPublicInternet)
 	}
+	if got.OAuthPassthrough == nil || *got.OAuthPassthrough != true {
+		t.Errorf("OAuthPassthrough: want *true (tri-state), got %v", got.OAuthPassthrough)
+	}
 }
 
 func TestExtractMCPParams_ExtraHeadersMapShape(t *testing.T) {
@@ -133,5 +137,15 @@ func TestExtractMCPParams_AccessGroupsAlias(t *testing.T) {
 	got2 := extractMCPParams(in2)
 	if !reflect.DeepEqual(got2.MCPAccessGroups, []string{"primary"}) {
 		t.Errorf("precedence wrong: %v", got2.MCPAccessGroups)
+	}
+}
+
+// An absent oauth_passthrough must stay nil, not default to false: the
+// field is tri-state and `omitempty` on the *bool is what keeps the key
+// out of the request body for every server that never opts in.
+func TestExtractMCPParams_OAuthPassthroughUnsetStaysNil(t *testing.T) {
+	got := extractMCPParams(map[string]any{"auth_type": "none"})
+	if got.OAuthPassthrough != nil {
+		t.Errorf("OAuthPassthrough: want nil when unset, got %v", *got.OAuthPassthrough)
 	}
 }

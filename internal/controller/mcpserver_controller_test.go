@@ -1276,6 +1276,7 @@ func TestMCPServerReconciler_CreateForwardsAllParams(t *testing.T) {
         "mcp_access_groups": ["g1","g2"],
         "allow_all_keys": true,
         "available_on_public_internet": false,
+        "oauth_passthrough": true,
         "extra_headers": ["x-litellm-api-key"],
         "static_headers": {"x-foo":"bar"},
         "authorization_url": "https://auth.example/authorize",
@@ -1310,6 +1311,9 @@ func TestMCPServerReconciler_CreateForwardsAllParams(t *testing.T) {
 	}
 	if body["available_on_public_internet"] != false {
 		t.Errorf("available_on_public_internet (explicit false): %v", body["available_on_public_internet"])
+	}
+	if body["oauth_passthrough"] != true {
+		t.Errorf("oauth_passthrough: %v", body["oauth_passthrough"])
 	}
 	eh, ok := body["extra_headers"].([]any)
 	if !ok || len(eh) != 1 || eh[0] != "x-litellm-api-key" {
