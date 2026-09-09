@@ -855,6 +855,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#unknown-specparams-keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Unknown spec.params keys
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#drift-detection" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1665,6 +1676,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#unknown-specparams-keys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Unknown spec.params keys
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#drift-detection" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1855,18 +1877,46 @@ most one per reconcile pass per key:</p>
 </table>
 <p>To avoid the warnings, do not set the colliding keys in <code>spec.params</code>
 / <code>spec.agentCard</code> — let the operator stamp them.</p>
+<h2 id="unknown-specparams-keys">Unknown <code>spec.params</code> keys<a class="headerlink" href="#unknown-specparams-keys" title="Permanent link">&para;</a></h2>
+<p><code>spec.params</code> is a verbatim pass-through, but only the keys LiteLLM's
+<code>AgentConfig</code> models survive serialization: <code>litellm_params</code>,
+<code>object_permission</code>, <code>tpm_limit</code>, <code>rpm_limit</code>, <code>session_tpm_limit</code>,
+<code>session_rpm_limit</code>, <code>static_headers</code>, <code>extra_headers</code> (plus the two
+operator-overlaid keys above). Anything else is dropped by the operator and
+LiteLLM never sees it — so it emits a Warning Event per unknown key:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>Warning  UnknownParamKey  key "access_groups" in spec.params is not a field
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>LiteLLM's AgentConfig accepts — the operator drops it and LiteLLM never sees
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>it; it has NO effect
+</code></pre></div>
+<p><code>access_groups</code> is the motivating case: it reads like an access restriction
+and enforces nothing. LiteLLM's <code>AgentConfig</code> has no such field, and the
+column it <em>does</em> enforce on (<code>LiteLLM_AgentsTable.agent_access_groups</code>) is
+not settable through <code>POST /v1/agents</code> or <code>PATCH</code> in 1.99.1 at all. Use
+<code>LiteLLMTeam.spec.permission.agents</code> to restrict agent access.</p>
 <h2 id="drift-detection">Drift detection<a class="headerlink" href="#drift-detection" title="Permanent link">&para;</a></h2>
 <p>Per-reconcile SHA-256 hash over the rendered merged body (params +
 agentCard + overlays). On mismatch the reconciler issues
 <code>PUT /v1/agents/&lt;agentID&gt;</code> (wholesale-replace per LiteLLM 1.83.10).
 Vanish-probe path: row missing → <code>POST /v1/agents</code>, re-pin <code>agentID</code>,
 increment <code>alitellm_operator_drift_corrected_total{domain=a2aagent,action=create_missing}</code>.</p>
+<p><code>agent_name</code> is unique server-side, so that recreate can be rejected with
+<code>400 Agent with name &lt;name&gt; already exists</code> — LiteLLM's create-time check and
+its <code>GET /v1/agents</code> listing both read the in-memory <code>AGENT_REGISTRY</code>, and the
+two have been observed disagreeing (1.99.1). The operator then <strong>adopts the
+existing agent by name</strong> and <code>PUT</code>s the rendered state onto its <code>agent_id</code>
+rather than parking the CR, incrementing
+<code>alitellm_operator_drift_corrected_total{domain=a2a,action=adopted_by_name}</code>.
+Adoption preserves the <code>agent_id</code> embedded in
+<code>agent_card_params.supportedInterfaces[].url</code> (<code>/a2a/&lt;agent_id&gt;</code>), which
+consumers may hold. A rejection the adoption cannot resolve leaves
+<code>status.lastRendered.agentID</code> intact, so the next reconcile goes back to the
+<code>PUT</code> path once LiteLLM agrees the agent exists.</p>
 <h2 id="status-what-to-read">Status: what to read<a class="headerlink" href="#status-what-to-read" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>a2a<span class="w"> </span>vendor-research-agent<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.status.lastRendered}{"\n"}'</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="c1"># {"agentCardKeys":["description","name","version"],"agentID":"&lt;uuid&gt;","at":"...","hash":"abc...","paramsKeys":["timeout"]}</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>kubectl<span class="w"> </span>get<span class="w"> </span>a2a<span class="w"> </span>vendor-research-agent<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.status.conditions[?(@.type=="Ready")]}{"\n"}'</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="c1"># {"type":"Ready","status":"True","reason":"Synced"}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>a2a<span class="w"> </span>vendor-research-agent<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.status.lastRendered}{"\n"}'</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="c1"># {"agentCardKeys":["description","name","version"],"agentID":"&lt;uuid&gt;","at":"...","hash":"abc...","paramsKeys":["timeout"]}</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>kubectl<span class="w"> </span>get<span class="w"> </span>a2a<span class="w"> </span>vendor-research-agent<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.status.conditions[?(@.type=="Ready")]}{"\n"}'</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="c1"># {"type":"Ready","status":"True","reason":"Synced"}</span>
 </code></pre></div>
 <p><code>Ready=False</code> reasons:</p>
 <ul>
