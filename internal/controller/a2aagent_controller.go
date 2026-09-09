@@ -388,6 +388,23 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			"model_info")
 	}
 
+	// (5) Unknown-key warning. spec.params is a verbatim pass-through, but
+	// only the keys LiteLLM's AgentConfig models survive serialization — the
+	// rest are dropped here and never reach the proxy. Silence on those keys
+	// reads as acceptance: `params.access_groups` looked like an access
+	// restriction for two months and enforced nothing (LiteLLM has no such
+	// AgentConfig field, and the column it does enforce on,
+	// agent_access_groups, is not settable via POST/PATCH /v1/agents at all).
+	// model_info already has its own reserved-key Event above.
+	for k := range paramsMap {
+		if k == "model_info" || litellm.IsAgentConfigKey(k) {
+			continue
+		}
+		r.Recorder.Eventf(&a2a, corev1.EventTypeWarning, eventReasonUnknownParamKey,
+			"key %q in spec.params is not a field LiteLLM's AgentConfig accepts — "+
+				"the operator drops it and LiteLLM never sees it; it has NO effect", k)
+	}
+
 	// ─── Step 7.5: Build mergedBody with structural overlays ──────────────
 	//
 	// mergedBody starts as a copy of paramsRendered (spec.params after
@@ -518,22 +535,51 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 				return ctrl.Result{RequeueAfter: recreateThrottleBackoff}, nil
 			}
 		}
-		result, err := snap.Client.CreateAgent(ctx, agentConfig)
-		if err != nil {
-			return r.classifyMutationError(ctx, &a2a, logger, err, "POST /v1/agents")
+		result, cerr := snap.Client.CreateAgent(ctx, agentConfig)
+		switch {
+		case cerr == nil:
+			newAgentID = result.AgentID
+			// Phase 3 OWN-04 + Phase 5 : suppress create_missing on the
+			// very first reconcile (ObservedGeneration == 0) — the user's initial
+			// POST is not a "drift correction". On subsequent re-creates (after a
+			// delete-and-recreate cycle OR external-vanish recovery where
+			// ObservedGeneration > 0 already), the counter DOES increment.
+			if !firstReconcile && a2a.Status.ObservedGeneration > 0 {
+				metrics.DriftCorrectedTotal.WithLabelValues("a2a", "create_missing").Inc()
+				// Record this recreate so the breaker trips on a storm.
+				r.Churn.Record(req.NamespacedName)
+			}
+			logger.V(1).Info("a2a agent created in LiteLLM", "agentID", newAgentID)
+
+		case is4xxStatus(cerr):
+			// agent_name is unique server-side: LiteLLM answers 400 "Agent with
+			// name X already exists" (endpoints.py create_agent) when the name is
+			// taken. That check reads the in-memory AGENT_REGISTRY, the same
+			// source GET /v1/agents lists from — so a create rejected on a name
+			// the LIST did NOT return means the two reads disagreed, and a CR
+			// whose id the vanish probe just cleared can never create its way
+			// back. Adopt the existing agent by name and push our rendered state
+			// onto it (mirrors the MCPToolset 409-adoption arm).
+			//
+			// Gated on is4xxStatus, which excludes Auth401Error — a 401 must
+			// still take the InvalidateOn401 fast path below.
+			adopted := r.resolveAgentIDByName(ctx, snap.Client, a2a.Name, logger)
+			if adopted == "" {
+				// Rejected for some other reason (or the name genuinely is not
+				// listed) — surface the original rejection.
+				return r.classifyMutationError(ctx, &a2a, logger, cerr, "POST /v1/agents")
+			}
+			if _, uerr := snap.Client.UpdateAgent(ctx, adopted, agentConfig); uerr != nil {
+				return r.classifyMutationError(ctx, &a2a, logger, uerr, "PUT /v1/agents/<id> (adopt)")
+			}
+			newAgentID = adopted
+			metrics.DriftCorrectedTotal.WithLabelValues("a2a", "adopted_by_name").Inc()
+			logger.Info("adopted pre-existing LiteLLM agent by name",
+				"agentID", adopted, "rejected", cerr.Error())
+
+		default:
+			return r.classifyMutationError(ctx, &a2a, logger, cerr, "POST /v1/agents")
 		}
-		newAgentID = result.AgentID
-		// Phase 3 OWN-04 + Phase 5 : suppress create_missing on the
-		// very first reconcile (ObservedGeneration == 0) — the user's initial
-		// POST is not a "drift correction". On subsequent re-creates (after a
-		// delete-and-recreate cycle OR external-vanish recovery where
-		// ObservedGeneration > 0 already), the counter DOES increment.
-		if !firstReconcile && a2a.Status.ObservedGeneration > 0 {
-			metrics.DriftCorrectedTotal.WithLabelValues("a2a", "create_missing").Inc()
-			// Record this recreate so the breaker trips on a storm.
-			r.Churn.Record(req.NamespacedName)
-		}
-		logger.V(1).Info("a2a agent created in LiteLLM", "agentID", newAgentID)
 	} else {
 		// UPDATE path — simple PUT /v1/agents/<id> (Phase 1 Probe 7 ✓;
 		// PUT IS wholesale-replace on A2A).
@@ -725,6 +771,11 @@ func (r *A2AAgentReconciler) writeStatus(
 	err := writeStatusWithRetry(ctx, r.Client, a2a, &fresh, func(f *litellmv1alpha1.LiteLLMA2AAgent) {
 		apimeta.SetStatusCondition(&f.Status.Conditions, cond)
 		f.Status.ObservedGeneration = desiredObservedGen
+		// A vanish-probe clear (Step 7b/8b) lives in memory only — never let it
+		// blank an ID already persisted. Any error path between the probe and
+		// the create would otherwise write the cleared ID through, stranding the
+		// CR with no way back to the UPDATE arm (#131).
+		desiredLastRendered.AgentID = keepPersistedID(desiredLastRendered.AgentID, f.Status.LastRendered.AgentID)
 		f.Status.LastRendered = desiredLastRendered
 	})
 	if err == nil {

@@ -103,6 +103,27 @@ most one per reconcile pass per key:
 To avoid the warnings, do not set the colliding keys in `spec.params`
 / `spec.agentCard` — let the operator stamp them.
 
+## Unknown `spec.params` keys
+
+`spec.params` is a verbatim pass-through, but only the keys LiteLLM's
+`AgentConfig` models survive serialization: `litellm_params`,
+`object_permission`, `tpm_limit`, `rpm_limit`, `session_tpm_limit`,
+`session_rpm_limit`, `static_headers`, `extra_headers` (plus the two
+operator-overlaid keys above). Anything else is dropped by the operator and
+LiteLLM never sees it — so it emits a Warning Event per unknown key:
+
+```
+Warning  UnknownParamKey  key "access_groups" in spec.params is not a field
+LiteLLM's AgentConfig accepts — the operator drops it and LiteLLM never sees
+it; it has NO effect
+```
+
+`access_groups` is the motivating case: it reads like an access restriction
+and enforces nothing. LiteLLM's `AgentConfig` has no such field, and the
+column it *does* enforce on (`LiteLLM_AgentsTable.agent_access_groups`) is
+not settable through `POST /v1/agents` or `PATCH` in 1.99.1 at all. Use
+`LiteLLMTeam.spec.permission.agents` to restrict agent access.
+
 ## Drift detection
 
 Per-reconcile SHA-256 hash over the rendered merged body (params +
@@ -110,6 +131,19 @@ agentCard + overlays). On mismatch the reconciler issues
 `PUT /v1/agents/<agentID>` (wholesale-replace per LiteLLM 1.83.10).
 Vanish-probe path: row missing → `POST /v1/agents`, re-pin `agentID`,
 increment `alitellm_operator_drift_corrected_total{domain=a2aagent,action=create_missing}`.
+
+`agent_name` is unique server-side, so that recreate can be rejected with
+`400 Agent with name <name> already exists` — LiteLLM's create-time check and
+its `GET /v1/agents` listing both read the in-memory `AGENT_REGISTRY`, and the
+two have been observed disagreeing (1.99.1). The operator then **adopts the
+existing agent by name** and `PUT`s the rendered state onto its `agent_id`
+rather than parking the CR, incrementing
+`alitellm_operator_drift_corrected_total{domain=a2a,action=adopted_by_name}`.
+Adoption preserves the `agent_id` embedded in
+`agent_card_params.supportedInterfaces[].url` (`/a2a/<agent_id>`), which
+consumers may hold. A rejection the adoption cannot resolve leaves
+`status.lastRendered.agentID` intact, so the next reconcile goes back to the
+`PUT` path once LiteLLM agrees the agent exists.
 
 ## Status: what to read
 

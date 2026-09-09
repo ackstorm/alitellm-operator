@@ -253,6 +253,10 @@ type MockServer struct {
 	// filter the operator does after GET /v1/agents
 	// perAgentMutations tracks mutation count per AgentName so envtests can
 	// assert AC-A1-style "exactly N mutations for agent X" properties.
+	// hiddenAgents are agent names omitted from GET /v1/agents while still
+	// answering the duplicate-name check on POST — reproduces the LiteLLM
+	// divergence behind #131 (LIST said absent, create said already exists).
+	hiddenAgents      map[string]struct{}
 	agents            map[string]*agentEntry // keyed by AgentID
 	agentByName       map[string]string      // AgentName → AgentID
 	agentSeq          atomic.Int64
@@ -347,6 +351,7 @@ func NewServer(t *testing.T) *MockServer {
 		mcpServers:        make(map[string]*mcpEntry),
 		mcpByName:         make(map[string]string),
 		perMCPMutations:   make(map[string]int64),
+		hiddenAgents:      make(map[string]struct{}),
 		agents:            make(map[string]*agentEntry),
 		agentByName:       make(map[string]string),
 		perAgentMutations: make(map[string]int64),
@@ -516,6 +521,7 @@ func (m *MockServer) ResetAgents() {
 	m.mu.Lock()
 	m.agents = make(map[string]*agentEntry)
 	m.agentByName = make(map[string]string)
+	m.hiddenAgents = make(map[string]struct{})
 	m.perAgentMutations = make(map[string]int64)
 	m.mu.Unlock()
 }
@@ -537,6 +543,54 @@ func (m *MockServer) AddHandManagedAgent(name string) string {
 	m.agentByName[name] = agentID
 	m.mu.Unlock()
 	return agentID
+}
+
+// HideAgentFromList omits name from GET /v1/agents while leaving it in the
+// name index that POST /v1/agents rejects duplicates against. That pairing is
+// not hypothetical: LiteLLM 1.99.1 serves the list from the in-memory
+// AGENT_REGISTRY (permission-filtered per caller, rebuilt from the DB out of
+// band) and the operator observed a LIST that omitted four agents whose names
+// the very next create still rejected as taken.
+func (m *MockServer) HideAgentFromList(name string) {
+	m.mu.Lock()
+	m.hiddenAgents[name] = struct{}{}
+	m.mu.Unlock()
+}
+
+// writeDuplicateAgentConflict answers POST /v1/agents with the real LiteLLM
+// 1.99.1 duplicate-name rejection:
+//
+//	agent_endpoints.py:421  create_agent
+//	    existing_agent = AGENT_REGISTRY.get_agent_by_name(...)
+//	    if existing_agent is not None:
+//	        raise HTTPException(status_code=400, detail=f"Agent with name ... already exists")
+//
+// Note the status is 400, NOT the 409 the toolset endpoint uses. Lives outside
+// statefulBody because the happy path writes StatusOK before statefulBody runs.
+// Gated on happy mode so the fault modes still win.
+func (m *MockServer) writeDuplicateAgentConflict(w http.ResponseWriter, r *http.Request, mode string) bool {
+	if mode != ModeHappy || r.Method != http.MethodPost || r.URL.Path != "/v1/agents" {
+		return false
+	}
+	body, _ := io.ReadAll(r.Body)
+	// Restore the body for statefulBody when this is NOT a duplicate.
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	var reqBody map[string]any
+	_ = json.Unmarshal(body, &reqBody)
+	name, _ := reqBody["agent_name"].(string)
+
+	m.mu.Lock()
+	_, dup := m.agentByName[name]
+	m.mu.Unlock()
+	if !dup {
+		return false
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusBadRequest)
+	_, _ = w.Write([]byte(fmt.Sprintf(
+		`{"detail":"Agent with name %s already exists"}`, name)))
+	return true
 }
 
 // ── MCP toolset helpers ──────────────────────────────
@@ -1331,14 +1385,18 @@ func (m *MockServer) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if m.writeDuplicateToolsetConflict(w, r, mode) {
-		return
-	}
-	if m.writeAbsentToolsetDelete500(w, r, mode) {
-		return
-	}
-	if m.writeAccessGroupResponse(w, r, mode) {
-		return
+	// Endpoints whose response needs a non-200 status code: statefulBody
+	// runs after the happy path has already written StatusOK, so these
+	// answer here instead. First writer wins.
+	for _, write := range []func(http.ResponseWriter, *http.Request, string) bool{
+		m.writeDuplicateAgentConflict,
+		m.writeDuplicateToolsetConflict,
+		m.writeAbsentToolsetDelete500,
+		m.writeAccessGroupResponse,
+	} {
+		if write(w, r, mode) {
+			return
+		}
 	}
 
 	switch mode {
@@ -1932,6 +1990,9 @@ func (m *MockServer) statefulBody(r *http.Request) []byte {
 		m.mu.Lock()
 		entries := make([]string, 0, len(m.agents))
 		for _, e := range m.agents {
+			if _, hidden := m.hiddenAgents[e.AgentName]; hidden {
+				continue
+			}
 			entries = append(entries, fmt.Sprintf(
 				`{"agent_id":%q,"agent_name":%q}`,
 				e.AgentID, e.AgentName,

@@ -165,6 +165,27 @@ func secretRefNames(secrets []litellmv1alpha1.SecretSubstitution) []string {
 	return names
 }
 
+// keepPersistedID returns want, falling back to got when want is empty.
+//
+// Every reconciler clears its tracked LiteLLM id in memory when the vanish
+// probe reports the entry gone, then falls through to the CREATE arm. If that
+// create fails deterministically — LiteLLM answers 400 "Agent with name X
+// already exists" when its own LIST omitted the row — the error path calls
+// writeStatus, which persists whatever LastRendered currently holds, i.e. the
+// cleared id. The CR then has no id at all: the vanish probe is skipped (it
+// needs an id), so every later reconcile re-runs the same doomed CREATE, and
+// the only recovery is hand-editing the status subresource (#131).
+//
+// The probe result is a hint about LiteLLM's state, not a durable fact about
+// ours. Only a successful create/adopt learns a new id, and that id is never
+// empty — so a blank overwriting a populated value is always the bug.
+func keepPersistedID(want, got string) string {
+	if want == "" {
+		return got
+	}
+	return want
+}
+
 // writeStatusWithRetry is the shared optimistic-locked status-write core used
 // by the per-controller writeStatus methods. On each attempt it re-Gets a
 // fresh copy of obj into fresh (so a 409 conflict is resolved by re-applying

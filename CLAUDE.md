@@ -1172,6 +1172,42 @@ team-scoped key against `models:["__deny_all__"]` IS rejected —
 Status code drifted upstream: **401 on 1.83.10, 403 on 1.93.0**. Assert the
 error type + sentinel echo, never the bare status code.
 
+### ❌ Persisting a vanish-probe's in-memory ID clear on an error path
+```yaml
+status:
+  lastRendered:
+    at:   "2026-07-20T11:40:00Z"   # present
+    hash: "9f2c..."                # present
+    # agentID: GONE — and nothing puts it back
+  conditions:
+  - type: Ready
+    status: "False"
+    reason: LiteLLMRejected
+    message: 'LiteLLM rejected POST /v1/agents: 400 (code=400)'
+```
+Step 7b/8b clears the tracked id IN MEMORY when the probe says the entry
+vanished, then falls through to the CREATE arm. If that create is rejected
+deterministically, the error path calls `writeStatus` — which persists whatever
+`LastRendered` currently holds, i.e. the cleared id. The CR now has no id, so
+the vanish probe (which needs one) is skipped and every later reconcile re-runs
+the same doomed CREATE. Self-perpetuating; only a hand-edit of the status
+subresource clears it. Hit in prod on v0.8.3 / LiteLLM 1.99.1: 4 of 5
+`LiteLLMA2AAgent` CRs bricked at once (#131), because `POST /v1/agents` answers
+`400 Agent with name X already exists` while `GET /v1/agents` had just omitted
+the same agent — both read LiteLLM's in-memory `AGENT_REGISTRY`, and they
+disagreed.
+✅ All seven reconcilers route `LastRendered.<Kind>ID` through
+`keepPersistedID(want, got)` inside their `writeStatus` closure — a blank never
+overwrites a populated id. Only a successful create/adopt learns a new id, and
+that is never empty, so a blank overwriting a value is always the bug. ALSO:
+the A2A CREATE arm now adopts by name on a 4xx (`resolveAgentIDByName` → `PUT`,
+metric `action=adopted_by_name`), mirroring the MCPToolset 409-adoption arm, so
+a CR already in the bricked state heals itself without a status hand-edit.
+WHY IT MATTERS BEYOND A2A: the clear-then-CREATE shape is in model, mcpserver,
+team, guardrail, mcptoolset and accessgroup too — the guard is in each
+`writeStatus`, not just the one kind that was reported. Any NEW status write
+between a probe clear and the create must not re-introduce it.
+
 ### ❌ Expecting the operator to validate `LiteLLMMCPToolset` server/tool names
 ```yaml
 spec:

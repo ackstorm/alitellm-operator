@@ -696,6 +696,11 @@ func (r *GuardRailReconciler) writeStatus(
 	err := writeStatusWithRetry(ctx, r.Client, gr, &fresh, func(f *litellmv1alpha1.LiteLLMGuardRail) {
 		apimeta.SetStatusCondition(&f.Status.Conditions, cond)
 		f.Status.ObservedGeneration = desiredObs
+		// A vanish-probe clear (Step 7b/8b) lives in memory only — never let it
+		// blank an ID already persisted. Any error path between the probe and
+		// the create would otherwise write the cleared ID through, stranding the
+		// CR with no way back to the UPDATE arm (#131).
+		desiredLR.GuardrailID = keepPersistedID(desiredLR.GuardrailID, f.Status.LastRendered.GuardrailID)
 		f.Status.LastRendered = desiredLR
 	})
 	if err == nil {

@@ -494,6 +494,11 @@ func (r *MCPToolsetReconciler) writeStatus(
 	err := writeStatusWithRetry(ctx, r.Client, ts, &fresh, func(f *litellmv1alpha1.LiteLLMMCPToolset) {
 		apimeta.SetStatusCondition(&f.Status.Conditions, cond)
 		f.Status.ObservedGeneration = desiredObservedGen
+		// A vanish-probe clear (Step 7b/8b) lives in memory only — never let it
+		// blank an ID already persisted. Any error path between the probe and
+		// the create would otherwise write the cleared ID through, stranding the
+		// CR with no way back to the UPDATE arm (#131).
+		desiredLastRendered.ToolsetID = keepPersistedID(desiredLastRendered.ToolsetID, f.Status.LastRendered.ToolsetID)
 		f.Status.LastRendered = desiredLastRendered
 	})
 	if err == nil {

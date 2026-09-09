@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"reflect"
+	"strings"
 )
 
 // CreateAgent issues POST /v1/agents.
@@ -73,4 +75,30 @@ func (c *Client) ListAgents(ctx context.Context) ([]AgentEntry, error) {
 		return nil, ErrNotFound
 	}
 	return list.Data, nil
+}
+
+// agentConfigKeys is the set of JSON keys LiteLLM's AgentConfig accepts,
+// derived from the struct tags so it cannot drift from what the operator
+// actually serializes. Anything else a user writes under
+// LiteLLMA2AAgent.spec.params is dropped on the way to LiteLLM.
+var agentConfigKeys = func() map[string]struct{} {
+	t := reflect.TypeOf(AgentConfig{})
+	keys := make(map[string]struct{}, t.NumField())
+	for i := range t.NumField() {
+		tag, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ",")
+		if tag == "" || tag == "-" {
+			continue
+		}
+		keys[tag] = struct{}{}
+	}
+	return keys
+}()
+
+// IsAgentConfigKey reports whether key is a field LiteLLM's AgentConfig
+// models. A key that is not is silently ignored by the proxy — the operator
+// warns on it rather than letting a user believe, say, an `access_groups`
+// pass-through enforces anything.
+func IsAgentConfigKey(key string) bool {
+	_, ok := agentConfigKeys[key]
+	return ok
 }

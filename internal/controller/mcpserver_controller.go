@@ -824,6 +824,11 @@ func (r *MCPServerReconciler) writeStatus(
 	err := writeStatusWithRetry(ctx, r.Client, mcp, &fresh, func(f *litellmv1alpha1.LiteLLMMCPServer) {
 		apimeta.SetStatusCondition(&f.Status.Conditions, cond)
 		f.Status.ObservedGeneration = desiredObs
+		// A vanish-probe clear (Step 7b/8b) lives in memory only — never let it
+		// blank an ID already persisted. Any error path between the probe and
+		// the create would otherwise write the cleared ID through, stranding the
+		// CR with no way back to the UPDATE arm (#131).
+		desiredLR.ServerID = keepPersistedID(desiredLR.ServerID, f.Status.LastRendered.ServerID)
 		f.Status.LastRendered = desiredLR
 	})
 	if err == nil {

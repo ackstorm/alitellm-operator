@@ -586,6 +586,11 @@ func (r *AccessGroupReconciler) writeStatus(
 	err := writeStatusWithRetry(ctx, r.Client, ag, &fresh, func(f *litellmv1alpha1.LiteLLMAccessGroup) {
 		apimeta.SetStatusCondition(&f.Status.Conditions, cond)
 		f.Status.ObservedGeneration = desiredObservedGen
+		// A vanish-probe clear (Step 7b/8b) lives in memory only — never let it
+		// blank an ID already persisted. Any error path between the probe and
+		// the create would otherwise write the cleared ID through, stranding the
+		// CR with no way back to the UPDATE arm (#131).
+		desiredLastRendered.AccessGroupID = keepPersistedID(desiredLastRendered.AccessGroupID, f.Status.LastRendered.AccessGroupID)
 		f.Status.LastRendered = desiredLastRendered
 	})
 	if err == nil {
