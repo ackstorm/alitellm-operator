@@ -22,3 +22,12 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: prod
+---
+# CAT-01: the OpenCode catalog ConfigMap is written HERE, not in the operator's
+# release namespace — the only e2e path that exercises the cross-namespace
+# write (uncached client + chart Role/RoleBinding). Must exist before the
+# operator helm install, which creates the Role in it.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: e2e-catalog
