@@ -132,6 +132,7 @@ alitellm-operator/
 | Docs site, mkdocs, mike, gh-pages flow | `references/docs/documentation.md`       |
 | CI / PR / release lifecycle (push/PR matrix) | `references/docs/workflow.md`        |
 | Access groups / team attachment         | `docs/user-guide/access-group.md` (two disjoint namespaces + the only-ADD bypass) |
+| Model aliases / OpenCode catalog        | `docs/user-guide/model-alias.md` (aggregate map + the catalog ConfigMap) |
 | OLM packaging                          | NOT supported — explicit scope decision (no OperatorHub) |
 
 ## CI gating — one-line summary
@@ -1350,6 +1351,51 @@ survives our updates untouched. `assigned_key_ids` is additionally out of scope:
 an agent-permission collapse was measured on the ACH platform in production (NOT
 re-verified here) when a KEY carries both a team and a group with differing agent
 lists — the effective set becomes every agent on the proxy.
+
+### ❌ Writing a ConfigMap outside `WATCH_NAMESPACE` with the manager client
+```go
+// modelalias reconcile, catalog ConfigMap in the SERVING namespace
+controllerutil.CreateOrUpdate(ctx, r.Client, cm, mutate)
+// Error: unable to get: alitellm-auth/opencode-catalog because of
+// unknown namespace for the cache
+```
+✅ Use a non-caching client for that object:
+```go
+// cmd/main.go
+catalogWriter, _ := client.New(mgr.GetConfig(), client.Options{Scheme: mgr.GetScheme()})
+// reconciler
+controllerutil.CreateOrUpdate(ctx, r.CatalogWriter, cm, mutate)
+```
+WHY IT FAILS: `cache.Options.DefaultNamespaces` scopes the manager cache to the
+single `WATCH_NAMESPACE` (SCOPE-04). `CreateOrUpdate` issues a **Get** first,
+which goes through that cache, so an object in any other namespace fails
+**client-side** — it is not a 403, and no RBAC grant fixes it. Writes always go
+straight to the apiserver; only the read is cached. Any NEW cross-namespace
+object the operator touches needs the same treatment.
+
+### ❌ Cutting an alitellm-auth release with `make release-cut` alone
+```bash
+make release-cut VERSION=0.7.2   # empty commit + push
+# chart 0.7.2 ships with image.tag "v0.7.1"
+```
+Symptom: the release tags and publishes fine, chart `version` and `appVersion`
+are correct, but the Deployment keeps running the PREVIOUS image. Code that
+landed in the new image is simply absent in the cluster with no error anywhere
+— observed as `/public/opencode/api.json` returning 404 while its volume was
+correctly mounted.
+✅ Bump the manifests first, and make that the release commit:
+```bash
+make release-bump VERSION=0.7.3
+git commit -am 'chore(release): v0.7.3'
+git push origin main
+```
+WHY: the two repos have DIFFERENT release flows behind the same target names.
+THIS repo's `release.yml` runs `make release-bump` itself and commits the
+result, so an empty release commit is correct here. `alitellm-auth`'s
+`release.yml` does NOT — it expects the release commit to already carry the
+bumped `Chart.yaml`, `values.yaml` (`image.tag`), `pyproject.toml` and
+`main.py`. `make release-cut` creates an *empty* commit in both repos, so in
+alitellm-auth it publishes a chart pinned to the previous image tag.
 
 ## Repository-specific patterns
 
