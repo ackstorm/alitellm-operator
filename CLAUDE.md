@@ -484,6 +484,24 @@ timeout 600 docker logs -f $cid 2>&1 | grep -m1 -E "PASS|FAIL" || {
 WHY IT FAILS: When the container exits and is removed, `docker ps -q`
 returns empty; `docker logs` errors forever; the loop never exits.
 
+### ❌ `kubectl wait pod --all` right after `kubectl apply`
+```bash
+kubectl apply -k test/e2e/cluster/03-mocks
+kubectl -n mocks wait --for=condition=Ready pod --all --timeout=60s
+# error: no matching resources found      ← exit 1 in 0.6s, no waiting
+```
+✅ `rollout status` on each Deployment FIRST (blessed pattern 2), then the
+pod wait — `make wait-mocks` and `scripts/cluster.sh wait_mocks` both do this:
+```bash
+kubectl -n mocks rollout status deploy/openai-mock --timeout=60s
+kubectl -n mocks rollout status deploy/kubeai-mock --timeout=60s
+kubectl -n mocks wait --for=condition=Ready pod --all --timeout=60s
+```
+WHY IT FAILS: `wait --all` with ZERO matching objects does not wait — it
+fails instantly. Right after `apply` the ReplicaSet may not have created a
+pod yet, so the race is real (flaked PR #127's E2E; green on rerun).
+`rollout status` targets the Deployment, which exists from the apply.
+
 ### ❌ Enterprise-only LiteLLM fields on OSS image
 ```yaml
 spec:
