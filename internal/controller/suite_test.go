@@ -737,6 +737,17 @@ func setupAndRun(m *testing.M) int {
 	// All CR events coalesce onto sentinel work-key ModelAliasSingletonKey,
 	// so the envtest suite sees one HTTP write per reconcile pass regardless
 	// of how many CRs change in the window.
+	// The OpenCode catalog is ON for the whole suite so the ConfigMap write
+	// path runs on every alias reconcile. The writer is uncached (as in
+	// cmd/main.go) and wrapped in catalogTestWriter, the seam the
+	// CatalogWriteFailed test uses to redirect the write at a namespace
+	// that does not exist — r.Catalog itself is read by the reconcile
+	// goroutine, so mutating it from a test would be a data race.
+	uncached, err := client.New(cfg, client.Options{Scheme: mgr.GetScheme()})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "uncached catalog client: %v\n", err)
+		return 1
+	}
 	modelAliasReconciler := &ModelAliasReconciler{
 		Client:            mgr.GetClient(),
 		Scheme:            mgr.GetScheme(),
@@ -745,6 +756,8 @@ func setupAndRun(m *testing.M) int {
 		Namespace:         WatchNamespace,
 		Log:               logr.Discard(),
 		ConnectionRebuilt: connCache.Subscribe(),
+		Catalog:           suiteCatalogConfig,
+		CatalogWriter:     catalogTestWriter{Client: uncached},
 	}
 	if err := modelAliasReconciler.SetupWithManager(mgr); err != nil {
 		fmt.Fprintf(os.Stderr, "SetupWithManager(ModelAlias): %v\n", err)
