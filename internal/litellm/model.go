@@ -182,3 +182,35 @@ func (c *Client) GetModelIDsByName(ctx context.Context, name string) ([]string, 
 	}
 	return ids, nil
 }
+
+// ListModelInfo returns EVERY row LiteLLM lists at GET /model/info, with no
+// model_name filter. LiteLLM expands router_settings.model_group_alias into
+// real rows here (a deepcopy of the target deployment with model_name swapped
+// to the alias), so both real deployments and aliases appear.
+//
+// Used by the OpenCode catalog renderer, which needs the whole set in one
+// call. Per-name resolution stays on GetModelInfoByName / GetModelIDsByName —
+// OWN-01 forbids a global LIST-and-prune on the reconcile paths.
+//
+// Error handling mirrors GetModelInfoByName: 401 → typed *Auth401Error
+// propagated; 404 OR empty data[] → (nil, nil), not an error.
+//
+// §9.1: only the status code is logged — no response body content.
+func (c *Client) ListModelInfo(ctx context.Context) ([]ModelInfoResponse, error) {
+	raw, err := c.makeRequest(ctx, "GET", "/model/info", nil)
+	if err != nil {
+		var auth401 *Auth401Error
+		if errors.As(err, &auth401) {
+			return nil, err
+		}
+		if IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var list ModelListResponse
+	if err := json.Unmarshal(raw, &list); err != nil {
+		return nil, fmt.Errorf("litellm: decode GET /model/info: %w", err)
+	}
+	return list.Data, nil
+}
