@@ -746,7 +746,11 @@ wait-litellm: ## Wait LiteLLM Deployment Ready (bounded).
 	$(E2E_KUBECTL) -n litellm-system rollout status deploy/litellm --timeout=$(WAIT_TIMEOUT)
 
 .PHONY: wait-mocks
-wait-mocks: ## Wait all mock Pods Ready (bounded).
+wait-mocks: ## Wait all mock Deployments rolled out + Pods Ready (bounded).
+	@# rollout status first: `wait pod --all` with ZERO pods exits 1 instantly
+	@# ("no matching resources found") — a race right after `kubectl apply`.
+	$(E2E_KUBECTL) -n mocks rollout status deploy/openai-mock --timeout=$(WAIT_TIMEOUT)
+	$(E2E_KUBECTL) -n mocks rollout status deploy/kubeai-mock --timeout=$(WAIT_TIMEOUT)
 	$(E2E_KUBECTL) -n mocks wait --for=condition=Ready --timeout=$(WAIT_TIMEOUT) pod --all
 
 .PHONY: wait-container

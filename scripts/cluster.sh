@@ -125,6 +125,16 @@ install_litellm() {
   rm -rf "${tmpdir}"
 }
 
+# `wait pod --all` with ZERO pods exits 1 instantly ("no matching resources
+# found") — right after `kubectl apply` the ReplicaSet may not have created any
+# yet. `rollout status` waits on the Deployment itself, so it closes that race.
+wait_mocks() {
+  local t="$1"
+  kubectl -n mocks rollout status deploy/openai-mock --timeout="${t}"
+  kubectl -n mocks rollout status deploy/kubeai-mock --timeout="${t}"
+  kubectl -n mocks wait --for=condition=Ready pod --all --timeout="${t}"
+}
+
 install_mocks() {
   echo "[cluster.sh] building + loading litellm-mock:e2e..."
   make build-image-mock
@@ -132,7 +142,7 @@ install_mocks() {
 
   echo "[cluster.sh] applying openai-mock + kubeai-mock (03-mocks phase)..."
   kubectl apply -k test/e2e/cluster/03-mocks
-  kubectl -n mocks wait --for=condition=Ready pod --all --timeout=60s
+  wait_mocks 60s
 }
 
 install_operator() {
@@ -209,7 +219,7 @@ cmd_verify() {
   echo "[cluster.sh] verify: litellm..."
   kubectl -n litellm-system  rollout status deploy/litellm           --timeout="${t}"
   echo "[cluster.sh] verify: mocks..."
-  kubectl -n mocks wait --for=condition=Ready pod --all              --timeout="${t}"
+  wait_mocks "${t}"
   echo "[cluster.sh] verify: operator..."
   kubectl -n default rollout status deploy/alitellm-operator          --timeout="${t}"
   echo "[cluster.sh] verify: connection seam..."
