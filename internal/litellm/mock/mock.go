@@ -408,6 +408,19 @@ func (m *MockServer) ResetRecorded() {
 	m.mu.Unlock()
 }
 
+// SeedModel registers a model row with the given model_info blob without a
+// POST /model/new round-trip, so a test can stand up a catalog TARGET
+// (mode, supports_vision, ...) without a LiteLLMModel CR.
+func (m *MockServer) SeedModel(name string, info map[string]any) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.models[name] = &modelEntry{
+		ModelID:   fmt.Sprintf("seed-%s-%d", name, m.modelSeq.Add(1)),
+		ModelName: name,
+	}
+	m.lastModelInfo[name] = info
+}
+
 // ResetModels clears the in-memory model store. Call between tests that
 // need a clean slate for GET /model/info responses.
 func (m *MockServer) ResetModels() {
@@ -1636,12 +1649,20 @@ func (m *MockServer) statefulBody(r *http.Request) []byte {
 			}
 			return []byte(fmt.Sprintf(`{"data":[%s]}`, strings.Join(rows, ",")))
 		}
-		// No filter — return all models.
+		// No filter — return all models. Like LiteLLM, the unfiltered list
+		// carries the persisted model_info blob (mode, supports_vision, ...)
+		// from POST /model/new, which the ModelAlias catalog renderer reads.
 		var entries []string
 		for _, e := range m.models {
+			info := map[string]any{}
+			for k, v := range m.lastModelInfo[e.ModelName] {
+				info[k] = v
+			}
+			info["id"] = e.ModelID
+			infoJSON, _ := json.Marshal(info)
 			entries = append(entries, fmt.Sprintf(
-				`{"model_id":%q,"model_name":%q,"litellm_params":{},"model_info":{"id":%q}}`,
-				e.ModelID, e.ModelName, e.ModelID,
+				`{"model_id":%q,"model_name":%q,"litellm_params":{},"model_info":%s}`,
+				e.ModelID, e.ModelName, infoJSON,
 			))
 		}
 		return []byte(fmt.Sprintf(`{"data":[%s]}`, strings.Join(entries, ",")))
