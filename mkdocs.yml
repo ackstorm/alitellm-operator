@@ -19,6 +19,7 @@ nav:
     - LiteLLMMCPServerDiscovery: user-guide/mcp-server-discovery.md
     - LiteLLMMCPToolset: user-guide/mcp-toolset.md
     - LiteLLMModelDiscovery: user-guide/model-discovery.md
+    - LiteLLMModelAlias: user-guide/model-alias.md
     - LiteLLMGuardRail: user-guide/guardrail.md
     - LiteLLMAccessGroup: user-guide/access-group.md
   - Concepts:
