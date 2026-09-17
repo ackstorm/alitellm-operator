@@ -63,6 +63,41 @@ func (m ModelInfo) MarshalJSON() ([]byte, error) {
 	return json.Marshal(merged)
 }
 
+// UnmarshalJSON is the inverse of MarshalJSON: typed fields decode normally
+// and every remaining key lands in Extra. Without it Extra stays nil on
+// decode and all the model_info capability flags (supports_vision,
+// supports_pdf_input, max_input_tokens, ...) are dropped — the catalog
+// renderer reads exactly those. Typed keys are removed from Extra so a
+// decode→encode round-trip does not emit them twice.
+func (m *ModelInfo) UnmarshalJSON(data []byte) error {
+	type alias ModelInfo // shed the custom unmarshaler to avoid recursion
+	var typed alias
+	if err := json.Unmarshal(data, &typed); err != nil {
+		return err
+	}
+	*m = ModelInfo(typed)
+
+	var all map[string]any
+	if err := json.Unmarshal(data, &all); err != nil {
+		return err
+	}
+	for _, k := range modelInfoTypedKeys {
+		delete(all, k)
+	}
+	if len(all) > 0 {
+		m.Extra = all
+	}
+	return nil
+}
+
+// modelInfoTypedKeys lists the json tags of every typed ModelInfo field.
+// Keep in sync with the struct — a missed key becomes a duplicated field
+// on re-marshal.
+var modelInfoTypedKeys = []string{
+	"id", "db_model", "updated_at", "updated_by", "created_at",
+	"created_by", "base_model", "tier", "team_id", "team_public_model_name",
+}
+
 // Deployment is the POST /model/new request body.
 type Deployment struct {
 	ModelName     string        `json:"model_name"`

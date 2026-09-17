@@ -71,3 +71,48 @@ func TestModelInfo_MarshalJSON_TypedFieldWinsOverExtra(t *testing.T) {
 		t.Errorf("created_by: want operator (typed wins), got %v", got["created_by"])
 	}
 }
+
+func TestModelInfoUnmarshalPopulatesExtra(t *testing.T) {
+	const raw = `{"id":"abc","supports_vision":true,"max_input_tokens":1048576}`
+
+	var mi ModelInfo
+	if err := json.Unmarshal([]byte(raw), &mi); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if mi.ID != "abc" {
+		t.Errorf("ID = %q, want abc", mi.ID)
+	}
+	if mi.Extra["supports_vision"] != true {
+		t.Errorf("Extra[supports_vision] = %v, want true", mi.Extra["supports_vision"])
+	}
+	// Typed fields must NOT be duplicated into Extra — MarshalJSON would then
+	// emit them twice.
+	if _, dup := mi.Extra["id"]; dup {
+		t.Error("Extra must not carry the typed `id` key")
+	}
+}
+
+func TestModelInfoUnmarshalMarshalRoundTrip(t *testing.T) {
+	const raw = `{"id":"abc","created_by":"alitellm-operator","supports_vision":true}`
+
+	var mi ModelInfo
+	if err := json.Unmarshal([]byte(raw), &mi); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	b, err := json.Marshal(mi)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatalf("unmarshal round-trip: %v", err)
+	}
+	if got["id"] != "abc" || got["created_by"] != "alitellm-operator" || got["supports_vision"] != true {
+		t.Errorf("round-trip lost fields: %s", b)
+	}
+	// No key must appear duplicated — json.Unmarshal into a map would not
+	// show a duplicate anyway, so assert field count matches exactly.
+	if len(got) != 3 {
+		t.Errorf("round-trip: want 3 keys, got %d: %s", len(got), b)
+	}
+}
