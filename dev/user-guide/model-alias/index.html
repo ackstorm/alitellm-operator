@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://ackstorm.github.io/alitellm-operator/dev/user-guide/guardrail/">
+        <link rel="canonical" href="https://ackstorm.github.io/alitellm-operator/dev/user-guide/model-alias/">
       
       
-        <link rel="prev" href="../model-alias/">
+        <link rel="prev" href="../model-discovery/">
       
       
-        <link rel="next" href="../access-group/">
+        <link rel="next" href="../guardrail/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>LiteLLMGuardRail - alitellm-operator</title>
+        <title>LiteLLMModelAlias - alitellm-operator</title>
       
     
     
@@ -78,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#litellmguardrail" class="md-skip">
+        <a href="#litellmmodelalias" class="md-skip">
           Skip to content
         </a>
       
@@ -116,7 +116,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              LiteLLMGuardRail
+              LiteLLMModelAlias
             
           </span>
         </div>
@@ -888,34 +888,6 @@
                 
   
   
-  
-  
-    <li class="md-nav__item">
-      <a href="../model-alias/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    LiteLLMModelAlias
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
     
   
   
@@ -935,7 +907,7 @@
   <span class="md-ellipsis">
     
   
-    LiteLLMGuardRail
+    LiteLLMModelAlias
   
 
     
@@ -953,7 +925,7 @@
   <span class="md-ellipsis">
     
   
-    LiteLLMGuardRail
+    LiteLLMModelAlias
   
 
     
@@ -990,22 +962,33 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#validated-providers" class="md-nav__link">
+  <a href="#one-map-many-crs" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Validated providers
+        One map, many CRs
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Validated providers">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#opencode-catalog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OpenCode catalog
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="OpenCode catalog">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#litellm_content_filter-on-device-patterns-blocked-words" class="md-nav__link">
+  <a href="#what-ends-up-in-it" class="md-nav__link">
     <span class="md-ellipsis">
       
-        litellm_content_filter — on-device patterns + blocked words
+        What ends up in it
       
     </span>
   </a>
@@ -1013,21 +996,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#aporia-hosted-policy-enforcement" class="md-nav__link">
+  <a href="#things-worth-knowing" class="md-nav__link">
     <span class="md-ellipsis">
       
-        aporia — hosted policy enforcement
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#bedrockguardrail-aws-managed-guardrail-wrapper" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        bedrock/guardrail — AWS-managed guardrail wrapper
+        Things worth knowing
       
     </span>
   </a>
@@ -1039,54 +1011,38 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#opt-in-vs-defaulton" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Opt-in vs defaultOn
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#pools-multiple-crs-same-guardrailname" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Pools (multiple CRs, same guardrailName)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#operational-notes" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Operational notes
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#see-also" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        See also
-      
-    </span>
-  </a>
-  
-</li>
-      
     </ul>
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guardrail/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMGuardRail
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -1688,22 +1644,33 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#validated-providers" class="md-nav__link">
+  <a href="#one-map-many-crs" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Validated providers
+        One map, many CRs
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Validated providers">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#opencode-catalog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OpenCode catalog
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="OpenCode catalog">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#litellm_content_filter-on-device-patterns-blocked-words" class="md-nav__link">
+  <a href="#what-ends-up-in-it" class="md-nav__link">
     <span class="md-ellipsis">
       
-        litellm_content_filter — on-device patterns + blocked words
+        What ends up in it
       
     </span>
   </a>
@@ -1711,21 +1678,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#aporia-hosted-policy-enforcement" class="md-nav__link">
+  <a href="#things-worth-knowing" class="md-nav__link">
     <span class="md-ellipsis">
       
-        aporia — hosted policy enforcement
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#bedrockguardrail-aws-managed-guardrail-wrapper" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        bedrock/guardrail — AWS-managed guardrail wrapper
+        Things worth knowing
       
     </span>
   </a>
@@ -1734,50 +1690,6 @@
         
       </ul>
     </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#opt-in-vs-defaulton" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Opt-in vs defaultOn
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#pools-multiple-crs-same-guardrailname" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Pools (multiple CRs, same guardrailName)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#operational-notes" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Operational notes
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#see-also" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        See also
-      
-    </span>
-  </a>
   
 </li>
       
@@ -1801,21 +1713,11 @@
   
 
 
-<h1 id="litellmguardrail">LiteLLMGuardRail<a class="headerlink" href="#litellmguardrail" title="Permanent link">&para;</a></h1>
-<p>Content filter / DLP guardrails registered against LiteLLM's
-<code>/v2/guardrails</code> HTTP surface. Use them to block credential leaks (AWS
-keys, GitHub PATs), mask PII before it reaches an upstream provider,
-or filter the model's response before it returns to the caller.</p>
-<p>The CR shape mirrors LiteLLM's native guardrail payload. The operator
-adds the usual conveniences of the other kinds:</p>
-<ul>
-<li>Secret substitution via <code>spec.secrets[]</code> and <code>{{NAME}}</code> placeholders
-  in <code>spec.params</code> (Aporia API keys, Bedrock AWS creds, etc.).</li>
-<li>SHA-256 spec hash drives steady-state vs PUT — no needless mutations.</li>
-<li>Vanish-probe + safety re-list recover from out-of-band DELETEs in
-  LiteLLM (admin UI, curl, disk reset).</li>
-<li>Finalizer drains the LiteLLM row when the CR is removed.</li>
-</ul>
+<h1 id="litellmmodelalias">LiteLLMModelAlias<a class="headerlink" href="#litellmmodelalias" title="Permanent link">&para;</a></h1>
+<p>An <strong>alias</strong> is a stable, human-chosen name that points at a real LiteLLM
+model. <code>ackstorm.smart</code> today may resolve to <code>gemini.gemini-pro-latest</code> and
+tomorrow to something else; callers keep using <code>ackstorm.smart</code>. Projected into
+<code>router_settings.model_group_alias</code> via <code>POST /config/update</code>.</p>
 <h2 id="quick-reference">Quick reference<a class="headerlink" href="#quick-reference" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -1827,202 +1729,94 @@ adds the usual conveniences of the other kinds:</p>
 </thead>
 <tbody>
 <tr>
-<td><code>spec.guardrailName</code></td>
+<td><code>spec.aliases[].name</code></td>
 <td>yes</td>
-<td>The LiteLLM-side guardrail identifier; opt-in callers reference this name.</td>
+<td>The name clients send to LiteLLM. Cluster-wide unique across ALL alias CRs.</td>
 </tr>
 <tr>
-<td><code>spec.provider</code></td>
+<td><code>spec.aliases[].value</code></td>
 <td>yes</td>
-<td><code>litellm_content_filter</code> (on-device, no upstream), <code>aporia</code>, <code>bedrock/guardrail</code>, <code>presidio</code>, etc.</td>
-</tr>
-<tr>
-<td><code>spec.mode</code></td>
-<td>yes</td>
-<td><code>[pre_call]</code> (filter prompt), <code>[post_call]</code> (filter response), or both.</td>
-</tr>
-<tr>
-<td><code>spec.defaultOn</code></td>
-<td>no</td>
-<td>When <code>true</code> the guardrail applies to every request without per-key / per-team opt-in. Default <code>false</code>.</td>
-</tr>
-<tr>
-<td><code>spec.params</code></td>
-<td>yes</td>
-<td>Free-form pass-through bag. Operator forwards verbatim after substitution.</td>
-</tr>
-<tr>
-<td><code>spec.info</code></td>
-<td>no</td>
-<td><code>guardrail_info</code> metadata (description, surfaced params).</td>
-</tr>
-<tr>
-<td><code>spec.secrets[]</code></td>
-<td>no</td>
-<td>Secret-substitution bindings: <code>{as, secretRef: {name, key}}</code> resolved into <code>{{NAME}}</code> placeholders inside <code>spec.params</code>.</td>
+<td>The LiteLLM <code>model_name</code> (or model group) it resolves to. Forwarded verbatim.</td>
 </tr>
 </tbody>
 </table>
-<p>After <code>kubectl apply</code>, expect:</p>
-<ul>
-<li><code>status.conditions[type=Ready].status=True</code> / <code>reason=Synced</code>.</li>
-<li><code>status.lastRendered.guardrailID</code> populated with the LiteLLM-assigned UUID.</li>
-<li><code>status.lastRendered.definitionLocation="db"</code> (operator-addressable).
-  <code>"config"</code> indicates the row was loaded from LiteLLM's proxy config
-  file and is <strong>NOT</strong> mutable via the HTTP CRUD API; the operator
-  will refuse to mutate such rows (reason
-  <code>ConflictsWithConfigGuardrail</code>).</li>
-</ul>
-<h2 id="validated-providers">Validated providers<a class="headerlink" href="#validated-providers" title="Permanent link">&para;</a></h2>
-<h3 id="litellm_content_filter-on-device-patterns-blocked-words"><code>litellm_content_filter</code> — on-device patterns + blocked words<a class="headerlink" href="#litellm_content_filter-on-device-patterns-blocked-words" title="Permanent link">&para;</a></h3>
-<p>No upstream provider call; matching happens inside the LiteLLM proxy.
-Cheapest + zero-credential option. Covers the dominant DLP / leak-
-prevention patterns.</p>
-<p><strong>BLOCK example — credential filter</strong></p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">litellm.ackstorm.ai/v1alpha1</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">LiteLLMGuardRail</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">LiteLLMModelAlias</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nt">metadata</span><span class="p">:</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">credential-filter</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">default</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ackstorm-aliases</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">litellm-system</span>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="nt">guardrailName</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">credential-filter</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">  </span><span class="nt">provider</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">litellm_content_filter</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">  </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">pre_call</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">  </span><span class="nt">defaultOn</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">    </span><span class="nt">patterns</span><span class="p">:</span>
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> pattern_type</span><span class="p">:</span><span class="w"> </span><span class="nv">prebuilt</span><span class="p p-Indicator">,</span><span class="nt"> pattern_name</span><span class="p">:</span><span class="w"> </span><span class="nv">aws_access_key</span><span class="p p-Indicator">,</span><span class="nt"> action</span><span class="p">:</span><span class="w"> </span><span class="nv">BLOCK</span><span class="w"> </span><span class="p p-Indicator">}</span>
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> pattern_type</span><span class="p">:</span><span class="w"> </span><span class="nv">prebuilt</span><span class="p p-Indicator">,</span><span class="nt"> pattern_name</span><span class="p">:</span><span class="w"> </span><span class="nv">github_token</span><span class="p p-Indicator">,</span><span class="nt">   action</span><span class="p">:</span><span class="w"> </span><span class="nv">BLOCK</span><span class="w"> </span><span class="p p-Indicator">}</span>
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> pattern_type</span><span class="p">:</span><span class="w"> </span><span class="nv">regex</span><span class="p p-Indicator">,</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">gh_pat_strict</span><span class="p p-Indicator">,</span><span class="nt"> pattern</span><span class="p">:</span><span class="w"> </span><span class="s">'ghp_[A-Za-z0-9]{36}'</span><span class="p p-Indicator">,</span><span class="nt"> action</span><span class="p">:</span><span class="w"> </span><span class="nv">BLOCK</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="nt">aliases</span><span class="p">:</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ackstorm.smart</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">      </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">gemini.gemini-pro-latest</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ackstorm.fast</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">      </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">gemini.gemini-flash-latest</span>
 </code></pre></div>
-<p>A prompt containing <code>ghp_&lt;36-hex&gt;</code> returns HTTP 403:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">"error"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="nt">"message"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Content blocked: gh_pat_strict pattern detected"</span><span class="p">,</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="nt">"code"</span><span class="p">:</span><span class="w"> </span><span class="s2">"403"</span><span class="p">,</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="nt">"provider_specific_fields"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">      </span><span class="nt">"guardrail_name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"credential-filter"</span><span class="p">,</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">      </span><span class="nt">"pattern"</span><span class="p">:</span><span class="w"> </span><span class="s2">"gh_pat_strict"</span><span class="p">,</span>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">      </span><span class="nt">"guardrail_mode"</span><span class="p">:</span><span class="w"> </span><span class="s2">"pre_call"</span>
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">    </span><span class="p">}</span>
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">  </span><span class="p">}</span>
-<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="p">}</span>
+<h2 id="one-map-many-crs">One map, many CRs<a class="headerlink" href="#one-map-many-crs" title="Permanent link">&para;</a></h2>
+<p>Every <code>LiteLLMModelAlias</code> in the cluster is aggregated into a single
+<code>model_group_alias</code> map, so all CR events coalesce onto one reconcile and
+produce ONE write to LiteLLM per debounce window.</p>
+<p>Because the map has one slot per name, two CRs declaring the same alias name
+conflict. The winner is decided alphabetically-last on
+<code>(namespace, name, array index)</code>; losers report <code>Ready=False</code> with
+<code>reason=AliasConflict</code> and name the winner in <code>status.aliasStatuses[]</code>. See
+<a href="../../concepts/conflict-resolution/">Conflict Resolution</a>.</p>
+<p><code>applied: true</code> on an entry means the operator successfully wrote it into
+LiteLLM — <strong>not</strong> that the value resolves to a real model. An alias pointing at
+a name LiteLLM does not know is written happily and fails only at call time.</p>
+<h2 id="opencode-catalog">OpenCode catalog<a class="headerlink" href="#opencode-catalog" title="Permanent link">&para;</a></h2>
+<p>Clients like <a href="https://opencode.ai">OpenCode</a> do not read model capabilities
+from the proxy. They look the model id up in their own catalog
+(<a href="https://models.dev">models.dev</a>) and fall back to defaults when it is absent
+— and an alias like <code>ackstorm.smart</code> is in nobody's catalog. The symptom is a
+model that works but is advertised as text-only: no image, audio or PDF attach,
+sometimes no tool calling, even though LiteLLM reports all of it correctly.</p>
+<p>The operator can close that gap by rendering the alias set into a catalog
+document and writing it to a ConfigMap, for a static file server to publish.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Helm values</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nt">opencodeCatalog</span><span class="p">:</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="c1"># Namespace the ConfigMap is written to — normally the namespace of the</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span><span class="c1"># service that will MOUNT it, since a ConfigMap can only be mounted by a pod</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="c1"># in its own namespace.</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">alitellm-auth</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">opencode-catalog</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">  </span><span class="c1"># The PUBLIC LiteLLM URL clients reach. The operator cannot derive this: its</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">  </span><span class="c1"># own endpoint is the in-cluster Service.</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">  </span><span class="nt">apiBase</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://api.example.com/v1</span>
 </code></pre></div>
-<p><strong>MASK example — PII pre-call</strong></p>
-<p>Rewrites email + Spanish mobile numbers in the prompt before reaching
-the model. The model receives <code>[EMAIL_REDACTED]</code> / <code>[PHONE_ES_REDACTED]</code>
-tokens; the response goes back unchanged.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">guardrailName</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">pii-masker</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span><span class="nt">provider</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">litellm_content_filter</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">pre_call</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span><span class="nt">defaultOn</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">    </span><span class="nt">patterns</span><span class="p">:</span>
-<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> pattern_type</span><span class="p">:</span><span class="w"> </span><span class="nv">regex</span><span class="p p-Indicator">,</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">email</span><span class="p p-Indicator">,</span><span class="nt">    pattern</span><span class="p">:</span><span class="w"> </span><span class="s">'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'</span><span class="p p-Indicator">,</span><span class="nt"> action</span><span class="p">:</span><span class="w"> </span><span class="nv">MASK</span><span class="w"> </span><span class="p p-Indicator">}</span>
-<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> pattern_type</span><span class="p">:</span><span class="w"> </span><span class="nv">regex</span><span class="p p-Indicator">,</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">phone_es</span><span class="p p-Indicator">,</span><span class="nt"> pattern</span><span class="p">:</span><span class="w"> </span><span class="s">'\b(?:\+34\s?)?[6789]\d{2}\s?\d{3}\s?\d{3}\b'</span><span class="p p-Indicator">,</span><span class="nt">     action</span><span class="p">:</span><span class="w"> </span><span class="nv">MASK</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<p>The ConfigMap holds one key, <code>api.json</code>. Serve it so that it lands at
+<code>&lt;base&gt;/api.json</code>, then point clients at the base:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">OPENCODE_MODELS_URL</span><span class="o">=</span>https://platform.example.com/public/opencode
 </code></pre></div>
-<p><strong>Keyword example — mixed BLOCK + MASK</strong></p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="nt">blocked_words</span><span class="p">:</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> keyword</span><span class="p">:</span><span class="w"> </span><span class="s">"topsecret"</span><span class="p p-Indicator">,</span><span class="nt">     action</span><span class="p">:</span><span class="w"> </span><span class="nv">BLOCK</span><span class="w"> </span><span class="p p-Indicator">}</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> keyword</span><span class="p">:</span><span class="w"> </span><span class="s">"classified"</span><span class="p p-Indicator">,</span><span class="nt">    action</span><span class="p">:</span><span class="w"> </span><span class="nv">BLOCK</span><span class="w"> </span><span class="p p-Indicator">}</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> keyword</span><span class="p">:</span><span class="w"> </span><span class="s">"internal-only"</span><span class="p p-Indicator">,</span><span class="nt"> action</span><span class="p">:</span><span class="w"> </span><span class="nv">MASK</span><span class="w"> </span><span class="p p-Indicator">}</span>
-</code></pre></div>
-<p><strong>Response-side example — <code>mode: [post_call]</code></strong></p>
-<p>Runs against the model's output rather than the prompt. Useful when
-the model itself might leak PII generated by an upstream tool call
-(RAG, function calling), regardless of what the user typed.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">guardrailName</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">response-pii-filter</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span><span class="nt">provider</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">litellm_content_filter</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">post_call</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">  </span><span class="nt">defaultOn</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">    </span><span class="nt">patterns</span><span class="p">:</span>
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> pattern_type</span><span class="p">:</span><span class="w"> </span><span class="nv">regex</span><span class="p p-Indicator">,</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">ssn_us</span><span class="p p-Indicator">,</span><span class="nt">      pattern</span><span class="p">:</span><span class="w"> </span><span class="s">'\b\d{3}-\d{2}-\d{4}\b'</span><span class="p p-Indicator">,</span><span class="nt">                 action</span><span class="p">:</span><span class="w"> </span><span class="nv">MASK</span><span class="w"> </span><span class="p p-Indicator">}</span>
-<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> pattern_type</span><span class="p">:</span><span class="w"> </span><span class="nv">regex</span><span class="p p-Indicator">,</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">credit_card</span><span class="p p-Indicator">,</span><span class="nt"> pattern</span><span class="p">:</span><span class="w"> </span><span class="s">'\b\d{4}[\s-]\d{4}[\s-]\d{4}[\s-]\d{4}\b'</span><span class="p p-Indicator">,</span><span class="nt"> action</span><span class="p">:</span><span class="w"> </span><span class="nv">BLOCK</span><span class="w"> </span><span class="p p-Indicator">}</span>
-</code></pre></div>
-<p>When the model emits <code>123-45-6789</code> the response is rewritten to
-<code>[SSN_US_REDACTED]</code> before reaching the caller. A credit-card-shape
-output returns HTTP 403 with <code>guardrail_mode: post_call</code> in the
-error envelope.</p>
-<h3 id="aporia-hosted-policy-enforcement"><code>aporia</code> — hosted policy enforcement<a class="headerlink" href="#aporia-hosted-policy-enforcement" title="Permanent link">&para;</a></h3>
-<p>External provider — requires an Aporia tenant + API key supplied via
-a Kubernetes Secret. The operator resolves the <code>{{APORIA_API_KEY}}</code>
-placeholder before the body reaches LiteLLM; secret material is never
-stored in the CR's spec, logs, or status.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="nt">guardrailName</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">aporia-pre</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span><span class="nt">provider</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">aporia</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">  </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">pre_call</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">    </span><span class="nt">api_base</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://gr-prd-dc.aporia.com</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">    </span><span class="nt">api_key</span><span class="p">:</span><span class="w"> </span><span class="s">"{{APORIA_API_KEY}}"</span>
-<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="w">    </span><span class="nt">project_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">prod-eu</span>
-<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="w">  </span><span class="nt">secrets</span><span class="p">:</span>
-<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">as</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">APORIA_API_KEY</span>
-<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="w">      </span><span class="nt">secretRef</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">aporia-credentials</span><span class="p p-Indicator">,</span><span class="nt"> key</span><span class="p">:</span><span class="w"> </span><span class="nv">APORIA_API_KEY</span><span class="w"> </span><span class="p p-Indicator">}</span>
-</code></pre></div>
-<h3 id="bedrockguardrail-aws-managed-guardrail-wrapper"><code>bedrock/guardrail</code> — AWS-managed guardrail wrapper<a class="headerlink" href="#bedrockguardrail-aws-managed-guardrail-wrapper" title="Permanent link">&para;</a></h3>
-<p>The operator does NOT provision the AWS-side guardrail; it only wires
-LiteLLM to call AWS's guardrail evaluation API for an existing
-<code>guardrailIdentifier</code> you registered out-of-band.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="nt">guardrailName</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bedrock-pii</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span><span class="nt">provider</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bedrock/guardrail</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">post_call</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">    </span><span class="nt">guardrailIdentifier</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">gr-XXXXXXXX</span>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">    </span><span class="nt">guardrailVersion</span><span class="p">:</span><span class="w">    </span><span class="s">"DRAFT"</span>
-<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">    </span><span class="nt">aws_region_name</span><span class="p">:</span><span class="w">     </span><span class="l l-Scalar l-Scalar-Plain">us-east-1</span>
-<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">    </span><span class="nt">aws_access_key_id</span><span class="p">:</span><span class="w">     </span><span class="s">"{{AWS_ACCESS_KEY_ID}}"</span>
-<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">    </span><span class="nt">aws_secret_access_key</span><span class="p">:</span><span class="w"> </span><span class="s">"{{AWS_SECRET_ACCESS_KEY}}"</span>
-<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="w">  </span><span class="nt">secrets</span><span class="p">:</span>
-<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">as</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">AWS_ACCESS_KEY_ID</span>
-<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="w">      </span><span class="nt">secretRef</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">aws-credentials</span><span class="p p-Indicator">,</span><span class="nt"> key</span><span class="p">:</span><span class="w"> </span><span class="nv">AWS_ACCESS_KEY_ID</span><span class="w"> </span><span class="p p-Indicator">}</span>
-<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">as</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">AWS_SECRET_ACCESS_KEY</span>
-<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="w">      </span><span class="nt">secretRef</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">aws-credentials</span><span class="p p-Indicator">,</span><span class="nt"> key</span><span class="p">:</span><span class="w"> </span><span class="nv">AWS_SECRET_ACCESS_KEY</span><span class="w"> </span><span class="p p-Indicator">}</span>
-</code></pre></div>
-<h2 id="opt-in-vs-defaulton">Opt-in vs <code>defaultOn</code><a class="headerlink" href="#opt-in-vs-defaulton" title="Permanent link">&para;</a></h2>
-<p><code>defaultOn: true</code> applies the guardrail to every request through the
-proxy — the blanket DLP floor. Per-request opt-in lives on the
-<strong>LiteLLMVirtualKey</strong> / <strong>LiteLLMTeam</strong> side (LiteLLM Enterprise
-runtime feature; not modeled by this operator's CRDs today). When you
-need per-key granularity, configure it via the key/team metadata
-directly on the LiteLLM side.</p>
-<h2 id="pools-multiple-crs-same-guardrailname">Pools (multiple CRs, same <code>guardrailName</code>)<a class="headerlink" href="#pools-multiple-crs-same-guardrailname" title="Permanent link">&para;</a></h2>
-<p>Multiple CRs declaring the same <code>spec.guardrailName</code> form a load-balance
-pool — LiteLLM round-robins calls across the rows. The operator
-enforces provider homogeneity inside a pool: a mismatched
-<code>spec.provider</code> between sibling CRs surfaces
-<code>status.conditions[Ready].reason=PoolProviderMismatch</code> rather than
-silently corrupting routing. <code>status.lastRendered.poolSize</code> reflects
-the current sibling count.</p>
-<h2 id="operational-notes">Operational notes<a class="headerlink" href="#operational-notes" title="Permanent link">&para;</a></h2>
-<ul>
-<li><strong>Out-of-band DELETE recovery</strong>: the GuardRail safety re-list (30m
-  in production, 100ms in envtests) periodically re-enqueues every CR.
-  The reconciler's Step 8.6 existence probe detects rows that vanished
-  in LiteLLM and falls through to CREATE, incrementing
-  <code>alitellm_operator_drift_corrected_total{domain=guardrail,action=create_missing}</code>.</li>
-<li><strong>Config-loaded rows</strong>: if a guardrail with the same <code>guardrailName</code>
-  was loaded from LiteLLM's config YAML, the operator REFUSES to
-  mutate it (<code>ConflictsWithConfigGuardrail</code>). Either rename the CR's
-  <code>guardrailName</code> or remove the row from the config file and re-apply
-  the CR.</li>
-<li><strong>Reserved structural keys</strong>: keys like <code>guardrail</code>, <code>mode</code>,
-  <code>default_on</code>, <code>policy_template</code>, <code>guardrail_name</code> are stamped from
-  the typed CR spec and stripped from <code>spec.params</code> at decode time
-  (the operator emits a <code>ReservedKeyStripped</code> Warning event so the
-  drop is auditable).</li>
-</ul>
-<h2 id="see-also">See also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
-<ul>
-<li><a href="https://github.com/ackstorm/alitellm-operator/tree/main/examples/example-deploy/08-guardrail.yaml">Examples on GitHub</a></li>
-<li><a href="../../api-reference/litellm.ackstorm.ai/#litellmguardrail">API Reference: LiteLLMGuardRail</a></li>
-</ul>
+<p>Users can then delete their hand-written provider block entirely — <code>npm</code>, <code>api</code>
+and <code>env</code> all come from the catalog.</p>
+<h3 id="what-ends-up-in-it">What ends up in it<a class="headerlink" href="#what-ends-up-in-it" title="Permanent link">&para;</a></h3>
+<p>Every alias whose target resolves to a <code>mode: chat</code> model. Embeddings, tts,
+stt, image generation and routers are dropped: OpenCode cannot drive them, so
+they would be dead rows in its picker. An alias whose target LiteLLM does not
+know is dropped too.</p>
+<p>Capabilities are read from the <strong>target's</strong> <code>model_info</code>, not the alias's —
+<code>supports_vision</code> → <code>attachment</code> plus the <code>image</code> modality, <code>supports_pdf_input</code>
+→ <code>pdf</code>, and so on. Per-token prices are converted to the per-million figures
+models.dev expects.</p>
+<h3 id="things-worth-knowing">Things worth knowing<a class="headerlink" href="#things-worth-knowing" title="Permanent link">&para;</a></h3>
+<p><strong>The catalog replaces the upstream one, it does not merge.</strong> While a client
+points at it, that client sees <em>only</em> this provider — anthropic, openai and the
+rest disappear from its picker. That is the intent for a proxy-only setup; if
+it is not yours, serve a catalog that includes the upstream document.</p>
+<p><strong>Updates are not instant, by design.</strong> An alias edit reaches a client through
+the ConfigMap, the kubelet's volume sync (~60s) and the client's own cache. A
+client typically only re-reads at startup. Nothing here is built to be fast,
+because aliases change rarely.</p>
+<p><strong>A catalog failure never affects your aliases.</strong> The write happens after the
+aliases are already in LiteLLM, so a ConfigMap problem emits a Warning Event
+(<code>CatalogWriteFailed</code>) and leaves <code>Ready</code> alone. Check events on the CR, not
+the condition.</p>
+<p><strong>Cross-namespace writes need RBAC.</strong> When <code>opencodeCatalog.namespace</code> differs
+from the release namespace, the chart adds a Role and RoleBinding scoped to it.
+No ClusterRoleBinding is created — the operator does not gain cluster-wide
+ConfigMap write for the sake of one file.</p>
 
 
 
