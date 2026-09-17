@@ -116,10 +116,10 @@ func TestRenderOpenCodeCatalogProviderFields(t *testing.T) {
 func TestRenderOpenCodeCatalogDropsNonChatAndUnresolvable(t *testing.T) {
 	desired := map[string]string{
 		"ackstorm.smart":  catalogTestTarget,
-		"ackstorm.tts":    "openai.gpt-4o-mini-tts",  // mode audio_speech
-		"ackstorm.embed":  "gemini.embedding-001",    // mode embedding
-		"ackstorm.router": "ackstorm.router-target",  // routers report no mode
-		"ackstorm.ghost":  "gemini.does-not-exist",   // absent from /model/info
+		"ackstorm.tts":    "openai.gpt-4o-mini-tts", // mode audio_speech
+		"ackstorm.embed":  "gemini.embedding-001",   // mode embedding
+		"ackstorm.router": "ackstorm.router-target", // routers report no mode
+		"ackstorm.ghost":  "gemini.does-not-exist",  // absent from /model/info
 	}
 	rows := []litellm.ModelInfoResponse{
 		chatRow(),
