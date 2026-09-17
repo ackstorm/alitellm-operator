@@ -108,8 +108,8 @@ func TestRenderOpenCodeCatalogProviderFields(t *testing.T) {
 	if prov["npm"] != "@ai-sdk/openai-compatible" {
 		t.Errorf("npm = %v", prov["npm"])
 	}
-	if env := prov["env"].([]any); len(env) != 1 || env[0] != "LITELLM_API_KEY" {
-		t.Errorf("env = %v", env)
+	if env := prov["env"].([]any); len(env) != 0 {
+		t.Errorf("env = %v, want empty", env)
 	}
 }
 
@@ -178,9 +178,9 @@ func TestRenderOpenCodeCatalogEmptyIsValid(t *testing.T) {
 
 func TestCatalogConfigFromEnv(t *testing.T) {
 	for _, tc := range []struct {
-		name, cm, api string
-		want          CatalogConfig
-		wantErr       bool
+		name, cm, api, filters string
+		want                   CatalogConfig
+		wantErr                bool
 	}{
 		{name: "disabled when unset"},
 		{
@@ -192,6 +192,22 @@ func TestCatalogConfigFromEnv(t *testing.T) {
 				APIBase:            "https://api.example.com/v1",
 			},
 		},
+		{
+			name:    "with filters json",
+			cm:      "alitellm-auth/opencode-catalog",
+			api:     "https://api.example.com/v1",
+			filters: `{"include":["^ackstorm\\..*"],"exclude":[".*legacy$"]}`,
+			want: CatalogConfig{
+				ConfigMapNamespace: "alitellm-auth",
+				ConfigMapName:      "opencode-catalog",
+				APIBase:            "https://api.example.com/v1",
+				Filters: &CatalogFilters{
+					Include: []string{`^ackstorm\..*`},
+					Exclude: []string{`.*legacy$`},
+				},
+			},
+		},
+		{name: "invalid filters json rejected", cm: "alitellm-auth/opencode-catalog", api: "x", filters: "{invalid", wantErr: true},
 		{name: "bare name rejected", cm: "opencode-catalog", api: "x", wantErr: true},
 		{name: "empty namespace rejected", cm: "/opencode-catalog", api: "x", wantErr: true},
 		{name: "too many segments rejected", cm: "a/b/c", api: "x", wantErr: true},
@@ -200,6 +216,7 @@ func TestCatalogConfigFromEnv(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv(catalogEnvConfigMap, tc.cm)
 			t.Setenv(catalogEnvAPIBase, tc.api)
+			t.Setenv(catalogEnvFilters, tc.filters)
 			got, err := CatalogConfigFromEnv()
 			if tc.wantErr {
 				if err == nil {
@@ -210,12 +227,81 @@ func TestCatalogConfigFromEnv(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if got != tc.want {
+			if got.ConfigMapNamespace != tc.want.ConfigMapNamespace ||
+				got.ConfigMapName != tc.want.ConfigMapName ||
+				got.APIBase != tc.want.APIBase {
 				t.Errorf("got %+v, want %+v", got, tc.want)
+			}
+			if tc.want.Filters == nil && got.Filters != nil {
+				t.Errorf("got filters %+v, want nil", got.Filters)
+			}
+			if tc.want.Filters != nil {
+				if got.Filters == nil {
+					t.Fatalf("got nil filters, want %+v", tc.want.Filters)
+				}
+				if len(got.Filters.Include) != len(tc.want.Filters.Include) ||
+					len(got.Filters.Exclude) != len(tc.want.Filters.Exclude) {
+					t.Errorf("got filters %+v, want %+v", got.Filters, tc.want.Filters)
+				}
 			}
 			if got.Enabled() != (tc.want.ConfigMapName != "") {
 				t.Errorf("Enabled() = %v for %+v", got.Enabled(), got)
 			}
 		})
+	}
+}
+
+func TestRenderOpenCodeCatalogFilters(t *testing.T) {
+	desired := map[string]string{
+		"ackstorm.smart":   catalogTestTarget,
+		"ackstorm.fast":    catalogTestTarget,
+		"ackstorm.legacy":  catalogTestTarget,
+		"othercorp.claude": catalogTestTarget,
+	}
+	rows := []litellm.ModelInfoResponse{chatRow()}
+
+	// Filter: include ^ackstorm\., exclude .*legacy$
+	cfg := CatalogConfig{
+		APIBase: "https://api.example.com/v1",
+		Filters: &CatalogFilters{
+			Include: []string{`^ackstorm\..*`},
+			Exclude: []string{`.*legacy$`},
+		},
+	}
+
+	raw, err := RenderOpenCodeCatalog(desired, rows, cfg)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	models := decodeCatalog(t, raw)
+
+	if _, ok := models["ackstorm.smart"]; !ok {
+		t.Errorf("ackstorm.smart should be included")
+	}
+	if _, ok := models["ackstorm.fast"]; !ok {
+		t.Errorf("ackstorm.fast should be included")
+	}
+	if _, ok := models["ackstorm.legacy"]; ok {
+		t.Errorf("ackstorm.legacy should be excluded")
+	}
+	if _, ok := models["othercorp.claude"]; ok {
+		t.Errorf("othercorp.claude should not match include filter")
+	}
+}
+
+func TestRenderOpenCodeCatalogFiltersInvalidRegex(t *testing.T) {
+	desired := map[string]string{"ackstorm.smart": catalogTestTarget}
+	rows := []litellm.ModelInfoResponse{chatRow()}
+
+	cfg := CatalogConfig{
+		APIBase: "https://api.example.com/v1",
+		Filters: &CatalogFilters{
+			Include: []string{`[unclosed`},
+		},
+	}
+
+	_, err := RenderOpenCodeCatalog(desired, rows, cfg)
+	if err == nil {
+		t.Fatalf("expected error on invalid regex, got nil")
 	}
 }

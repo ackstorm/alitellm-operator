@@ -806,6 +806,10 @@ spec:
           value: {{ printf "%s/%s" (required "opencodeCatalog.namespace is required when opencodeCatalog.enabled" .Values.opencodeCatalog.namespace) .Values.opencodeCatalog.name | quote }}
         - name: OPENCODE_CATALOG_API_BASE
           value: {{ required "opencodeCatalog.apiBase is required when opencodeCatalog.enabled" .Values.opencodeCatalog.apiBase | quote }}
+        {{- if .Values.opencodeCatalog.filters }}
+        - name: OPENCODE_CATALOG_FILTERS
+          value: {{ toJson .Values.opencodeCatalog.filters | quote }}
+        {{- end }}
         {{- end }}
         {{- range .Values.extraEnv }}
         - name: {{ .name }}

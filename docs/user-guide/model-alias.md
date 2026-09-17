@@ -66,6 +66,11 @@ opencodeCatalog:
   # The PUBLIC LiteLLM URL clients reach. The operator cannot derive this: its
   # own endpoint is the in-cluster Service.
   apiBase: https://api.example.com/v1
+  # Optional filters to restrict which alias names are rendered into the catalog.
+  filters:
+    include:
+      - "^ackstorm\\..*"
+    exclude: []
 ```
 
 The ConfigMap holds one key, `api.json`. Serve it so that it lands at

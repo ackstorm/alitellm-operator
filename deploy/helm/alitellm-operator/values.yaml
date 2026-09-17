@@ -179,3 +179,10 @@ opencodeCatalog:
   # The operator cannot derive this: its own endpoint is the in-cluster
   # Service. Required when enabled.
   apiBase: ""
+  # Optional filters to restrict which alias names are rendered into api.json.
+  # If filters.include is non-empty, an alias must match at least one regex.
+  # If an alias matches any filters.exclude regex, it is dropped.
+  # filters:
+  #   include:
+  #     - "^ackstorm\\..*"
+  #   exclude: []

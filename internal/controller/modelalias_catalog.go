@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -42,6 +43,10 @@ const (
 	// operator cannot derive it — its own endpoint is the in-cluster Service.
 	catalogEnvAPIBase = "OPENCODE_CATALOG_API_BASE"
 
+	// catalogEnvFilters optionally configures JSON include/exclude patterns
+	// to filter which alias names are rendered into the catalog.
+	catalogEnvFilters = "OPENCODE_CATALOG_FILTERS"
+
 	// costPerMillion converts LiteLLM's per-token prices to the
 	// per-million-token prices models.dev expects.
 	costPerMillion = 1e6
@@ -64,6 +69,12 @@ var catalogModalities = []struct {
 	{"supports_video_input", "video"},
 }
 
+// CatalogFilters specifies include/exclude regex patterns for alias names.
+type CatalogFilters struct {
+	Include []string `json:"include,omitempty"`
+	Exclude []string `json:"exclude,omitempty"`
+}
+
 // CatalogConfig is the operator-level OpenCode catalog configuration.
 type CatalogConfig struct {
 	// ConfigMapNamespace / ConfigMapName address the ConfigMap the rendered
@@ -74,6 +85,8 @@ type CatalogConfig struct {
 	ConfigMapName      string
 	// APIBase is the public LiteLLM base URL, e.g. https://api.example.com/v1.
 	APIBase string
+	// Filters optionally narrows which aliases are rendered into the catalog.
+	Filters *CatalogFilters
 }
 
 // Enabled reports whether catalog generation is configured.
@@ -98,7 +111,56 @@ func CatalogConfigFromEnv() (CatalogConfig, error) {
 		return CatalogConfig{}, fmt.Errorf(
 			"%s is required when %s is set", catalogEnvAPIBase, catalogEnvConfigMap)
 	}
-	return CatalogConfig{ConfigMapNamespace: ns, ConfigMapName: name, APIBase: apiBase}, nil
+
+	var filters *CatalogFilters
+	if rawFilters := strings.TrimSpace(os.Getenv(catalogEnvFilters)); rawFilters != "" {
+		var f CatalogFilters
+		if err := json.Unmarshal([]byte(rawFilters), &f); err != nil {
+			return CatalogConfig{}, fmt.Errorf("%s must be valid JSON: %w", catalogEnvFilters, err)
+		}
+		filters = &f
+	}
+
+	return CatalogConfig{
+		ConfigMapNamespace: ns,
+		ConfigMapName:      name,
+		APIBase:            apiBase,
+		Filters:            filters,
+	}, nil
+}
+
+// filterAlias returns true if alias matches include/exclude filters.
+// If filters is nil or empty, all aliases pass.
+func (f *CatalogFilters) filterAlias(alias string) (bool, error) {
+	if f == nil {
+		return true, nil
+	}
+	if len(f.Include) > 0 {
+		matched := false
+		for _, pat := range f.Include {
+			re, err := regexp.Compile(pat)
+			if err != nil {
+				return false, fmt.Errorf("catalog filter include %q: %w", pat, err)
+			}
+			if re.MatchString(alias) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false, nil
+		}
+	}
+	for _, pat := range f.Exclude {
+		re, err := regexp.Compile(pat)
+		if err != nil {
+			return false, fmt.Errorf("catalog filter exclude %q: %w", pat, err)
+		}
+		if re.MatchString(alias) {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 // RenderOpenCodeCatalog renders the aggregate alias map into an OpenCode
@@ -127,6 +189,15 @@ func RenderOpenCodeCatalog(
 
 	models := map[string]any{}
 	for alias, target := range desired {
+		if cfg.Filters != nil {
+			pass, err := cfg.Filters.filterAlias(alias)
+			if err != nil {
+				return nil, err
+			}
+			if !pass {
+				continue
+			}
+		}
 		info, ok := byName[target]
 		if !ok {
 			continue
@@ -143,7 +214,7 @@ func RenderOpenCodeCatalog(
 			"name":   "ACKSTORM",
 			"npm":    "@ai-sdk/openai-compatible",
 			"api":    cfg.APIBase,
-			"env":    []string{"LITELLM_API_KEY"},
+			"env":    []string{},
 			"models": models,
 		},
 	}
