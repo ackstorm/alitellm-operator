@@ -22,6 +22,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -644,6 +645,28 @@ func main() {
 	// produce ONE HTTP write per debounce window. No field indexer and no
 	// safety-relist Runnable — periodic resync is handled inside Reconcile
 	// via the RequeueAfter return.
+	// OpenCode catalog: the ConfigMap normally lives in the SERVING
+	// namespace, not WATCH_NAMESPACE, so it needs a client that bypasses the
+	// manager cache (which is scoped to WATCH_NAMESPACE and would fail the
+	// CreateOrUpdate Get with "unknown namespace for the cache").
+	// A half-configured catalog is fatal here rather than a silent no-op:
+	// someone turned it on and is waiting for a file to appear.
+	catalogCfg, err := controller.CatalogConfigFromEnv()
+	if err != nil {
+		setupLog.Error(err, "invalid OpenCode catalog configuration")
+		os.Exit(1)
+	}
+	var catalogWriter client.Client
+	if catalogCfg.Enabled() {
+		catalogWriter, err = client.New(mgr.GetConfig(), client.Options{Scheme: mgr.GetScheme()})
+		if err != nil {
+			setupLog.Error(err, "unable to build uncached client for the OpenCode catalog")
+			os.Exit(1)
+		}
+		setupLog.Info("OpenCode catalog enabled",
+			"configMap", catalogCfg.ConfigMapNamespace+"/"+catalogCfg.ConfigMapName)
+	}
+
 	if err := (&controller.ModelAliasReconciler{
 		Client:            mgr.GetClient(),
 		Scheme:            mgr.GetScheme(),
@@ -652,6 +675,8 @@ func main() {
 		Namespace:         watchNS,
 		Log:               ctrl.Log.WithName("controller").WithName("ModelAlias"),
 		ConnectionRebuilt: connCache.Subscribe(),
+		Catalog:           catalogCfg,
+		CatalogWriter:     catalogWriter,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to set up ModelAlias reconciler")
 		os.Exit(1)

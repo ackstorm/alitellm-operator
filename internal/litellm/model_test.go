@@ -606,3 +606,88 @@ func TestDeleteModel_EmptyIDGuard(t *testing.T) {
 		t.Errorf("error %q does not mention empty model_id", err.Error())
 	}
 }
+
+// TestListModelInfoReturnsAllRows — the OpenCode catalog renderer needs the
+// WHOLE deployment set in one call, unlike GetModelInfoByName /
+// GetModelIDsByName (per-name resolution, OWN-01). Asserts the request path
+// carries no model_name filter and that decoded rows keep Extra capability
+// flags (Task 1's ModelInfo.UnmarshalJSON).
+func TestListModelInfoReturnsAllRows(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.RequestURI()
+		_, _ = io.WriteString(w, `{"data":[
+			{"model_name":"a","model_info":{"id":"1","supports_vision":true}},
+			{"model_name":"b","model_info":{"id":"2"}}
+		]}`)
+	}))
+	defer srv.Close()
+
+	rows, err := newTestClient(t, srv.URL).ListModelInfo(context.Background())
+	if err != nil {
+		t.Fatalf("ListModelInfo: %v", err)
+	}
+	if gotPath != "/model/info" {
+		t.Errorf("path = %q, want /model/info (no query)", gotPath)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("len(rows) = %d, want 2", len(rows))
+	}
+	if rows[0].ModelInfo.Extra["supports_vision"] != true {
+		t.Error("capability flags did not survive decode")
+	}
+}
+
+// TestListModelInfoEmptyDataIsNotAnError — empty data[] is a valid "no
+// deployments yet" state, not an error condition.
+func TestListModelInfoEmptyDataIsNotAnError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"data":[]}`)
+	}))
+	defer srv.Close()
+
+	rows, err := newTestClient(t, srv.URL).ListModelInfo(context.Background())
+	if err != nil {
+		t.Fatalf("empty data must not error: %v", err)
+	}
+	if len(rows) != 0 {
+		t.Errorf("len(rows) = %d, want 0", len(rows))
+	}
+}
+
+// TestListModelInfo_401 — 401 propagates as a typed *Auth401Error so the
+// caller can invoke Cache.InvalidateOn401, matching GetModelInfoByName.
+func TestListModelInfo_401(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(401)
+		_, _ = w.Write([]byte(litellmAuth401Body))
+	}))
+	defer srv.Close()
+
+	rows, err := newTestClient(t, srv.URL).ListModelInfo(context.Background())
+	if rows != nil {
+		t.Errorf("ListModelInfo: want nil rows on 401, got %+v", rows)
+	}
+	var a *Auth401Error
+	if !errors.As(err, &a) {
+		t.Errorf("ListModelInfo: want *Auth401Error on 401, got %T: %v", err, err)
+	}
+}
+
+// TestListModelInfo_404ReturnsNilNil — a 404 from /model/info means no
+// deployments exist yet, matching GetModelInfoByName's (nil, nil) contract.
+func TestListModelInfo_404ReturnsNilNil(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(404)
+		_, _ = w.Write([]byte(`{"error":{"message":"model not found","type":"not_found","param":null,"code":"404"}}`))
+	}))
+	defer srv.Close()
+
+	rows, err := newTestClient(t, srv.URL).ListModelInfo(context.Background())
+	if err != nil {
+		t.Fatalf("ListModelInfo: want (nil, nil) on 404, got error: %v", err)
+	}
+	if rows != nil {
+		t.Errorf("ListModelInfo: want nil rows on 404, got %+v", rows)
+	}
+}
