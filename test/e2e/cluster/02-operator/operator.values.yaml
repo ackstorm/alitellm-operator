@@ -24,3 +24,13 @@ resources:
   requests:
     cpu: 50m
     memory: 64Mi
+
+# CAT-01: OpenCode catalog written to a DIFFERENT namespace than the release
+# (production shape: operator in one namespace, ConfigMap where it is served).
+# The chart adds a Role + RoleBinding in e2e-catalog; without them the write
+# is a 403. Namespace is created by the 00-namespaces phase.
+opencodeCatalog:
+  enabled: true
+  namespace: e2e-catalog
+  name: opencode-catalog
+  apiBase: http://litellm.litellm-system.svc.cluster.local:4000/v1
