@@ -73,14 +73,14 @@ func TestModelInfo_MarshalJSON_TypedFieldWinsOverExtra(t *testing.T) {
 }
 
 func TestModelInfoUnmarshalPopulatesExtra(t *testing.T) {
-	const raw = `{"id":"abc","supports_vision":true,"max_input_tokens":1048576}`
+	const raw = `{"id":"info-1","supports_vision":true,"max_input_tokens":1048576}`
 
 	var mi ModelInfo
 	if err := json.Unmarshal([]byte(raw), &mi); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if mi.ID != "abc" {
-		t.Errorf("ID = %q, want abc", mi.ID)
+	if mi.ID != "info-1" {
+		t.Errorf("ID = %q, want info-1", mi.ID)
 	}
 	if mi.Extra["supports_vision"] != true {
 		t.Errorf("Extra[supports_vision] = %v, want true", mi.Extra["supports_vision"])
@@ -93,7 +93,7 @@ func TestModelInfoUnmarshalPopulatesExtra(t *testing.T) {
 }
 
 func TestModelInfoUnmarshalMarshalRoundTrip(t *testing.T) {
-	const raw = `{"id":"abc","created_by":"alitellm-operator","supports_vision":true}`
+	const raw = `{"id":"info-1","created_by":"alitellm-operator","supports_vision":true}`
 
 	var mi ModelInfo
 	if err := json.Unmarshal([]byte(raw), &mi); err != nil {
@@ -107,7 +107,7 @@ func TestModelInfoUnmarshalMarshalRoundTrip(t *testing.T) {
 	if err := json.Unmarshal(b, &got); err != nil {
 		t.Fatalf("unmarshal round-trip: %v", err)
 	}
-	if got["id"] != "abc" || got["created_by"] != "alitellm-operator" || got["supports_vision"] != true {
+	if got["id"] != "info-1" || got["created_by"] != "alitellm-operator" || got["supports_vision"] != true {
 		t.Errorf("round-trip lost fields: %s", b)
 	}
 	// No key must appear duplicated — json.Unmarshal into a map would not
