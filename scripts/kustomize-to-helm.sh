@@ -151,7 +151,7 @@ content = '---\n'.join(_result_cr08)
 # substituted by step 1 above).
 content = content.replace(
     '        command:\n        - /alitellm-operator\n        image: {{ .Values.image.repo }}:{{ .Values.image.tag }}',
-    '        command:\n        - /alitellm-operator\n        env:\n        - name: WATCH_NAMESPACE\n          value: {{ .Values.watchNamespace | default .Release.Namespace }}\n        {{- range .Values.extraEnv }}\n        - name: {{ .name }}\n          value: {{ .value | quote }}\n        {{- end }}\n        image: {{ .Values.image.repo }}:{{ .Values.image.tag }}',
+    '        command:\n        - /alitellm-operator\n        env:\n        - name: WATCH_NAMESPACE\n          value: {{ .Values.watchNamespace | default .Release.Namespace }}\n        {{- if .Values.opencodeCatalog.enabled }}\n        - name: OPENCODE_CATALOG_CONFIGMAP\n          value: {{ printf "%s/%s" (required "opencodeCatalog.namespace is required when opencodeCatalog.enabled" .Values.opencodeCatalog.namespace) .Values.opencodeCatalog.name | quote }}\n        - name: OPENCODE_CATALOG_API_BASE\n          value: {{ required "opencodeCatalog.apiBase is required when opencodeCatalog.enabled" .Values.opencodeCatalog.apiBase | quote }}\n        {{- end }}\n        {{- range .Values.extraEnv }}\n        - name: {{ .name }}\n          value: {{ .value | quote }}\n        {{- end }}\n        image: {{ .Values.image.repo }}:{{ .Values.image.tag }}',
 )
 
 # ─── Substitution 6 (Tier 2 A5): resources block templated from .Values.resources

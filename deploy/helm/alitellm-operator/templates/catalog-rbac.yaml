@@ -1,0 +1,54 @@
+{{- if .Values.opencodeCatalog.enabled }}
+{{- $ns := required "opencodeCatalog.namespace is required when opencodeCatalog.enabled" .Values.opencodeCatalog.namespace }}
+{{- if ne $ns .Release.Namespace }}
+# Hand-written template (templates/install.yaml is generated from kustomize by
+# `make helm-sync` and cannot carry this).
+#
+# The operator writes the OpenCode catalog ConfigMap into the namespace of the
+# service that MOUNTS it — a ConfigMap can only be mounted by a pod in its own
+# namespace — which is not the namespace the generated RBAC binds. This grants
+# ConfigMap write on that one namespace, and nothing else: a Role + RoleBinding
+# local to it, never a ClusterRoleBinding, so the operator does not gain
+# cluster-wide ConfigMap write for the sake of one file.
+#
+# Skipped when the catalog namespace IS the release namespace — the generated
+# manager Role already covers it.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ .Release.Name }}-catalog-writer
+  namespace: {{ $ns }}
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Release.Name }}-catalog-writer
+  namespace: {{ $ns }}
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ .Release.Name }}-catalog-writer
+subjects:
+- kind: ServiceAccount
+  name: alitellm-operator
+  namespace: {{ .Release.Namespace }}
+{{- end }}
+{{- end }}

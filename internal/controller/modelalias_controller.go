@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -54,6 +55,7 @@ const (
 	modelAliasResyncPeriod = 15 * time.Minute
 )
 
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups=litellm.ackstorm.ai,resources=litellmmodelaliases,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=litellm.ackstorm.ai,resources=litellmmodelaliases/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=litellm.ackstorm.ai,resources=litellmmodelaliases/finalizers,verbs=update
@@ -73,6 +75,14 @@ type ModelAliasReconciler struct {
 	// ConnectionRebuilt — see GuardRailReconciler.ConnectionRebuilt
 	// (issue #44 cache-population race close). nil-safe.
 	ConnectionRebuilt <-chan event.GenericEvent
+	// Catalog configures the OpenCode model catalog output. Zero value
+	// (Enabled() false) disables it and the reconcile is unchanged.
+	Catalog CatalogConfig
+	// CatalogWriter writes the catalog ConfigMap. It MUST be an uncached
+	// client: the manager cache is scoped to WATCH_NAMESPACE, so a cached
+	// Get for a ConfigMap in the serving namespace fails client-side with
+	// "unknown namespace for the cache", which no RBAC grant can fix.
+	CatalogWriter client.Client
 }
 
 // Reconcile implements the ModelAlias aggregate state machine.
@@ -148,6 +158,19 @@ func (r *ModelAliasReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	if err := r.writePerCRStatuses(ctx, list.Items, agg, logger); err != nil {
 		return ctrl.Result{}, err
+	}
+
+	// The catalog is derived state of the same aggregate, and the write is
+	// BEST-EFFORT: the alias write to LiteLLM already succeeded above, so a
+	// ConfigMap failure must NOT flip Ready — that would blame the aliases
+	// for a secondary artifact and send whoever debugs it to the wrong place.
+	// It surfaces as a Warning Event and retries on the next pass (CR event,
+	// Connection recovery, or the resync below).
+	if r.Catalog.Enabled() {
+		if err := r.writeCatalogConfigMap(ctx, agg, cli); err != nil {
+			logger.Error(err, "OpenCode catalog ConfigMap write failed (aliases unaffected)")
+			r.recordCatalogFailure(list.Items, err)
+		}
 	}
 
 	if err := r.stripDeletingFinalizers(ctx, list.Items); err != nil {
@@ -370,4 +393,21 @@ func (r *ModelAliasReconciler) connectionToSingleton(ctx context.Context, obj cl
 		return nil
 	}
 	return []reconcile.Request{{NamespacedName: types.NamespacedName{Namespace: r.Namespace, Name: ModelAliasSingletonKey}}}
+}
+
+// recordCatalogFailure emits the Warning Event for a failed catalog write.
+// A reconcile with zero alias CRs still runs, and an Event needs an object
+// to attach to, so this no-ops when there is nothing to attach it to — the
+// log line in the caller is the record in that case.
+func (r *ModelAliasReconciler) recordCatalogFailure(
+	items []litellmv1alpha1.LiteLLMModelAlias,
+	cause error,
+) {
+	for i := range items {
+		if items[i].DeletionTimestamp.IsZero() {
+			r.Recorder.Eventf(&items[i], corev1.EventTypeWarning,
+				"CatalogWriteFailed", "OpenCode catalog not written: %v", cause)
+			return
+		}
+	}
 }

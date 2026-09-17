@@ -58,6 +58,17 @@ rules:
 - apiGroups:
   - ""
   resources:
+  - configmaps
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
   - events
   verbs:
   - create
@@ -790,6 +801,12 @@ spec:
         env:
         - name: WATCH_NAMESPACE
           value: {{ .Values.watchNamespace | default .Release.Namespace }}
+        {{- if .Values.opencodeCatalog.enabled }}
+        - name: OPENCODE_CATALOG_CONFIGMAP
+          value: {{ printf "%s/%s" (required "opencodeCatalog.namespace is required when opencodeCatalog.enabled" .Values.opencodeCatalog.namespace) .Values.opencodeCatalog.name | quote }}
+        - name: OPENCODE_CATALOG_API_BASE
+          value: {{ required "opencodeCatalog.apiBase is required when opencodeCatalog.enabled" .Values.opencodeCatalog.apiBase | quote }}
+        {{- end }}
         {{- range .Values.extraEnv }}
         - name: {{ .name }}
           value: {{ .value | quote }}

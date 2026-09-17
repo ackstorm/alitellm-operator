@@ -155,3 +155,27 @@ resources:
   requests:
     cpu: 10m
     memory: 64Mi
+# opencodeCatalog: render every LiteLLMModelAlias entry into an OpenCode model
+# catalog (models.dev schema) and write it to a ConfigMap, for a static file
+# server to publish. Clients consume it with
+# OPENCODE_MODELS_URL=<host>/public/opencode
+#
+# Only aliases whose target resolves to a chat model are included — OpenCode
+# cannot drive embeddings, tts, stt, image generation or routers.
+#
+# The catalog REPLACES the upstream models.dev catalog on the client, so a
+# client pointed at it sees only this provider. That is the intent for a
+# proxy-only setup.
+opencodeCatalog:
+  enabled: false
+  # namespace the ConfigMap is written to. Normally the namespace of the
+  # service that mounts and serves it, NOT the operator's own — a ConfigMap
+  # can only be mounted by a pod in its own namespace. When it differs from
+  # the release namespace the chart adds a Role + RoleBinding there (see
+  # templates/catalog-rbac.yaml). Required when enabled.
+  namespace: ""
+  name: opencode-catalog
+  # Public LiteLLM base URL clients reach, e.g. https://api.example.com/v1.
+  # The operator cannot derive this: its own endpoint is the in-cluster
+  # Service. Required when enabled.
+  apiBase: ""
