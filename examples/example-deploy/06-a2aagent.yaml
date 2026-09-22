@@ -47,6 +47,17 @@ spec:
   # agent_name, agent_card_params, and the operator's structural overlays.
   params:
     timeout: 30
+  # exposeAsModel — OPTIONAL. Projects a generated LiteLLMModel named
+  # agent.<metadata.name> so this agent appears in GET /v1/models, and so in
+  # any client that builds its model picker from that endpoint. Clients call
+  # it as "agent.vendor-research-agent"; the a2a1/ prefix below is only the
+  # litellm_params.model value.
+  #
+  # The prefix comes from A2A_MODEL_PROVIDER (default a2a1) and MUST name a
+  # provider your LiteLLM can route — see docs/user-guide/a2a-agent.md.
+  # exposeAsModel:
+  #   accessGroups: ["a2a"]   # omit and DEFAULT_ACCESS_GROUP applies, which
+  #                           # is usually granted to every team
   # deletionPolicy: Delete   # block finalizer removal until LiteLLM acks the
   #                          # delete; default Orphan leaves the LiteLLM entry
   #                          # behind on CR delete
