@@ -3477,7 +3477,7 @@ attaches this group, regardless of that team's own spec.permission.models.</p>
 </tr>
 <tr>
 <td><code>models</code> <em>string array</em></td>
-<td>Models is the list of LiteLLM model NAMES this group grants. Forwarded<br />to access_model_names without resolution — LiteLLM matches on model_name,<br />so no lookup step is needed and no CR reference is required. The list is<br />sorted before projection so a reordered spec does not read as drift;<br />declaration order is therefore NOT preserved.</td>
+<td>Models lists LiteLLM model names or legacy model access-group tags.<br />Entries are forwarded to access_model_names without resolution.<br />Tag expansion for inference was verified on LiteLLM v1.99.1;<br />the model catalog can return the tag itself instead of expanded names.<br />The list is sorted before projection, so declaration order is not preserved.</td>
 <td></td>
 <td></td>
 </tr>

@@ -1826,7 +1826,7 @@ operator's deny-by-default sentinel. See
 <tr>
 <td><code>spec.models[]</code></td>
 <td>no</td>
-<td>Model <strong>names</strong>, forwarded as-is. No resolution, no validation.</td>
+<td>Model names or legacy model access-group tags, forwarded as-is. No resolution, no validation.</td>
 </tr>
 <tr>
 <td><code>spec.mcpServers[]</code></td>
@@ -1880,7 +1880,7 @@ operator's deny-by-default sentinel. See
 <tr>
 <td><code>models</code></td>
 <td><code>access_model_names</code></td>
-<td><strong>No</strong> — LiteLLM matches on <code>model_name</code>.</td>
+<td><strong>No</strong> — concrete names and legacy tags pass through.</td>
 </tr>
 <tr>
 <td><code>mcpServers</code></td>
@@ -1894,9 +1894,17 @@ operator's deny-by-default sentinel. See
 </tr>
 </tbody>
 </table>
-<p><code>models</code> needs no resolution because LiteLLM keys model access on the
-human-readable <code>model_name</code>, so a name written here works whether or not a
-<code>LiteLLMModel</code> CR manages it.</p>
+<p>Model entries can be concrete model names or legacy model access-group tags.
+On LiteLLM v1.99.1, a unified group containing <code>gemini</code> allowed inference to
+<code>gemini.gemini-flash-latest</code> and denied an anthropic-tagged model; the converse
+held for <code>anthropic</code>. The operator forwards these entries without expansion.
+<code>GET /v1/models</code> can return the literal tag, so catalog contents alone do not
+establish whether an individual model is callable.</p>
+<p>The unified-group and legacy-tag namespaces remain distinct. A unified group
+named <code>anthropic</code> does not inherit the <code>anthropic</code> model tag merely because
+their names match; that tag must be included in <code>spec.models</code>.</p>
+<p>Concrete model names and tags need no operator-side resolution, so an entry
+works whether or not a <code>LiteLLMModel</code> CR manages it.</p>
 <p>The other two are matched on UUIDs and LiteLLM silently ignores a name, so the
 operator resolves them. A name that does not resolve parks the CR
 <code>Ready=False, reason=MCPServerNotFound</code> (or <code>AgentNotFound</code>) and lists the
@@ -2067,7 +2075,7 @@ the now-dangling id from enforcement.</p>
 </tr>
 <tr>
 <td>Group is <code>Synced</code> but grants nothing</td>
-<td>A <code>spec.models</code> entry names no live model. Nothing validates it; check <code>GET /v1/access_group</code>.</td>
+<td>A <code>spec.models</code> entry matches neither a model name nor a model access-group tag. Nothing validates it; check <code>GET /v1/access_group</code>.</td>
 </tr>
 <tr>
 <td>Group does not appear in <code>GET /access_group/list</code></td>
