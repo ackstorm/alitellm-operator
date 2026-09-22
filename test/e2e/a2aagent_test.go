@@ -10,6 +10,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -121,5 +122,68 @@ var _ = Describe("LiteLLMA2AAgent", Ordered, ContinueOnFailure, func() {
 		}
 		Expect(hit).To(BeTrue(),
 			"agent %q not in /v1/agents response: %s", agentID, string(body))
+	})
+
+	// AGENT-EXPOSE: spec.exposeAsModel projects a generated LiteLLMModel so the
+	// agent becomes visible to /v1/models clients. Proven here rather than only
+	// in envtest because the generated child must survive the real chart's RBAC
+	// — the A2AAgent controller writes a DIFFERENT kind than its own, and a
+	// missing grant in the shipped Role fails exactly nowhere else.
+	It("projects a generated LiteLLMModel when spec.exposeAsModel is set", func() {
+		const exposeName = "tier2-a2a-expose"
+		const childName = "agent." + exposeName
+
+		fg := metav1.DeletePropagationForeground
+		DeferCleanup(func() {
+			_ = dyn.Resource(a2aGVR).Namespace(ns).
+				Delete(ctx, exposeName, metav1.DeleteOptions{PropagationPolicy: &fg})
+		})
+
+		agent := newA2AAgent(exposeName, ns)
+		Expect(unstructured.SetNestedMap(agent.Object,
+			map[string]interface{}{
+				"accessGroups": []interface{}{"a2a-e2e"},
+			}, "spec", "exposeAsModel")).To(Succeed())
+
+		_, err := dyn.Resource(a2aGVR).Namespace(ns).
+			Create(ctx, agent, metav1.CreateOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		// The child is projected before the connection gate, so it should
+		// appear regardless of how the LiteLLM-side registration goes.
+		Eventually(func(g Gomega) {
+			child, err := dyn.Resource(modelGVR).Namespace(ns).
+				Get(ctx, childName, metav1.GetOptions{})
+			g.Expect(err).NotTo(HaveOccurred())
+
+			model, _, _ := unstructured.NestedString(child.Object, "spec", "params", "model")
+			g.Expect(model).To(Equal("a2a1/"+exposeName),
+				"generated child must name the agent under the configured provider prefix")
+
+			groups, _, _ := unstructured.NestedStringSlice(child.Object, "spec", "info", "access_groups")
+			g.Expect(groups).To(ConsistOf("a2a-e2e"))
+
+			refs := child.GetOwnerReferences()
+			g.Expect(refs).To(HaveLen(1))
+			g.Expect(refs[0].Kind).To(Equal("LiteLLMA2AAgent"))
+			g.Expect(refs[0].Name).To(Equal(exposeName))
+			g.Expect(refs[0].Controller).NotTo(BeNil())
+			g.Expect(*refs[0].Controller).To(BeTrue())
+		}, 60*time.Second, 2*time.Second).Should(Succeed())
+
+		// Removing the block prunes the child. Owner references only cascade
+		// on agent deletion, so this path is the operator's own work.
+		live, err := dyn.Resource(a2aGVR).Namespace(ns).Get(ctx, exposeName, metav1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		unstructured.RemoveNestedField(live.Object, "spec", "exposeAsModel")
+		_, err = dyn.Resource(a2aGVR).Namespace(ns).Update(ctx, live, metav1.UpdateOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		Eventually(func(g Gomega) {
+			_, err := dyn.Resource(modelGVR).Namespace(ns).
+				Get(ctx, childName, metav1.GetOptions{})
+			g.Expect(apierrors.IsNotFound(err)).To(BeTrue(),
+				"generated child should be pruned once spec.exposeAsModel is removed (err=%v)", err)
+		}, 60*time.Second, 2*time.Second).Should(Succeed())
 	})
 })

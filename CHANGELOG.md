@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`LiteLLMA2AAgent.spec.exposeAsModel`** — projects an agent into a generated
+  `LiteLLMModel` named `agent.<metadata.name>`, so it appears in
+  `GET /v1/models` and therefore in clients that build their model picker from
+  that endpoint. LiteLLM keeps agents and models in disjoint registries and
+  nothing bridges them, so a registered agent was previously callable but
+  invisible to every model-listing client. The child carries
+  `litellm_params.model = "<provider>/<metadata.name>"`, where `<provider>` is
+  `A2A_MODEL_PROVIDER` (default `a2a1`) and must name a provider the LiteLLM
+  deployment can route. `accessGroups` populates `model_info.access_groups`;
+  left empty, `DEFAULT_ACCESS_GROUP` applies, which is typically granted to
+  every team — which is why this is a block and not a bool. Removing the block
+  prunes the child; deleting the agent cascades via owner reference. The prune
+  path only ever deletes a model it generated, verified by both the
+  `litellm.ackstorm.ai/generated-by-agent` label and a controller owner
+  reference with the agent's UID.
 - **`LiteLLMAccessGroup` CRD** — reconciles LiteLLM's *unified* access groups
   (`/v1/access_group`), a first-class object holding models + MCP servers +
   agents. **Requires LiteLLM 1.93.0+** (the endpoint does not exist before

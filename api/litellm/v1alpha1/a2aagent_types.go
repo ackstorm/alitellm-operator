@@ -119,6 +119,29 @@ type A2AAgentSpec struct {
 	// +optional
 	Secrets []SecretSubstitution `json:"secrets,omitempty"`
 
+	// ExposeAsModel projects this agent into a generated `LiteLLMModel`
+	// named `agent.<metadata.name>`, so the agent shows up in
+	// `GET /v1/models` and therefore in clients that build their model
+	// picker from that endpoint.
+	//
+	// WHY this is needed at all: LiteLLM keeps agents and models in two
+	// disjoint registries. `GET /v1/agents` lists agents, `GET /v1/models`
+	// lists model rows, and nothing bridges them — so a registered agent is
+	// callable but invisible to every model-listing client.
+	//
+	// The generated child carries `litellm_params.model =
+	// "<provider>/<metadata.name>"`, where <provider> is the LiteLLM
+	// provider that knows how to talk A2A (`A2A_MODEL_PROVIDER`, default
+	// `a2a1`). The name after the prefix is `metadata.name`, which is also
+	// the `agent_name` this reconciler registers, so the two always agree.
+	//
+	// Presence of this block enables the projection; remove it and the
+	// generated child is pruned. The child is owned by this CR, so deleting
+	// the agent cascades to the model.
+	//
+	// +optional
+	ExposeAsModel *ExposeAsModel `json:"exposeAsModel,omitempty"`
+
 	// DeletionPolicy controls finalizer behavior when the LiteLLM-side
 	// DELETE cannot be confirmed (LiteLLM unavailable, 401, transient
 	// error already retried). Defaults to "Orphan" to preserve REL-06
@@ -135,6 +158,24 @@ type A2AAgentSpec struct {
 	// +kubebuilder:default=Orphan
 	// +optional
 	DeletionPolicy string `json:"deletionPolicy,omitempty"`
+}
+
+// ExposeAsModel configures the generated `LiteLLMModel` child described on
+// A2AAgentSpec.ExposeAsModel. It is a struct rather than a bool so the
+// generated model can be scoped to an access group: a model with no group
+// falls back to `DEFAULT_ACCESS_GROUP`, which is typically granted to every
+// team, and silently exposing an agent instance-wide is the wrong default.
+type ExposeAsModel struct {
+	// AccessGroups populates `model_info.access_groups` on the generated
+	// child — the legacy per-model TAG namespace that teams grant through
+	// `LiteLLMTeam.spec.permission.modelGroups`. This is NOT the
+	// `LiteLLMAccessGroup` object namespace; the two are disjoint.
+	//
+	// Left empty, the child carries no explicit group and the Model
+	// reconciler's `DEFAULT_ACCESS_GROUP` injection applies.
+	//
+	// +optional
+	AccessGroups []string `json:"accessGroups,omitempty"`
 }
 
 // A2AAgentStatus defines the observed state of A2AAgent per spec §6.6 +
