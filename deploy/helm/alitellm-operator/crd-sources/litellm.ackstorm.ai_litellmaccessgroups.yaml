@@ -113,11 +113,11 @@ spec:
                 type: array
               models:
                 description: |-
-                  Models is the list of LiteLLM model NAMES this group grants. Forwarded
-                  to access_model_names without resolution — LiteLLM matches on model_name,
-                  so no lookup step is needed and no CR reference is required. The list is
-                  sorted before projection so a reordered spec does not read as drift;
-                  declaration order is therefore NOT preserved.
+                  Models lists LiteLLM model names or legacy model access-group tags.
+                  Entries are forwarded to access_model_names without resolution.
+                  Tag expansion for inference was verified on LiteLLM v1.99.1;
+                  the model catalog can return the tag itself instead of expanded names.
+                  The list is sorted before projection, so declaration order is not preserved.
                 items:
                   type: string
                 type: array

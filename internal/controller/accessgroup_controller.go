@@ -62,8 +62,10 @@ type missingAccessGroupRefs struct {
 
 // renderAccessGroup resolves a spec into the LiteLLM projection.
 //
-// Models pass through VERBATIM — LiteLLM matches access_model_names on
-// model_name, so no resolution step exists for them. MCP servers and agents
+// Models pass through without resolution — entries may be concrete model
+// names or legacy model access-group tags. Tag expansion for inference was
+// verified on LiteLLM v1.99.1; the model catalog can return the tag itself
+// instead of expanded names. MCP servers and agents
 // are resolved name→id because those two dimensions match on ids and SILENTLY
 // IGNORE names (same trap as team object_permission.agents). An unresolved
 // name is reported, never dropped: dropping it would silently narrow a

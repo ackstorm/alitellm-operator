@@ -21,7 +21,7 @@ exist before that.
 |------------------------|----------|---------------------------------------------------------------------------|
 | `metadata.name`        | yes      | Used verbatim as LiteLLM `access_group_name`. Unique server-side.         |
 | `spec.description`     | no       | Free text, forwarded verbatim.                                            |
-| `spec.models[]`        | no       | Model **names**, forwarded as-is. No resolution, no validation.           |
+| `spec.models[]`        | no       | Model names or legacy model access-group tags, forwarded as-is. No resolution, no validation. |
 | `spec.mcpServers[]`    | no       | MCP server **names**, resolved to `server_id` UUIDs.                      |
 | `spec.agents[]`        | no       | A2A agent **names**, resolved to `agent_id` UUIDs.                        |
 | `spec.deletionPolicy`  | no       | `Orphan` (default) or `Delete`.                                           |
@@ -55,13 +55,23 @@ spec:
 
 | CR field      | LiteLLM field           | Resolved?                                    |
 |---------------|-------------------------|----------------------------------------------|
-| `models`      | `access_model_names`    | **No** — LiteLLM matches on `model_name`.    |
+| `models`      | `access_model_names`    | **No** — concrete names and legacy tags pass through. |
 | `mcpServers`  | `access_mcp_server_ids` | **Yes** — name → `server_id` via `GET /v1/mcp/server`. |
 | `agents`      | `access_agent_ids`      | **Yes** — name → `agent_id` via `GET /v1/agents`.      |
 
-`models` needs no resolution because LiteLLM keys model access on the
-human-readable `model_name`, so a name written here works whether or not a
-`LiteLLMModel` CR manages it.
+Model entries can be concrete model names or legacy model access-group tags.
+On LiteLLM v1.99.1, a unified group containing `gemini` allowed inference to
+`gemini.gemini-flash-latest` and denied an anthropic-tagged model; the converse
+held for `anthropic`. The operator forwards these entries without expansion.
+`GET /v1/models` can return the literal tag, so catalog contents alone do not
+establish whether an individual model is callable.
+
+The unified-group and legacy-tag namespaces remain distinct. A unified group
+named `anthropic` does not inherit the `anthropic` model tag merely because
+their names match; that tag must be included in `spec.models`.
+
+Concrete model names and tags need no operator-side resolution, so an entry
+works whether or not a `LiteLLMModel` CR manages it.
 
 The other two are matched on UUIDs and LiteLLM silently ignores a name, so the
 operator resolves them. A name that does not resolve parks the CR
@@ -216,7 +226,7 @@ the now-dangling id from enforcement.
 |---|---|
 | `Ready=False reason=MCPServerNotFound` / `AgentNotFound` | A `spec.mcpServers` / `spec.agents` name is not registered yet. Create the CR; it self-heals. |
 | Team `Ready=False reason=AccessGroupNotFound` | The team names a group that does not exist yet. Create the `LiteLLMAccessGroup` first. |
-| Group is `Synced` but grants nothing | A `spec.models` entry names no live model. Nothing validates it; check `GET /v1/access_group`. |
+| Group is `Synced` but grants nothing | A `spec.models` entry matches neither a model name nor a model access-group tag. Nothing validates it; check `GET /v1/access_group`. |
 | Group does not appear in `GET /access_group/list` | Expected — that is the legacy tag namespace. See [Two access-group namespaces](#two-access-group-namespaces). |
 | `assigned_team_ids` is `[]` despite an attached team | Expected — the group side does not mirror a team-side write. Read `GET /team/info`. |
 | A team can reach a model its `spec.permission.models` excludes | An attached group grants it. Groups only ADD. |
