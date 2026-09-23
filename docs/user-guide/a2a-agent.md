@@ -148,6 +148,10 @@ registered agent is callable, but invisible to any client that builds its model
 list from `/v1/models` — which is most of them, including LibreChat and Open
 WebUI.
 
+To publish many agents at once, prefer a `LiteLLMModelDiscovery` with
+`type: a2a` (see [model-discovery.md](model-discovery.md)); it picks agents by
+filter instead of per agent. Use one or the other for a given agent, not both.
+
 `spec.exposeAsModel` closes that gap by projecting the agent into a generated
 `LiteLLMModel` named `agent.<metadata.name>`:
 

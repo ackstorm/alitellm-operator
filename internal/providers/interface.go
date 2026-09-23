@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	awsv2 "github.com/aws/aws-sdk-go-v2/aws"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // Candidate is the provider-returned model identity. ID is the raw,
@@ -28,7 +29,7 @@ type Candidate struct {
 // type-switches on the concrete provider.
 type Provider interface {
 	// Type returns the spec.type enum literal:
-	// "anthropic"|"bedrock"|"elevenlabs"|"gemini"|"kubeai"|"openai".
+	// "a2a"|"anthropic"|"bedrock"|"elevenlabs"|"gemini"|"kubeai"|"openai".
 	// The reconciler uses this only for metrics labels — branching on
 	// it is the D-01 anti-pattern this package exists to prevent.
 	Type() string
@@ -92,6 +93,12 @@ type ProviderConfig struct {
 	// cmd/main.go). Used by all HTTP providers (anthropic, gemini,
 	// openai, kubeai). NOT used by bedrock.
 	HTTPClient *http.Client
+
+	// Reader and Namespace are used only by the a2a provider, which lists
+	// LiteLLMA2AAgent CRs instead of calling an upstream. The reconciler sets
+	// them for spec.type=a2a; every HTTP provider ignores them.
+	Reader    client.Reader
+	Namespace string
 }
 
 // ProviderAuthError is returned when the upstream rejects credentials

@@ -35,6 +35,7 @@ var registryMu sync.RWMutex
 // reconciler MUST call Registry[md.Spec.Type](ctx, cfg) directly; any
 // switch on spec.type outside this file is a regression.
 var Registry = map[string]func(ctx context.Context, cfg ProviderConfig) (Provider, error){
+	"a2a":        newA2A,
 	"anthropic":  newAnthropicImpl,
 	"bedrock":    newBedrock,
 	"elevenlabs": newElevenLabsImpl,

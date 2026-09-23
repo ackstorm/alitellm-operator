@@ -108,6 +108,7 @@ const (
 	providerTypeBedrock    = "bedrock"
 	providerTypeElevenLabs = "elevenlabs"
 	providerTypeKubeAI     = "kubeai"
+	providerTypeA2A        = "a2a"
 
 	// fieldOwner is the SSA field manager identity used by Discovery on
 	// every child LiteLLMModel write (D-06). Per the T-04-04-S1 mitigation in
@@ -152,6 +153,7 @@ func IndexModelDiscoveryCredentialsSecretRef(o client.Object) []string {
 // +kubebuilder:rbac:groups=litellm.ackstorm.ai,resources=litellmmodeldiscoveries/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=litellm.ackstorm.ai,resources=litellmmodeldiscoveries/finalizers,verbs=update
 // +kubebuilder:rbac:groups=litellm.ackstorm.ai,resources=litellmmodels,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=litellm.ackstorm.ai,resources=litellma2aagents,verbs=get;list;watch
 
 // ModelDiscoveryReconciler reconciles LiteLLMModelDiscovery CRs per spec §6.3 +
 // §7.1 + CONTEXT.md D-01.D-10. The reconciler is periodic
@@ -483,6 +485,11 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 	case providerTypeKubeAI:
 		// kubeai has no credentialsSecretRef per spec §6.3 line 792 (CEL-forbidden).
+	case providerTypeA2A:
+		// No credentials: the provider lists LiteLLMA2AAgent CRs (CEL forbids
+		// credentialsSecretRef/region/baseUrl for this type).
+		cfg.Reader = r.Client
+		cfg.Namespace = md.Namespace
 	default:
 		// Should be impossible — CRD CEL enforces enum at admission. Defensive.
 		return r.writeReady(ctx, &md, metav1.ConditionFalse, "InvalidConfig",
@@ -590,6 +597,11 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		// Per spec §6.3 line 792: kubeai's litellm-provider mapping is
 		// "hosted_vllm" (not "kubeai"). All other types map verbatim.
 		litellmProvider = "hosted_vllm"
+	}
+	if litellmProvider == providerTypeA2A {
+		// Same provider exposeAsModel stamps, so a discovered agent and an
+		// exposeAsModel child route identically (a2aagent_expose.go).
+		litellmProvider = a2aModelProvider()
 	}
 	if md.Spec.LitellmProvider != "" {
 		// Override the type-derived provider with the explicit pricing-prefix
@@ -1439,6 +1451,25 @@ func (r *ModelDiscoveryReconciler) secretToModelDiscoveries(ctx context.Context,
 	return secretToRequests(ctx, r.Client, r.Log, &litellmv1alpha1.LiteLLMModelDiscoveryList{}, obj.GetNamespace(), obj.GetName(), CredentialsSecretRefField, "secretToModelDiscoveries")
 }
 
+// agentToA2ADiscoveries enqueues every a2a-type Discovery in the agent's
+// namespace. Any agent change can add or drop a candidate (registration sets
+// status.lastRendered.agentID; deletion sets deletionTimestamp), so all of
+// them, not just ones whose filters match.
+func (r *ModelDiscoveryReconciler) agentToA2ADiscoveries(ctx context.Context, obj client.Object) []reconcile.Request {
+	var mds litellmv1alpha1.LiteLLMModelDiscoveryList
+	if err := r.List(ctx, &mds, client.InNamespace(obj.GetNamespace())); err != nil {
+		log.FromContext(ctx).Error(err, "list model discoveries for a2a agent fan-in")
+		return nil
+	}
+	var reqs []reconcile.Request
+	for i := range mds.Items {
+		if mds.Items[i].Spec.Type == providerTypeA2A {
+			reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&mds.Items[i])})
+		}
+	}
+	return reqs
+}
+
 // SetupWithManager registers the ModelDiscoveryReconciler with
 // controller-runtime.
 //
@@ -1446,6 +1477,8 @@ func (r *ModelDiscoveryReconciler) secretToModelDiscoveries(ctx context.Context,
 // - For(&LiteLLMModelDiscovery{}) — primary watch.
 // - Watches(&Secret{}, secretToModelDiscoveries) — MDISC-21 rotation
 // propagation via the field indexer registered in cmd/main.go.
+// - Watches(&LiteLLMA2AAgent{}, agentToA2ADiscoveries) — a registered or
+// removed agent re-drives type=a2a Discoveries without waiting a refresh.
 // - Owns(&LiteLLMModel{}) — child LiteLLMModel events drive sub-interval Discovery
 // reconciles (cascade-delete + adoption hooks).
 //
@@ -1457,6 +1490,10 @@ func (r *ModelDiscoveryReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(
 			&corev1.Secret{},
 			handler.EnqueueRequestsFromMapFunc(r.secretToModelDiscoveries),
+		).
+		Watches(
+			&litellmv1alpha1.LiteLLMA2AAgent{},
+			handler.EnqueueRequestsFromMapFunc(r.agentToA2ADiscoveries),
 		).
 		Owns(&litellmv1alpha1.LiteLLMModel{}, builder.WithPredicates(ownedChildSpecChanged())).
 		WithOptions(transientBackoffOptions()).

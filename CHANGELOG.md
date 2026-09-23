@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`LiteLLMModelDiscovery` type `a2a`** — publishes every registered
+  `LiteLLMA2AAgent` in the namespace as `<prefix>.<agent>` (`a2a1/<agent>`),
+  filtered by include/exclude; a watch on agents re-drives it immediately.
 - **A2A agent access-group tags** — forwards `spec.params.access_groups` as
   `agent_access_groups`, adds `LiteLLMAccessGroup.spec.agentGroups`, and
   expands matching registered agents into `access_agent_ids`.

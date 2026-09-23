@@ -47,23 +47,23 @@ spec:
           provider\n(anthropic, bedrock, elevenlabs, gemini, kubeai, or openai) and
           reconciles\ndiscovered IDs into a fan-out of Kubernetes LiteLLMModel child
           CRs in\nWATCH_NAMESPACE. Discovery NEVER calls LiteLLM directly; each child\nreconciles
-          into LiteLLM via the Phase 3 LiteLLMModel controller.\n\nThe seven CR-level
-          XValidation rules above enforce the per-type\nrequired/forbidden field matrix
-          from spec §6.3 (provider table) plus\nthe MDISC-05 refresh-interval 1-minute
-          floor. SEC-03 list-uniqueness\nfor spec.secrets[].as is deferred to the
-          child LiteLLMModel's runtime check\n(same Kubernetes 1.31 CEL-library limitation
-          documented in\nmodel_types.go:87-93 — reuse the same runtime check from).\n\nMDISC-22
-          — required Secret keys per provider are FIXED per spec §6.3:\n\n\tanthropic:
-          ANTHROPIC_API_KEY\n\tbedrock: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY (AWS_SESSION_TOKEN
-          optional)\n\televenlabs: ELEVENLABS_API_KEY\n\tgemini: GEMINI_API_KEY (or
-          GOOGLE_API_KEY per provider docs)\n\topenai: OPENAI_API_KEY\n\tkubeai: n/a
-          (no credentialsSecretRef)\n\nThe reconciler validates required keys at credential-resolution
-          time\nand surfaces SecretNotFound if any required key is missing.\n\nThe
-          Discovery finalizer is \"modeldiscoveries.litellm.ackstorm.ai/\nfinalizer\"
-          (mirrors Phase 3's models.litellm.ackstorm.ai/finalizer).\nIt issues NO
-          LiteLLM call — its only work is waiting for owned\nchildren to drain via
-          blockOwnerDeletion=true cascade, then removing\nitself. Each child LiteLLMModel's
-          own finalizer issues POST /model/delete on\nthe LiteLLM side (Phase 3 model_controller.go)."
+          into LiteLLM via the Phase 3 LiteLLMModel controller.\n\nThe CR-level XValidation
+          rules above enforce the per-type\nrequired/forbidden field matrix from spec
+          §6.3 (provider table) plus\nthe MDISC-05 refresh-interval 1-minute floor.
+          SEC-03 list-uniqueness\nfor spec.secrets[].as is deferred to the child LiteLLMModel's
+          runtime check\n(same Kubernetes 1.31 CEL-library limitation documented in\nmodel_types.go:87-93
+          — reuse the same runtime check from).\n\nMDISC-22 — required Secret keys
+          per provider are FIXED per spec §6.3:\n\n\tanthropic: ANTHROPIC_API_KEY\n\tbedrock:
+          AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY (AWS_SESSION_TOKEN optional)\n\televenlabs:
+          ELEVENLABS_API_KEY\n\tgemini: GEMINI_API_KEY (or GOOGLE_API_KEY per provider
+          docs)\n\topenai: OPENAI_API_KEY\n\tkubeai: n/a (no credentialsSecretRef)\n\nThe
+          reconciler validates required keys at credential-resolution time\nand surfaces
+          SecretNotFound if any required key is missing.\n\nThe Discovery finalizer
+          is \"modeldiscoveries.litellm.ackstorm.ai/\nfinalizer\" (mirrors Phase 3's
+          models.litellm.ackstorm.ai/finalizer).\nIt issues NO LiteLLM call — its
+          only work is waiting for owned\nchildren to drain via blockOwnerDeletion=true
+          cascade, then removing\nitself. Each child LiteLLMModel's own finalizer
+          issues POST /model/delete on\nthe LiteLLM side (Phase 3 model_controller.go)."
         properties:
           apiVersion:
             description: |-
@@ -91,20 +91,24 @@ spec:
               generated child reconciles into LiteLLM via the Phase 3 Model\ncontroller
               (Pipeline A).\n\nProvider field matrix (CR-level CEL XValidation, see
               markers on the\nModelDiscovery struct below) per spec §6.3 provider
-              table:\n\n\tanthropic — requires credentialsSecretRef; forbids region,
-              baseUrl.\n\tbedrock — requires region; forbids baseUrl; credentialsSecretRef
-              optional.\n\televenlabs — requires credentialsSecretRef; forbids region,
-              baseUrl.\n\tgemini — requires credentialsSecretRef; forbids region,
-              baseUrl.\n\tkubeai — requires baseUrl; forbids credentialsSecretRef,
+              table:\n\n\ta2a — no upstream: one candidate per REGISTERED LiteLLMA2AAgent
+              in the\n\t      namespace; forbids credentialsSecretRef, region, baseUrl.
+              Child\n\t      params.model = <A2A_MODEL_PROVIDER, default a2a1>/<agent
+              name>;\n\t      default prefix a2a.\n\tanthropic — requires credentialsSecretRef;
+              forbids region, baseUrl.\n\tbedrock — requires region; forbids baseUrl;
+              credentialsSecretRef optional.\n\televenlabs — requires credentialsSecretRef;
+              forbids region, baseUrl.\n\tgemini — requires credentialsSecretRef;
+              forbids region, baseUrl.\n\tkubeai — requires baseUrl; forbids credentialsSecretRef,
               region.\n\topenai — requires credentialsSecretRef; baseUrl optional;
               forbids region.\n\nspec.litellmProvider (optional; spec.type=openai
               only) overrides the LiteLLM\npricing-prefix provider used for cost tracking
               (default: derived from\nspec.type) — e.g. `openrouter` to bill discovered
               models under OpenRouter's\ncost table without a new provider type. See
-              the LitellmProvider field doc.\n\nMDISC-01 enforces spec.type ∈ {anthropic,
-              bedrock, elevenlabs, gemini, kubeai, openai}\nat admission via the +kubebuilder:validation:Enum
-              marker. MDISC-04\n(prefix), MDISC-05 (refresh.interval floor), MDISC-15
-              (credential\nsurface), and MDISC-22/23 (propagation bags) are all schema-side."
+              the LitellmProvider field doc.\n\nMDISC-01 enforces spec.type ∈ {a2a,
+              anthropic, bedrock, elevenlabs, gemini, kubeai, openai}\nat admission
+              via the +kubebuilder:validation:Enum marker. MDISC-04\n(prefix), MDISC-05
+              (refresh.interval floor), MDISC-15 (credential\nsurface), and MDISC-22/23
+              (propagation bags) are all schema-side."
             properties:
               aliases:
                 description: |-
@@ -450,6 +454,7 @@ spec:
                   dispatches to internal/providers/<type>.go via the registry; per-type
                   branching outside the registry is prohibited (CONTEXT.md D-01).
                 enum:
+                - a2a
                 - anthropic
                 - bedrock
                 - elevenlabs
@@ -717,6 +722,9 @@ spec:
             type: object
         type: object
         x-kubernetes-validations:
+        - message: a2a forbids spec.credentialsSecretRef/spec.region/spec.baseUrl
+          rule: self.spec.type != 'a2a' || (!has(self.spec.credentialsSecretRef) &&
+            !has(self.spec.region) && !has(self.spec.baseUrl))
         - message: anthropic requires spec.credentialsSecretRef and forbids spec.region/spec.baseUrl
           rule: self.spec.type != 'anthropic' || (has(self.spec.credentialsSecretRef)
             && !has(self.spec.region) && !has(self.spec.baseUrl))

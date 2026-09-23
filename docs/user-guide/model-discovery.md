@@ -10,7 +10,7 @@ child reconciles into LiteLLM via the `LiteLLMModel` controller
 
 | Field                       | Required        | Notes                                                                                  |
 |-----------------------------|-----------------|----------------------------------------------------------------------------------------|
-| `spec.type`                 | yes             | Enum: `anthropic`, `bedrock`, `elevenlabs`, `gemini`, `kubeai`, `openai`.              |
+| `spec.type`                 | yes             | Enum: `a2a`, `anthropic`, `bedrock`, `elevenlabs`, `gemini`, `kubeai`, `openai`.              |
 | `spec.prefix`               | no              | DNS-1123 segment prepended to each child's `metadata.name`. Default: lowercased `spec.type`. |
 | `spec.credentialsSecretRef` | per-provider    | Secret holding upstream API key (operator-side ONLY — never propagated to children).   |
 | `spec.region`               | bedrock only    | AWS region. One region per CR (multi-region → multiple CRs).                           |
@@ -28,6 +28,7 @@ child reconciles into LiteLLM via the `LiteLLMModel` controller
 
 | Type        | Requires                    | Forbids                       | Secret keys read                                                          |
 |-------------|-----------------------------|-------------------------------|---------------------------------------------------------------------------|
+| `a2a`       | none                        | `credentialsSecretRef`, `region`, `baseUrl` | none — lists `LiteLLMA2AAgent` CRs                          |
 | `anthropic` | `credentialsSecretRef`      | `region`, `baseUrl`           | `ANTHROPIC_API_KEY`                                                       |
 | `bedrock`   | `region`                    | `baseUrl`                     | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (+ optional `AWS_SESSION_TOKEN`) |
 | `elevenlabs`| `credentialsSecretRef`      | `region`, `baseUrl`           | `ELEVENLABS_API_KEY`                                                      |
@@ -35,7 +36,7 @@ child reconciles into LiteLLM via the `LiteLLMModel` controller
 | `kubeai`    | `baseUrl`                   | `credentialsSecretRef`, `region` | none                                                                   |
 | `openai`    | `credentialsSecretRef`      | `region`                      | `OPENAI_API_KEY`                                                          |
 
-The six per-type XValidation rules on the CRD enforce this matrix at admission.
+The per-type XValidation rules on the CRD enforce this matrix at admission.
 
 ## Credential boundary (MDISC-15) — non-negotiable
 
@@ -211,6 +212,35 @@ use `filters.include` to narrow. The discovery-time `credentialsSecretRef`
 key is operator-side only — the inference-time key for each child flows via
 `secrets[]` + `params.api_key` (MDISC-15 separation). The LiteLLM proxy must
 run with `STORE_MODEL_IN_DB=True` or each child's `POST /model/new` 500s.
+
+## A2A — registered agents as models
+
+`type: a2a` has no upstream: it publishes every `LiteLLMA2AAgent` in the
+namespace that is registered in LiteLLM (`status.lastRendered.agentID` set)
+and not being deleted. Each becomes `<prefix>.<agent name>` with
+`params.model: <A2A_MODEL_PROVIDER, default a2a1>/<agent name>`. A new or
+removed agent re-drives the Discovery immediately (watch), so
+`refresh.interval` is only a safety net.
+
+```yaml
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMModelDiscovery
+metadata:
+  name: a2a-agents
+spec:
+  type: a2a
+  prefix: agent                 # default would be a2a
+  filters:
+    exclude: ["internal-.*"]
+  info:
+    description: "A2A agents"
+    access_groups: ["a2a"]
+  refresh:
+    interval: 15m
+```
+
+Do not also set `exposeAsModel` on an agent this Discovery publishes: both
+produce `agent.<name>` and the Discovery skips it as `ExplicitModelExists`.
 
 ## Filter order — include first, then exclude
 

@@ -18,6 +18,10 @@ import (
 // Provider field matrix (CR-level CEL XValidation, see markers on the
 // ModelDiscovery struct below) per spec §6.3 provider table:
 //
+//	a2a — no upstream: one candidate per REGISTERED LiteLLMA2AAgent in the
+//	      namespace; forbids credentialsSecretRef, region, baseUrl. Child
+//	      params.model = <A2A_MODEL_PROVIDER, default a2a1>/<agent name>;
+//	      default prefix a2a.
 //	anthropic — requires credentialsSecretRef; forbids region, baseUrl.
 //	bedrock — requires region; forbids baseUrl; credentialsSecretRef optional.
 //	elevenlabs — requires credentialsSecretRef; forbids region, baseUrl.
@@ -30,7 +34,7 @@ import (
 // spec.type) — e.g. `openrouter` to bill discovered models under OpenRouter's
 // cost table without a new provider type. See the LitellmProvider field doc.
 //
-// MDISC-01 enforces spec.type ∈ {anthropic, bedrock, elevenlabs, gemini, kubeai, openai}
+// MDISC-01 enforces spec.type ∈ {a2a, anthropic, bedrock, elevenlabs, gemini, kubeai, openai}
 // at admission via the +kubebuilder:validation:Enum marker. MDISC-04
 // (prefix), MDISC-05 (refresh.interval floor), MDISC-15 (credential
 // surface), and MDISC-22/23 (propagation bags) are all schema-side.
@@ -41,7 +45,7 @@ type ModelDiscoverySpec struct {
 	// branching outside the registry is prohibited (CONTEXT.md D-01).
 	//
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum=anthropic;bedrock;elevenlabs;gemini;kubeai;openai
+	// +kubebuilder:validation:Enum=a2a;anthropic;bedrock;elevenlabs;gemini;kubeai;openai
 	Type string `json:"type"`
 
 	// LitellmProvider overrides the LiteLLM custom_llm_provider used to build
@@ -581,6 +585,7 @@ type FailedCandidate struct {
 // +kubebuilder:printcolumn:name="Discovered",type=integer,JSONPath=".status.discoveredCount"
 // +kubebuilder:printcolumn:name="Generated",type=integer,JSONPath=".status.generatedCount"
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:validation:XValidation:rule="self.spec.type != 'a2a' || (!has(self.spec.credentialsSecretRef) && !has(self.spec.region) && !has(self.spec.baseUrl))",message="a2a forbids spec.credentialsSecretRef/spec.region/spec.baseUrl"
 // +kubebuilder:validation:XValidation:rule="self.spec.type != 'anthropic' || (has(self.spec.credentialsSecretRef) && !has(self.spec.region) && !has(self.spec.baseUrl))",message="anthropic requires spec.credentialsSecretRef and forbids spec.region/spec.baseUrl"
 // +kubebuilder:validation:XValidation:rule="self.spec.type != 'bedrock' || (has(self.spec.region) && !has(self.spec.baseUrl))",message="bedrock requires spec.region and forbids spec.baseUrl"
 // +kubebuilder:validation:XValidation:rule="self.spec.type != 'elevenlabs' || (has(self.spec.credentialsSecretRef) && !has(self.spec.region) && !has(self.spec.baseUrl))",message="elevenlabs requires spec.credentialsSecretRef and forbids spec.region/spec.baseUrl"
@@ -599,7 +604,7 @@ type FailedCandidate struct {
 // WATCH_NAMESPACE. Discovery NEVER calls LiteLLM directly; each child
 // reconciles into LiteLLM via the Phase 3 LiteLLMModel controller.
 //
-// The seven CR-level XValidation rules above enforce the per-type
+// The CR-level XValidation rules above enforce the per-type
 // required/forbidden field matrix from spec §6.3 (provider table) plus
 // the MDISC-05 refresh-interval 1-minute floor. SEC-03 list-uniqueness
 // for spec.secrets[].as is deferred to the child LiteLLMModel's runtime check
