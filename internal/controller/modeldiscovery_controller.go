@@ -946,7 +946,7 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		readyReason = "ChildCRWriteFailed"
 		readyMsg = fmt.Sprintf("%d/%d children failed to write to apiserver", len(failed), len(kept))
 	}
-	// spec.aliasSuffix → operator-owned LiteLLMModelAlias CRs. Runs only on
+	// spec.aliases → operator-owned LiteLLMModelAlias CRs. Runs only on
 	// the success path so a provider error never prunes aliases (D-09).
 	if err := r.syncDiscoveryAliases(ctx, &md, generated); err != nil {
 		logger.Error(err, "alias sync failed")

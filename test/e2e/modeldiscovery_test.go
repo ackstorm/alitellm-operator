@@ -224,8 +224,8 @@ var _ = Describe("LiteLLMModelDiscovery", Ordered, ContinueOnFailure, func() {
 		Expect(postNames).To(Equal(preNames), "child Model set changed during AuthFailed")
 	})
 
-	It("openai: spec.aliasSuffix generates a Ready LiteLLMModelAlias", func() {
-		patch := []byte(`[{"op":"add","path":"/spec/aliasSuffix","value":"[1m]"}]`)
+	It("openai: spec.aliases generates a Ready LiteLLMModelAlias", func() {
+		patch := []byte(`[{"op":"add","path":"/spec/aliases","value":[{"suffix":"[1m]"}]}]`)
 		_, err := dyn.Resource(mdiscGVR).Namespace(ns).
 			Patch(ctx, mdName, "application/json-patch+json", patch, metav1.PatchOptions{})
 		Expect(err).NotTo(HaveOccurred())

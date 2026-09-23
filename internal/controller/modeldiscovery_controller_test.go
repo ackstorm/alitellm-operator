@@ -1892,10 +1892,10 @@ func TestModelDiscovery_DisablePrefix_CELReject(t *testing.T) {
 	}
 }
 
-// TestModelDiscovery_AliasSuffix locks spec.aliasSuffix: every generated
+// TestModelDiscovery_AliasRules locks spec.aliases: every generated
 // child gets `<child><suffix> → <child>` in an operator-owned
-// LiteLLMModelAlias, and clearing the suffix deletes that CR.
-func TestModelDiscovery_AliasSuffix(t *testing.T) {
+// LiteLLMModelAlias, and removing the rules deletes that CR.
+func TestModelDiscovery_AliasRules(t *testing.T) {
 	ctx := context.Background()
 	const mdName = "alias-anthropic"
 	aliasKey := client.ObjectKey{Name: mdName + "-aliases-0", Namespace: WatchNamespace}
@@ -1912,7 +1912,7 @@ func TestModelDiscovery_AliasSuffix(t *testing.T) {
 
 	md := modeldiscoverySampleCR(mdName, "anthropic")
 	md.Spec.DisablePrefix = true
-	md.Spec.AliasSuffix = "[1m]"
+	md.Spec.Aliases = []litellmv1alpha1.ModelDiscoveryAliasRule{{Suffix: "[1m]"}}
 	if err := k8sClient.Create(ctx, md); err != nil {
 		t.Fatalf("create ModelDiscovery: %v", err)
 	}
@@ -1946,10 +1946,10 @@ func TestModelDiscovery_AliasSuffix(t *testing.T) {
 	var latest litellmv1alpha1.LiteLLMModelDiscovery
 	if err := updateWithRetry(ctx, client.ObjectKey{Name: mdName, Namespace: WatchNamespace}, &latest,
 		func(md *litellmv1alpha1.LiteLLMModelDiscovery) error {
-			md.Spec.AliasSuffix = ""
+			md.Spec.Aliases = nil
 			return nil
 		}); err != nil {
-		t.Fatalf("clear aliasSuffix: %v", err)
+		t.Fatalf("clear aliases: %v", err)
 	}
 	deadline = time.Now().Add(30 * time.Second)
 	for {
