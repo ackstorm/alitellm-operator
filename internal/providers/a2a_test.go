@@ -48,7 +48,7 @@ func TestA2AProvider_ListsRegisteredAgentsInNamespace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var ids []string
+	ids := make([]string, 0, len(cands))
 	for _, cd := range cands {
 		ids = append(ids, cd.ID)
 	}
