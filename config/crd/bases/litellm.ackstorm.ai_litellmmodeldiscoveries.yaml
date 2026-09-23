@@ -105,18 +105,50 @@ spec:
               marker. MDISC-04\n(prefix), MDISC-05 (refresh.interval floor), MDISC-15
               (credential\nsurface), and MDISC-22/23 (propagation bags) are all schema-side."
             properties:
-              aliasSuffix:
+              aliases:
                 description: |-
-                  AliasSuffix, when set, makes the Discovery emit one
-                  router_settings.model_group_alias entry `<child><suffix> → <child>`
-                  per generated child — e.g. "[1m]" so Claude Code's 1M-context id
-                  `claude-opus-5-5[1m]` resolves to the discovered `claude-opus-5-5`.
+                  Aliases are rules that make the Discovery emit
+                  router_settings.model_group_alias entries for its generated children.
+                  Each rule yields `<prefix><child><suffix> → <child>` for every child
+                  matching its Include patterns — e.g. suffix "[1m]" so Claude Code's
+                  1M-context id `claude-opus-5-5[1m]` resolves to `claude-opus-5-5`.
                   Entries land in operator-owned LiteLLMModelAlias CRs named
                   `<discovery>-aliases-<n>` (128 entries each) and are removed when the
-                  suffix is cleared. Charset mirrors LiteLLMModelAlias entry names.
-                maxLength: 32
-                pattern: ^[A-Za-z0-9._:/@+\[\]-]+$
-                type: string
+                  rules no longer produce them. When two rules produce the same alias
+                  name, the later rule wins.
+                items:
+                  description: |-
+                    ModelDiscoveryAliasRule renders one alias per matching generated child:
+                    `<prefix><child><suffix> → <child>`. At least one of Prefix/Suffix is
+                    required (CEL). The charset mirrors LiteLLMModelAlias entry names; Prefix
+                    must start alphanumeric because alias names do.
+                  properties:
+                    include:
+                      description: |-
+                        Include is a list of RE2 patterns matched against the child name
+                        (`metadata.name` of the generated LiteLLMModel), implicitly anchored
+                        with "^" like spec.filters. Empty = every child. A pattern matching
+                        nothing is NOT an error (the model may simply not exist yet).
+                      items:
+                        type: string
+                      maxItems: 32
+                      type: array
+                    prefix:
+                      description: Prefix prepended to the child name, e.g. "anthropic/".
+                      maxLength: 64
+                      pattern: ^[A-Za-z0-9][A-Za-z0-9._:/@+\[\]-]*$
+                      type: string
+                    suffix:
+                      description: Suffix appended to the child name, e.g. "[1m]".
+                      maxLength: 64
+                      pattern: ^[A-Za-z0-9._:/@+\[\]-]+$
+                      type: string
+                  type: object
+                  x-kubernetes-validations:
+                  - message: an alias rule needs prefix or suffix
+                    rule: has(self.prefix) || has(self.suffix)
+                maxItems: 16
+                type: array
               baseUrl:
                 description: |-
                   BaseURL is the upstream provider's base endpoint. Required for

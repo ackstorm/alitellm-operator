@@ -16,7 +16,7 @@ child reconciles into LiteLLM via the `LiteLLMModel` controller
 | `spec.region`               | bedrock only    | AWS region. One region per CR (multi-region → multiple CRs).                           |
 | `spec.baseUrl`              | kubeai (req), openai (opt) | Provider HTTP endpoint. Any non-empty value auto-overlays into each child's `api_base` (so LiteLLM routes inference to the same endpoint models were discovered from). |
 | `spec.litellmProvider`      | no (openai only) | Overrides the LiteLLM pricing-prefix provider stamped on each child's `litellm_params.model` (default: derived from `spec.type`). E.g. `openrouter` to bill under OpenRouter's cost table. CEL-restricted to `type: openai`. |
-| `spec.aliasSuffix`          | no              | Emit `<child><suffix> → <child>` aliases for every child (e.g. `[1m]`).         |
+| `spec.aliases[]`            | no              | Alias rules: `<prefix><child><suffix> → <child>`, optional `include` filter.      |
 | `spec.params`               | no              | Pass-through bag propagated VERBATIM into every child's `spec.params`.                 |
 | `spec.info`                 | no              | Pass-through bag propagated into every child's `spec.info`.                            |
 | `spec.secrets[]`            | no              | Substitution map propagated into every child's `spec.secrets[]` (NOT resolved here).   |
@@ -294,33 +294,44 @@ Discovery's child → `reason=Conflict` (renamed from `DuplicateDiscovery`
 per ADR-0001 for cross-kind consistency; first-create-wins until a
 follow-up PR adds alpha-last-wins ownership transfer).
 
-## Default aliases — `spec.aliasSuffix`
+## Default aliases — `spec.aliases`
 
 Some clients request a decorated model id: Claude Code selects
-`claude-opus-5-5[1m]` for the 1M-context variant. Set a suffix and every
-generated child gets an alias `<child><suffix> → <child>`:
+`claude-opus-5-5[1m]` for the 1M-context variant. Alias rules give generated
+children extra names without hand-writing a `LiteLLMModelAlias`. Each rule
+emits `<prefix><child><suffix> → <child>` for every child it matches:
 
 ```yaml
 spec:
   type: anthropic
   disablePrefix: true
-  aliasSuffix: "[1m]"   # claude-opus-5-5[1m] → claude-opus-5-5
+  aliases:
+    - suffix: "[1m]"                              # claude-opus-5-5[1m] → claude-opus-5-5
+      include: ["claude-(opus|sonnet|fable)"]     # only these children
+    - prefix: "anthropic/"                        # anthropic/<child> → <child>, every child
 ```
+
+| Field       | Notes                                                                                   |
+|-------------|-----------------------------------------------------------------------------------------|
+| `prefix`    | Prepended to the child name. Must start alphanumeric.                                   |
+| `suffix`    | Appended to the child name. A rule needs `prefix`, `suffix`, or both (both → one combined alias). |
+| `include[]` | RE2 patterns on the child name, anchored at the start like `spec.filters`. Empty = every child. A pattern matching nothing is fine. |
 
 The operator writes the entries into `LiteLLMModelAlias` CRs it owns,
 `<discovery>-aliases-0`, `-1`, … (128 entries each), labelled
 `litellm.ackstorm.ai/generated-by=<discovery>`. They follow the discovery:
-new models gain an alias on the next refresh, vanished ones lose it, clearing
-the suffix deletes the CRs, deleting the discovery garbage-collects them.
+new models gain aliases on the next refresh, vanished ones lose them, removing
+the rules deletes the CRs, deleting the discovery garbage-collects them.
 
-- Every child gets an alias, including models that do not support the variant —
-  an unused alias costs nothing; calling it just routes to the base model.
+- Two rules producing the same alias name: the later rule wins.
 - Aliases share the cluster-wide map with hand-written `LiteLLMModelAlias` CRs;
   a name clash resolves alphabetically-last as usual (see
   [LiteLLMModelAlias](model-alias.md)). Delete hand-written duplicates.
-- If `<discovery>-aliases-<n>` already exists and is not owned by the discovery,
-  the discovery goes `Ready=False, reason=AliasWriteFailed` rather than
-  overwrite it.
+- An invalid `include` pattern, or an existing `<discovery>-aliases-<n>` not
+  owned by the discovery, sets `Ready=False, reason=AliasWriteFailed`; existing
+  generated aliases are left in place.
+- `spec.aliasSuffix` (v0.8.9 only) was replaced by `spec.aliases`:
+  `aliasSuffix: "[1m]"` → `aliases: [{suffix: "[1m]"}]`.
 
 ## Status — what to read
 

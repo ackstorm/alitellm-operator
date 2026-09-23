@@ -102,18 +102,19 @@ type ModelDiscoverySpec struct {
 	// +optional
 	DisablePrefix bool `json:"disablePrefix,omitempty"`
 
-	// AliasSuffix, when set, makes the Discovery emit one
-	// router_settings.model_group_alias entry `<child><suffix> → <child>`
-	// per generated child — e.g. "[1m]" so Claude Code's 1M-context id
-	// `claude-opus-5-5[1m]` resolves to the discovered `claude-opus-5-5`.
+	// Aliases are rules that make the Discovery emit
+	// router_settings.model_group_alias entries for its generated children.
+	// Each rule yields `<prefix><child><suffix> → <child>` for every child
+	// matching its Include patterns — e.g. suffix "[1m]" so Claude Code's
+	// 1M-context id `claude-opus-5-5[1m]` resolves to `claude-opus-5-5`.
 	// Entries land in operator-owned LiteLLMModelAlias CRs named
 	// `<discovery>-aliases-<n>` (128 entries each) and are removed when the
-	// suffix is cleared. Charset mirrors LiteLLMModelAlias entry names.
+	// rules no longer produce them. When two rules produce the same alias
+	// name, the later rule wins.
 	//
 	// +optional
-	// +kubebuilder:validation:MaxLength=32
-	// +kubebuilder:validation:Pattern=`^[A-Za-z0-9._:/@+\[\]-]+$`
-	AliasSuffix string `json:"aliasSuffix,omitempty"`
+	// +kubebuilder:validation:MaxItems=16
+	Aliases []ModelDiscoveryAliasRule `json:"aliases,omitempty"`
 
 	// CredentialsSecretRef points to the Kubernetes Secret carrying the
 	// upstream provider's API credentials. Required for anthropic, gemini,
@@ -285,6 +286,37 @@ type SecretObjectRef struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	Name string `json:"name"`
+}
+
+// ModelDiscoveryAliasRule renders one alias per matching generated child:
+// `<prefix><child><suffix> → <child>`. At least one of Prefix/Suffix is
+// required (CEL). The charset mirrors LiteLLMModelAlias entry names; Prefix
+// must start alphanumeric because alias names do.
+//
+// +kubebuilder:validation:XValidation:rule="has(self.prefix) || has(self.suffix)",message="an alias rule needs prefix or suffix"
+type ModelDiscoveryAliasRule struct {
+	// Prefix prepended to the child name, e.g. "anthropic/".
+	//
+	// +optional
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^[A-Za-z0-9][A-Za-z0-9._:/@+\[\]-]*$`
+	Prefix string `json:"prefix,omitempty"`
+
+	// Suffix appended to the child name, e.g. "[1m]".
+	//
+	// +optional
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:Pattern=`^[A-Za-z0-9._:/@+\[\]-]+$`
+	Suffix string `json:"suffix,omitempty"`
+
+	// Include is a list of RE2 patterns matched against the child name
+	// (`metadata.name` of the generated LiteLLMModel), implicitly anchored
+	// with "^" like spec.filters. Empty = every child. A pattern matching
+	// nothing is NOT an error (the model may simply not exist yet).
+	//
+	// +optional
+	// +kubebuilder:validation:MaxItems=32
+	Include []string `json:"include,omitempty"`
 }
 
 // ModelDiscoveryFilters carries the RE2 include/exclude pattern lists
