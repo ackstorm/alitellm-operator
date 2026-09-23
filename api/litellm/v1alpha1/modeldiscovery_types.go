@@ -102,6 +102,19 @@ type ModelDiscoverySpec struct {
 	// +optional
 	DisablePrefix bool `json:"disablePrefix,omitempty"`
 
+	// AliasSuffix, when set, makes the Discovery emit one
+	// router_settings.model_group_alias entry `<child><suffix> → <child>`
+	// per generated child — e.g. "[1m]" so Claude Code's 1M-context id
+	// `claude-opus-5-5[1m]` resolves to the discovered `claude-opus-5-5`.
+	// Entries land in operator-owned LiteLLMModelAlias CRs named
+	// `<discovery>-aliases-<n>` (128 entries each) and are removed when the
+	// suffix is cleared. Charset mirrors LiteLLMModelAlias entry names.
+	//
+	// +optional
+	// +kubebuilder:validation:MaxLength=32
+	// +kubebuilder:validation:Pattern=`^[A-Za-z0-9._:/@+\[\]-]+$`
+	AliasSuffix string `json:"aliasSuffix,omitempty"`
+
 	// CredentialsSecretRef points to the Kubernetes Secret carrying the
 	// upstream provider's API credentials. Required for anthropic, gemini,
 	// openai; required-or-default-chain for bedrock; FORBIDDEN for kubeai
