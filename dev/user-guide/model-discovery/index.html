@@ -1078,6 +1078,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#default-aliases-specaliassuffix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Default aliases — spec.aliasSuffix
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#status-what-to-read" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1915,6 +1926,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#default-aliases-specaliassuffix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Default aliases — spec.aliasSuffix
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#status-what-to-read" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2012,6 +2034,11 @@ child reconciles into LiteLLM via the <code>LiteLLMModel</code> controller
 <td><code>spec.litellmProvider</code></td>
 <td>no (openai only)</td>
 <td>Overrides the LiteLLM pricing-prefix provider stamped on each child's <code>litellm_params.model</code> (default: derived from <code>spec.type</code>). E.g. <code>openrouter</code> to bill under OpenRouter's cost table. CEL-restricted to <code>type: openai</code>.</td>
+</tr>
+<tr>
+<td><code>spec.aliasSuffix</code></td>
+<td>no</td>
+<td>Emit <code>&lt;child&gt;&lt;suffix&gt; → &lt;child&gt;</code> aliases for every child (e.g. <code>[1m]</code>).</td>
 </tr>
 <tr>
 <td><code>spec.params</code></td>
@@ -2319,11 +2346,35 @@ entry <code>reason=ExplicitModelExists</code>. Collision with another
 Discovery's child → <code>reason=Conflict</code> (renamed from <code>DuplicateDiscovery</code>
 per ADR-0001 for cross-kind consistency; first-create-wins until a
 follow-up PR adds alpha-last-wins ownership transfer).</p>
+<h2 id="default-aliases-specaliassuffix">Default aliases — <code>spec.aliasSuffix</code><a class="headerlink" href="#default-aliases-specaliassuffix" title="Permanent link">&para;</a></h2>
+<p>Some clients request a decorated model id: Claude Code selects
+<code>claude-opus-5-5[1m]</code> for the 1M-context variant. Set a suffix and every
+generated child gets an alias <code>&lt;child&gt;&lt;suffix&gt; → &lt;child&gt;</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">anthropic</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">  </span><span class="nt">disablePrefix</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">  </span><span class="nt">aliasSuffix</span><span class="p">:</span><span class="w"> </span><span class="s">"[1m]"</span><span class="w">   </span><span class="c1"># claude-opus-5-5[1m] → claude-opus-5-5</span>
+</code></pre></div>
+<p>The operator writes the entries into <code>LiteLLMModelAlias</code> CRs it owns,
+<code>&lt;discovery&gt;-aliases-0</code>, <code>-1</code>, … (128 entries each), labelled
+<code>litellm.ackstorm.ai/generated-by=&lt;discovery&gt;</code>. They follow the discovery:
+new models gain an alias on the next refresh, vanished ones lose it, clearing
+the suffix deletes the CRs, deleting the discovery garbage-collects them.</p>
+<ul>
+<li>Every child gets an alias, including models that do not support the variant —
+  an unused alias costs nothing; calling it just routes to the base model.</li>
+<li>Aliases share the cluster-wide map with hand-written <code>LiteLLMModelAlias</code> CRs;
+  a name clash resolves alphabetically-last as usual (see
+  <a href="../model-alias/">LiteLLMModelAlias</a>). Delete hand-written duplicates.</li>
+<li>If <code>&lt;discovery&gt;-aliases-&lt;n&gt;</code> already exists and is not owned by the discovery,
+  the discovery goes <code>Ready=False, reason=AliasWriteFailed</code> rather than
+  overwrite it.</li>
+</ul>
 <h2 id="status-what-to-read">Status — what to read<a class="headerlink" href="#status-what-to-read" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>mdisc<span class="w"> </span>openai<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.status}{"\n"}'</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="c1"># {"discoveredCount":7,"generatedCount":7,"generatedChildren":["openai.gpt-4.1",...],"lastRefreshAt":"...","conditions":[...]}</span>
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>
-<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>kubectl<span class="w"> </span>get<span class="w"> </span>mdisc<span class="w">                       </span><span class="c1"># printer columns: Type Ready Reason Discovered Generated Age</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>mdisc<span class="w"> </span>openai<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.status}{"\n"}'</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="c1"># {"discoveredCount":7,"generatedCount":7,"generatedChildren":["openai.gpt-4.1",...],"lastRefreshAt":"...","conditions":[...]}</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>kubectl<span class="w"> </span>get<span class="w"> </span>mdisc<span class="w">                       </span><span class="c1"># printer columns: Type Ready Reason Discovered Generated Age</span>
 </code></pre></div>
 <p>Conditions written every reconcile:</p>
 <ul>
