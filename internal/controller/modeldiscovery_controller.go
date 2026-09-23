@@ -48,6 +48,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"slices"
 	"sort"
 	"strings"
@@ -599,8 +600,7 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		litellmProvider = "hosted_vllm"
 	}
 	if litellmProvider == providerTypeA2A {
-		// Same provider exposeAsModel stamps, so a discovered agent and an
-		// exposeAsModel child route identically (a2aagent_expose.go).
+		// The provider that speaks A2A is deployment-local (A2A_MODEL_PROVIDER).
 		litellmProvider = a2aModelProvider()
 	}
 	if md.Spec.LitellmProvider != "" {
@@ -646,6 +646,10 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	skipped := make([]litellmv1alpha1.SkippedCandidate, 0, len(existingChildren.Items))
 	generated := make([]string, 0, len(existingChildren.Items))
 	var failed []litellmv1alpha1.FailedCandidate
+	// childDeleting: a candidate's name is held by a model that is being
+	// deleted (e.g. an agent's old exposeAsModel child). Its removal fires no
+	// event here, so requeue soon instead of waiting a whole refresh interval.
+	childDeleting := false
 
 	for i := range existingChildren.Items {
 		child := &existingChildren.Items[i]
@@ -738,6 +742,10 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		// is the write path. AlreadyExists from Patch is still handled
 		// below as a defensive backstop (race window between Get and Patch).
 		classifiedSkip, retryable, classifyErr := r.classifyAlreadyExists(ctx, childName, &md)
+		if errors.Is(classifyErr, errChildDeleting) {
+			childDeleting = true
+			continue
+		}
 		if classifyErr != nil {
 			// Get failed with a non-NotFound apiserver error → ChildCRWriteFailed.
 			metrics.ChildCRWritesTotal.WithLabelValues(modelDiscoveryKind, action, "error").Inc()
@@ -790,6 +798,10 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			// ownership is intentionally non-overrideable by ForceOwnership).
 			if apierrors.IsAlreadyExists(applyErr) {
 				classifiedSkip, retryable, classifyErr := r.classifyAlreadyExists(ctx, childName, &md)
+				if errors.Is(classifyErr, errChildDeleting) {
+					childDeleting = true
+					continue
+				}
 				if classifyErr != nil {
 					// Get itself failed for a non-NotFound reason — surface
 					// as ChildCRWriteFailed (apiserver issue).
@@ -992,8 +1004,20 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		"generated", md.Status.GeneratedCount,
 		"failed", len(failed),
 		"requeueAfter", md.Spec.Refresh.Interval.Duration)
+	if childDeleting {
+		return ctrl.Result{RequeueAfter: childDeletingRequeue}, nil
+	}
 	return ctrl.Result{RequeueAfter: md.Spec.Refresh.Interval.Duration}, nil
 }
+
+// errChildDeleting is classifyAlreadyExists' signal that the colliding
+// LiteLLMModel is already being deleted: not a skip, not a failure, retry
+// once it is gone.
+var errChildDeleting = errors.New("colliding LiteLLMModel is being deleted")
+
+// childDeletingRequeue is how soon to retry a candidate blocked by a
+// deleting model.
+const childDeletingRequeue = 5 * time.Second
 
 // buildChildModel constructs the desired child LiteLLMModel object that will be
 // applied via SSA. The returned object carries:
@@ -1350,6 +1374,9 @@ func (r *ModelDiscoveryReconciler) classifyAlreadyExists(
 		}
 		return nil, false, err
 	}
+	if !existing.DeletionTimestamp.IsZero() {
+		return nil, false, errChildDeleting
+	}
 	// Locate the controller ownerRef, if any.
 	var ctrlRef *metav1.OwnerReference
 	for i := range existing.OwnerReferences {
@@ -1449,6 +1476,22 @@ func ownedByDiscovery(child *litellmv1alpha1.LiteLLMModel, mdUID types.UID) bool
 // at model_controller.go:596-612 modulo the CRD list type.
 func (r *ModelDiscoveryReconciler) secretToModelDiscoveries(ctx context.Context, obj client.Object) []reconcile.Request {
 	return secretToRequests(ctx, r.Client, r.Log, &litellmv1alpha1.LiteLLMModelDiscoveryList{}, obj.GetNamespace(), obj.GetName(), CredentialsSecretRefField, "secretToModelDiscoveries")
+}
+
+// EnvA2AModelProvider names the LiteLLM provider prefix used in a type=a2a
+// child's `litellm_params.model`. It is configurable because the provider
+// that speaks A2A is a deployment-local choice, not an upstream constant:
+// LiteLLM's built-in `a2a/` prefix (as of 1.99.1) drops the agent's auth
+// headers and pins A2A 0.3, so deployments front it with their own
+// custom_provider_map entry instead.
+const EnvA2AModelProvider = "A2A_MODEL_PROVIDER"
+
+// a2aModelProvider returns EnvA2AModelProvider, falling back to "a2a1".
+func a2aModelProvider() string {
+	if v := strings.TrimSpace(os.Getenv(EnvA2AModelProvider)); v != "" {
+		return v
+	}
+	return "a2a1"
 }
 
 // agentToA2ADiscoveries enqueues every a2a-type Discovery in the agent's

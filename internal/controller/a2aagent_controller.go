@@ -75,7 +75,6 @@ func IndexA2AAgentSecretRefs(o client.Object) []string {
 // +kubebuilder:rbac:groups=litellm.ackstorm.ai,resources=litellma2aagents,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=litellm.ackstorm.ai,resources=litellma2aagents/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=litellm.ackstorm.ai,resources=litellma2aagents/finalizers,verbs=update
-// +kubebuilder:rbac:groups=litellm.ackstorm.ai,resources=litellmmodels,verbs=get;list;watch;create;update;patch;delete
 
 // A2AAgentReconciler reconciles LiteLLMA2AAgent CRs against LiteLLM per spec §6.6 +
 // §7.3 and Phase 5 CONTEXT.md D-01.D-10.
@@ -89,10 +88,6 @@ func IndexA2AAgentSecretRefs(o client.Object) []string {
 // (with name-resolve fallback via ListAgents + in-memory filter
 // when AgentID is empty) → RemoveFinalizer → Update.
 //   - Step 2b: Finalizer absent → AddFinalizer → Update → return.
-//   - Step 2c: Project spec.exposeAsModel into a generated LiteLLMModel
-//     named agent.<metadata.name> (or prune it when the block is absent).
-//     Runs before the connection gate: the child is a Kubernetes object and
-//     needs no LiteLLM round-trip.
 //   - Step 3: Connection-gating per Phase 3 D-08: !snap.Ready → writeStatus
 //
 // (LiteLLMUnavailable, echo-reason) → return nil.
@@ -132,11 +127,6 @@ func IndexA2AAgentSecretRefs(o client.Object) []string {
 //
 // Anti-patterns avoided:
 //   - NO RequeueAfter anywhere (REL-02 — A2AAgent is event-driven only).
-//   - NO Owns(.) — the generated spec.exposeAsModel child carries an owner
-//     reference (so deleting the agent cascades), but is NOT watched: the
-//     projection re-applies on every reconcile and the per-kind
-//     SafetyRelistRunnable ticks, so child drift heals within one interval
-//     without paying for a second informer.
 //   - NO delete-and-recreate path (Probe 7 ✓ — simple PUT is wholesale-replace).
 //   - NO comparison against LiteLLM response (Phase 3 D-01 — operator-side hash only).
 type A2AAgentReconciler struct {
@@ -253,18 +243,6 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
-	}
-
-	// ─── Step 2c: Project spec.exposeAsModel into a generated child ────────
-	//
-	// Deliberately BEFORE the connection gate and before every hash /
-	// steady-state branch below: the child is a Kubernetes object, so it
-	// needs neither LiteLLM reachability nor a completed registration, and a
-	// call site further down would be skipped by whichever early return
-	// happened to fire — the #102 failure shape, where an already-synced CR
-	// short-circuits and silently never gets its child.
-	if err := r.reconcileExposedModel(ctx, &a2a); err != nil {
-		return ctrl.Result{}, err
 	}
 
 	// ─── Step 3: Connection-gating (Phase 3 D-08) ──────────────────────────

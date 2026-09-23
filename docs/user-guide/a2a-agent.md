@@ -18,7 +18,6 @@ declared inside the CR; the operator stamps `agent_name` from
 | `spec.agentCard`  | yes      | A2A protocol card (name, version, description, capabilities, skills, defaultInputModes, …). |
 | `spec.params`     | no       | Top-level `AgentConfig` bag (NOT inside `agent_card_params`).                               |
 | `spec.secrets[]`  | no       | Substitution map — placeholders work in `spec.params` AND `spec.agentCard`.                 |
-| `spec.exposeAsModel` | no    | Projects a generated `LiteLLMModel` named `agent.<name>` so the agent appears in `/v1/models`. |
 
 After `kubectl apply`, expect:
 
@@ -148,50 +147,14 @@ registered agent is callable, but invisible to any client that builds its model
 list from `/v1/models` — which is most of them, including LibreChat and Open
 WebUI.
 
-To publish many agents at once, prefer a `LiteLLMModelDiscovery` with
-`type: a2a` (see [model-discovery.md](model-discovery.md)); it picks agents by
-filter instead of per agent. Use one or the other for a given agent, not both.
+Publish agents as models with a `LiteLLMModelDiscovery` of `type: a2a` (see
+[model-discovery.md](model-discovery.md#a2a--registered-agents-as-models)): it
+turns every registered agent that passes its filters into
+`<prefix>.<agent name>` with `params.model: <A2A_MODEL_PROVIDER>/<agent name>`.
+Clients call the CR name (`agent.support-triage`); calling
+`a2a1/support-triage` directly returns `400 Invalid model name`.
 
-`spec.exposeAsModel` closes that gap by projecting the agent into a generated
-`LiteLLMModel` named `agent.<metadata.name>`:
-
-```yaml
-apiVersion: litellm.ackstorm.ai/v1alpha1
-kind: LiteLLMA2AAgent
-metadata:
-  name: support-triage
-spec:
-  endpoint: "http://achagent-classifier.ach.svc.cluster.local:8080/a2a/classify"
-  agentCard:
-    name: support-triage
-    description: "Classifies a support conversation."
-  exposeAsModel:
-    accessGroups: ["a2a"]
-```
-
-produces:
-
-```yaml
-apiVersion: litellm.ackstorm.ai/v1alpha1
-kind: LiteLLMModel
-metadata:
-  name: agent.support-triage          # <- what clients call
-  labels:
-    litellm.ackstorm.ai/generated-by-agent: support-triage
-  ownerReferences: [ { kind: LiteLLMA2AAgent, name: support-triage, ... } ]
-spec:
-  params:
-    model: "a2a1/support-triage"      # <- provider prefix + agent_name
-  info:
-    mode: chat
-    description: "Classifies a support conversation."
-    access_groups: ["a2a"]
-```
-
-Users call it as **`agent.support-triage`** — the CR name. `a2a1/support-triage`
-is only the `litellm_params.model`; calling it directly returns
-`400 Invalid model name`, because the proxy resolves the public model name
-before it ever routes to a provider.
+(`spec.exposeAsModel`, the per-agent projection, was removed in v0.8.13.)
 
 ### The provider prefix must exist in LiteLLM
 
@@ -210,37 +173,6 @@ to A2A 0.3. Deployments therefore register their own handler via
 `litellm_settings.custom_provider_map` and point `A2A_MODEL_PROVIDER` at it. If
 upstream later fixes the built-in route, switch the env var to `a2a` — no new
 operator image.
-
-### Access groups
-
-`accessGroups` populates `model_info.access_groups`, the **legacy per-model tag
-namespace** that teams grant through `LiteLLMTeam.spec.permission.modelGroups`.
-It is *not* the `LiteLLMAccessGroup` object namespace — see
-[Access groups](access-group.md#two-access-group-namespaces).
-
-Leave it empty and the Model reconciler's `DEFAULT_ACCESS_GROUP` injection
-applies, which is typically granted to every team. That is why `exposeAsModel`
-is a block and not a bool: publishing an agent to the whole instance should be
-something you typed, not something you got by default.
-
-### Lifecycle
-
-| Action | Effect on the generated model |
-|---|---|
-| Add `exposeAsModel` | Child created |
-| Edit `accessGroups` or the card description | Child updated in place (server-side apply) |
-| Remove `exposeAsModel` | Child pruned |
-| Delete the agent | Child cascades via owner reference |
-
-The prune path deletes **only** a model it generated — verified by both the
-`litellm.ackstorm.ai/generated-by-agent` label and a controller owner reference
-with the agent's UID. A hand-written `LiteLLMModel` that happens to occupy the
-name `agent.<something>` is left untouched.
-
-The projection runs early in the reconcile, before the LiteLLM connection gate,
-so it does not depend on the proxy being reachable. Drift on the child (someone
-edits it by hand) is corrected on the next reconcile or safety re-list tick,
-whichever comes first.
 
 ## Status: what to read
 

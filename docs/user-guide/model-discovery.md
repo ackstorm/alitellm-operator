@@ -239,8 +239,8 @@ spec:
     interval: 15m
 ```
 
-Do not also set `exposeAsModel` on an agent this Discovery publishes: both
-produce `agent.<name>` and the Discovery skips it as `ExplicitModelExists`.
+If a candidate's name is held by a model that is being deleted, the Discovery
+retries every 5s until the name is free, then takes it over.
 
 ## Filter order — include first, then exclude
 

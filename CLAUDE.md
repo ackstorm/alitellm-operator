@@ -1442,21 +1442,16 @@ alitellm-auth it publishes a chart pinned to the previous image tag.
   a path-style `PUT /v1/mcp/toolset/<id>` is a 405. This endpoint diverges from
   every other LiteLLM update the operator calls.
 
-- **`spec.exposeAsModel` projects its child BEFORE the connection gate.**
-  `a2aagent_controller.go` Step 2c calls `reconcileExposedModel` right after the
-  finalizer-add path — not from the CREATE/UPDATE arms and not from Step 12. The
-  child is a Kubernetes object: it needs no LiteLLM round-trip, and a call site
-  further down would be skipped by whichever early return fired, which is the
-  #102 shape (an already-synced CR short-circuits at the steady state and
-  silently never gets a child). The prune path (block removed) deletes ONLY a
-  model carrying BOTH `litellm.ackstorm.ai/generated-by-agent=<agent>` AND a
-  controller ownerRef with the agent's UID — a name match alone must never
-  authorize a delete, because a user may legitimately own
-  `agent.<something>`. The provider prefix is `A2A_MODEL_PROVIDER` (default
-  `a2a1`), deliberately NOT hardcoded: LiteLLM's built-in `a2a/` route drops
-  per-agent auth headers and pins A2A 0.3, so deployments front it with their
-  own `custom_provider_map` handler, and a future upstream fix should cost an
-  env var rather than an image.
+- **Agents as models = `LiteLLMModelDiscovery type: a2a`** (the per-agent
+  `spec.exposeAsModel` was removed in v0.8.13). The provider lists
+  `LiteLLMA2AAgent` CRs (registered, not deleting), never LiteLLM; a watch on
+  agents re-drives it. The child's provider prefix is `A2A_MODEL_PROVIDER`
+  (default `a2a1`, `modeldiscovery_controller.go`), deliberately NOT hardcoded:
+  LiteLLM's built-in `a2a/` route drops per-agent auth headers and pins A2A
+  0.3. A candidate whose name is held by a DELETING model returns
+  `errChildDeleting` from `classifyAlreadyExists` → requeue 5s: that model's
+  removal fires no event on the Discovery, so without it the takeover waited a
+  full refresh interval (seen migrating prod off exposeAsModel).
 
 - **Periodic drift detection = `SafetyRelistRunnable`, never `RequeueAfter`.**
   Each of the six domain reconcilers (Model, Team, MCPServer, A2AAgent,
