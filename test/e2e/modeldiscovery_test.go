@@ -223,4 +223,26 @@ var _ = Describe("LiteLLMModelDiscovery", Ordered, ContinueOnFailure, func() {
 		}
 		Expect(postNames).To(Equal(preNames), "child Model set changed during AuthFailed")
 	})
+
+	It("openai: spec.aliasSuffix generates a Ready LiteLLMModelAlias", func() {
+		patch := []byte(`[{"op":"add","path":"/spec/aliasSuffix","value":"[1m]"}]`)
+		_, err := dyn.Resource(mdiscGVR).Namespace(ns).
+			Patch(ctx, mdName, "application/json-patch+json", patch, metav1.PatchOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		Eventually(func(g Gomega) {
+			obj, err := dyn.Resource(modelAliasGVR).Namespace(ns).
+				Get(ctx, mdName+"-aliases-0", metav1.GetOptions{})
+			g.Expect(err).NotTo(HaveOccurred())
+			entries, _, _ := unstructured.NestedSlice(obj.Object, "spec", "aliases")
+			g.Expect(entries).To(ContainElement(HaveKeyWithValue("name", "openai.gpt-4o[1m]")))
+			rows, _, _ := unstructured.NestedSlice(obj.Object, "status", "aliasStatuses")
+			g.Expect(rows).NotTo(BeEmpty())
+			for _, r := range rows {
+				g.Expect(r.(map[string]interface{})["applied"]).To(BeTrue(), "row %v", r)
+			}
+			s, r := conditionStatus(obj, "Ready")
+			g.Expect(s).To(Equal("True"), "Ready=%s reason=%s", s, r)
+		}, 90*time.Second, 2*time.Second).Should(Succeed())
+	})
 })

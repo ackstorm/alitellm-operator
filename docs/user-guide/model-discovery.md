@@ -16,6 +16,7 @@ child reconciles into LiteLLM via the `LiteLLMModel` controller
 | `spec.region`               | bedrock only    | AWS region. One region per CR (multi-region → multiple CRs).                           |
 | `spec.baseUrl`              | kubeai (req), openai (opt) | Provider HTTP endpoint. Any non-empty value auto-overlays into each child's `api_base` (so LiteLLM routes inference to the same endpoint models were discovered from). |
 | `spec.litellmProvider`      | no (openai only) | Overrides the LiteLLM pricing-prefix provider stamped on each child's `litellm_params.model` (default: derived from `spec.type`). E.g. `openrouter` to bill under OpenRouter's cost table. CEL-restricted to `type: openai`. |
+| `spec.aliasSuffix`          | no              | Emit `<child><suffix> → <child>` aliases for every child (e.g. `[1m]`).         |
 | `spec.params`               | no              | Pass-through bag propagated VERBATIM into every child's `spec.params`.                 |
 | `spec.info`                 | no              | Pass-through bag propagated into every child's `spec.info`.                            |
 | `spec.secrets[]`            | no              | Substitution map propagated into every child's `spec.secrets[]` (NOT resolved here).   |
@@ -292,6 +293,34 @@ entry `reason=ExplicitModelExists`. Collision with another
 Discovery's child → `reason=Conflict` (renamed from `DuplicateDiscovery`
 per ADR-0001 for cross-kind consistency; first-create-wins until a
 follow-up PR adds alpha-last-wins ownership transfer).
+
+## Default aliases — `spec.aliasSuffix`
+
+Some clients request a decorated model id: Claude Code selects
+`claude-opus-5-5[1m]` for the 1M-context variant. Set a suffix and every
+generated child gets an alias `<child><suffix> → <child>`:
+
+```yaml
+spec:
+  type: anthropic
+  disablePrefix: true
+  aliasSuffix: "[1m]"   # claude-opus-5-5[1m] → claude-opus-5-5
+```
+
+The operator writes the entries into `LiteLLMModelAlias` CRs it owns,
+`<discovery>-aliases-0`, `-1`, … (128 entries each), labelled
+`litellm.ackstorm.ai/generated-by=<discovery>`. They follow the discovery:
+new models gain an alias on the next refresh, vanished ones lose it, clearing
+the suffix deletes the CRs, deleting the discovery garbage-collects them.
+
+- Every child gets an alias, including models that do not support the variant —
+  an unused alias costs nothing; calling it just routes to the base model.
+- Aliases share the cluster-wide map with hand-written `LiteLLMModelAlias` CRs;
+  a name clash resolves alphabetically-last as usual (see
+  [LiteLLMModelAlias](model-alias.md)). Delete hand-written duplicates.
+- If `<discovery>-aliases-<n>` already exists and is not owned by the discovery,
+  the discovery goes `Ready=False, reason=AliasWriteFailed` rather than
+  overwrite it.
 
 ## Status — what to read
 
