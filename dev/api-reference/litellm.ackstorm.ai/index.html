@@ -6266,7 +6266,7 @@ openai — requires credentialsSecretRef; baseUrl optional; forbids region.
 pricing-prefix provider used for cost tracking (default: derived from
 spec.type) — e.g. <code>openrouter</code> to bill discovered models under OpenRouter's
 cost table without a new provider type. See the LitellmProvider field doc.</p>
-<p>MDISC-01 enforces spec.type ∈ {anthropic, bedrock, elevenlabs, gemini, kubeai, openai}
+<p>MDISC-01 enforces spec.type ∈ {a2a, anthropic, bedrock, elevenlabs, gemini, kubeai, openai}
 at admission via the +kubebuilder:validation:Enum marker. MDISC-04
 (prefix), MDISC-05 (refresh.interval floor), MDISC-15 (credential
 surface), and MDISC-22/23 (propagation bags) are all schema-side.</p>
@@ -6286,7 +6286,7 @@ surface), and MDISC-22/23 (propagation bags) are all schema-side.</p>
 <td><code>type</code> <em>string</em></td>
 <td>Type discriminates the upstream provider. Enforced at admission via<br />the +kubebuilder:validation:Enum marker (MDISC-01). The reconciler<br />dispatches to internal/providers/<type>.go via the registry; per-type<br />branching outside the registry is prohibited (CONTEXT.md D-01).</td>
 <td></td>
-<td>Enum: [anthropic bedrock elevenlabs gemini kubeai openai] <br />Required: {} <br /></td>
+<td>Enum: [a2a anthropic bedrock elevenlabs gemini kubeai openai] <br />Required: {} <br /></td>
 </tr>
 <tr>
 <td><code>litellmProvider</code> <em>string</em></td>

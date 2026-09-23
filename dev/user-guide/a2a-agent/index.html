@@ -2044,6 +2044,9 @@ lists agents; <code>GET /v1/models</code> lists model rows; nothing bridges them
 registered agent is callable, but invisible to any client that builds its model
 list from <code>/v1/models</code> — which is most of them, including LibreChat and Open
 WebUI.</p>
+<p>To publish many agents at once, prefer a <code>LiteLLMModelDiscovery</code> with
+<code>type: a2a</code> (see <a href="../model-discovery/">model-discovery.md</a>); it picks agents by
+filter instead of per agent. Use one or the other for a given agent, not both.</p>
 <p><code>spec.exposeAsModel</code> closes that gap by projecting the agent into a generated
 <code>LiteLLMModel</code> named <code>agent.&lt;metadata.name&gt;</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">litellm.ackstorm.ai/v1alpha1</span>
