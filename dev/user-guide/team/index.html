@@ -2114,10 +2114,9 @@ team <code>Ready=False, reason=ToolsetNotFound</code> and requeues — create th
 Multiple toolsets are <strong>unioned</strong> by LiteLLM (not last-wins), so listing
 several composes their tool grants. There is no access-group concept for
 toolsets — listing several here IS the grouping mechanism.</p>
-<p><strong><code>agentGroups</code> is a no-op.</strong> LiteLLM 1.83.10 has no API to tag an agent into
-an access group, so <code>object_permission.agent_access_groups</code> is never enforced.
-The field is retained for forward-compat; the operator emits a Warning
-<code>AgentGroupsNoOp</code> Event when it is non-empty.</p>
+<p><strong><code>agentGroups</code></strong> projects to <code>object_permission.agent_access_groups</code>, letting
+teams reach A2A agents carrying those tags. The LiteLLM startup patch is
+required until upstream supports the <code>/v1/agents</code> write and response path.</p>
 <p><strong>Empty vs absent.</strong> An absent <code>spec.permission</code> block leaves any raw
 <code>spec.params.models</code> / <code>spec.params.object_permission</code> untouched (passthrough).
 A <strong>present</strong> block makes the operator OWN <code>models</code> and all five

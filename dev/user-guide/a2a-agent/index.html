@@ -855,10 +855,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#unknown-specparams-keys" class="md-nav__link">
+  <a href="#access-group-tags" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Unknown spec.params keys
+        Access-group tags
       
     </span>
   </a>
@@ -1754,10 +1754,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#unknown-specparams-keys" class="md-nav__link">
+  <a href="#access-group-tags" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Unknown spec.params keys
+        Access-group tags
       
     </span>
   </a>
@@ -2010,22 +2010,16 @@ most one per reconcile pass per key:</p>
 </table>
 <p>To avoid the warnings, do not set the colliding keys in <code>spec.params</code>
 / <code>spec.agentCard</code> — let the operator stamp them.</p>
-<h2 id="unknown-specparams-keys">Unknown <code>spec.params</code> keys<a class="headerlink" href="#unknown-specparams-keys" title="Permanent link">&para;</a></h2>
-<p><code>spec.params</code> is a verbatim pass-through, but only the keys LiteLLM's
-<code>AgentConfig</code> models survive serialization: <code>litellm_params</code>,
-<code>object_permission</code>, <code>tpm_limit</code>, <code>rpm_limit</code>, <code>session_tpm_limit</code>,
-<code>session_rpm_limit</code>, <code>static_headers</code>, <code>extra_headers</code> (plus the two
-operator-overlaid keys above). Anything else is dropped by the operator and
-LiteLLM never sees it — so it emits a Warning Event per unknown key:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>Warning  UnknownParamKey  key "access_groups" in spec.params is not a field
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>LiteLLM's AgentConfig accepts — the operator drops it and LiteLLM never sees
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>it; it has NO effect
+<h2 id="access-group-tags">Access-group tags<a class="headerlink" href="#access-group-tags" title="Permanent link">&para;</a></h2>
+<p>Use <code>access_groups</code> as the alias of <code>agent_access_groups</code> in <code>spec.params</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="nt">access_groups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"agents"</span><span class="p p-Indicator">]</span>
 </code></pre></div>
-<p><code>access_groups</code> is the motivating case: it reads like an access restriction
-and enforces nothing. LiteLLM's <code>AgentConfig</code> has no such field, and the
-column it <em>does</em> enforce on (<code>LiteLLM_AgentsTable.agent_access_groups</code>) is
-not settable through <code>POST /v1/agents</code> or <code>PATCH</code> in 1.99.1 at all. Use
-<code>LiteLLMTeam.spec.permission.agents</code> to restrict agent access.</p>
+<p>The operator forwards the selected tags as <code>agent_access_groups</code>. Teams reach
+tagged agents through <code>LiteLLMTeam.spec.permission.agentGroups</code> or
+<code>LiteLLMAccessGroup.spec.agentGroups</code>. The LiteLLM startup patch is required
+until upstream accepts, persists, and returns the field on <code>/v1/agents</code>.</p>
 <h2 id="drift-detection">Drift detection<a class="headerlink" href="#drift-detection" title="Permanent link">&para;</a></h2>
 <p>Per-reconcile SHA-256 hash over the rendered merged body (params +
 agentCard + overlays). On mismatch the reconciler issues

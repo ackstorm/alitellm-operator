@@ -3544,6 +3544,12 @@ attaches this group, regardless of that team's own spec.permission.models.</p>
 <td></td>
 </tr>
 <tr>
+<td><code>agentGroups</code> <em>string array</em></td>
+<td>AgentGroups is a list of A2A agent access-group TAGS. Every<br />LiteLLMA2AAgent in this namespace whose spec.params.agent_access_groups<br />(or the access_groups alias) contains one of these tags, and which is<br />registered (status.lastRendered.agentID set), is added to this group's<br />access_agent_ids alongside spec.agents. Re-resolved whenever any<br />LiteLLMA2AAgent changes. A tag matching no agent is not an error.<br />SECURITY: this widens automatically — tagging a new agent grants it to<br />every team that attaches this group.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
 <td><code>deletionPolicy</code> <em>string</em></td>
 <td>DeletionPolicy controls finalizer behavior when the LiteLLM-side DELETE<br />cannot be confirmed. Defaults to "Orphan" per REL-06 anti-storm.</td>
 <td>Orphan</td>
@@ -6581,10 +6587,7 @@ the empty case of the two fail-open fields.</p>
     its agent_id via GET /v1/agents before projecting. An unresolved name
     (A2A agent not registered yet) requeues the Team with
     reason=AgentNotFound rather than hard-failing.
-  - AgentGroups → object_permission.agent_access_groups. DEAD FIELD in
-    LiteLLM 1.83.10 (no API tags an agent into a group), retained for
-    forward-compat; the reconciler emits a Warning/AgentGroupsNoOp Event
-    when this sublist is non-empty.</p>
+  - AgentGroups → object_permission.agent_access_groups.</p>
 <p><em>Appears in:</em>
 - <a href="#teamspec">TeamSpec</a></p>
 <table>
@@ -6635,7 +6638,7 @@ the empty case of the two fail-open fields.</p>
 </tr>
 <tr>
 <td><code>agentGroups</code> <em>string array</em></td>
-<td>AgentGroups is the list of A2A agent access-group names. Projected onto<br />object_permission.agent_access_groups for forward-compat, but this is a<br />NO-OP in LiteLLM 1.83.10 (the API never tags an agent into a group). The<br />reconciler emits a Warning/AgentGroupsNoOp Event when this is non-empty.</td>
+<td>AgentGroups is the list of A2A agent access-group TAGS this team may use.<br />Projected onto object_permission.agent_access_groups. Effective only on a<br />LiteLLM carrying the agent_access_groups patch (gitops<br />patch_agent_access_groups.py) until upstream ships it.</td>
 <td></td>
 <td></td>
 </tr>
