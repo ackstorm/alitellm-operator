@@ -1374,7 +1374,10 @@ func (r *ModelDiscoveryReconciler) classifyAlreadyExists(
 		}
 		return nil, false, err
 	}
-	if !existing.DeletionTimestamp.IsZero() {
+	// Only a FOREIGN deleting model needs the short requeue: our own child's
+	// removal re-enqueues us through Owns(), and requeueing on it would re-list
+	// the upstream every 5s while its finalizer is stuck.
+	if !existing.DeletionTimestamp.IsZero() && !ownedByThisDiscovery(&existing, parent) {
 		return nil, false, errChildDeleting
 	}
 	// Locate the controller ownerRef, if any.
