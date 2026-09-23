@@ -266,10 +266,10 @@ spec:
                     type: array
                   agentGroups:
                     description: |-
-                      AgentGroups is the list of A2A agent access-group names. Projected onto
-                      object_permission.agent_access_groups for forward-compat, but this is a
-                      NO-OP in LiteLLM 1.83.10 (the API never tags an agent into a group). The
-                      reconciler emits a Warning/AgentGroupsNoOp Event when this is non-empty.
+                      AgentGroups is the list of A2A agent access-group TAGS this team may use.
+                      Projected onto object_permission.agent_access_groups. Effective only on a
+                      LiteLLM carrying the agent_access_groups patch (gitops
+                      patch_agent_access_groups.py) until upstream ships it.
                     items:
                       type: string
                     type: array
