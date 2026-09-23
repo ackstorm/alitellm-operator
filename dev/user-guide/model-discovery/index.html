@@ -1078,10 +1078,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#default-aliases-specaliassuffix" class="md-nav__link">
+  <a href="#default-aliases-specaliases" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Default aliases — spec.aliasSuffix
+        Default aliases — spec.aliases
       
     </span>
   </a>
@@ -1926,10 +1926,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#default-aliases-specaliassuffix" class="md-nav__link">
+  <a href="#default-aliases-specaliases" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Default aliases — spec.aliasSuffix
+        Default aliases — spec.aliases
       
     </span>
   </a>
@@ -2036,9 +2036,9 @@ child reconciles into LiteLLM via the <code>LiteLLMModel</code> controller
 <td>Overrides the LiteLLM pricing-prefix provider stamped on each child's <code>litellm_params.model</code> (default: derived from <code>spec.type</code>). E.g. <code>openrouter</code> to bill under OpenRouter's cost table. CEL-restricted to <code>type: openai</code>.</td>
 </tr>
 <tr>
-<td><code>spec.aliasSuffix</code></td>
+<td><code>spec.aliases[]</code></td>
 <td>no</td>
-<td>Emit <code>&lt;child&gt;&lt;suffix&gt; → &lt;child&gt;</code> aliases for every child (e.g. <code>[1m]</code>).</td>
+<td>Alias rules: <code>&lt;prefix&gt;&lt;child&gt;&lt;suffix&gt; → &lt;child&gt;</code>, optional <code>include</code> filter.</td>
 </tr>
 <tr>
 <td><code>spec.params</code></td>
@@ -2346,29 +2346,56 @@ entry <code>reason=ExplicitModelExists</code>. Collision with another
 Discovery's child → <code>reason=Conflict</code> (renamed from <code>DuplicateDiscovery</code>
 per ADR-0001 for cross-kind consistency; first-create-wins until a
 follow-up PR adds alpha-last-wins ownership transfer).</p>
-<h2 id="default-aliases-specaliassuffix">Default aliases — <code>spec.aliasSuffix</code><a class="headerlink" href="#default-aliases-specaliassuffix" title="Permanent link">&para;</a></h2>
+<h2 id="default-aliases-specaliases">Default aliases — <code>spec.aliases</code><a class="headerlink" href="#default-aliases-specaliases" title="Permanent link">&para;</a></h2>
 <p>Some clients request a decorated model id: Claude Code selects
-<code>claude-opus-5-5[1m]</code> for the 1M-context variant. Set a suffix and every
-generated child gets an alias <code>&lt;child&gt;&lt;suffix&gt; → &lt;child&gt;</code>:</p>
+<code>claude-opus-5-5[1m]</code> for the 1M-context variant. Alias rules give generated
+children extra names without hand-writing a <code>LiteLLMModelAlias</code>. Each rule
+emits <code>&lt;prefix&gt;&lt;child&gt;&lt;suffix&gt; → &lt;child&gt;</code> for every child it matches:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nt">spec</span><span class="p">:</span>
 <a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">anthropic</span>
 <a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">  </span><span class="nt">disablePrefix</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">  </span><span class="nt">aliasSuffix</span><span class="p">:</span><span class="w"> </span><span class="s">"[1m]"</span><span class="w">   </span><span class="c1"># claude-opus-5-5[1m] → claude-opus-5-5</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">  </span><span class="nt">aliases</span><span class="p">:</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">suffix</span><span class="p">:</span><span class="w"> </span><span class="s">"[1m]"</span><span class="w">                              </span><span class="c1"># claude-opus-5-5[1m] → claude-opus-5-5</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="w">      </span><span class="nt">include</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"claude-(opus|sonnet|fable)"</span><span class="p p-Indicator">]</span><span class="w">     </span><span class="c1"># only these children</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">prefix</span><span class="p">:</span><span class="w"> </span><span class="s">"anthropic/"</span><span class="w">                        </span><span class="c1"># anthropic/&lt;child&gt; → &lt;child&gt;, every child</span>
 </code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>prefix</code></td>
+<td>Prepended to the child name. Must start alphanumeric.</td>
+</tr>
+<tr>
+<td><code>suffix</code></td>
+<td>Appended to the child name. A rule needs <code>prefix</code>, <code>suffix</code>, or both (both → one combined alias).</td>
+</tr>
+<tr>
+<td><code>include[]</code></td>
+<td>RE2 patterns on the child name, anchored at the start like <code>spec.filters</code>. Empty = every child. A pattern matching nothing is fine.</td>
+</tr>
+</tbody>
+</table>
 <p>The operator writes the entries into <code>LiteLLMModelAlias</code> CRs it owns,
 <code>&lt;discovery&gt;-aliases-0</code>, <code>-1</code>, … (128 entries each), labelled
 <code>litellm.ackstorm.ai/generated-by=&lt;discovery&gt;</code>. They follow the discovery:
-new models gain an alias on the next refresh, vanished ones lose it, clearing
-the suffix deletes the CRs, deleting the discovery garbage-collects them.</p>
+new models gain aliases on the next refresh, vanished ones lose them, removing
+the rules deletes the CRs, deleting the discovery garbage-collects them.</p>
 <ul>
-<li>Every child gets an alias, including models that do not support the variant —
-  an unused alias costs nothing; calling it just routes to the base model.</li>
+<li>Two rules producing the same alias name: the later rule wins.</li>
 <li>Aliases share the cluster-wide map with hand-written <code>LiteLLMModelAlias</code> CRs;
   a name clash resolves alphabetically-last as usual (see
   <a href="../model-alias/">LiteLLMModelAlias</a>). Delete hand-written duplicates.</li>
-<li>If <code>&lt;discovery&gt;-aliases-&lt;n&gt;</code> already exists and is not owned by the discovery,
-  the discovery goes <code>Ready=False, reason=AliasWriteFailed</code> rather than
-  overwrite it.</li>
+<li>An invalid <code>include</code> pattern, or an existing <code>&lt;discovery&gt;-aliases-&lt;n&gt;</code> not
+  owned by the discovery, sets <code>Ready=False, reason=AliasWriteFailed</code>; existing
+  generated aliases are left in place.</li>
+<li><code>spec.aliasSuffix</code> (v0.8.9 only) was replaced by <code>spec.aliases</code>:
+  <code>aliasSuffix: "[1m]"</code> → <code>aliases: [{suffix: "[1m]"}]</code>.</li>
 </ul>
 <h2 id="status-what-to-read">Status — what to read<a class="headerlink" href="#status-what-to-read" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>mdisc<span class="w"> </span>openai<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.status}{"\n"}'</span>
