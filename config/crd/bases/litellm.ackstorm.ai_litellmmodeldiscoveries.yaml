@@ -105,6 +105,18 @@ spec:
               marker. MDISC-04\n(prefix), MDISC-05 (refresh.interval floor), MDISC-15
               (credential\nsurface), and MDISC-22/23 (propagation bags) are all schema-side."
             properties:
+              aliasSuffix:
+                description: |-
+                  AliasSuffix, when set, makes the Discovery emit one
+                  router_settings.model_group_alias entry `<child><suffix> → <child>`
+                  per generated child — e.g. "[1m]" so Claude Code's 1M-context id
+                  `claude-opus-5-5[1m]` resolves to the discovered `claude-opus-5-5`.
+                  Entries land in operator-owned LiteLLMModelAlias CRs named
+                  `<discovery>-aliases-<n>` (128 entries each) and are removed when the
+                  suffix is cleared. Charset mirrors LiteLLMModelAlias entry names.
+                maxLength: 32
+                pattern: ^[A-Za-z0-9._:/@+\[\]-]+$
+                type: string
               baseUrl:
                 description: |-
                   BaseURL is the upstream provider's base endpoint. Required for
