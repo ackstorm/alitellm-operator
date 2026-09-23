@@ -1509,17 +1509,6 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#exposeasmodel" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        ExposeAsModel
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
   <a href="#failedcandidate" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2532,17 +2521,6 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#exposeasmodel" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        ExposeAsModel
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
   <a href="#failedcandidate" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3361,12 +3339,6 @@ each at most once per reconcile pass:
 <td></td>
 </tr>
 <tr>
-<td><code>exposeAsModel</code> <em><a href="#exposeasmodel">ExposeAsModel</a></em></td>
-<td>ExposeAsModel projects this agent into a generated <code>LiteLLMModel</code><br />named <code>agent.&lt;metadata.name&gt;</code>, so the agent shows up in<br /><code>GET /v1/models</code> and therefore in clients that build their model<br />picker from that endpoint.<br />WHY this is needed at all: LiteLLM keeps agents and models in two<br />disjoint registries. <code>GET /v1/agents</code> lists agents, <code>GET /v1/models</code><br />lists model rows, and nothing bridges them — so a registered agent is<br />callable but invisible to every model-listing client.<br />The generated child carries <code>litellm_params.model =&lt;br /&gt;"&lt;provider&gt;/&lt;metadata.name&gt;"</code>, where <provider> is the LiteLLM<br />provider that knows how to talk A2A (<code>A2A_MODEL_PROVIDER</code>, default<br /><code>a2a1</code>). The name after the prefix is <code>metadata.name</code>, which is also<br />the <code>agent_name</code> this reconciler registers, so the two always agree.<br />Presence of this block enables the projection; remove it and the<br />generated child is pruned. The child is owned by this CR, so deleting<br />the agent cascades to the model.</td>
-<td></td>
-<td></td>
-</tr>
-<tr>
 <td><code>deletionPolicy</code> <em>string</em></td>
 <td>DeletionPolicy controls finalizer behavior when the LiteLLM-side<br />DELETE cannot be confirmed (LiteLLM unavailable, 401, transient<br />error already retried). Defaults to "Orphan" to preserve REL-06<br />anti-storm: the CR is freed even if the LiteLLM entry may linger.<br />"Delete" blocks finalizer removal until the LiteLLM-side ack<br />succeeds, suitable for GitOps users who must not see "synced"<br />while a backend resource still exists.<br />Annotation override (<code>litellm.ackstorm.ai/deletion-policy-override</code>)<br />takes precedence over this field for runtime break-glass without a<br />spec mutation.</td>
 <td>Orphan</td>
@@ -3677,32 +3649,6 @@ becomes a concern.</p>
 <td>Period is the budget reset interval as a duration string, projected<br />verbatim onto <code>budget_duration</code> (string). CEL admission rejects any<br />value that does not match <code>^[0-9]+[smhd]$</code> (seconds | minutes |<br />hours | days — per spec §6.7). MinLength=1 is NOT applied<br />independently: the regex pattern + <code>omitempty</code> together cover<br />absence (no pattern check fires when the field is absent), and a<br />present-but-empty value (<code>""</code>) is rejected by the regex itself.</td>
 <td></td>
 <td>Pattern: <code>^[0-9]+[smhd]$</code> <br /></td>
-</tr>
-</tbody>
-</table>
-<h4 id="exposeasmodel">ExposeAsModel<a class="headerlink" href="#exposeasmodel" title="Permanent link">&para;</a></h4>
-<p>ExposeAsModel configures the generated <code>LiteLLMModel</code> child described on
-A2AAgentSpec.ExposeAsModel. It is a struct rather than a bool so the
-generated model can be scoped to an access group: a model with no group
-falls back to <code>DEFAULT_ACCESS_GROUP</code>, which is typically granted to every
-team, and silently exposing an agent instance-wide is the wrong default.</p>
-<p><em>Appears in:</em>
-- <a href="#a2aagentspec">A2AAgentSpec</a></p>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Description</th>
-<th>Default</th>
-<th>Validation</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>accessGroups</code> <em>string array</em></td>
-<td>AccessGroups populates <code>model_info.access_groups</code> on the generated<br />child — the legacy per-model TAG namespace that teams grant through<br /><code>LiteLLMTeam.spec.permission.modelGroups</code>. This is NOT the<br /><code>LiteLLMAccessGroup</code> object namespace; the two are disjoint.<br />Left empty, the child carries no explicit group and the Model<br />reconciler's <code>DEFAULT_ACCESS_GROUP</code> injection applies.</td>
-<td></td>
-<td></td>
 </tr>
 </tbody>
 </table>

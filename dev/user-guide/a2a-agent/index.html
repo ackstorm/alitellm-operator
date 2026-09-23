@@ -899,28 +899,6 @@
   
 </li>
         
-          <li class="md-nav__item">
-  <a href="#access-groups" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Access groups
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#lifecycle" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Lifecycle
-      
-    </span>
-  </a>
-  
-</li>
-        
       </ul>
     </nav>
   
@@ -1798,28 +1776,6 @@
   
 </li>
         
-          <li class="md-nav__item">
-  <a href="#access-groups" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Access groups
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#lifecycle" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Lifecycle
-      
-    </span>
-  </a>
-  
-</li>
-        
       </ul>
     </nav>
   
@@ -1909,11 +1865,6 @@ declared inside the CR; the operator stamps <code>agent_name</code> from
 <td><code>spec.secrets[]</code></td>
 <td>no</td>
 <td>Substitution map — placeholders work in <code>spec.params</code> AND <code>spec.agentCard</code>.</td>
-</tr>
-<tr>
-<td><code>spec.exposeAsModel</code></td>
-<td>no</td>
-<td>Projects a generated <code>LiteLLMModel</code> named <code>agent.&lt;name&gt;</code> so the agent appears in <code>/v1/models</code>.</td>
 </tr>
 </tbody>
 </table>
@@ -2044,48 +1995,18 @@ lists agents; <code>GET /v1/models</code> lists model rows; nothing bridges them
 registered agent is callable, but invisible to any client that builds its model
 list from <code>/v1/models</code> — which is most of them, including LibreChat and Open
 WebUI.</p>
-<p>To publish many agents at once, prefer a <code>LiteLLMModelDiscovery</code> with
-<code>type: a2a</code> (see <a href="../model-discovery/">model-discovery.md</a>); it picks agents by
-filter instead of per agent. Use one or the other for a given agent, not both.</p>
-<p><code>spec.exposeAsModel</code> closes that gap by projecting the agent into a generated
-<code>LiteLLMModel</code> named <code>agent.&lt;metadata.name&gt;</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">litellm.ackstorm.ai/v1alpha1</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">LiteLLMA2AAgent</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="nt">metadata</span><span class="p">:</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">support-triage</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">  </span><span class="nt">endpoint</span><span class="p">:</span><span class="w"> </span><span class="s">"http://achagent-classifier.ach.svc.cluster.local:8080/a2a/classify"</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">  </span><span class="nt">agentCard</span><span class="p">:</span>
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">support-triage</span>
-<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="s">"Classifies</span><span class="nv"> </span><span class="s">a</span><span class="nv"> </span><span class="s">support</span><span class="nv"> </span><span class="s">conversation."</span>
-<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">  </span><span class="nt">exposeAsModel</span><span class="p">:</span>
-<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="w">    </span><span class="nt">accessGroups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"a2a"</span><span class="p p-Indicator">]</span>
-</code></pre></div>
-<p>produces:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">litellm.ackstorm.ai/v1alpha1</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">LiteLLMModel</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="nt">metadata</span><span class="p">:</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">agent.support-triage</span><span class="w">          </span><span class="c1"># &lt;- what clients call</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">  </span><span class="nt">labels</span><span class="p">:</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">    </span><span class="nt">litellm.ackstorm.ai/generated-by-agent</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">support-triage</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">  </span><span class="nt">ownerReferences</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> kind</span><span class="p">:</span><span class="w"> </span><span class="nv">LiteLLMA2AAgent</span><span class="p p-Indicator">,</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">support-triage</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">...</span><span class="w"> </span><span class="p p-Indicator">}</span><span class="w"> </span><span class="p p-Indicator">]</span>
-<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
-<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="w">    </span><span class="nt">model</span><span class="p">:</span><span class="w"> </span><span class="s">"a2a1/support-triage"</span><span class="w">      </span><span class="c1"># &lt;- provider prefix + agent_name</span>
-<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="w">  </span><span class="nt">info</span><span class="p">:</span>
-<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="w">    </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">chat</span>
-<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="s">"Classifies</span><span class="nv"> </span><span class="s">a</span><span class="nv"> </span><span class="s">support</span><span class="nv"> </span><span class="s">conversation."</span>
-<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a><span class="w">    </span><span class="nt">access_groups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"a2a"</span><span class="p p-Indicator">]</span>
-</code></pre></div>
-<p>Users call it as <strong><code>agent.support-triage</code></strong> — the CR name. <code>a2a1/support-triage</code>
-is only the <code>litellm_params.model</code>; calling it directly returns
-<code>400 Invalid model name</code>, because the proxy resolves the public model name
-before it ever routes to a provider.</p>
+<p>Publish agents as models with a <code>LiteLLMModelDiscovery</code> of <code>type: a2a</code> (see
+<a href="../model-discovery/#a2a--registered-agents-as-models">model-discovery.md</a>): it
+turns every registered agent that passes its filters into
+<code>&lt;prefix&gt;.&lt;agent name&gt;</code> with <code>params.model: &lt;A2A_MODEL_PROVIDER&gt;/&lt;agent name&gt;</code>.
+Clients call the CR name (<code>agent.support-triage</code>); calling
+<code>a2a1/support-triage</code> directly returns <code>400 Invalid model name</code>.</p>
+<p>(<code>spec.exposeAsModel</code>, the per-agent projection, was removed in v0.8.13.)</p>
 <h3 id="the-provider-prefix-must-exist-in-litellm">The provider prefix must exist in LiteLLM<a class="headerlink" href="#the-provider-prefix-must-exist-in-litellm" title="Permanent link">&para;</a></h3>
 <p>The operator does not ship the provider that speaks A2A — it only names it.
 <code>A2A_MODEL_PROVIDER</code> (default <code>a2a1</code>) must match a provider your LiteLLM
 deployment can actually route:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>kubectl<span class="w"> </span><span class="nb">set</span><span class="w"> </span>env<span class="w"> </span>-n<span class="w"> </span>litellm-system<span class="w"> </span>deploy/alitellm-operator<span class="w"> </span><span class="nv">A2A_MODEL_PROVIDER</span><span class="o">=</span>a2a1
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>kubectl<span class="w"> </span><span class="nb">set</span><span class="w"> </span>env<span class="w"> </span>-n<span class="w"> </span>litellm-system<span class="w"> </span>deploy/alitellm-operator<span class="w"> </span><span class="nv">A2A_MODEL_PROVIDER</span><span class="o">=</span>a2a1
 </code></pre></div>
 <p>LiteLLM ships a built-in <code>a2a/</code> model prefix, but on 1.99.1 it is unusable for
 agents that need auth or speak A2A 1.0: it re-resolves the agent through an
@@ -2094,56 +2015,12 @@ to A2A 0.3. Deployments therefore register their own handler via
 <code>litellm_settings.custom_provider_map</code> and point <code>A2A_MODEL_PROVIDER</code> at it. If
 upstream later fixes the built-in route, switch the env var to <code>a2a</code> — no new
 operator image.</p>
-<h3 id="access-groups">Access groups<a class="headerlink" href="#access-groups" title="Permanent link">&para;</a></h3>
-<p><code>accessGroups</code> populates <code>model_info.access_groups</code>, the <strong>legacy per-model tag
-namespace</strong> that teams grant through <code>LiteLLMTeam.spec.permission.modelGroups</code>.
-It is <em>not</em> the <code>LiteLLMAccessGroup</code> object namespace — see
-<a href="../access-group/#two-access-group-namespaces">Access groups</a>.</p>
-<p>Leave it empty and the Model reconciler's <code>DEFAULT_ACCESS_GROUP</code> injection
-applies, which is typically granted to every team. That is why <code>exposeAsModel</code>
-is a block and not a bool: publishing an agent to the whole instance should be
-something you typed, not something you got by default.</p>
-<h3 id="lifecycle">Lifecycle<a class="headerlink" href="#lifecycle" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>Action</th>
-<th>Effect on the generated model</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Add <code>exposeAsModel</code></td>
-<td>Child created</td>
-</tr>
-<tr>
-<td>Edit <code>accessGroups</code> or the card description</td>
-<td>Child updated in place (server-side apply)</td>
-</tr>
-<tr>
-<td>Remove <code>exposeAsModel</code></td>
-<td>Child pruned</td>
-</tr>
-<tr>
-<td>Delete the agent</td>
-<td>Child cascades via owner reference</td>
-</tr>
-</tbody>
-</table>
-<p>The prune path deletes <strong>only</strong> a model it generated — verified by both the
-<code>litellm.ackstorm.ai/generated-by-agent</code> label and a controller owner reference
-with the agent's UID. A hand-written <code>LiteLLMModel</code> that happens to occupy the
-name <code>agent.&lt;something&gt;</code> is left untouched.</p>
-<p>The projection runs early in the reconcile, before the LiteLLM connection gate,
-so it does not depend on the proxy being reachable. Drift on the child (someone
-edits it by hand) is corrected on the next reconcile or safety re-list tick,
-whichever comes first.</p>
 <h2 id="status-what-to-read">Status: what to read<a class="headerlink" href="#status-what-to-read" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>a2a<span class="w"> </span>vendor-research-agent<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.status.lastRendered}{"\n"}'</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="c1"># {"agentCardKeys":["description","name","version"],"agentID":"&lt;uuid&gt;","at":"...","hash":"abc...","paramsKeys":["timeout"]}</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>kubectl<span class="w"> </span>get<span class="w"> </span>a2a<span class="w"> </span>vendor-research-agent<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.status.conditions[?(@.type=="Ready")]}{"\n"}'</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="c1"># {"type":"Ready","status":"True","reason":"Synced"}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>a2a<span class="w"> </span>vendor-research-agent<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.status.lastRendered}{"\n"}'</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="c1"># {"agentCardKeys":["description","name","version"],"agentID":"&lt;uuid&gt;","at":"...","hash":"abc...","paramsKeys":["timeout"]}</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>kubectl<span class="w"> </span>get<span class="w"> </span>a2a<span class="w"> </span>vendor-research-agent<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.status.conditions[?(@.type=="Ready")]}{"\n"}'</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="c1"># {"type":"Ready","status":"True","reason":"Synced"}</span>
 </code></pre></div>
 <p><code>Ready=False</code> reasons:</p>
 <ul>

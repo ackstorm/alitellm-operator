@@ -2313,8 +2313,8 @@ removed agent re-drives the Discovery immediately (watch), so
 <a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="w">  </span><span class="nt">refresh</span><span class="p">:</span>
 <a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a><span class="w">    </span><span class="nt">interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">15m</span>
 </code></pre></div>
-<p>Do not also set <code>exposeAsModel</code> on an agent this Discovery publishes: both
-produce <code>agent.&lt;name&gt;</code> and the Discovery skips it as <code>ExplicitModelExists</code>.</p>
+<p>If a candidate's name is held by a model that is being deleted, the Discovery
+retries every 5s until the name is free, then takes it over.</p>
 <h2 id="filter-order-include-first-then-exclude">Filter order — include first, then exclude<a class="headerlink" href="#filter-order-include-first-then-exclude" title="Permanent link">&para;</a></h2>
 <p>Per spec §6.3:</p>
 <ol>
