@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A2A agent access-group tags** — forwards `spec.params.access_groups` as
+  `agent_access_groups`, adds `LiteLLMAccessGroup.spec.agentGroups`, and
+  expands matching registered agents into `access_agent_ids`.
 - **`LiteLLMA2AAgent.spec.exposeAsModel`** — projects an agent into a generated
   `LiteLLMModel` named `agent.<metadata.name>`, so it appears in
   `GET /v1/models` and therefore in clients that build their model picker from

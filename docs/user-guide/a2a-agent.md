@@ -104,26 +104,20 @@ most one per reconcile pass per key:
 To avoid the warnings, do not set the colliding keys in `spec.params`
 / `spec.agentCard` — let the operator stamp them.
 
-## Unknown `spec.params` keys
+## Access-group tags
 
-`spec.params` is a verbatim pass-through, but only the keys LiteLLM's
-`AgentConfig` models survive serialization: `litellm_params`,
-`object_permission`, `tpm_limit`, `rpm_limit`, `session_tpm_limit`,
-`session_rpm_limit`, `static_headers`, `extra_headers` (plus the two
-operator-overlaid keys above). Anything else is dropped by the operator and
-LiteLLM never sees it — so it emits a Warning Event per unknown key:
+Use `access_groups` as the alias of `agent_access_groups` in `spec.params`:
 
-```
-Warning  UnknownParamKey  key "access_groups" in spec.params is not a field
-LiteLLM's AgentConfig accepts — the operator drops it and LiteLLM never sees
-it; it has NO effect
+```yaml
+spec:
+  params:
+    access_groups: ["agents"]
 ```
 
-`access_groups` is the motivating case: it reads like an access restriction
-and enforces nothing. LiteLLM's `AgentConfig` has no such field, and the
-column it *does* enforce on (`LiteLLM_AgentsTable.agent_access_groups`) is
-not settable through `POST /v1/agents` or `PATCH` in 1.99.1 at all. Use
-`LiteLLMTeam.spec.permission.agents` to restrict agent access.
+The operator forwards the selected tags as `agent_access_groups`. Teams reach
+tagged agents through `LiteLLMTeam.spec.permission.agentGroups` or
+`LiteLLMAccessGroup.spec.agentGroups`. The LiteLLM startup patch is required
+until upstream accepts, persists, and returns the field on `/v1/agents`.
 
 ## Drift detection
 

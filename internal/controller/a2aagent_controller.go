@@ -413,10 +413,8 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// (5) Unknown-key warning. spec.params is a verbatim pass-through, but
 	// only the keys LiteLLM's AgentConfig models survive serialization — the
 	// rest are dropped here and never reach the proxy. Silence on those keys
-	// reads as acceptance: `params.access_groups` looked like an access
-	// restriction for two months and enforced nothing (LiteLLM has no such
-	// AgentConfig field, and the column it does enforce on,
-	// agent_access_groups, is not settable via POST/PATCH /v1/agents at all).
+	// reads as acceptance. Agent access-group aliases are modeled and forwarded
+	// as the agent's tags.
 	// model_info already has its own reserved-key Event above.
 	for k := range paramsMap {
 		if k == "model_info" || litellm.IsAgentConfigKey(k) {
@@ -701,7 +699,18 @@ func buildAgentConfigFromMerged(mergedBody map[string]any, agentName string, age
 			cfg.LiteLLMParams = litellm.LiteLLMParams(m)
 		}
 	}
+	cfg.AgentAccessGroups = agentAccessGroupsFromParams(mergedBody)
 	return cfg
+}
+
+// agentAccessGroupsFromParams returns the agent's access-group tags:
+// agent_access_groups when set, else the access_groups alias (same
+// precedence as MCP's mcp_access_groups / access_groups).
+func agentAccessGroupsFromParams(p map[string]any) []string {
+	if tags := stringSliceFromParams(p, "agent_access_groups"); len(tags) > 0 {
+		return tags
+	}
+	return stringSliceFromParams(p, "access_groups")
 }
 
 // toInt coerces JSON-decoded numeric values (which arrive as float64 from

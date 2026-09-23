@@ -51,6 +51,19 @@ type AccessGroupSpec struct {
 	// +optional
 	Agents []string `json:"agents,omitempty"`
 
+	// AgentGroups is a list of A2A agent access-group TAGS. Every
+	// LiteLLMA2AAgent in this namespace whose spec.params.agent_access_groups
+	// (or the access_groups alias) contains one of these tags, and which is
+	// registered (status.lastRendered.agentID set), is added to this group's
+	// access_agent_ids alongside spec.agents. Re-resolved whenever any
+	// LiteLLMA2AAgent changes. A tag matching no agent is not an error.
+	//
+	// SECURITY: this widens automatically — tagging a new agent grants it to
+	// every team that attaches this group.
+	//
+	// +optional
+	AgentGroups []string `json:"agentGroups,omitempty"`
+
 	// DeletionPolicy controls finalizer behavior when the LiteLLM-side DELETE
 	// cannot be confirmed. Defaults to "Orphan" per REL-06 anti-storm.
 	//

@@ -181,8 +181,7 @@ func TestA2AAgentReconciler_VanishProbeClearNotPersisted(t *testing.T) {
 
 // TestA2AAgentReconciler_UnknownParamKeyEvent — spec.params is a verbatim
 // pass-through, but LiteLLM's AgentConfig models a fixed key set and drops
-// the rest. `access_groups` is the motivating case: it reads like an access
-// restriction, LiteLLM ignores it, and nothing said so for two months.
+// the rest.
 func TestA2AAgentReconciler_UnknownParamKeyEvent(t *testing.T) {
 	ctx := context.Background()
 	const name = "a2a-unknown-key"
@@ -197,7 +196,7 @@ func TestA2AAgentReconciler_UnknownParamKeyEvent(t *testing.T) {
 	})
 
 	cr := a2aSampleCR(name)
-	cr.Spec.Params = runtime.RawExtension{Raw: []byte(`{"access_groups":["dream"],"tpm_limit":10}`)}
+	cr.Spec.Params = runtime.RawExtension{Raw: []byte(`{"future_key":["dream"],"tpm_limit":10}`)}
 	if err := k8sClient.Create(ctx, cr); err != nil {
 		t.Fatalf("create A2AAgent: %v", err)
 	}
@@ -215,7 +214,7 @@ func TestA2AAgentReconciler_UnknownParamKeyEvent(t *testing.T) {
 		for _, e := range events.Items {
 			if e.InvolvedObject.Name == name && e.InvolvedObject.Kind == a2aAgentKind &&
 				e.Reason == eventReasonUnknownParamKey &&
-				strings.Contains(e.Message, `"access_groups"`) {
+				strings.Contains(e.Message, `"future_key"`) {
 				if e.Type != corev1.EventTypeWarning {
 					t.Errorf("UnknownParamKey Event type: want Warning, got %q", e.Type)
 				}
@@ -226,7 +225,7 @@ func TestA2AAgentReconciler_UnknownParamKeyEvent(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	if !found {
-		t.Errorf("no Warning/UnknownParamKey Event naming %q within 10s", "access_groups")
+		t.Errorf("no Warning/UnknownParamKey Event naming %q within 10s", "future_key")
 	}
 
 	// tpm_limit IS modeled — it must not be warned about, and it must ship.

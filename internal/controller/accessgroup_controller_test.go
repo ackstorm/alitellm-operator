@@ -4,12 +4,15 @@ package controller
 
 import (
 	"context"
+	"reflect"
+	"slices"
 	"testing"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -30,7 +33,7 @@ func TestRenderAccessGroup_ResolvesNamesAndKeepsModelsVerbatim(t *testing.T) {
 	serverIDs := map[string]string{"slack": "srv-1"}
 	agentIDs := map[string]string{"finops": "agt-1"}
 
-	got, missing := renderAccessGroup(spec, serverIDs, agentIDs)
+	got, missing := renderAccessGroup(spec, serverIDs, agentIDs, nil)
 	if len(missing.MCPServers)+len(missing.Agents) != 0 {
 		t.Fatalf("unexpected missing: %+v", missing)
 	}
@@ -48,7 +51,7 @@ func TestRenderAccessGroup_ResolvesNamesAndKeepsModelsVerbatim(t *testing.T) {
 // TestRenderAccessGroup_EmptySpecRendersNonNilLists guards the CLEAR contract:
 // nil slices would serialize as null/absent and KEEP a stale grant upstream.
 func TestRenderAccessGroup_EmptySpecRendersNonNilLists(t *testing.T) {
-	got, _ := renderAccessGroup(litellmv1alpha1.AccessGroupSpec{}, nil, nil)
+	got, _ := renderAccessGroup(litellmv1alpha1.AccessGroupSpec{}, nil, nil, nil)
 	if got.Models == nil || got.MCPServerIDs == nil || got.AgentIDs == nil {
 		t.Fatalf("nil slice in %+v — an omitted list KEEPS the stale value upstream", got)
 	}
@@ -62,7 +65,7 @@ func TestRenderAccessGroup_ReportsUnresolvedNames(t *testing.T) {
 		MCPServers: []string{"slack", "ghost"},
 		Agents:     []string{"nobody"},
 	}
-	_, missing := renderAccessGroup(spec, map[string]string{"slack": "srv-1"}, nil)
+	_, missing := renderAccessGroup(spec, map[string]string{"slack": "srv-1"}, nil, nil)
 	if len(missing.MCPServers) != 1 || missing.MCPServers[0] != "ghost" {
 		t.Errorf("missing.MCPServers = %v, want [ghost]", missing.MCPServers)
 	}
@@ -75,11 +78,58 @@ func TestRenderAccessGroup_ReportsUnresolvedNames(t *testing.T) {
 // short-circuit: a reordered spec must not look like drift and trigger a PUT.
 func TestAccessGroupHash_StableAcrossDeclarationOrder(t *testing.T) {
 	a, _ := renderAccessGroup(litellmv1alpha1.AccessGroupSpec{
-		Models: []string{"m1", "m2"}}, nil, nil)
+		Models: []string{"m1", "m2"}}, nil, nil, nil)
 	b, _ := renderAccessGroup(litellmv1alpha1.AccessGroupSpec{
-		Models: []string{"m2", "m1"}}, nil, nil)
+		Models: []string{"m2", "m1"}}, nil, nil, nil)
 	if accessGroupHash(a) != accessGroupHash(b) {
 		t.Error("hash differs on declaration order — every reconcile would PUT")
+	}
+}
+
+func a2aWithTags(name, agentID string, tags string, deleting bool) litellmv1alpha1.LiteLLMA2AAgent {
+	a := litellmv1alpha1.LiteLLMA2AAgent{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: WatchNamespace}}
+	if tags != "" {
+		a.Spec.Params = runtime.RawExtension{Raw: []byte(tags)}
+	}
+	a.Status.LastRendered.AgentID = agentID
+	if deleting {
+		now := metav1.Now()
+		a.DeletionTimestamp = &now
+	}
+	return a
+}
+
+// TestTaggedAgentIDs pins the selection rule: tag match, registered, not deleting.
+func TestTaggedAgentIDs(t *testing.T) {
+	agents := []litellmv1alpha1.LiteLLMA2AAgent{
+		a2aWithTags("a", "id-a", `{"access_groups":["agents"]}`, false),
+		a2aWithTags("b", "id-b", `{"agent_access_groups":["agents","sec"]}`, false),
+		a2aWithTags("c", "id-c", `{"access_groups":["other"]}`, false),
+		a2aWithTags("d", "", `{"access_groups":["agents"]}`, false),
+		a2aWithTags("e", "id-e", `{"access_groups":["agents"]}`, true),
+		a2aWithTags("f", "id-f", ``, false),
+		a2aWithTags("g", "id-g", `{"agent_access_groups":["x"],"access_groups":["agents"]}`, false),
+	}
+	got := taggedAgentIDs(agents, []string{"agents"})
+	want := []string{"id-a", "id-b"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("taggedAgentIDs = %v, want %v", got, want)
+	}
+	if got := taggedAgentIDs(agents, nil); len(got) != 0 {
+		t.Fatalf("no groups must select nothing, got %v", got)
+	}
+}
+
+// TestRenderAccessGroup_UnionsTaggedAgents: explicit names and tag matches
+// merge, sorted and deduped; tag matches never count as missing.
+func TestRenderAccessGroup_UnionsTaggedAgents(t *testing.T) {
+	spec := litellmv1alpha1.AccessGroupSpec{Agents: []string{"finops"}, AgentGroups: []string{"agents"}}
+	got, missing := renderAccessGroup(spec, nil, map[string]string{"finops": "id-f"}, []string{"id-z", "id-f"})
+	if len(missing.Agents) != 0 {
+		t.Fatalf("missing = %v", missing.Agents)
+	}
+	if want := []string{"id-f", "id-z"}; !reflect.DeepEqual(got.AgentIDs, want) {
+		t.Fatalf("AgentIDs = %v, want %v", got.AgentIDs, want)
 	}
 }
 
@@ -543,4 +593,73 @@ func TestAccessGroup_HealsStaleReadyFalse(t *testing.T) {
 		t.Errorf("Ready = %+v, want True/Synced — the steady-state short-circuit "+
 			"MUST heal a stale Ready=False (issue #102)", c)
 	}
+}
+
+// TestAccessGroup_AgentGroupsFollowAgentTags: tagging an agent adds it to the
+// group, untagging removes it — no edit to the group.
+func TestAccessGroup_AgentGroupsFollowAgentTags(t *testing.T) {
+	ctx := context.Background()
+	name, agentName := "ag-tags-test", "a2a-tags-test"
+	resetMockAccessGroup()
+	resetMockA2A()
+	ensureNoAccessGroup(t, ctx, name)
+	ensureNoA2AAgent(t, ctx, agentName)
+	resetConnCacheSnapshot()
+	cleanupConn := setupReadyConnectionAccessGroup(t, ctx)
+	t.Cleanup(func() {
+		cleanupConn()
+		setConnCacheReady()
+		ensureNoAccessGroup(t, context.Background(), name)
+		ensureNoA2AAgent(t, context.Background(), agentName)
+	})
+
+	if err := k8sClient.Create(ctx, accessGroupSampleCR(name, litellmv1alpha1.AccessGroupSpec{AgentGroups: []string{"agents"}})); err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	pollAccessGroupCondition(t, ctx, name, reasonSynced)
+
+	agent := a2aSampleCR(agentName)
+	agent.Spec.Params = runtime.RawExtension{Raw: []byte(`{"access_groups":["agents"]}`)}
+	if err := k8sClient.Create(ctx, agent); err != nil {
+		t.Fatalf("create agent: %v", err)
+	}
+	var agentID string
+	waitFor(t, accessGroupPollTimeout, func() bool {
+		var a litellmv1alpha1.LiteLLMA2AAgent
+		if k8sClient.Get(ctx, client.ObjectKey{Name: agentName, Namespace: WatchNamespace}, &a) != nil {
+			return false
+		}
+		agentID = a.Status.LastRendered.AgentID
+		g := mockAccessGroupByName(name)
+		return agentID != "" && g != nil && slices.Contains(g.AccessAgentIDs, agentID)
+	}, "tagged agent never reached access_agent_ids")
+
+	if body := mockServer.LastAgentBody(agentName); body["agent_access_groups"] == nil {
+		t.Errorf("agent body lacks agent_access_groups: %v", body)
+	}
+
+	var a litellmv1alpha1.LiteLLMA2AAgent
+	if err := k8sClient.Get(ctx, client.ObjectKey{Name: agentName, Namespace: WatchNamespace}, &a); err != nil {
+		t.Fatal(err)
+	}
+	a.Spec.Params = runtime.RawExtension{Raw: []byte(`{"access_groups":["other"]}`)}
+	if err := k8sClient.Update(ctx, &a); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, accessGroupPollTimeout, func() bool {
+		g := mockAccessGroupByName(name)
+		return g != nil && !slices.Contains(g.AccessAgentIDs, agentID)
+	}, "untagged agent was not removed from access_agent_ids")
+}
+
+func waitFor(t *testing.T, timeout time.Duration, cond func() bool, msg string) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatal(msg)
 }

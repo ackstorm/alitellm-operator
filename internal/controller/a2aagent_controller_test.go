@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -28,6 +29,27 @@ import (
 	"github.com/ackstorm/alitellm-operator/internal/litellm/mock"
 	"github.com/ackstorm/alitellm-operator/internal/metrics"
 )
+
+func TestBuildAgentConfigFromMerged_ForwardsAgentAccessGroups(t *testing.T) {
+	cases := []struct {
+		name string
+		body map[string]any
+		want []string
+	}{
+		{"alias", map[string]any{"access_groups": []any{"agents"}}, []string{"agents"}},
+		{"canonical", map[string]any{"agent_access_groups": []any{"a", "b"}}, []string{"a", "b"}},
+		{"canonical wins", map[string]any{"agent_access_groups": []any{"x"}, "access_groups": []any{"y"}}, []string{"x"}},
+		{"absent", map[string]any{}, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := buildAgentConfigFromMerged(tc.body, "n", map[string]any{})
+			if !reflect.DeepEqual(cfg.AgentAccessGroups, tc.want) {
+				t.Fatalf("AgentAccessGroups = %v, want %v", cfg.AgentAccessGroups, tc.want)
+			}
+		})
+	}
+}
 
 // a2aSampleCR returns a basic A2AAgent CR exercising the happy path with
 // minimal spec.agentCard.

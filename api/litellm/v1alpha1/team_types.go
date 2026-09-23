@@ -136,10 +136,7 @@ type RateLimitsSpec struct {
 //     its agent_id via GET /v1/agents before projecting. An unresolved name
 //     (A2A agent not registered yet) requeues the Team with
 //     reason=AgentNotFound rather than hard-failing.
-//   - AgentGroups → object_permission.agent_access_groups. DEAD FIELD in
-//     LiteLLM 1.83.10 (no API tags an agent into a group), retained for
-//     forward-compat; the reconciler emits a Warning/AgentGroupsNoOp Event
-//     when this sublist is non-empty.
+//   - AgentGroups → object_permission.agent_access_groups.
 type PermissionSpec struct {
 	// Models is the list of specific LiteLLM model NAMES this team may use.
 	// Merged with ModelGroups into the single top-level `models` list. When a
@@ -206,10 +203,10 @@ type PermissionSpec struct {
 	// +optional
 	Agents []string `json:"agents,omitempty"`
 
-	// AgentGroups is the list of A2A agent access-group names. Projected onto
-	// object_permission.agent_access_groups for forward-compat, but this is a
-	// NO-OP in LiteLLM 1.83.10 (the API never tags an agent into a group). The
-	// reconciler emits a Warning/AgentGroupsNoOp Event when this is non-empty.
+	// AgentGroups is the list of A2A agent access-group TAGS this team may use.
+	// Projected onto object_permission.agent_access_groups. Effective only on a
+	// LiteLLM carrying the agent_access_groups patch (gitops
+	// patch_agent_access_groups.py) until upstream ships it.
 	//
 	// +optional
 	AgentGroups []string `json:"agentGroups,omitempty"`

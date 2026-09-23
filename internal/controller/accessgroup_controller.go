@@ -5,9 +5,11 @@ package controller
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -77,6 +79,7 @@ type missingAccessGroupRefs struct {
 func renderAccessGroup(
 	spec litellmv1alpha1.AccessGroupSpec,
 	serverIDs, agentIDs map[string]string,
+	tagged []string,
 ) (renderedAccessGroup, missingAccessGroupRefs) {
 	var missing missingAccessGroupRefs
 
@@ -89,13 +92,53 @@ func renderAccessGroup(
 
 	agents, missingAgents := resolveNames(spec.Agents, agentIDs)
 	missing.Agents = missingAgents
+	agents = append(agents, tagged...)
 	sort.Strings(agents)
+	agents = slices.Compact(agents)
 
 	return renderedAccessGroup{
 		Models:       models,
 		MCPServerIDs: servers,
 		AgentIDs:     agents,
 	}, missing
+}
+
+// taggedAgentIDs returns the sorted, deduped agent ids of the A2A agents that
+// carry any of groups as an access-group tag. Unregistered agents (no agentID
+// yet) and agents being deleted are skipped: the former join on the status
+// update that registers them, the latter must lose access promptly.
+func taggedAgentIDs(agents []litellmv1alpha1.LiteLLMA2AAgent, groups []string) []string {
+	if len(groups) == 0 {
+		return nil
+	}
+	want := make(map[string]struct{}, len(groups))
+	for _, g := range groups {
+		want[g] = struct{}{}
+	}
+	seen := map[string]struct{}{}
+	for i := range agents {
+		a := &agents[i]
+		id := a.Status.LastRendered.AgentID
+		if id == "" || !a.DeletionTimestamp.IsZero() || len(a.Spec.Params.Raw) == 0 {
+			continue
+		}
+		var p map[string]any
+		if err := json.Unmarshal(a.Spec.Params.Raw, &p); err != nil {
+			continue
+		}
+		for _, tag := range agentAccessGroupsFromParams(p) {
+			if _, ok := want[tag]; ok {
+				seen[id] = struct{}{}
+				break
+			}
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for id := range seen {
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // accessGroupHash is the SHA-256 hex of the rendered projection. Feeds
@@ -126,6 +169,7 @@ func accessGroupHash(r renderedAccessGroup) string {
 // +kubebuilder:rbac:groups=litellm.ackstorm.ai,resources=litellmaccessgroups,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=litellm.ackstorm.ai,resources=litellmaccessgroups/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=litellm.ackstorm.ai,resources=litellmaccessgroups/finalizers,verbs=update
+// +kubebuilder:rbac:groups=litellm.ackstorm.ai,resources=litellma2aagents,verbs=get;list;watch
 
 // AccessGroupReconciler reconciles LiteLLMAccessGroup CRs against LiteLLM's
 // /v1/access_group endpoints. Closest sibling: MCPToolsetReconciler
@@ -326,14 +370,22 @@ func (r *AccessGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			agentIDs[e.AgentName] = e.AgentID
 		}
 	}
+	var tagged []string
+	if len(ag.Spec.AgentGroups) > 0 {
+		var agents litellmv1alpha1.LiteLLMA2AAgentList
+		if err := r.List(ctx, &agents, client.InNamespace(ag.Namespace)); err != nil {
+			return ctrl.Result{}, err
+		}
+		tagged = taggedAgentIDs(agents.Items, ag.Spec.AgentGroups)
+	}
 
 	// ─── Step 5: Render, park on unresolved names ──────────────────────────
 	//
 	// An unresolved name is an ordering dependency with the LiteLLMMCPServer /
-	// LiteLLMA2AAgent CR that registers it. Park rather than under-grant
+	// LiteLLMA2AAgent CR that registers it. Explicit names park rather than under-grant
 	// silently, and return WITHOUT a RequeueAfter — the SafetyRelistRunnable
 	// owns the periodic tick (#102).
-	rendered, missing := renderAccessGroup(ag.Spec, serverIDs, agentIDs)
+	rendered, missing := renderAccessGroup(ag.Spec, serverIDs, agentIDs, tagged)
 	if len(missing.MCPServers) > 0 {
 		msg := fmt.Sprintf("spec.mcpServers not yet registered in LiteLLM: %s",
 			strings.Join(missing.MCPServers, ", "))
@@ -608,10 +660,12 @@ func (r *AccessGroupReconciler) writeStatus(
 // Watches:
 //   - For(&LiteLLMAccessGroup{}) — primary watch.
 //   - Watches(&LiteLLMConnection{}) — connection fan-in.
+//   - Watches(&LiteLLMA2AAgent{}) — tag fan-in for spec.agentGroups.
 //
 // No Secret watch — this CRD has no spec.secrets. No MCPServer/A2AAgent watch
-// either: a spec.mcpServers / spec.agents name that is not yet registered
-// parks the CR, and the SafetyRelistRunnable re-drives it.
+// for spec.agents names: those still rely on the SafetyRelistRunnable. The
+// A2AAgent watch is needed because tag selection must shrink immediately when
+// an agent loses a tag.
 func (r *AccessGroupReconciler) SetupWithManager(mgr ctrl.Manager, safetyRelistCh ...chan reconcile.Request) error {
 	if r.Churn == nil {
 		r.Churn = newChurnGuard()
@@ -625,6 +679,10 @@ func (r *AccessGroupReconciler) SetupWithManager(mgr ctrl.Manager, safetyRelistC
 			&litellmv1alpha1.LiteLLMConnection{},
 			handler.EnqueueRequestsFromMapFunc(r.connectionToAccessGroups),
 			builder.WithPredicates(connectionReadyTransition()),
+		).
+		Watches(
+			&litellmv1alpha1.LiteLLMA2AAgent{},
+			handler.EnqueueRequestsFromMapFunc(r.agentToAccessGroups),
 		).
 		WithOptions(transientBackoffOptions()).
 		Named("accessgroup")
@@ -658,6 +716,24 @@ func (r *AccessGroupReconciler) SetupWithManager(mgr ctrl.Manager, safetyRelistC
 	}
 
 	return b.Complete(r)
+}
+
+// agentToAccessGroups enqueues every access group in the agent's namespace
+// that selects by tag. All of them, not just those matching the agent's
+// current tags: a REMOVED tag must shrink the group it used to match.
+func (r *AccessGroupReconciler) agentToAccessGroups(ctx context.Context, obj client.Object) []reconcile.Request {
+	var groups litellmv1alpha1.LiteLLMAccessGroupList
+	if err := r.List(ctx, &groups, client.InNamespace(obj.GetNamespace())); err != nil {
+		log.FromContext(ctx).Error(err, "list access groups for agent fan-in")
+		return nil
+	}
+	var reqs []reconcile.Request
+	for _, g := range groups.Items {
+		if len(g.Spec.AgentGroups) > 0 {
+			reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&g)})
+		}
+	}
+	return reqs
 }
 
 // ListAccessGroupRequests lists every LiteLLMAccessGroup in namespace and

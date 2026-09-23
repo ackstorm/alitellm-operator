@@ -350,7 +350,12 @@ type AgentConfig struct {
 	SessionRPMLimit  *int           `json:"session_rpm_limit,omitempty"`
 	StaticHeaders    map[string]any `json:"static_headers,omitempty"`
 	ExtraHeaders     map[string]any `json:"extra_headers,omitempty"`
-	Extra            map[string]any `json:"-"`
+	// AgentAccessGroups tags the agent into LiteLLM agent access groups
+	// (LiteLLM_AgentsTable.agent_access_groups). Requires the gitops
+	// patch_agent_access_groups.py startup patch on LiteLLM v1.102.0; an
+	// unpatched proxy silently drops it.
+	AgentAccessGroups []string       `json:"agent_access_groups,omitempty"`
+	Extra             map[string]any `json:"-"`
 }
 
 // AgentEntry is one row of GET /v1/agents (bare-array response wrapped

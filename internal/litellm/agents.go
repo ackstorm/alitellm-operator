@@ -91,13 +91,15 @@ var agentConfigKeys = func() map[string]struct{} {
 		}
 		keys[tag] = struct{}{}
 	}
+	// `access_groups` is accepted as an alias for agent_access_groups (the
+	// controller folds it), mirroring MCP's access_groups → mcp_access_groups.
+	keys["access_groups"] = struct{}{}
 	return keys
 }()
 
 // IsAgentConfigKey reports whether key is a field LiteLLM's AgentConfig
 // models. A key that is not is silently ignored by the proxy — the operator
-// warns on it rather than letting a user believe, say, an `access_groups`
-// pass-through enforces anything.
+// warns on it rather than letting a user believe it has an effect.
 func IsAgentConfigKey(key string) bool {
 	_, ok := agentConfigKeys[key]
 	return ok

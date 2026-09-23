@@ -196,10 +196,9 @@ Multiple toolsets are **unioned** by LiteLLM (not last-wins), so listing
 several composes their tool grants. There is no access-group concept for
 toolsets — listing several here IS the grouping mechanism.
 
-**`agentGroups` is a no-op.** LiteLLM 1.83.10 has no API to tag an agent into
-an access group, so `object_permission.agent_access_groups` is never enforced.
-The field is retained for forward-compat; the operator emits a Warning
-`AgentGroupsNoOp` Event when it is non-empty.
+**`agentGroups`** projects to `object_permission.agent_access_groups`, letting
+teams reach A2A agents carrying those tags. The LiteLLM startup patch is
+required until upstream supports the `/v1/agents` write and response path.
 
 **Empty vs absent.** An absent `spec.permission` block leaves any raw
 `spec.params.models` / `spec.params.object_permission` untouched (passthrough).

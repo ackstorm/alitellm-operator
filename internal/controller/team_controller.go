@@ -589,12 +589,6 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		// 1.93.0), so a shrink-to-empty would silently fail to revoke. This is the
 		// same trap as the v0.7.25 object_permission leak.
 		body["access_group_ids"] = emptyIfNil(accessGroupIDs)
-
-		if len(perm.AgentGroups) > 0 {
-			r.Recorder.Eventf(&team, corev1.EventTypeWarning, eventReasonAgentGroupsNoOp,
-				"spec.permission.agentGroups projects to object_permission.agent_access_groups, "+
-					"but LiteLLM 1.83.10 never writes that field (no API tags an agent into a group) — no-op")
-		}
 	}
 
 	// ─── Step 8: Compute currentRenderedHash (Phase 3 D-01) ───────────────

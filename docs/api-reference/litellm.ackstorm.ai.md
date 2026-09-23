@@ -188,6 +188,7 @@ _Appears in:_
 | `models` _string array_ | Models lists LiteLLM model names or legacy model access-group tags.<br />Entries are forwarded to access_model_names without resolution.<br />Tag expansion for inference was verified on LiteLLM v1.99.1;<br />the model catalog can return the tag itself instead of expanded names.<br />The list is sorted before projection, so declaration order is not preserved. |  |  |
 | `mcpServers` _string array_ | MCPServers is the list of MCP server NAMES this group grants. Each name<br />is resolved to a server_id via GET /v1/mcp/server before projection,<br />because access_mcp_server_ids matches on ids and silently ignores names.<br />An unresolved name parks the CR Ready=False reason=MCPServerNotFound;<br />it is re-driven by the periodic SafetyRelistRunnable, not requeued<br />(ordering dependency with LiteLLMMCPServer CRs — it self-heals once<br />the server exists). |  |  |
 | `agents` _string array_ | Agents is the list of A2A agent NAMES this group grants. Each name is<br />resolved to an agent_id via GET /v1/agents, same reason and same<br />parking behaviour as MCPServers (reason=AgentNotFound). |  |  |
+| `agentGroups` _string array_ | AgentGroups is a list of A2A agent access-group TAGS. Every<br />LiteLLMA2AAgent in this namespace whose spec.params.agent_access_groups<br />(or the access_groups alias) contains one of these tags, and which is<br />registered (status.lastRendered.agentID set), is added to this group's<br />access_agent_ids alongside spec.agents. Re-resolved whenever any<br />LiteLLMA2AAgent changes. A tag matching no agent is not an error.<br />SECURITY: this widens automatically — tagging a new agent grants it to<br />every team that attaches this group. |  |  |
 | `deletionPolicy` _string_ | DeletionPolicy controls finalizer behavior when the LiteLLM-side DELETE<br />cannot be confirmed. Defaults to "Orphan" per REL-06 anti-storm. | Orphan | Enum: [Orphan Delete] <br /> |
 
 
@@ -1878,10 +1879,7 @@ Projection to LiteLLM (verified empirically against LiteLLM 1.83.10):
     its agent_id via GET /v1/agents before projecting. An unresolved name
     (A2A agent not registered yet) requeues the Team with
     reason=AgentNotFound rather than hard-failing.
-  - AgentGroups → object_permission.agent_access_groups. DEAD FIELD in
-    LiteLLM 1.83.10 (no API tags an agent into a group), retained for
-    forward-compat; the reconciler emits a Warning/AgentGroupsNoOp Event
-    when this sublist is non-empty.
+  - AgentGroups → object_permission.agent_access_groups.
 
 
 
@@ -1896,7 +1894,7 @@ _Appears in:_
 | `mcpServers` _string array_ | McpServers is the list of specific MCP server NAMES (aliases) this team<br />may use. Projected onto object_permission.mcp_servers; LiteLLM resolves<br />names to server ids automatically. |  |  |
 | `mcpGroups` _string array_ | McpGroups is the list of MCP access-group names this team may use.<br />Projected onto object_permission.mcp_access_groups. |  |  |
 | `agents` _string array_ | Agents is the list of A2A agent NAMES (human-friendly) this team may<br />use. The operator resolves each name to its agent_id UUID via<br />GET /v1/agents before projecting onto object_permission.agents — LiteLLM<br />enforces on UUIDs and ignores names. An unresolved name requeues the<br />Team (reason=AgentNotFound). When a present permission block leaves this<br />list empty the operator projects the null-UUID deny-all sentinel<br />(fail-closed) — an empty agents list fails OPEN in LiteLLM. The sentinel<br />is scoped to the empty case only; it never substitutes for an unresolved<br />name. See the deny-by-default note above. |  |  |
-| `agentGroups` _string array_ | AgentGroups is the list of A2A agent access-group names. Projected onto<br />object_permission.agent_access_groups for forward-compat, but this is a<br />NO-OP in LiteLLM 1.83.10 (the API never tags an agent into a group). The<br />reconciler emits a Warning/AgentGroupsNoOp Event when this is non-empty. |  |  |
+| `agentGroups` _string array_ | AgentGroups is the list of A2A agent access-group TAGS this team may use.<br />Projected onto object_permission.agent_access_groups. Effective only on a<br />LiteLLM carrying the agent_access_groups patch (gitops<br />patch_agent_access_groups.py) until upstream ships it. |  |  |
 | `mcpToolsets` _string array_ | McpToolsets is the list of LiteLLMMCPToolset NAMES this team may use.<br />The operator resolves each name to its toolset_id UUID via<br />GET /v1/mcp/toolset before projecting onto<br />object_permission.mcp_toolsets — LiteLLM matches on the UUID. An<br />unresolved name requeues the Team (reason=ToolsetNotFound), mirroring<br />the agents ordering dependency.<br />Multiple toolsets are UNIONED by LiteLLM, not last-wins, so listing<br />several here composes their tool grants. There is no access-group<br />concept for toolsets in LiteLLM 1.93.0 — the toolset IS the grouping<br />primitive, and listing several here is the group.<br />NO deny-all sentinel: unlike `models` and `agents`, LiteLLM's toolset<br />check is fail-CLOSED ("None means no grants configured → deny"), so an<br />empty list correctly grants nothing and is emitted as a plain `[]`. |  |  |
 
 

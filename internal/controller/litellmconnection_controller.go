@@ -106,10 +106,6 @@ const conditionTypeLoggingHealthy = "LoggingHealthy"
 // Single source of truth so goconst stays quiet across reconcilers.
 const (
 	eventReasonProjectionOverride = "ProjectionOverride"
-	// eventReasonAgentGroupsNoOp — spec.permission.agentGroups is non-empty.
-	// It projects to object_permission.agent_access_groups for forward-compat
-	// but is a NO-OP in LiteLLM 1.83.10 (no API tags an agent into a group).
-	eventReasonAgentGroupsNoOp = "AgentGroupsNoOp"
 	// eventReasonUnknownParamKey — a spec.params key the target LiteLLM API
 	// does not model. The operator drops it; without the Event the user has
 	// no signal that a key they wrote does nothing.

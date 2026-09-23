@@ -77,6 +77,20 @@ spec:
               LiteLLM 1.93.0. Granting a model here makes it reachable by every team that
               attaches this group, regardless of that team's own spec.permission.models.
             properties:
+              agentGroups:
+                description: |-
+                  AgentGroups is a list of A2A agent access-group TAGS. Every
+                  LiteLLMA2AAgent in this namespace whose spec.params.agent_access_groups
+                  (or the access_groups alias) contains one of these tags, and which is
+                  registered (status.lastRendered.agentID set), is added to this group's
+                  access_agent_ids alongside spec.agents. Re-resolved whenever any
+                  LiteLLMA2AAgent changes. A tag matching no agent is not an error.
+
+                  SECURITY: this widens automatically — tagging a new agent grants it to
+                  every team that attaches this group.
+                items:
+                  type: string
+                type: array
               agents:
                 description: |-
                   Agents is the list of A2A agent NAMES this group grants. Each name is

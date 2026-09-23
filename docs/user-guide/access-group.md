@@ -24,6 +24,7 @@ exist before that.
 | `spec.models[]`        | no       | Model names or legacy model access-group tags, forwarded as-is. No resolution, no validation. |
 | `spec.mcpServers[]`    | no       | MCP server **names**, resolved to `server_id` UUIDs.                      |
 | `spec.agents[]`        | no       | A2A agent **names**, resolved to `agent_id` UUIDs.                        |
+| `spec.agentGroups[]`   | no       | A2A agent tags, expanded to registered `agent_id` UUIDs in this namespace. |
 | `spec.deletionPolicy`  | no       | `Orphan` (default) or `Delete`.                                           |
 
 After `kubectl apply`, expect:
@@ -79,6 +80,29 @@ operator resolves them. A name that does not resolve parks the CR
 missing names in the condition message. This is an ordering dependency with the
 `LiteLLMMCPServer` / `LiteLLMA2AAgent` CRs — it self-heals once they exist, on
 the next safety-relist tick.
+
+## Agent tags (`agentGroups`)
+
+Tag an operator-managed A2A agent and grant that tag from an access group:
+
+```yaml
+kind: LiteLLMA2AAgent
+spec:
+  params:
+    access_groups: [agents]
+```
+
+```yaml
+kind: LiteLLMAccessGroup
+spec:
+  agentGroups: [agents]
+```
+
+The operator selects matching, registered, non-deleting `LiteLLMA2AAgent` CRs
+in the same namespace and unions their IDs with `spec.agents`. Adding a tag to
+a new agent automatically widens every team attached to this group. The
+LiteLLM patch is needed only for the tag to be visible and enforceable inside
+LiteLLM; expansion here reads the CRs directly and works without it.
 
 **No validation of `models`.** LiteLLM does not check that a listed model
 exists, and neither does the operator. A typo yields an inert grant, not an
