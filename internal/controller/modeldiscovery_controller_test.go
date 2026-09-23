@@ -5,6 +5,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -391,6 +392,22 @@ func ensureNoModelDiscovery(t *testing.T, ctx context.Context, name string) {
 			_ = k8sClient.Delete(ctx, &litellmv1alpha1.LiteLLMModel{
 				ObjectMeta: metav1.ObjectMeta{Name: childKey.Name, Namespace: childKey.Namespace},
 			})
+		}
+	}
+	var aliases litellmv1alpha1.LiteLLMModelAliasList
+	if err := k8sClient.List(ctx, &aliases,
+		client.InNamespace(WatchNamespace),
+		client.MatchingLabels{generatedByLabel: name},
+	); err == nil {
+		for i := range aliases.Items {
+			a := &aliases.Items[i]
+			_ = updateWithRetry(ctx, client.ObjectKeyFromObject(a), &litellmv1alpha1.LiteLLMModelAlias{},
+				func(obj *litellmv1alpha1.LiteLLMModelAlias) error {
+					obj.Finalizers = nil
+					return nil
+				},
+			)
+			_ = k8sClient.Delete(ctx, a)
 		}
 	}
 	deadline := time.Now().Add(30 * time.Second)
@@ -1872,6 +1889,80 @@ func TestModelDiscovery_DisablePrefix_CELReject(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "mutually exclusive") {
 		t.Errorf("error should mention the mutual-exclusion rule; got: %v", err)
+	}
+}
+
+// TestModelDiscovery_AliasSuffix locks spec.aliasSuffix: every generated
+// child gets `<child><suffix> → <child>` in an operator-owned
+// LiteLLMModelAlias, and clearing the suffix deletes that CR.
+func TestModelDiscovery_AliasSuffix(t *testing.T) {
+	ctx := context.Background()
+	const mdName = "alias-anthropic"
+	aliasKey := client.ObjectKey{Name: mdName + "-aliases-0", Namespace: WatchNamespace}
+
+	ensureNoModelDiscovery(t, ctx, mdName)
+	t.Cleanup(func() { ensureNoModelDiscovery(t, context.Background(), mdName) })
+
+	fake := newFakeProvider("anthropic", []providers.Candidate{
+		{ID: "claude-opus-5-5", DisplayName: "Claude Opus 5.5"},
+		{ID: "claude-sonnet-5", DisplayName: "Claude Sonnet 5"},
+	})
+	providers.RegisterTestProvider(t, "anthropic", fake)
+	ensureCredentialSecret(t, ctx, mdName+"-creds", "anthropic")
+
+	md := modeldiscoverySampleCR(mdName, "anthropic")
+	md.Spec.DisablePrefix = true
+	md.Spec.AliasSuffix = "[1m]"
+	if err := k8sClient.Create(ctx, md); err != nil {
+		t.Fatalf("create ModelDiscovery: %v", err)
+	}
+	pollChildrenCount(t, ctx, mdName, 2, 30*time.Second)
+
+	var alias litellmv1alpha1.LiteLLMModelAlias
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		err := k8sClient.Get(ctx, aliasKey, &alias)
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("alias CR %s never created: %v", aliasKey, err)
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	want := map[string]string{
+		"claude-opus-5-5[1m]": "claude-opus-5-5",
+		"claude-sonnet-5[1m]": "claude-sonnet-5",
+	}
+	got := map[string]string{}
+	for _, e := range alias.Spec.Aliases {
+		got[e.Name] = e.Value
+	}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("aliases: got %v, want %v", got, want)
+	}
+
+	// Clearing the suffix deletes the generated alias CR.
+	var latest litellmv1alpha1.LiteLLMModelDiscovery
+	if err := updateWithRetry(ctx, client.ObjectKey{Name: mdName, Namespace: WatchNamespace}, &latest,
+		func(md *litellmv1alpha1.LiteLLMModelDiscovery) error {
+			md.Spec.AliasSuffix = ""
+			return nil
+		}); err != nil {
+		t.Fatalf("clear aliasSuffix: %v", err)
+	}
+	deadline = time.Now().Add(30 * time.Second)
+	for {
+		var a litellmv1alpha1.LiteLLMModelAlias
+		err := k8sClient.Get(ctx, aliasKey, &a)
+		// Deleted, or terminating on the alias controller's finalizer.
+		if apierrors.IsNotFound(err) || (err == nil && !a.DeletionTimestamp.IsZero()) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("alias CR %s not deleted after clearing suffix (err=%v)", aliasKey, err)
+		}
+		time.Sleep(250 * time.Millisecond)
 	}
 }
 
