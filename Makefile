@@ -218,12 +218,13 @@ test-envtest-pkg: ## Phase 2 — run envtest for one package. Usage: make test-e
 	$(call container_target,_test-envtest-pkg)
 _test-envtest-pkg: setup-envtest
 	@test -n "$(PKG)" || (echo "ERROR: PKG=... required" >&2; exit 1)
-	# `script -q /dev/null -c "..."` fakes a TTY so -v output streams.
+	# `script -q -e /dev/null -c "..."` fakes a TTY so -v output streams;
+	# -e returns the child exit code (without it `script` exits 0 on FAIL).
 	# FOCUS is single-quoted so a `-run` regex containing `|` (alternation,
 	# e.g. FOCUS='TestA|TestB') is passed as ONE argument instead of being
 	# split into a shell pipe by the inner `-c` shell.
 	KUBEBUILDER_ASSETS="$(shell $(envtest_assets))" \
-		script -q /dev/null -c "go test -v -count=1 -timeout $(or $(TIMEOUT),10m) $(if $(FOCUS),-run '$(FOCUS)',) $(PKG)"
+		script -q -e /dev/null -c "go test -v -count=1 -timeout $(or $(TIMEOUT),10m) $(if $(FOCUS),-run '$(FOCUS)',) $(PKG)"
 
 .PHONY: test-smoke-idempotency
 test-smoke-idempotency: ## Run the accelerated AC-R1 idempotency smoke (10s window, 1s safety re-list).
