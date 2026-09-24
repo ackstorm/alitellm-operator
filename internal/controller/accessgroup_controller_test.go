@@ -687,7 +687,7 @@ func TestAccessGroup_AgentGroupsFollowAgentTags(t *testing.T) {
 		t.Fatalf("create agent: %v", err)
 	}
 	var agentID string
-	waitFor(t, accessGroupPollTimeout, func() bool {
+	waitFor(t, func() bool {
 		var a litellmv1alpha1.LiteLLMA2AAgent
 		if k8sClient.Get(ctx, client.ObjectKey{Name: agentName, Namespace: WatchNamespace}, &a) != nil {
 			return false
@@ -709,7 +709,7 @@ func TestAccessGroup_AgentGroupsFollowAgentTags(t *testing.T) {
 	if err := k8sClient.Update(ctx, &a); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, accessGroupPollTimeout, func() bool {
+	waitFor(t, func() bool {
 		g := mockAccessGroupByName(name)
 		return g != nil && !slices.Contains(g.AccessAgentIDs, agentID)
 	}, "untagged agent was not removed from access_agent_ids")
@@ -741,7 +741,7 @@ func TestAccessGroup_MCPServerGroupsFollowServerTags(t *testing.T) {
 		t.Fatalf("create server: %v", err)
 	}
 	var serverID string
-	waitFor(t, accessGroupPollTimeout, func() bool {
+	waitFor(t, func() bool {
 		var s litellmv1alpha1.LiteLLMMCPServer
 		if k8sClient.Get(ctx, client.ObjectKey{Name: serverName, Namespace: WatchNamespace}, &s) != nil {
 			return false
@@ -759,15 +759,15 @@ func TestAccessGroup_MCPServerGroupsFollowServerTags(t *testing.T) {
 	if err := k8sClient.Update(ctx, &s); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, accessGroupPollTimeout, func() bool {
+	waitFor(t, func() bool {
 		g := mockAccessGroupByName(name)
 		return g != nil && !slices.Contains(g.AccessMCPServerIDs, serverID)
 	}, "untagged server was not removed from access_mcp_server_ids")
 }
 
-func waitFor(t *testing.T, timeout time.Duration, cond func() bool, msg string) {
+func waitFor(t *testing.T, cond func() bool, msg string) {
 	t.Helper()
-	deadline := time.Now().Add(timeout)
+	deadline := time.Now().Add(accessGroupPollTimeout)
 	for time.Now().Before(deadline) {
 		if cond() {
 			return
