@@ -111,6 +111,8 @@ kubectl get mdl gpt-4o-mini -o jsonpath='{.status.lastRendered.modelID}{"\n"}'
 
 `metadata.name` IS the LiteLLM `team_alias`. There is no
 `spec.teamAlias`. Budget and rate limits live in typed sub-blocks.
+A team grants nothing by itself: keys in it reach only what its attached
+[access groups](../user-guide/access-group.md) (`spec.accessGroups`) grant.
 
 ```yaml
 # team.yaml

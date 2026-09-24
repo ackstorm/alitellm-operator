@@ -10,8 +10,10 @@
 # LiteLLMMCPToolset — a named, curated subset of MCP tools drawn from one or
 # more MCP servers. Requires LiteLLM 1.93.0+ (/v1/mcp/toolset).
 #
-# A toolset grants nobody anything on its own: reference it from a team via
-# `spec.permission.mcpToolsets` (see 07-team.yaml). An ungranted key gets
+# A toolset grants nobody anything on its own, and the operator cannot grant
+# it: teams always send mcp_toolsets: [] and LiteLLM access groups have no
+# toolset field. Grant it on a key's object_permission.mcp_toolsets outside
+# the operator. An ungranted key gets
 # `403 API key does not have access to toolset '<uuid>'`.
 apiVersion: litellm.ackstorm.ai/v1alpha1
 kind: LiteLLMMCPToolset

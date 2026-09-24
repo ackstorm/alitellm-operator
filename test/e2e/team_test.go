@@ -5,11 +5,9 @@
 package e2e_test
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"net/url"
-	"os/exec"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -73,30 +71,6 @@ func litellmTeamsByAlias(alias string) []map[string]interface{} {
 }
 
 const litellmBase = "http://litellm.litellm-system.svc.cluster.local:4000"
-
-// litellmTeamObjectPermission returns the EXPANDED object_permission object
-// for a team, read from GET /team/info.
-//
-// Use this, not litellmTeamsByAlias, for any object_permission assertion:
-// /v2/team/list reports `object_permission: null` even when the row exists
-// (it carries only object_permission_id), so an assertion against the list
-// endpoint can never pass. Verified on LiteLLM 1.93.0.
-func litellmTeamObjectPermission(teamID string) map[string]interface{} {
-	GinkgoHelper()
-	body := curlPodJSON("litellm-system", "team-info-poke", '{',
-		"curl", "-sS", "--max-time", "10",
-		"-H", "Authorization: Bearer sk-test-master-key",
-		litellmBase+"/team/info?team_id="+url.QueryEscape(teamID),
-	)
-	var resp struct {
-		TeamInfo struct {
-			ObjectPermission map[string]interface{} `json:"object_permission"`
-		} `json:"team_info"`
-	}
-	ExpectWithOffset(1, json.Unmarshal(body, &resp)).
-		To(Succeed(), "raw=%s", string(body))
-	return resp.TeamInfo.ObjectPermission
-}
 
 // generateTeamKey mints a team-scoped virtual key via POST /key/generate
 // (master-key authed) so a spec can prove LiteLLM ENFORCES the team's model
@@ -221,9 +195,8 @@ var _ = Describe("LiteLLMTeam", Ordered, ContinueOnFailure, func() {
 
 	// ─── Phase 10 / TRL-01..TRL-06 — spec.rateLimits scenarios ─────────
 	//
-	// Three required scenarios per CONTEXT.md D-05 floor + two extras
-	// to hit the 5-6 target: composite, RPM-leaf-clear, params-rpm_limit-
-	// collision, params-rpm_limit_type-collision, whole-block-clear.
+	// Scenarios: composite, RPM-leaf-clear, whole-block-clear (the params
+	// collision scenarios went with spec.params in v0.9.0).
 	//
 	// LiteLLM 1.83.10's GET /v2/team/list returns rate-limit fields
 	// (rpm_limit, tpm_limit, *_type) on team objects empirically — but
@@ -234,7 +207,7 @@ var _ = Describe("LiteLLMTeam", Ordered, ContinueOnFailure, func() {
 	// (which transitively proves the operator built the body correctly,
 	// since the hash is over the canonical-JSON of the entire body).
 
-	It("rateLimits composite — Team with budget+rateLimits+params reaches Synced", func() {
+	It("rateLimits composite — Team with budget+rateLimits reaches Synced", func() {
 		const teamName = "team-composite-tr"
 		cr := newTeamCR(teamName, ns)
 		spec, _ := cr.Object["spec"].(map[string]interface{})
@@ -245,13 +218,6 @@ var _ = Describe("LiteLLMTeam", Ordered, ContinueOnFailure, func() {
 		spec["rateLimits"] = map[string]interface{}{
 			"rpm": int64(6000),
 			"tpm": int64(1000000),
-		}
-		spec["params"] = map[string]interface{}{
-			"metadata": map[string]interface{}{
-				"dept": "finance",
-				"env":  "production",
-			},
-			"blocked": false,
 		}
 		_, err := dyn.Resource(teamGVR).Namespace(ns).
 			Create(ctx, cr, metav1.CreateOptions{})
@@ -343,131 +309,7 @@ var _ = Describe("LiteLLMTeam", Ordered, ContinueOnFailure, func() {
 		}, 60*time.Second, 2*time.Second).Should(Succeed())
 	})
 
-	It("rateLimits collision — spec.params.rpm_limit yields ProjectionOverride event", func() {
-		const teamName = "team-collision-tr"
-		cr := newTeamCR(teamName, ns)
-		spec, _ := cr.Object["spec"].(map[string]interface{})
-		spec["rateLimits"] = map[string]interface{}{
-			"rpm": int64(6000),
-		}
-		spec["params"] = map[string]interface{}{
-			"rpm_limit": int64(9999),
-		}
-		_, err := dyn.Resource(teamGVR).Namespace(ns).
-			Create(ctx, cr, metav1.CreateOptions{})
-		Expect(err).NotTo(HaveOccurred())
-		DeferCleanup(func() {
-			fg := metav1.DeletePropagationForeground
-			_ = dyn.Resource(teamGVR).Namespace(ns).
-				Delete(context.Background(), teamName, metav1.DeleteOptions{PropagationPolicy: &fg})
-		})
 
-		// Wait Synced.
-		Eventually(func(g Gomega) {
-			obj, err := dyn.Resource(teamGVR).Namespace(ns).
-				Get(ctx, teamName, metav1.GetOptions{})
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(teamID(obj)).NotTo(BeEmpty(),
-				"collision team teamID not yet populated")
-		}, 60*time.Second, 2*time.Second).Should(Succeed())
-
-		// Assert ProjectionOverride event fired mentioning rpm_limit.
-		Eventually(func(g Gomega) {
-			out, err := exec.Command("kubectl", "-n", ns, "get", "events",
-				"--field-selector",
-				"involvedObject.name="+teamName+",reason=ProjectionOverride",
-				"-o", "json").CombinedOutput()
-			g.Expect(err).NotTo(HaveOccurred(), "out=%s", string(out))
-			var resp struct {
-				Items []map[string]interface{} `json:"items"`
-			}
-			g.Expect(json.Unmarshal(out, &resp)).To(Succeed())
-			found := false
-			for _, ev := range resp.Items {
-				msg, _ := ev["message"].(string)
-				if bytes.Contains([]byte(msg), []byte("rpm_limit")) {
-					found = true
-					break
-				}
-			}
-			g.Expect(found).To(BeTrue(),
-				"no ProjectionOverride event mentioning rpm_limit found (events=%d)",
-				len(resp.Items))
-		}, 30*time.Second, 2*time.Second).Should(Succeed())
-
-		// Soft assertion: operator overlay wins on the wire — LiteLLM
-		// sees rpm_limit=6000 (not 9999).
-		Eventually(func(g Gomega) {
-			matches := litellmTeamsByAlias(teamName)
-			g.Expect(matches).NotTo(BeEmpty())
-			if v, ok := matches[0]["rpm_limit"]; ok {
-				g.Expect(v).To(BeNumerically("==", 6000),
-					"operator overlay must win — LiteLLM rpm_limit: want 6000, got %v", v)
-			}
-		}, 30*time.Second, 2*time.Second).Should(Succeed())
-	})
-
-	It("rateLimits *_type collision — spec.params.rpm_limit_type yields ProjectionOverride event", func() {
-		const teamName = "team-collision-type-tr"
-		cr := newTeamCR(teamName, ns)
-		spec, _ := cr.Object["spec"].(map[string]interface{})
-		spec["rateLimits"] = map[string]interface{}{
-			"rpm": int64(6000),
-		}
-		spec["params"] = map[string]interface{}{
-			"rpm_limit_type": "high_priority",
-		}
-		_, err := dyn.Resource(teamGVR).Namespace(ns).
-			Create(ctx, cr, metav1.CreateOptions{})
-		Expect(err).NotTo(HaveOccurred())
-		DeferCleanup(func() {
-			fg := metav1.DeletePropagationForeground
-			_ = dyn.Resource(teamGVR).Namespace(ns).
-				Delete(context.Background(), teamName, metav1.DeleteOptions{PropagationPolicy: &fg})
-		})
-
-		Eventually(func(g Gomega) {
-			obj, err := dyn.Resource(teamGVR).Namespace(ns).
-				Get(ctx, teamName, metav1.GetOptions{})
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(teamID(obj)).NotTo(BeEmpty())
-		}, 60*time.Second, 2*time.Second).Should(Succeed())
-
-		Eventually(func(g Gomega) {
-			out, err := exec.Command("kubectl", "-n", ns, "get", "events",
-				"--field-selector",
-				"involvedObject.name="+teamName+",reason=ProjectionOverride",
-				"-o", "json").CombinedOutput()
-			g.Expect(err).NotTo(HaveOccurred(), "out=%s", string(out))
-			var resp struct {
-				Items []map[string]interface{} `json:"items"`
-			}
-			g.Expect(json.Unmarshal(out, &resp)).To(Succeed())
-			found := false
-			for _, ev := range resp.Items {
-				msg, _ := ev["message"].(string)
-				if bytes.Contains([]byte(msg), []byte("rpm_limit_type")) {
-					found = true
-					break
-				}
-			}
-			g.Expect(found).To(BeTrue(),
-				"no ProjectionOverride event mentioning rpm_limit_type found (events=%d)",
-				len(resp.Items))
-		}, 30*time.Second, 2*time.Second).Should(Succeed())
-
-		// Soft assertion: LiteLLM-side *_type value (if exposed) is
-		// operator-hardcoded best_effort_throughput, not user-supplied
-		// "high_priority".
-		Eventually(func(g Gomega) {
-			matches := litellmTeamsByAlias(teamName)
-			g.Expect(matches).NotTo(BeEmpty())
-			if v, ok := matches[0]["rpm_limit_type"].(string); ok {
-				g.Expect(v).To(Equal("best_effort_throughput"),
-					"operator hardcoded value must win — LiteLLM rpm_limit_type: want best_effort_throughput, got %q", v)
-			}
-		}, 30*time.Second, 2*time.Second).Should(Succeed())
-	})
 
 	It("rateLimits whole-block clear — removing spec.rateLimits drives hash drift", func() {
 		const teamName = "team-block-clear-tr"
@@ -630,16 +472,14 @@ var _ = Describe("LiteLLMTeam", Ordered, ContinueOnFailure, func() {
 	// Status code is asserted as 401-or-403: LiteLLM 1.83.10 returned 401,
 	// 1.93.0 returns 403 for the same team_model_access_denied condition.
 	// The stable contract is the error type + the sentinel echo, not the code.
-	It("deny-by-default: empty spec.permission denies inference — TEAM-05", func() {
+	It("deny-by-default: a team with no accessGroups denies inference — TEAM-05", func() {
 		const teamName = "team-deny-default"
 		fg := metav1.DeletePropagationForeground
 		_ = dyn.Resource(teamGVR).Namespace(ns).
 			Delete(ctx, teamName, metav1.DeleteOptions{PropagationPolicy: &fg})
 
+		// A bare team: no accessGroups → the closed baseline.
 		cr := newTeamCR(teamName, ns)
-		spec, _ := cr.Object["spec"].(map[string]interface{})
-		// Present-but-empty permission block: models omitted → deny-by-default.
-		spec["permission"] = map[string]interface{}{}
 		_, err := dyn.Resource(teamGVR).Namespace(ns).
 			Create(ctx, cr, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred())
@@ -665,7 +505,7 @@ var _ = Describe("LiteLLMTeam", Ordered, ContinueOnFailure, func() {
 			matches := litellmTeamsByAlias(teamName)
 			g.Expect(matches).NotTo(BeEmpty(), "team not in LiteLLM")
 			models, _ := matches[0]["models"].([]interface{})
-			g.Expect(models).To(ConsistOf("__deny_all__"),
+			g.Expect(models).To(ConsistOf("no-default-models"),
 				"team.models should carry the deny-all sentinel, got %v", matches[0]["models"])
 		}, 30*time.Second, 2*time.Second).Should(Succeed())
 
@@ -688,81 +528,10 @@ var _ = Describe("LiteLLMTeam", Ordered, ContinueOnFailure, func() {
 			"team-scoped completion must be denied 401/403, got: %s", out)
 		Expect(out).To(ContainSubstring("team_model_access_denied"),
 			"denial must cite team_model_access_denied, got: %s", out)
-		Expect(out).To(ContainSubstring("__deny_all__"),
+		Expect(out).To(ContainSubstring("no-default-models"),
 			"denial must reference the deny-all sentinel, got: %s", out)
 	})
 
-	// TEAM-06: spec.permission.mcpToolsets carries toolset NAMES; the operator
-	// resolves each to its toolset_id UUID before projecting onto
-	// object_permission.mcp_toolsets, because LiteLLM matches on the UUID and
-	// silently ignores a name.
-	It("TEAM-06 grants MCP toolsets by name, projecting resolved UUIDs", func() {
-		const teamName = "e2e-team-toolset-grant"
-		const tsName = "e2e-team-toolset-target"
-		fg := metav1.DeletePropagationForeground
-		_ = dyn.Resource(teamGVR).Namespace(ns).
-			Delete(ctx, teamName, metav1.DeleteOptions{PropagationPolicy: &fg})
-		_ = dyn.Resource(mcpToolsetGVR).Namespace(ns).
-			Delete(ctx, tsName, metav1.DeleteOptions{PropagationPolicy: &fg})
-
-		// The toolset must exist in LiteLLM before the Team references it —
-		// otherwise the Team parks ToolsetNotFound and requeues (by design).
-		ts := toolsetCR(ns, tsName, []interface{}{
-			map[string]interface{}{
-				"server": "some-server",
-				"tools":  []interface{}{"a_tool"},
-			},
-		})
-		_, err := dyn.Resource(mcpToolsetGVR).Namespace(ns).
-			Create(ctx, ts, metav1.CreateOptions{})
-		Expect(err).NotTo(HaveOccurred())
-		DeferCleanup(func() {
-			_ = dyn.Resource(mcpToolsetGVR).Namespace(ns).
-				Delete(context.Background(), tsName, metav1.DeleteOptions{PropagationPolicy: &fg})
-		})
-
-		var wantToolsetID string
-		Eventually(func(g Gomega) {
-			obj, err := dyn.Resource(mcpToolsetGVR).Namespace(ns).
-				Get(ctx, tsName, metav1.GetOptions{})
-			g.Expect(err).NotTo(HaveOccurred())
-			wantToolsetID = toolsetID(obj)
-			g.Expect(wantToolsetID).NotTo(BeEmpty(), "toolsetID not yet populated")
-		}, 60*time.Second, 2*time.Second).Should(Succeed())
-
-		cr := newTeamCR(teamName, ns)
-		spec, _ := cr.Object["spec"].(map[string]interface{})
-		spec["permission"] = map[string]interface{}{
-			"mcpToolsets": []interface{}{tsName},
-		}
-		_, err = dyn.Resource(teamGVR).Namespace(ns).Create(ctx, cr, metav1.CreateOptions{})
-		Expect(err).NotTo(HaveOccurred())
-		DeferCleanup(func() {
-			_ = dyn.Resource(teamGVR).Namespace(ns).
-				Delete(context.Background(), teamName, metav1.DeleteOptions{PropagationPolicy: &fg})
-		})
-
-		Eventually(func(g Gomega) {
-			obj, err := dyn.Resource(teamGVR).Namespace(ns).Get(ctx, teamName, metav1.GetOptions{})
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(teamID(obj)).NotTo(BeEmpty(), "teamID not yet populated")
-		}, 60*time.Second, 2*time.Second).Should(Succeed())
-
-		// The grant must carry the UUID, NOT the human name.
-		//
-		// Read it from GET /team/info, NOT /v2/team/list: the list endpoint
-		// returns `object_permission: null` even when the row exists (it
-		// reports only the object_permission_id), so asserting there always
-		// fails. /team/info expands the row.
-		Eventually(func(g Gomega) {
-			op := litellmTeamObjectPermission(teamName)
-			g.Expect(op).NotTo(BeNil(), "object_permission absent from /team/info")
-			granted, _ := op["mcp_toolsets"].([]interface{})
-			g.Expect(granted).To(ConsistOf(wantToolsetID),
-				"object_permission.mcp_toolsets must carry the resolved UUID %q, not the name %q; got %v",
-				wantToolsetID, tsName, op["mcp_toolsets"])
-		}, 60*time.Second, 3*time.Second).Should(Succeed())
-	})
 
 	// TEAM-07 (ported from the prod UAT runbook's FN3): the POSITIVE half of
 	// TEAM-05.
@@ -805,11 +574,34 @@ var _ = Describe("LiteLLMTeam", Ordered, ContinueOnFailure, func() {
 			g.Expect(modelID(obj)).NotTo(BeEmpty(), "grant model not registered yet")
 		}, 90*time.Second, 3*time.Second).Should(Succeed())
 
+		// The grant lives in an access group; the team only attaches it.
+		const agName = "e2e-team-grant-group"
+		_ = dyn.Resource(accessGroupGVR).Namespace(ns).
+			Delete(ctx, agName, metav1.DeleteOptions{PropagationPolicy: &fg})
+		Eventually(func(g Gomega) {
+			_, err := dyn.Resource(accessGroupGVR).Namespace(ns).Get(ctx, agName, metav1.GetOptions{})
+			g.Expect(err).To(HaveOccurred(), "grant group still terminating")
+		}, 60*time.Second, 2*time.Second).Should(Succeed())
+		_, err = dyn.Resource(accessGroupGVR).Namespace(ns).Create(ctx,
+			newAccessGroupCR(agName, ns, map[string]interface{}{
+				"models": []interface{}{grantModel},
+			}), metav1.CreateOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() {
+			_ = dyn.Resource(accessGroupGVR).Namespace(ns).
+				Delete(context.Background(), agName, metav1.DeleteOptions{PropagationPolicy: &fg})
+		})
+		var wantGroupID string
+		Eventually(func(g Gomega) {
+			obj, err := dyn.Resource(accessGroupGVR).Namespace(ns).Get(ctx, agName, metav1.GetOptions{})
+			g.Expect(err).NotTo(HaveOccurred())
+			wantGroupID = accessGroupID(obj)
+			g.Expect(wantGroupID).NotTo(BeEmpty(), "accessGroupID not yet populated")
+		}, 60*time.Second, 2*time.Second).Should(Succeed())
+
 		cr := newTeamCR(teamName, ns)
 		spec, _ := cr.Object["spec"].(map[string]interface{})
-		spec["permission"] = map[string]interface{}{
-			"models": []interface{}{grantModel},
-		}
+		spec["accessGroups"] = []interface{}{agName}
 		_, err = dyn.Resource(teamGVR).Namespace(ns).Create(ctx, cr, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(func() {
@@ -825,13 +617,11 @@ var _ = Describe("LiteLLMTeam", Ordered, ContinueOnFailure, func() {
 			g.Expect(tid).NotTo(BeEmpty(), "teamID not yet populated")
 		}, 60*time.Second, 2*time.Second).Should(Succeed())
 
-		// The grant must land as a real model list, never the deny-all sentinel.
+		// The team stays closed; the group attachment is what opens it.
 		Eventually(func(g Gomega) {
-			matches := litellmTeamsByAlias(teamName)
-			g.Expect(matches).NotTo(BeEmpty(), "team not in LiteLLM")
-			g.Expect(matches[0]["models"]).To(ConsistOf(grantModel),
-				"granted team must carry its model list, got %v", matches[0]["models"])
-		}, 30*time.Second, 2*time.Second).Should(Succeed())
+			g.Expect(litellmTeamAccessGroupIDs(tid)).To(ConsistOf(wantGroupID),
+				"team.access_group_ids must carry the group id")
+		}, 60*time.Second, 3*time.Second).Should(Succeed())
 
 		key := generateTeamKey(tid)
 		DeferCleanup(func() { deleteLiteLLMKey(key) })

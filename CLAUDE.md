@@ -131,7 +131,7 @@ alitellm-operator/
 | API reference rendering                | `docs/Makefile` (`gen-crd-ref-docs`) + `docs/.crd-ref-docs.yaml` |
 | Docs site, mkdocs, mike, gh-pages flow | `references/docs/documentation.md`       |
 | CI / PR / release lifecycle (push/PR matrix) | `references/docs/workflow.md`        |
-| Access groups / team attachment         | `docs/user-guide/access-group.md` (two disjoint namespaces + the only-ADD bypass) |
+| Access groups / team attachment         | `docs/user-guide/access-group.md` (two disjoint namespaces + the only-ADD bypass); team = closed container, `closedTeamGrant` in `internal/controller/team_permission.go` |
 | Model aliases / OpenCode catalog        | `docs/user-guide/model-alias.md` (aggregate map + the catalog ConfigMap) |
 | OLM packaging                          | NOT supported — explicit scope decision (no OperatorHub) |
 
@@ -1117,79 +1117,40 @@ SELECT model_name, count(*) FROM "LiteLLM_ProxyModelTable"
 GROUP BY 1 HAVING count(*) > 1;
 ```
 
-### ❌ Team `spec.permission.agents` uses UUIDs, or team stuck `AgentNotFound`
+### ❌ Granting on a LiteLLMTeam directly (removed v0.9.0)
 ```yaml
+kind: LiteLLMTeam
 spec:
-  permission:
-    agents: ["3f9c-uuid-..."]   # WRONG — pass the human NAME, not the UUID
+  permission: { modelGroups: [openai] }   # field no longer exists
 ```
-✅ `spec.permission.agents` takes A2A agent NAMES; the operator resolves them
-to `agent_id` UUIDs via `GET /v1/agents` (LiteLLM enforces `object_permission.agents`
-on UUIDs and silently ignores names). If a name isn't registered yet the team
-parks `Ready=False, reason=AgentNotFound` and requeues — create the
-`LiteLLMA2AAgent` CR first (ordering dependency), it self-heals. `spec.permission.agentGroups`
-projects to `object_permission.agent_access_groups` but is a NO-OP in LiteLLM
-1.83.10 (no API tags an agent into a group) — a `AgentGroupsNoOp` Warning Event
-is emitted. WHY: `object_permission.agents` matches on `agent_id`; a name yields
-ZERO agents. Absent `spec.permission` block → raw `spec.params.{models,object_permission}`
-passthrough is preserved (migration path).
-
-### ❌ Emptying a `spec.permission` list silently fails to revoke (pre-v0.7.25)
+✅ Teams only attach groups; grants live in `LiteLLMAccessGroup`:
 ```yaml
-# before → object_permission.mcp_servers = [hindsight]
+kind: LiteLLMTeam
 spec:
-  permission:
-    mcpServers: [hindsight]
-# after  → user removes it, expecting revocation
-spec:
-  permission:
-    mcpServers: []            # or drops the key entirely
+  accessGroups: [dream]
 ```
-Symptom (≤ v0.7.24): CR goes `Ready=Synced`, but LiteLLM STILL grants
-`hindsight`. Silent authorization leak — the operator’s drift hash cannot catch
-it (the gap is entirely LiteLLM-side, invisible to the operator).
-✅ Fixed v0.7.25: with `spec.permission` present the operator emits `models`
-AND all four `object_permission` sub-fields UNCONDITIONALLY on every
-`/team/update` — an emptied sublist is sent as `[]` (an explicit clear), never
-omitted, never `null`. `projectPermission` returns non-nil slices; the Step 7b
-body assignment has no `len>0` guard.
-WHY IT FAILED: `POST /team/update` MERGES per-field on the persistent
-`object_permission` row (same `object_permission_id` across updates) — a
-present field is replaced, `[]` clears it, but an OMITTED field keeps its STALE
-value (verified on LiteLLM 1.83.10: dropping a key left it unchanged; sending
-`[]` cleared it). Non-empty shrinks (`[a,b]→[a]`) were always safe (the field
-was sent); only shrink-to-empty / last-item-removal leaked. `null` is treated
-as absent by the merge too, so the field must serialize as `[]`, not `null`.
-
-### ❌ Empty `spec.permission` list = deny (NOT allow-all) — deny-by-default
-```yaml
-spec:
-  permission:
-    mcpServers: [hindsight]   # models/agents omitted → NOT "grant everything"
-```
-Symptom (≤ v0.7.26): a present `spec.permission` block that leaves `models`
-(or `agents`) empty made the team see EVERY model / EVERY agent — the
-master-key ceiling. Verified in prod (LiteLLM 1.83.10): a team with `models=[]
-object_permission=None` saw all 427 models / 7 agents. `[]` on those two fields
-is fail-OPEN — LiteLLM reads it as "no filter". (`mcp_servers` /
-`mcp_access_groups` were already fail-CLOSED — `[]` there = 0.)
-✅ Deny-by-default: with `spec.permission` present, `projectPermission`
-(`team_permission.go`) substitutes a deny-all SENTINEL when the fail-open lists
-resolve empty — `["__deny_all__"]` for `models`, the null UUID
-`"00000000-0000-0000-0000-000000000000"` for `agents`. LiteLLM activates the
-filter on any non-empty list and never validates the elements exist, so a value
-no real resource can match → 0 grants. The three fail-closed fields stay `[]`.
-An ABSENT block (`Permission == nil`, migration passthrough) is untouched — the
-sentinel applies only to a present typed block, or existing teams break.
-GOTCHA: the agent sentinel is injected ONLY in the `len(perm.Agents)==0` branch
-(where the code skips `GET /v1/agents`), NEVER for names that fail to resolve —
-a non-empty `agents` with an unregistered name still parks the team
-`AgentNotFound` and requeues; it must not be swapped for the sentinel.
-VERIFIED e2e (2026-07-27, LiteLLM 1.93.0, TEAM-05): an inference call with a
-team-scoped key against `models:["__deny_all__"]` IS rejected —
-`team_model_access_denied`, `"This team can only access models=['__deny_all__']"`.
-Status code drifted upstream: **401 on 1.83.10, 403 on 1.93.0**. Assert the
-error type + sentinel echo, never the bare status code.
+The operator always sends a CLOSED team (`closedTeamGrant`,
+`team_permission.go`): `models: ["no-default-models"]`, agents = null UUID,
+`[]` for mcp_servers / mcp_access_groups / agent_access_groups / mcp_toolsets,
+plus `access_group_ids` — every field on every write, the implicit
+`Team/default` included. WHY each piece:
+- `models` / `agents` fail OPEN on `[]` in LiteLLM (a team with `models=[]`
+  saw all 427 models / 7 agents), so they carry a value nothing matches.
+  `no-default-models` is LiteLLM's own `SpecialModelNames.no_default_models`:
+  catalogs drop it, so a closed team lists zero models (the old
+  `__deny_all__` showed up as a phantom model in LibreChat). Same value
+  alitellm-auth uses.
+- `POST /team/update` MERGES per field and keeps an OMITTED field's stale
+  value (the v0.7.25 revocation leak), so nothing is ever omitted or `null`.
+- The four MCP/agent-group fields fail CLOSED on `[]` — do NOT add a sentinel
+  there "for consistency".
+- Toolsets are ungrantable through the operator: LiteLLM access groups have no
+  toolset field (1.102.0: `access_mcp_toolset_ids` is silently dropped).
+Implicit defaults: with no CRs the operator keeps team `default` (closed, no
+groups) and access group `default` (EMPTY, `ensureEmptyDefault` in
+`accessgroup_controller.go`), NOT linked. Deleting either CR falls back to
+empty and KEEPS the LiteLLM row (team delete suppressed; group emptied, not
+deleted) so ids stay valid.
 
 ### ❌ Persisting a vanish-probe's in-memory ID clear on an error path
 ```yaml
@@ -1302,11 +1263,13 @@ metadata:
   name: anthropic                     # UNRELATED to the tag above
 ```
 Symptom: a `LiteLLMAccessGroup` is `Ready=Synced` but never shows up in
-`GET /access_group/list`, and a team granting it via `permission.modelGroups`
-gets nothing.
-✅ They are DISJOINT families. `permission.accessGroups` → unified group NAMES →
-resolved ids → team top-level `access_group_ids`. `permission.modelGroups` →
-legacy TAG names → merged into `team.models`. Full table:
+`GET /access_group/list`, and attaching it grants nothing from the same-named
+tag.
+✅ They are DISJOINT families. `LiteLLMTeam.spec.accessGroups` → unified group
+NAMES → resolved ids → team top-level `access_group_ids`.
+`LiteLLMAccessGroup.spec.modelGroups` → legacy TAG names → `access_model_names`
+(LiteLLM expands). The implicit group `default` and the `default` tag are
+likewise unrelated. Full table:
 `docs/user-guide/access-group.md` § "Two access-group namespaces".
 WHY: `/v1/access_group` (alias `/v1/unified_access_group`) is a first-class row
 holding models + MCP servers + agents; `/access_group/list` just enumerates the
@@ -1316,14 +1279,13 @@ free-text tags stamped on `model_info.access_groups`. Nothing bridges them.
 ```yaml
 kind: LiteLLMTeam
 spec:
-  permission:
-    models: []                        # → ["__deny_all__"] sentinel
-    accessGroups: [shared-tooling]    # grants gpt-4o
+  accessGroups: [shared-tooling]      # grants gpt-4o; team.models stays the sentinel
 ```
 The team is NOT denied `gpt-4o`. Verified live 2026-08-06 on LiteLLM 1.93.0
 (e2e `AG-04`): the same team's key answers `team_model_access_denied` before the
 attachment, and after it the response carries NEITHER that marker nor the
-`__deny_all__` echo — while `team.models` is still `["__deny_all__"]`. Assert
+sentinel echo — while `team.models` is still the deny-all sentinel
+(`__deny_all__` then, `no-default-models` since v0.9.0). Assert
 the markers' ABSENCE, never `status == 200`: on the e2e mock a correctly
 authorized call never returns 200, so a `== 200` assertion inverts the verdict.
 ✅ Groups compose ADDITIVELY and OVERRIDE the deny-by-default sentinel. Treat
@@ -1417,19 +1379,13 @@ alitellm-auth it publishes a chart pinned to the previous image tag.
 
 ## Repository-specific patterns
 
-- **`mcp_toolsets` is the one `object_permission` field that takes NO
-  deny-all sentinel.** `models` and `agents` are fail-OPEN in LiteLLM (an
-  empty list disables the filter → master-key ceiling), so `projectPermission`
-  substitutes `__deny_all__` / the null UUID. `mcp_toolsets` is fail-CLOSED —
-  the handler reads "granted is None or id not in granted → deny", so `[]`
-  already grants nothing (verified 1.93.0: an ungranted key gets `403 API key
-  does not have access to toolset '<uuid>'`). It joins `mcp_servers`,
-  `mcp_access_groups`, and `agent_access_groups` in the emitted-as-`[]` group.
-  Do NOT "fix" this asymmetry for consistency — a sentinel there would inject a
-  bogus UUID into a filter that is already correct. `spec.permission.mcpToolsets`
-  takes toolset NAMES, resolved to `toolset_id` UUIDs via `GET /v1/mcp/toolset`;
-  an unresolved name parks the team `ToolsetNotFound` and requeues (ordering
-  dependency with `LiteLLMMCPToolset` CRs, same shape as `AgentNotFound`).
+- **`mcp_toolsets` is always `[]` on a team, and toolsets are not grantable
+  through the operator.** LiteLLM's toolset check is fail-CLOSED ("granted is
+  None or id not in granted → deny"), so `[]` grants nothing and takes NO
+  sentinel — do not add one for consistency. LiteLLM access groups have no
+  toolset field (verified 1.102.0), so v0.9.0 dropped the team-side toolset
+  grant along with `spec.permission`; a toolset is granted only on a key's
+  `object_permission.mcp_toolsets`, outside the operator.
 
 - **`LiteLLMMCPToolset` ids are SERVER-MINTED; adoption is by name.** LiteLLM
   1.93.0 IGNORES a caller-supplied `toolset_id` (same as A2A `agent_id`, unlike

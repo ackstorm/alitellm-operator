@@ -64,6 +64,19 @@ func enableSuiteRelist(t *testing.T) {
 	t.Cleanup(func() { suiteRelistEnabled.Store(false) })
 }
 
+// suiteImplicitAccessGroupEnabled gates the implicit-default access-group
+// runnable. Default false: it would otherwise re-create `default` in the mock
+// every 100ms after any ResetAccessGroups, adding stray POSTs to tests that
+// assert exact mutation counts. Tests of the implicit group opt in via
+// enableImplicitDefaultAccessGroup(t). NOT safe under t.Parallel.
+var suiteImplicitAccessGroupEnabled atomic.Bool
+
+func enableImplicitDefaultAccessGroup(t *testing.T) {
+	t.Helper()
+	suiteImplicitAccessGroupEnabled.Store(true)
+	t.Cleanup(func() { suiteImplicitAccessGroupEnabled.Store(false) })
+}
+
 // WatchNamespace is the namespace the test manager watches. AC-N4 tests
 // verify that CRs created elsewhere (e.g. "default") are never reconciled.
 const WatchNamespace = "default"
@@ -593,22 +606,28 @@ func setupAndRun(m *testing.M) int {
 		Log:               logr.Discard(),
 		ConnectionRebuilt: connCache.Subscribe(),
 	}
-	if err := accessGroupReconciler.SetupWithManager(mgr, accessGroupSafetyRelistCh); err != nil {
+	// Implicit empty access group `default` — gated OFF by default (see
+	// suiteImplicitAccessGroupEnabled).
+	accessGroupDefaultCh := make(chan reconcile.Request, 1)
+	if err := mgr.Add(&TeamDefaultRunnable{
+		Cache:             connCache,
+		Namespace:         WatchNamespace,
+		Interval:          100 * time.Millisecond,
+		ReadyPollInterval: 50 * time.Millisecond,
+		Log:               logr.Discard(),
+		RequeueCh:         accessGroupDefaultCh,
+		Gate:              suiteImplicitAccessGroupEnabled.Load,
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "mgr.Add(AccessGroupDefault runnable): %v\n", err)
+		return 1
+	}
+	if err := accessGroupReconciler.SetupWithManager(mgr, accessGroupSafetyRelistCh, accessGroupDefaultCh); err != nil {
 		fmt.Fprintf(os.Stderr, "SetupWithManager(AccessGroup): %v\n", err)
 		return 1
 	}
 
 	// Phase 6: register the Team field indexer +
 	// TeamReconciler. Mirrors the Phase 3 Model + Phase 5 	// MCPServer + A2AAgent wiring blocks.
-	if err := mgr.GetFieldIndexer().IndexField(
-		ctx,
-		&litellmv1alpha1.LiteLLMTeam{},
-		TeamSecretRefIndexField,
-		IndexTeamSecretRefs,
-	); err != nil {
-		fmt.Fprintf(os.Stderr, "IndexField(Team secrets): %v\n", err)
-		return 1
-	}
 	teamReconciler = &TeamReconciler{
 		Client:            mgr.GetClient(),
 		Scheme:            mgr.GetScheme(),

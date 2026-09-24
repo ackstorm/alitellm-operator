@@ -153,8 +153,9 @@ created.
 ## Attaching a group to a team
 
 A group grants nobody anything on its own. Reference it from a team via
-[`spec.permission.accessGroups`](team.md#accessgroups), which takes group
-**names**:
+[`spec.accessGroups`](team.md#access-a-closed-team-opened-by-access-groups),
+which takes group **names**. It is the team's only grant — a team is always
+closed and opened solely by its groups:
 
 ```yaml
 apiVersion: litellm.ackstorm.ai/v1alpha1
@@ -162,9 +163,7 @@ kind: LiteLLMTeam
 metadata:
   name: research-team
 spec:
-  permission:
-    models: ["gpt-4o"]
-    accessGroups: ["shared-tooling"]
+  accessGroups: ["shared-tooling"]
 ```
 
 The operator resolves each name to its `access_group_id` and writes the list to
@@ -192,12 +191,11 @@ is already broken.
 
 !!! danger "A group grant overrides the team's deny-by-default sentinel"
 
-    A `spec.permission` block that leaves `models` empty projects the
-    `["__deny_all__"]` sentinel, which denies every model
-    ([Deny-by-default](team.md#resource-permissions-specpermission)). An
-    attached access group **overrides** that: LiteLLM composes group grants
+    Every team is projected with the `["no-default-models"]` sentinel, which
+    denies every model ([closed baseline](team.md#access-a-closed-team-opened-by-access-groups)).
+    An attached access group **overrides** that: LiteLLM composes group grants
     additively, so a group granting `gpt-4o` makes `gpt-4o` reachable by that
-    team's keys even though `team.models` is still `["__deny_all__"]`.
+    team's keys even though `team.models` is still `["no-default-models"]`.
 
     Measured on stock LiteLLM 1.93.0 and covered by the `AG-04` e2e spec: the
     same team is denied `team_model_access_denied` before the attachment and
@@ -232,22 +230,31 @@ a group created in one never appears in the other.
 | Endpoints | `/v1/access_group` (GET, POST) and `/v1/access_group/<id>` (PUT, DELETE) | `GET /access_group/list`, `POST /access_group/new` |
 | Object | A first-class row with an id, holding models + MCP servers + agents | A free-text tag stamped on a single model |
 | Written by | `LiteLLMAccessGroup` CRs | `LiteLLMModel.spec.info.access_groups`, and the `DEFAULT_ACCESS_GROUP` env default |
-| Attached via | `LiteLLMTeam.spec.permission.accessGroups` → `team.access_group_ids` | `LiteLLMTeam.spec.permission.modelGroups` → merged into `team.models` |
+| Attached via | `LiteLLMTeam.spec.accessGroups` → `team.access_group_ids` | A unified group's `spec.modelGroups` (LiteLLM expands the tag) |
 | Covers | Models, MCP servers, A2A agents | Models only |
 
 So:
 
-- `spec.permission.accessGroups` takes **unified** group names — the ones this
+- `LiteLLMTeam.spec.accessGroups` takes **unified** group names — the ones this
   CRD creates.
-- `spec.permission.modelGroups` takes **legacy tag** names — the ones
-  `model_info.access_groups` / `DEFAULT_ACCESS_GROUP` write. They merge into the
-  team's `models` list, which means they are subject to deny-by-default like any
-  other model entry; unified groups are not.
+- `LiteLLMAccessGroup.spec.modelGroups` takes **legacy tag** names — the ones
+  `model_info.access_groups` / `DEFAULT_ACCESS_GROUP` write.
 
 A `LiteLLMAccessGroup` named `anthropic` and a model tagged
-`model_info.access_groups: ["anthropic"]` are **unrelated**. Listing `anthropic`
-under `accessGroups` grants nothing from the tag, and listing it under
-`modelGroups` grants nothing from the CR.
+`model_info.access_groups: ["anthropic"]` are **unrelated**. Attaching the
+`anthropic` group grants nothing from the tag unless the group lists
+`anthropic` under `modelGroups`. The same holds for the implicit group
+`default` and the `default` tag.
+
+## Implicit group `default`
+
+With no `LiteLLMAccessGroup/default` CR the operator keeps a unified group
+named `default` in LiteLLM, **empty** (it grants nothing), and clears any grant
+added to it by hand. It is not linked to anything: the implicit `Team/default`
+does not attach it. Declare both CRs to link and fill them — see
+[Implicit defaults](team.md#implicit-defaults-teamdefault-access-group-default).
+Deleting the `default` CR empties the row instead of deleting it, so teams
+holding its id keep a valid reference.
 
 ## Deletion
 
@@ -275,4 +282,4 @@ the now-dangling id from enforcement.
 | Group is `Synced` but grants nothing | A `spec.models` entry matches neither a model name nor a model access-group tag. Nothing validates it; check `GET /v1/access_group`. |
 | Group does not appear in `GET /access_group/list` | Expected — that is the legacy tag namespace. See [Two access-group namespaces](#two-access-group-namespaces). |
 | `assigned_team_ids` is `[]` despite an attached team | Expected — the group side does not mirror a team-side write. Read `GET /team/info`. |
-| A team can reach a model its `spec.permission.models` excludes | An attached group grants it. Groups only ADD. |
+| A team can reach a model none of its intended groups grant | Another attached group grants it. Groups only ADD. |

@@ -266,6 +266,18 @@ func mockAccessGroupByName(name string) *mock.AccessGroupSnapshot {
 	return nil
 }
 
+// declaredMockAccessGroups is the mock's group list minus the implicit
+// `default` row the always-on default runnable keeps present.
+func declaredMockAccessGroups() []mock.AccessGroupSnapshot {
+	var out []mock.AccessGroupSnapshot
+	for _, g := range mockServer.AccessGroups() {
+		if g.AccessGroupName != implicitDefaultAccessGroup {
+			out = append(out, g)
+		}
+	}
+	return out
+}
+
 // setupReadyConnectionAccessGroup delegates to setupReadyConnectionToolset:
 // that helper creates only the LiteLLMConnection/default CR and polls the
 // snapshot — it is entirely kind-agnostic despite its name, so a sixth
@@ -315,7 +327,7 @@ func TestAccessGroup_CreateOnFirstReconcile(t *testing.T) {
 			"be read from the POST response, not derived from the name", id)
 	}
 
-	groups := mockServer.AccessGroups()
+	groups := declaredMockAccessGroups()
 	if len(groups) != 1 {
 		t.Fatalf("mock has %d groups, want exactly 1 (a duplicate means adoption failed)", len(groups))
 	}
@@ -388,7 +400,7 @@ func TestAccessGroup_UpdateOnSpecChange(t *testing.T) {
 		t.Errorf("access_group_id = %q, want the original %q — an UPDATE must PUT in "+
 			"place, never delete+recreate", g.AccessGroupID, firstID)
 	}
-	if n := len(mockServer.AccessGroups()); n != 1 {
+	if n := len(declaredMockAccessGroups()); n != 1 {
 		t.Errorf("mock has %d groups, want 1 — an UPDATE must not leave a duplicate row", n)
 	}
 }
@@ -515,7 +527,7 @@ func TestAccessGroup_AdoptsExistingByName(t *testing.T) {
 		t.Errorf("accessGroupID = %q, want the adopted %q",
 			got.Status.LastRendered.AccessGroupID, preexistingID)
 	}
-	if n := len(mockServer.AccessGroups()); n != 1 {
+	if n := len(declaredMockAccessGroups()); n != 1 {
 		t.Errorf("mock has %d groups, want 1 — adoption must not create a duplicate", n)
 	}
 	// The adopted group must have received our rendered state via PUT.
@@ -775,4 +787,166 @@ func waitFor(t *testing.T, cond func() bool, msg string) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	t.Fatal(msg)
+}
+
+// ── implicit access group `default` ───────────────────────────────────────
+
+// TestAccessGroup_ImplicitDefaultCreatedEmpty — with no CR, the operator keeps
+// a group named `default` in LiteLLM, and it grants nothing.
+func TestAccessGroup_ImplicitDefaultCreatedEmpty(t *testing.T) {
+	ctx := context.Background()
+	enableImplicitDefaultAccessGroup(t)
+	resetMockAccessGroup()
+	ensureNoAccessGroup(t, ctx, implicitDefaultAccessGroup)
+	resetConnCacheSnapshot()
+	cleanupConn := setupReadyConnectionAccessGroup(t, ctx)
+	t.Cleanup(cleanupConn)
+
+	waitFor(t, func() bool { return mockAccessGroupByName(implicitDefaultAccessGroup) != nil },
+		"implicit access group default was never created")
+	g := mockAccessGroupByName(implicitDefaultAccessGroup)
+	if len(g.AccessModelNames)+len(g.AccessMCPServerIDs)+len(g.AccessAgentIDs) != 0 {
+		t.Errorf("implicit default must be empty, got %+v", g)
+	}
+}
+
+// TestAccessGroup_ImplicitDefaultEmptiedWhenStale — grants left on `default`
+// with no CR declaring it are cleared, and the row keeps its id.
+func TestAccessGroup_ImplicitDefaultEmptiedWhenStale(t *testing.T) {
+	ctx := context.Background()
+	enableImplicitDefaultAccessGroup(t)
+	resetMockAccessGroup()
+	ensureNoAccessGroup(t, ctx, implicitDefaultAccessGroup)
+	resetConnCacheSnapshot()
+	id := mockServer.SeedAccessGroup(implicitDefaultAccessGroup)
+	mockServer.SetAccessGroupModels(implicitDefaultAccessGroup, []string{"stale-model"})
+	cleanupConn := setupReadyConnectionAccessGroup(t, ctx)
+	t.Cleanup(cleanupConn)
+
+	waitFor(t, func() bool {
+		g := mockAccessGroupByName(implicitDefaultAccessGroup)
+		return g != nil && len(g.AccessModelNames) == 0
+	}, "stale grant on implicit default was never cleared")
+	if g := mockAccessGroupByName(implicitDefaultAccessGroup); g.AccessGroupID != id {
+		t.Errorf("implicit default must keep its id %q, got %q", id, g.AccessGroupID)
+	}
+}
+
+// TestAccessGroup_DefaultCRWins — a declared LiteLLMAccessGroup/default owns
+// the content; the implicit ticks must not empty it.
+func TestAccessGroup_DefaultCRWins(t *testing.T) {
+	ctx := context.Background()
+	enableImplicitDefaultAccessGroup(t)
+	resetMockAccessGroup()
+	ensureNoAccessGroup(t, ctx, implicitDefaultAccessGroup)
+	resetConnCacheSnapshot()
+	cleanupConn := setupReadyConnectionAccessGroup(t, ctx)
+	t.Cleanup(func() {
+		cleanupConn()
+		setConnCacheReady()
+		ensureNoAccessGroup(t, context.Background(), implicitDefaultAccessGroup)
+	})
+
+	cr := accessGroupSampleCR(implicitDefaultAccessGroup, litellmv1alpha1.AccessGroupSpec{Models: []string{"m1"}})
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create access group CR: %v", err)
+	}
+	pollAccessGroupCondition(t, ctx, implicitDefaultAccessGroup, reasonSynced)
+	time.Sleep(500 * time.Millisecond) // several 100ms implicit ticks
+	g := mockAccessGroupByName(implicitDefaultAccessGroup)
+	if g == nil || len(g.AccessModelNames) != 1 || g.AccessModelNames[0] != "m1" {
+		t.Errorf("declared CR content must survive implicit ticks, got %+v", g)
+	}
+}
+
+// TestAccessGroup_DefaultCRDeleteKeepsRowEmpty — deleting the `default` CR
+// empties the LiteLLM row instead of deleting it, so teams keep a valid id.
+func TestAccessGroup_DefaultCRDeleteKeepsRowEmpty(t *testing.T) {
+	ctx := context.Background()
+	resetMockAccessGroup()
+	ensureNoAccessGroup(t, ctx, implicitDefaultAccessGroup)
+	resetConnCacheSnapshot()
+	cleanupConn := setupReadyConnectionAccessGroup(t, ctx)
+	t.Cleanup(func() {
+		cleanupConn()
+		setConnCacheReady()
+		ensureNoAccessGroup(t, context.Background(), implicitDefaultAccessGroup)
+	})
+
+	cr := accessGroupSampleCR(implicitDefaultAccessGroup, litellmv1alpha1.AccessGroupSpec{Models: []string{"m1"}})
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create access group CR: %v", err)
+	}
+	synced := pollAccessGroupCondition(t, ctx, implicitDefaultAccessGroup, reasonSynced)
+	id := synced.Status.LastRendered.AccessGroupID
+	if id == "" {
+		t.Fatal("precondition: default CR never reached Synced with an id")
+	}
+	if err := k8sClient.Delete(ctx, synced); err != nil {
+		t.Fatalf("delete access group CR: %v", err)
+	}
+	key := client.ObjectKey{Name: implicitDefaultAccessGroup, Namespace: WatchNamespace}
+	waitFor(t, func() bool {
+		var check litellmv1alpha1.LiteLLMAccessGroup
+		return apierrors.IsNotFound(k8sClient.Get(ctx, key, &check))
+	}, "default CR finalizer never drained")
+
+	g := mockAccessGroupByName(implicitDefaultAccessGroup)
+	if g == nil {
+		t.Fatal("LiteLLM row for default was deleted; want kept and emptied")
+	}
+	if g.AccessGroupID != id || len(g.AccessModelNames) != 0 {
+		t.Errorf("want row %q kept and empty, got %+v", id, g)
+	}
+}
+
+// TestAccessGroup_DefaultCRDeleteWhileUnavailableNeverLeaksGrants — deleting
+// the `default` CR while LiteLLM is unusable must not drain the finalizer with
+// the old grants still live: the CR only disappears once the row is emptied.
+func TestAccessGroup_DefaultCRDeleteWhileUnavailableNeverLeaksGrants(t *testing.T) {
+	ctx := context.Background()
+	resetMockAccessGroup()
+	ensureNoAccessGroup(t, ctx, implicitDefaultAccessGroup)
+	resetConnCacheSnapshot()
+	cleanupConn := setupReadyConnectionAccessGroup(t, ctx)
+	t.Cleanup(func() {
+		cleanupConn()
+		setConnCacheReady()
+		ensureNoAccessGroup(t, context.Background(), implicitDefaultAccessGroup)
+	})
+
+	cr := accessGroupSampleCR(implicitDefaultAccessGroup, litellmv1alpha1.AccessGroupSpec{Models: []string{"m1"}})
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create access group CR: %v", err)
+	}
+	synced := pollAccessGroupCondition(t, ctx, implicitDefaultAccessGroup, reasonSynced)
+	if synced.Status.LastRendered.AccessGroupID == "" {
+		t.Fatal("precondition: default CR never reached Synced")
+	}
+
+	resetConnCacheSnapshot() // LiteLLM unusable
+	if err := k8sClient.Delete(ctx, synced); err != nil {
+		t.Fatalf("delete access group CR: %v", err)
+	}
+	key := client.ObjectKey{Name: implicitDefaultAccessGroup, Namespace: WatchNamespace}
+	gone := func() bool {
+		var check litellmv1alpha1.LiteLLMAccessGroup
+		return apierrors.IsNotFound(k8sClient.Get(ctx, key, &check))
+	}
+	// The connection probe may restore the cache at any moment, so assert the
+	// invariant rather than a timing: a gone CR implies an emptied row.
+	for i := 0; i < 10; i++ {
+		if gone() {
+			if g := mockAccessGroupByName(implicitDefaultAccessGroup); g != nil && len(g.AccessModelNames) != 0 {
+				t.Fatalf("default CR drained with grants still live: %+v", g)
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	setConnCacheReady()
+	waitFor(t, gone, "default CR finalizer never drained after LiteLLM recovered")
+	if g := mockAccessGroupByName(implicitDefaultAccessGroup); g == nil || len(g.AccessModelNames) != 0 {
+		t.Errorf("want default row kept and empty, got %+v", g)
+	}
 }

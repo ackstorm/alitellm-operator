@@ -8,7 +8,7 @@
 #     http://www.apache.org/licenses/LICENSE-2.0
 #
 # LiteLLMAccessGroup — a reusable bundle of models, MCP servers, and A2A
-# agents that teams attach through `spec.permission.accessGroups`.
+# agents that teams attach through `LiteLLMTeam.spec.accessGroups`.
 # Requires LiteLLM 1.93.0+ (/v1/access_group).
 #
 # metadata.name IS the LiteLLM `access_group_name`. The access_group_id is
@@ -16,8 +16,8 @@
 #
 # ⚠️ ACCESS GROUPS ONLY ADD — see docs/user-guide/access-group.md.
 # A group grant OVERRIDES the attaching team's deny-by-default sentinel
-# (`models: ["__deny_all__"]`). Anything listed here is reachable by EVERY
-# team that attaches the group, whatever that team's own permission block says.
+# (`models: ["no-default-models"]`). Anything listed here is reachable by
+# EVERY team that attaches the group.
 #
 # This is NOT the legacy per-model access-group TAG namespace written via
 # `LiteLLMModel.spec.info.access_groups` / `DEFAULT_ACCESS_GROUP`. The two
@@ -50,15 +50,13 @@ spec:
   # finalizer still drains. Delete: block until confirmed.
   deletionPolicy: Orphan
 ---
-# Attaching the group WIDENS every team that references it. This team grants
-# nothing of its own (`models: []` → the deny-all sentinel), yet its keys can
-# still reach gpt-3.5-turbo and exa-mcp through `shared-tooling`.
+# Attaching the group WIDENS every team that references it. A team grants
+# nothing of its own (always projected closed), yet its keys reach
+# gpt-3.5-turbo and exa-mcp through `shared-tooling`.
 apiVersion: litellm.ackstorm.ai/v1alpha1
 kind: LiteLLMTeam
 metadata:
   name: example-team-with-group
 spec:
-  permission:
-    models: []
-    accessGroups:
-      - shared-tooling
+  accessGroups:
+    - shared-tooling

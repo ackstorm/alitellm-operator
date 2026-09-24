@@ -272,6 +272,14 @@ func (r *AccessGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	var ag litellmv1alpha1.LiteLLMAccessGroup
 	if err := r.Get(ctx, req.NamespacedName, &ag); err != nil {
 		if apierrors.IsNotFound(err) {
+			if req.Name == implicitDefaultAccessGroup && req.Namespace == r.Namespace {
+				// No CR declares `default` → keep the implicit EMPTY group.
+				snap := r.Cache.Snapshot()
+				if !snap.Usable() {
+					return ctrl.Result{}, nil // the default runnable re-drives it
+				}
+				return ctrl.Result{}, r.ensureEmptyDefault(ctx, snap.Client, logger)
+			}
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
@@ -284,6 +292,14 @@ func (r *AccessGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			onAckMissing := newAckMissingFn(r.Recorder, &ag, accessGroupKind, ag.Namespace, ag.Name, policy)
 
 			snap := r.Cache.Snapshot()
+			if ag.Name == implicitDefaultAccessGroup && !snap.Usable() {
+				// Never let the `default` CR go without emptying the row: an
+				// Orphan drain here would leave its last grants live in LiteLLM.
+				// Keep the finalizer; the connection-Ready fan-in re-drives
+				// this still-Terminating CR (mirrors Team/default).
+				logger.Info("deletion of access group default deferred: LiteLLM not usable")
+				return ctrl.Result{}, nil
+			}
 			if snap.Usable() {
 				groupID := ag.Status.LastRendered.AccessGroupID
 				if groupID == "" {
@@ -293,7 +309,14 @@ func (r *AccessGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 						groupID = resolved
 					}
 				}
-				if groupID != "" {
+				if ag.Name == implicitDefaultAccessGroup {
+					// Fall back to the implicit EMPTY group: keep the row and its
+					// id so every team holding it keeps a valid reference.
+					if err := r.ensureEmptyDefault(ctx, snap.Client, logger); err != nil {
+						return ctrl.Result{}, err
+					}
+					logger.Info("finalizer removed; access group default emptied, row kept", "accessGroupID", groupID)
+				} else if groupID != "" {
 					// DELETE 404 is already folded into success by the client
 					// (§7.7 idempotent delete) — unlike /v1/mcp/toolset, this
 					// endpoint answers a clean 404 on an absent row, so a
@@ -654,6 +677,43 @@ func (r *AccessGroupReconciler) resolveAccessGroupIDByName(ctx context.Context, 
 	return entry.AccessGroupID
 }
 
+// implicitDefaultAccessGroup is the always-present unified access group. With
+// no CR it exists EMPTY (grants nothing); a declared LiteLLMAccessGroup/default
+// owns its content; deleting that CR empties the row instead of deleting it.
+// Linking it to a team is the user's job (LiteLLMTeam spec.accessGroups).
+const implicitDefaultAccessGroup = "default"
+
+// ensureEmptyDefault creates the implicit group, or empties it if a previous
+// CR (or a human) left grants on it. Idempotent; no-op when already empty.
+func (r *AccessGroupReconciler) ensureEmptyDefault(ctx context.Context, llm *litellm.Client, logger logr.Logger) error {
+	entry, err := llm.GetAccessGroupByName(ctx, implicitDefaultAccessGroup)
+	if err != nil {
+		return err
+	}
+	if entry == nil {
+		_, err = llm.CreateAccessGroup(ctx, &litellm.AccessGroupCreateRequest{
+			AccessGroupName:    implicitDefaultAccessGroup,
+			AccessModelNames:   []string{},
+			AccessMCPServerIDs: []string{},
+			AccessAgentIDs:     []string{},
+		})
+		if err == nil {
+			logger.Info("implicit access group default created empty")
+		}
+		return err
+	}
+	if len(entry.AccessModelNames)+len(entry.AccessMCPServerIDs)+len(entry.AccessAgentIDs) == 0 {
+		return nil
+	}
+	logger.Info("implicit access group default: clearing grants (no CR declares it)", "accessGroupID", entry.AccessGroupID)
+	_, err = llm.UpdateAccessGroup(ctx, entry.AccessGroupID, &litellm.AccessGroupUpdateRequest{
+		AccessModelNames:   []string{},
+		AccessMCPServerIDs: []string{},
+		AccessAgentIDs:     []string{},
+	})
+	return err
+}
+
 // classifyMutationError handles §7.7 error classification for LiteLLM access
 // group calls. See the shared classifyMutationError helper.
 func (r *AccessGroupReconciler) classifyMutationError(ctx context.Context, ag *litellmv1alpha1.LiteLLMAccessGroup, logger logr.Logger, err error, opDesc string) (ctrl.Result, error) {
@@ -740,8 +800,10 @@ func (r *AccessGroupReconciler) SetupWithManager(mgr ctrl.Manager, safetyRelistC
 		b = b.WatchesRawSource(src)
 	}
 
-	if len(safetyRelistCh) > 0 && safetyRelistCh[0] != nil {
-		ch := safetyRelistCh[0]
+	for _, ch := range safetyRelistCh {
+		if ch == nil {
+			continue
+		}
 		b = b.WatchesRawSource(source.TypedFunc[reconcile.Request](
 			func(ctx context.Context, q workqueue.TypedRateLimitingInterface[reconcile.Request]) error {
 				go func() {

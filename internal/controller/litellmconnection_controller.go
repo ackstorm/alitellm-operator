@@ -73,16 +73,11 @@ const (
 	// LITELLM_OPERATOR_REQUIRE_HTTPS_REMOTE=true; otherwise it is a warning
 	// log and the probe proceeds.
 	reasonInsecureEndpoint = "InsecureEndpoint"
-	// reasonAgentNotFound — a spec.permission.agents entry names an A2A
-	// agent that GET /v1/agents does not (yet) list. Non-terminal: the
-	// Team is requeued (ordering dependency with LiteLLMA2AAgent CRs),
-	// mirroring reasonSecretNotFound.
+	// reasonAgentNotFound — a LiteLLMAccessGroup spec.agents entry names an
+	// A2A agent that GET /v1/agents does not (yet) list. Non-terminal:
+	// requeued (ordering dependency with LiteLLMA2AAgent CRs).
 	reasonAgentNotFound = "AgentNotFound"
-	// reasonToolsetNotFound — a spec.permission.mcpToolsets entry names a
-	// toolset GET /v1/mcp/toolset does not (yet) list. Non-terminal: the Team
-	// is requeued (ordering dependency with LiteLLMMCPToolset CRs).
-	reasonToolsetNotFound = "ToolsetNotFound"
-	// reasonAccessGroupNotFound — a spec.permission.accessGroups entry names a
+	// reasonAccessGroupNotFound — a LiteLLMTeam spec.accessGroups entry names a
 	// group GET /v1/access_group does not (yet) list. Non-terminal: the Team is
 	// requeued (ordering dependency with LiteLLMAccessGroup CRs).
 	reasonAccessGroupNotFound = "AccessGroupNotFound"
