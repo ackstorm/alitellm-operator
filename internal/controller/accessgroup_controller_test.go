@@ -896,3 +896,55 @@ func TestAccessGroup_DefaultCRDeleteKeepsRowEmpty(t *testing.T) {
 		t.Errorf("want row %q kept and empty, got %+v", id, g)
 	}
 }
+
+// TestAccessGroup_DefaultCRDeleteWhileUnavailableNeverLeaksGrants — deleting
+// the `default` CR while LiteLLM is unusable must not drain the finalizer with
+// the old grants still live: the CR only disappears once the row is emptied.
+func TestAccessGroup_DefaultCRDeleteWhileUnavailableNeverLeaksGrants(t *testing.T) {
+	ctx := context.Background()
+	resetMockAccessGroup()
+	ensureNoAccessGroup(t, ctx, implicitDefaultAccessGroup)
+	resetConnCacheSnapshot()
+	cleanupConn := setupReadyConnectionAccessGroup(t, ctx)
+	t.Cleanup(func() {
+		cleanupConn()
+		setConnCacheReady()
+		ensureNoAccessGroup(t, context.Background(), implicitDefaultAccessGroup)
+	})
+
+	cr := accessGroupSampleCR(implicitDefaultAccessGroup, litellmv1alpha1.AccessGroupSpec{Models: []string{"m1"}})
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create access group CR: %v", err)
+	}
+	synced := pollAccessGroupCondition(t, ctx, implicitDefaultAccessGroup, reasonSynced)
+	if synced.Status.LastRendered.AccessGroupID == "" {
+		t.Fatal("precondition: default CR never reached Synced")
+	}
+
+	resetConnCacheSnapshot() // LiteLLM unusable
+	if err := k8sClient.Delete(ctx, synced); err != nil {
+		t.Fatalf("delete access group CR: %v", err)
+	}
+	key := client.ObjectKey{Name: implicitDefaultAccessGroup, Namespace: WatchNamespace}
+	gone := func() bool {
+		var check litellmv1alpha1.LiteLLMAccessGroup
+		return apierrors.IsNotFound(k8sClient.Get(ctx, key, &check))
+	}
+	// The connection probe may restore the cache at any moment, so assert the
+	// invariant rather than a timing: a gone CR implies an emptied row.
+	for i := 0; i < 10; i++ {
+		if gone() {
+			if g := mockAccessGroupByName(implicitDefaultAccessGroup); g != nil && len(g.AccessModelNames) != 0 {
+				t.Fatalf("default CR drained with grants still live: %+v", g)
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	setConnCacheReady()
+	waitFor(t, gone, "default CR finalizer never drained after LiteLLM recovered")
+	if g := mockAccessGroupByName(implicitDefaultAccessGroup); g == nil || len(g.AccessModelNames) != 0 {
+		t.Errorf("want default row kept and empty, got %+v", g)
+	}
+}
+

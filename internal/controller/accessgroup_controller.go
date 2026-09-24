@@ -292,6 +292,14 @@ func (r *AccessGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			onAckMissing := newAckMissingFn(r.Recorder, &ag, accessGroupKind, ag.Namespace, ag.Name, policy)
 
 			snap := r.Cache.Snapshot()
+			if ag.Name == implicitDefaultAccessGroup && !snap.Usable() {
+				// Never let the `default` CR go without emptying the row: an
+				// Orphan drain here would leave its last grants live in LiteLLM.
+				// Keep the finalizer; the connection-Ready fan-in re-drives
+				// this still-Terminating CR (mirrors Team/default).
+				logger.Info("deletion of access group default deferred: LiteLLM not usable")
+				return ctrl.Result{}, nil
+			}
 			if snap.Usable() {
 				groupID := ag.Status.LastRendered.AccessGroupID
 				if groupID == "" {

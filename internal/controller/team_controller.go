@@ -287,6 +287,7 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		}
 		var missing []string
 		groupIDs, missing = resolveNames(team.Spec.AccessGroups, nameToID)
+		sort.Strings(groupIDs) // order-independent hash, like renderAccessGroup
 		if len(missing) > 0 {
 			msg := fmt.Sprintf("spec.accessGroups not yet registered in LiteLLM: %s", strings.Join(missing, ", "))
 			if werr := r.writeStatus(ctx, &team, metav1.ConditionFalse, reasonAccessGroupNotFound, msg); werr != nil {
