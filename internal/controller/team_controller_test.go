@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -103,23 +102,6 @@ func setupReadyConnectionTeam(t *testing.T, ctx context.Context) func() {
 		t.Fatalf("LiteLLMConnection not Synced within 30s; reason=%q", snap.Reason)
 	}
 	return cleanup
-}
-
-// listTeamEvents returns all Events for the named Team CR in WatchNamespace.
-func listTeamEvents(ctx context.Context, t *testing.T, teamName string) []corev1.Event {
-	t.Helper()
-	var eventList corev1.EventList
-	if err := k8sClient.List(ctx, &eventList, client.InNamespace(WatchNamespace)); err != nil {
-		t.Logf("listTeamEvents: list failed (non-fatal): %v", err)
-		return nil
-	}
-	var filtered []corev1.Event
-	for _, ev := range eventList.Items {
-		if ev.InvolvedObject.Name == teamName && ev.InvolvedObject.Kind == "LiteLLMTeam" {
-			filtered = append(filtered, ev)
-		}
-	}
-	return filtered
 }
 
 // floatPtr returns a pointer to the given float64 — convenience for
@@ -543,18 +525,6 @@ func TestTeamReconciler_HashEqualNoOp(t *testing.T) {
 // ──────────────────────────────────────────────────────────────────────────
 // Tests 5-7: ProjectionOverride (3 keys)
 // ──────────────────────────────────────────────────────────────────────────
-
-// projOverrideCount returns the number of ProjectionOverride Events on the
-// named Team whose Message contains the given keyName.
-func projOverrideCount(events []corev1.Event, keyName string) int {
-	n := 0
-	for _, ev := range events {
-		if ev.Reason == "ProjectionOverride" && strings.Contains(ev.Message, keyName) {
-			n++
-		}
-	}
-	return n
-}
 
 // ──────────────────────────────────────────────────────────────────────────
 // Phase 10 Tests: RateLimits projection + clearing + 4 collision events +
