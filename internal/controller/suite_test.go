@@ -593,7 +593,20 @@ func setupAndRun(m *testing.M) int {
 		Log:               logr.Discard(),
 		ConnectionRebuilt: connCache.Subscribe(),
 	}
-	if err := accessGroupReconciler.SetupWithManager(mgr, accessGroupSafetyRelistCh); err != nil {
+	// Implicit empty access group `default` — NOT gated (like TeamDefaultRunnable).
+	accessGroupDefaultCh := make(chan reconcile.Request, 1)
+	if err := mgr.Add(&TeamDefaultRunnable{
+		Cache:             connCache,
+		Namespace:         WatchNamespace,
+		Interval:          100 * time.Millisecond,
+		ReadyPollInterval: 50 * time.Millisecond,
+		Log:               logr.Discard(),
+		RequeueCh:         accessGroupDefaultCh,
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "mgr.Add(AccessGroupDefault runnable): %v\n", err)
+		return 1
+	}
+	if err := accessGroupReconciler.SetupWithManager(mgr, accessGroupSafetyRelistCh, accessGroupDefaultCh); err != nil {
 		fmt.Fprintf(os.Stderr, "SetupWithManager(AccessGroup): %v\n", err)
 		return 1
 	}

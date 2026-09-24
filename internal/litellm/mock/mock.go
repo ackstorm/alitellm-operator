@@ -765,6 +765,16 @@ func (m *MockServer) SeedAccessGroup(name string) string {
 	return id
 }
 
+// SetAccessGroupModels overwrites a stored group's access_model_names as if
+// edited out-of-band (UI / direct API). No-op when the name is unknown.
+func (m *MockServer) SetAccessGroupModels(name string, models []string) {
+	m.mu.Lock()
+	if id, ok := m.accessGroupByName[name]; ok {
+		m.accessGroups[id].AccessModelNames = append([]string{}, models...)
+	}
+	m.mu.Unlock()
+}
+
 // DeleteAccessGroupOutOfBand removes an access group from the mock's store
 // WITHOUT going through the HTTP handler. Simulates an out-of-band DELETE in
 // LiteLLM, which the operator's vanish probe should detect.

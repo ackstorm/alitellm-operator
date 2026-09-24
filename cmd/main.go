@@ -449,6 +449,21 @@ func main() {
 		setupLog.Error(err, "unable to add accessgroup SafetyRelistRunnable")
 		os.Exit(1)
 	}
+	// Implicit empty access group `default`: the generic "default"-singleton
+	// enqueuer (named for Team, where it started) re-drives {ns, default} so the
+	// reconciler keeps the group present-and-empty when no CR declares it.
+	accessGroupDefaultCh := make(chan reconcile.Request, 1)
+	if err := mgr.Add(&controller.TeamDefaultRunnable{
+		Cache:             connCache,
+		Namespace:         watchNS,
+		Interval:          relistInterval,
+		ReadyPollInterval: 5 * time.Second,
+		Log:               ctrl.Log.WithName("runnable").WithName("AccessGroupDefault"),
+		RequeueCh:         accessGroupDefaultCh,
+	}); err != nil {
+		setupLog.Error(err, "unable to add AccessGroupDefault runnable")
+		os.Exit(1)
+	}
 	if err := (&controller.AccessGroupReconciler{
 		Client:            mgr.GetClient(),
 		Scheme:            mgr.GetScheme(),
@@ -459,7 +474,7 @@ func main() {
 		BootEvents:        bootSweep.AccessGroupEvents,
 		ConnectionRebuilt: connCache.Subscribe(),
 		RecreateLimit:     controller.ResolveRecreateLimitPerMin(os.Getenv(controller.EnvRecreateLimitPerMin)),
-	}).SetupWithManager(mgr, accessGroupSafetyRelistCh); err != nil {
+	}).SetupWithManager(mgr, accessGroupSafetyRelistCh, accessGroupDefaultCh); err != nil {
 		setupLog.Error(err, "unable to set up AccessGroup reconciler")
 		os.Exit(1)
 	}
