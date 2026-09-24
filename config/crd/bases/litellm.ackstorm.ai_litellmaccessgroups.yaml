@@ -112,6 +112,20 @@ spec:
                 description: Description is free text forwarded to LiteLLM's `description`
                   field.
                 type: string
+              mcpServerGroups:
+                description: |-
+                  MCPServerGroups is a list of MCP server access-group TAGS. Every
+                  LiteLLMMCPServer in this namespace whose spec.params.mcp_access_groups
+                  (or the access_groups alias) contains one of these tags, and which is
+                  registered (status.lastRendered.serverID set), is added to this group's
+                  access_mcp_server_ids alongside spec.mcpServers. Re-resolved whenever any
+                  LiteLLMMCPServer changes. A tag matching no server is not an error.
+
+                  SECURITY: this widens automatically — tagging a new server grants it to
+                  every team that attaches this group.
+                items:
+                  type: string
+                type: array
               mcpServers:
                 description: |-
                   MCPServers is the list of MCP server NAMES this group grants. Each name
@@ -124,12 +138,20 @@ spec:
                 items:
                   type: string
                 type: array
+              modelGroups:
+                description: |-
+                  ModelGroups lists model access-group TAGS (model_info.access_groups,
+                  e.g. `openai`, `a2a`). Unioned with Models into access_model_names;
+                  LiteLLM expands tags itself (verified for inference on v1.99.1).
+                items:
+                  type: string
+                type: array
               models:
                 description: |-
-                  Models lists LiteLLM model names or legacy model access-group tags.
-                  Entries are forwarded to access_model_names without resolution.
-                  Tag expansion for inference was verified on LiteLLM v1.99.1;
-                  the model catalog can return the tag itself instead of expanded names.
+                  Models lists concrete LiteLLM model names, forwarded to
+                  access_model_names without resolution. Put model access-group TAGS in
+                  ModelGroups instead (both land in the same LiteLLM field; the split is a
+                  convention, not validated — the operator cannot tell a tag from a name).
                   The list is sorted before projection, so declaration order is not preserved.
                 items:
                   type: string

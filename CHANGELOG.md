@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`LiteLLMAccessGroup.spec.modelGroups` and `spec.mcpServerGroups`** — one
+  name field and one tag field per dimension. `modelGroups` joins `models` in
+  `access_model_names` (LiteLLM expands tags); `mcpServerGroups` expands MCP
+  server tags to registered server IDs like `agentGroups`, re-driven by a
+  `LiteLLMMCPServer` watch.
+
 ### Removed
 - **`LiteLLMA2AAgent.spec.exposeAsModel`** — replaced by
   `LiteLLMModelDiscovery` `type: a2a`. Before upgrading, remove the block from

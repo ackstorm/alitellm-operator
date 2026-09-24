@@ -64,8 +64,9 @@ type missingAccessGroupRefs struct {
 
 // renderAccessGroup resolves a spec into the LiteLLM projection.
 //
-// Models pass through without resolution — entries may be concrete model
-// names or legacy model access-group tags. Tag expansion for inference was
+// Models and ModelGroups pass through without resolution, unioned — entries
+// may be concrete model names (models) or legacy model access-group tags
+// (modelGroups). Tag expansion for inference was
 // verified on LiteLLM v1.99.1; the model catalog can return the tag itself
 // instead of expanded names. MCP servers and agents
 // are resolved name→id because those two dimensions match on ids and SILENTLY
@@ -79,20 +80,23 @@ type missingAccessGroupRefs struct {
 func renderAccessGroup(
 	spec litellmv1alpha1.AccessGroupSpec,
 	serverIDs, agentIDs map[string]string,
-	tagged []string,
+	taggedServers, taggedAgents []string,
 ) (renderedAccessGroup, missingAccessGroupRefs) {
 	var missing missingAccessGroupRefs
 
-	models := append([]string{}, spec.Models...)
+	models := append(append([]string{}, spec.Models...), spec.ModelGroups...)
 	sort.Strings(models)
+	models = slices.Compact(models)
 
 	servers, missingServers := resolveNames(spec.MCPServers, serverIDs)
 	missing.MCPServers = missingServers
+	servers = append(servers, taggedServers...)
 	sort.Strings(servers)
+	servers = slices.Compact(servers)
 
 	agents, missingAgents := resolveNames(spec.Agents, agentIDs)
 	missing.Agents = missingAgents
-	agents = append(agents, tagged...)
+	agents = append(agents, taggedAgents...)
 	sort.Strings(agents)
 	agents = slices.Compact(agents)
 
@@ -103,32 +107,30 @@ func renderAccessGroup(
 	}, missing
 }
 
-// taggedAgentIDs returns the sorted, deduped agent ids of the A2A agents that
-// carry any of groups as an access-group tag. Unregistered agents (no agentID
-// yet) and agents being deleted are skipped: the former join on the status
-// update that registers them, the latter must lose access promptly.
-func taggedAgentIDs(agents []litellmv1alpha1.LiteLLMA2AAgent, groups []string) []string {
+// taggable is one resource that may carry access-group tags; id is empty
+// until the resource is registered in LiteLLM.
+type taggable struct {
+	id       string
+	deleting bool
+	tags     []string
+}
+
+// taggedIDs returns the sorted, deduped ids of items carrying any of groups.
+// Unregistered items (no id yet) and items being deleted are skipped: the
+// former join on the status update that registers them, the latter must lose
+// access promptly.
+func taggedIDs(items []taggable, groups []string) []string {
 	if len(groups) == 0 {
 		return nil
 	}
-	want := make(map[string]struct{}, len(groups))
-	for _, g := range groups {
-		want[g] = struct{}{}
-	}
 	seen := map[string]struct{}{}
-	for i := range agents {
-		a := &agents[i]
-		id := a.Status.LastRendered.AgentID
-		if id == "" || !a.DeletionTimestamp.IsZero() || len(a.Spec.Params.Raw) == 0 {
+	for _, it := range items {
+		if it.id == "" || it.deleting {
 			continue
 		}
-		var p map[string]any
-		if err := json.Unmarshal(a.Spec.Params.Raw, &p); err != nil {
-			continue
-		}
-		for _, tag := range agentAccessGroupsFromParams(p) {
-			if _, ok := want[tag]; ok {
-				seen[id] = struct{}{}
+		for _, tag := range it.tags {
+			if slices.Contains(groups, tag) {
+				seen[it.id] = struct{}{}
 				break
 			}
 		}
@@ -139,6 +141,37 @@ func taggedAgentIDs(agents []litellmv1alpha1.LiteLLMA2AAgent, groups []string) [
 	}
 	sort.Strings(out)
 	return out
+}
+
+// paramsMap decodes a params bag; empty or invalid JSON yields nil (no tags).
+func paramsMap(raw []byte) map[string]any {
+	var p map[string]any
+	if len(raw) > 0 {
+		_ = json.Unmarshal(raw, &p)
+	}
+	return p
+}
+
+// taggedAgentIDs selects A2A agents by agent_access_groups (or the
+// access_groups alias).
+func taggedAgentIDs(agents []litellmv1alpha1.LiteLLMA2AAgent, groups []string) []string {
+	items := make([]taggable, 0, len(agents))
+	for i := range agents {
+		a := &agents[i]
+		items = append(items, taggable{a.Status.LastRendered.AgentID, !a.DeletionTimestamp.IsZero(), agentAccessGroupsFromParams(paramsMap(a.Spec.Params.Raw))})
+	}
+	return taggedIDs(items, groups)
+}
+
+// taggedMCPServerIDs selects MCP servers by mcp_access_groups (or the
+// access_groups alias), the same precedence the MCP server reconciler sends.
+func taggedMCPServerIDs(servers []litellmv1alpha1.LiteLLMMCPServer, groups []string) []string {
+	items := make([]taggable, 0, len(servers))
+	for i := range servers {
+		s := &servers[i]
+		items = append(items, taggable{s.Status.LastRendered.ServerID, !s.DeletionTimestamp.IsZero(), extractMCPParams(paramsMap(s.Spec.Params.Raw)).MCPAccessGroups})
+	}
+	return taggedIDs(items, groups)
 }
 
 // accessGroupHash is the SHA-256 hex of the rendered projection. Feeds
@@ -170,6 +203,7 @@ func accessGroupHash(r renderedAccessGroup) string {
 // +kubebuilder:rbac:groups=litellm.ackstorm.ai,resources=litellmaccessgroups/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=litellm.ackstorm.ai,resources=litellmaccessgroups/finalizers,verbs=update
 // +kubebuilder:rbac:groups=litellm.ackstorm.ai,resources=litellma2aagents,verbs=get;list;watch
+// +kubebuilder:rbac:groups=litellm.ackstorm.ai,resources=litellmmcpservers,verbs=get;list;watch
 
 // AccessGroupReconciler reconciles LiteLLMAccessGroup CRs against LiteLLM's
 // /v1/access_group endpoints. Closest sibling: MCPToolsetReconciler
@@ -378,6 +412,14 @@ func (r *AccessGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 		tagged = taggedAgentIDs(agents.Items, ag.Spec.AgentGroups)
 	}
+	var taggedServers []string
+	if len(ag.Spec.MCPServerGroups) > 0 {
+		var servers litellmv1alpha1.LiteLLMMCPServerList
+		if err := r.List(ctx, &servers, client.InNamespace(ag.Namespace)); err != nil {
+			return ctrl.Result{}, err
+		}
+		taggedServers = taggedMCPServerIDs(servers.Items, ag.Spec.MCPServerGroups)
+	}
 
 	// ─── Step 5: Render, park on unresolved names ──────────────────────────
 	//
@@ -385,7 +427,7 @@ func (r *AccessGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// LiteLLMA2AAgent CR that registers it. Explicit names park rather than under-grant
 	// silently, and return WITHOUT a RequeueAfter — the SafetyRelistRunnable
 	// owns the periodic tick (#102).
-	rendered, missing := renderAccessGroup(ag.Spec, serverIDs, agentIDs, tagged)
+	rendered, missing := renderAccessGroup(ag.Spec, serverIDs, agentIDs, taggedServers, tagged)
 	if len(missing.MCPServers) > 0 {
 		msg := fmt.Sprintf("spec.mcpServers not yet registered in LiteLLM: %s",
 			strings.Join(missing.MCPServers, ", "))
@@ -661,6 +703,7 @@ func (r *AccessGroupReconciler) writeStatus(
 //   - For(&LiteLLMAccessGroup{}) — primary watch.
 //   - Watches(&LiteLLMConnection{}) — connection fan-in.
 //   - Watches(&LiteLLMA2AAgent{}) — tag fan-in for spec.agentGroups.
+//   - Watches(&LiteLLMMCPServer{}) — tag fan-in for spec.mcpServerGroups.
 //
 // No Secret watch — this CRD has no spec.secrets. No MCPServer/A2AAgent watch
 // for spec.agents names: those still rely on the SafetyRelistRunnable. The
@@ -683,6 +726,10 @@ func (r *AccessGroupReconciler) SetupWithManager(mgr ctrl.Manager, safetyRelistC
 		Watches(
 			&litellmv1alpha1.LiteLLMA2AAgent{},
 			handler.EnqueueRequestsFromMapFunc(r.agentToAccessGroups),
+		).
+		Watches(
+			&litellmv1alpha1.LiteLLMMCPServer{},
+			handler.EnqueueRequestsFromMapFunc(r.mcpServerToAccessGroups),
 		).
 		WithOptions(transientBackoffOptions()).
 		Named("accessgroup")
@@ -730,6 +777,23 @@ func (r *AccessGroupReconciler) agentToAccessGroups(ctx context.Context, obj cli
 	var reqs []reconcile.Request
 	for _, g := range groups.Items {
 		if len(g.Spec.AgentGroups) > 0 {
+			reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&g)})
+		}
+	}
+	return reqs
+}
+
+// mcpServerToAccessGroups enqueues every access group in the server's
+// namespace that selects MCP servers by tag (a REMOVED tag must shrink too).
+func (r *AccessGroupReconciler) mcpServerToAccessGroups(ctx context.Context, obj client.Object) []reconcile.Request {
+	var groups litellmv1alpha1.LiteLLMAccessGroupList
+	if err := r.List(ctx, &groups, client.InNamespace(obj.GetNamespace())); err != nil {
+		log.FromContext(ctx).Error(err, "list access groups for mcp server fan-in")
+		return nil
+	}
+	var reqs []reconcile.Request
+	for _, g := range groups.Items {
+		if len(g.Spec.MCPServerGroups) > 0 {
 			reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&g)})
 		}
 	}

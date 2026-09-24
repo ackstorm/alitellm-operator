@@ -24,14 +24,21 @@ type AccessGroupSpec struct {
 	// +optional
 	Description string `json:"description,omitempty"`
 
-	// Models lists LiteLLM model names or legacy model access-group tags.
-	// Entries are forwarded to access_model_names without resolution.
-	// Tag expansion for inference was verified on LiteLLM v1.99.1;
-	// the model catalog can return the tag itself instead of expanded names.
+	// Models lists concrete LiteLLM model names, forwarded to
+	// access_model_names without resolution. Put model access-group TAGS in
+	// ModelGroups instead (both land in the same LiteLLM field; the split is a
+	// convention, not validated — the operator cannot tell a tag from a name).
 	// The list is sorted before projection, so declaration order is not preserved.
 	//
 	// +optional
 	Models []string `json:"models,omitempty"`
+
+	// ModelGroups lists model access-group TAGS (model_info.access_groups,
+	// e.g. `openai`, `a2a`). Unioned with Models into access_model_names;
+	// LiteLLM expands tags itself (verified for inference on v1.99.1).
+	//
+	// +optional
+	ModelGroups []string `json:"modelGroups,omitempty"`
 
 	// MCPServers is the list of MCP server NAMES this group grants. Each name
 	// is resolved to a server_id via GET /v1/mcp/server before projection,
@@ -43,6 +50,19 @@ type AccessGroupSpec struct {
 	//
 	// +optional
 	MCPServers []string `json:"mcpServers,omitempty"`
+
+	// MCPServerGroups is a list of MCP server access-group TAGS. Every
+	// LiteLLMMCPServer in this namespace whose spec.params.mcp_access_groups
+	// (or the access_groups alias) contains one of these tags, and which is
+	// registered (status.lastRendered.serverID set), is added to this group's
+	// access_mcp_server_ids alongside spec.mcpServers. Re-resolved whenever any
+	// LiteLLMMCPServer changes. A tag matching no server is not an error.
+	//
+	// SECURITY: this widens automatically — tagging a new server grants it to
+	// every team that attaches this group.
+	//
+	// +optional
+	MCPServerGroups []string `json:"mcpServerGroups,omitempty"`
 
 	// Agents is the list of A2A agent NAMES this group grants. Each name is
 	// resolved to an agent_id via GET /v1/agents, same reason and same

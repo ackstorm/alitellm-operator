@@ -102,8 +102,18 @@ func (in *AccessGroupSpec) DeepCopyInto(out *AccessGroupSpec) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.ModelGroups != nil {
+		in, out := &in.ModelGroups, &out.ModelGroups
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	if in.MCPServers != nil {
 		in, out := &in.MCPServers, &out.MCPServers
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
+	if in.MCPServerGroups != nil {
+		in, out := &in.MCPServerGroups, &out.MCPServerGroups
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}

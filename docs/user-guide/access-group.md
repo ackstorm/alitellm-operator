@@ -21,8 +21,10 @@ exist before that.
 |------------------------|----------|---------------------------------------------------------------------------|
 | `metadata.name`        | yes      | Used verbatim as LiteLLM `access_group_name`. Unique server-side.         |
 | `spec.description`     | no       | Free text, forwarded verbatim.                                            |
-| `spec.models[]`        | no       | Model names or legacy model access-group tags, forwarded as-is. No resolution, no validation. |
+| `spec.models[]`        | no       | Model **names**, forwarded as-is. No resolution, no validation.           |
+| `spec.modelGroups[]`   | no       | Model tags (`model_info.access_groups`), forwarded as-is; LiteLLM expands them. Same LiteLLM field as `models` — the split is a convention. |
 | `spec.mcpServers[]`    | no       | MCP server **names**, resolved to `server_id` UUIDs.                      |
+| `spec.mcpServerGroups[]` | no     | MCP server tags (`params.access_groups` / `mcp_access_groups`), expanded to registered `server_id` UUIDs in this namespace. |
 | `spec.agents[]`        | no       | A2A agent **names**, resolved to `agent_id` UUIDs.                        |
 | `spec.agentGroups[]`   | no       | A2A agent tags, expanded to registered `agent_id` UUIDs in this namespace. |
 | `spec.deletionPolicy`  | no       | `Orphan` (default) or `Delete`.                                           |
@@ -80,6 +82,26 @@ operator resolves them. A name that does not resolve parks the CR
 missing names in the condition message. This is an ordering dependency with the
 `LiteLLMMCPServer` / `LiteLLMA2AAgent` CRs — it self-heals once they exist, on
 the next safety-relist tick.
+
+## Tags per dimension
+
+| Dimension | Names | Tags | Tag lives on | Expanded by |
+|---|---|---|---|---|
+| Models | `models` | `modelGroups` | `LiteLLMModel` / Discovery `info.access_groups` | LiteLLM |
+| MCP servers | `mcpServers` | `mcpServerGroups` | `LiteLLMMCPServer` / MCP Discovery `params.access_groups` | operator |
+| Agents | `agents` | `agentGroups` | `LiteLLMA2AAgent` `params.access_groups` | operator |
+
+```yaml
+kind: LiteLLMAccessGroup
+spec:
+  modelGroups: [default, openai, a2a]
+  mcpServerGroups: [default, google-ro]
+  agentGroups: [agents]
+```
+
+MCP server and agent tags are expanded from the CRs in this namespace
+(registered, not deleting) and re-resolved whenever one of those CRs changes,
+so tagging a new server or agent widens every team attached to the group.
 
 ## Agent tags (`agentGroups`)
 
