@@ -64,6 +64,19 @@ func enableSuiteRelist(t *testing.T) {
 	t.Cleanup(func() { suiteRelistEnabled.Store(false) })
 }
 
+// suiteImplicitAccessGroupEnabled gates the implicit-default access-group
+// runnable. Default false: it would otherwise re-create `default` in the mock
+// every 100ms after any ResetAccessGroups, adding stray POSTs to tests that
+// assert exact mutation counts. Tests of the implicit group opt in via
+// enableImplicitDefaultAccessGroup(t). NOT safe under t.Parallel.
+var suiteImplicitAccessGroupEnabled atomic.Bool
+
+func enableImplicitDefaultAccessGroup(t *testing.T) {
+	t.Helper()
+	suiteImplicitAccessGroupEnabled.Store(true)
+	t.Cleanup(func() { suiteImplicitAccessGroupEnabled.Store(false) })
+}
+
 // WatchNamespace is the namespace the test manager watches. AC-N4 tests
 // verify that CRs created elsewhere (e.g. "default") are never reconciled.
 const WatchNamespace = "default"
@@ -593,7 +606,8 @@ func setupAndRun(m *testing.M) int {
 		Log:               logr.Discard(),
 		ConnectionRebuilt: connCache.Subscribe(),
 	}
-	// Implicit empty access group `default` — NOT gated (like TeamDefaultRunnable).
+	// Implicit empty access group `default` — gated OFF by default (see
+	// suiteImplicitAccessGroupEnabled).
 	accessGroupDefaultCh := make(chan reconcile.Request, 1)
 	if err := mgr.Add(&TeamDefaultRunnable{
 		Cache:             connCache,
@@ -602,6 +616,7 @@ func setupAndRun(m *testing.M) int {
 		ReadyPollInterval: 50 * time.Millisecond,
 		Log:               logr.Discard(),
 		RequeueCh:         accessGroupDefaultCh,
+		Gate:              suiteImplicitAccessGroupEnabled.Load,
 	}); err != nil {
 		fmt.Fprintf(os.Stderr, "mgr.Add(AccessGroupDefault runnable): %v\n", err)
 		return 1

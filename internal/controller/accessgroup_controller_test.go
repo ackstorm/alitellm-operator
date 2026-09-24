@@ -795,6 +795,7 @@ func waitFor(t *testing.T, cond func() bool, msg string) {
 // a group named `default` in LiteLLM, and it grants nothing.
 func TestAccessGroup_ImplicitDefaultCreatedEmpty(t *testing.T) {
 	ctx := context.Background()
+	enableImplicitDefaultAccessGroup(t)
 	resetMockAccessGroup()
 	ensureNoAccessGroup(t, ctx, implicitDefaultAccessGroup)
 	resetConnCacheSnapshot()
@@ -813,6 +814,7 @@ func TestAccessGroup_ImplicitDefaultCreatedEmpty(t *testing.T) {
 // with no CR declaring it are cleared, and the row keeps its id.
 func TestAccessGroup_ImplicitDefaultEmptiedWhenStale(t *testing.T) {
 	ctx := context.Background()
+	enableImplicitDefaultAccessGroup(t)
 	resetMockAccessGroup()
 	ensureNoAccessGroup(t, ctx, implicitDefaultAccessGroup)
 	resetConnCacheSnapshot()
@@ -834,6 +836,7 @@ func TestAccessGroup_ImplicitDefaultEmptiedWhenStale(t *testing.T) {
 // the content; the implicit ticks must not empty it.
 func TestAccessGroup_DefaultCRWins(t *testing.T) {
 	ctx := context.Background()
+	enableImplicitDefaultAccessGroup(t)
 	resetMockAccessGroup()
 	ensureNoAccessGroup(t, ctx, implicitDefaultAccessGroup)
 	resetConnCacheSnapshot()
@@ -947,4 +950,3 @@ func TestAccessGroup_DefaultCRDeleteWhileUnavailableNeverLeaksGrants(t *testing.
 		t.Errorf("want default row kept and empty, got %+v", g)
 	}
 }
-
