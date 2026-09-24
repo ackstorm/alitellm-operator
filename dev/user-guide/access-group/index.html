@@ -1106,6 +1106,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#implicit-group-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implicit group default
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#deletion" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1792,6 +1803,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#implicit-group-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implicit group default
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#deletion" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2051,16 +2073,15 @@ state is pushed onto it with a <code>PUT</code>. Nothing is orphaned and no dupl
 created.</p>
 <h2 id="attaching-a-group-to-a-team">Attaching a group to a team<a class="headerlink" href="#attaching-a-group-to-a-team" title="Permanent link">&para;</a></h2>
 <p>A group grants nobody anything on its own. Reference it from a team via
-<a href="../team/#accessgroups"><code>spec.permission.accessGroups</code></a>, which takes group
-<strong>names</strong>:</p>
+<a href="../team/#access-a-closed-team-opened-by-access-groups"><code>spec.accessGroups</code></a>,
+which takes group <strong>names</strong>. It is the team's only grant — a team is always
+closed and opened solely by its groups:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">litellm.ackstorm.ai/v1alpha1</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">LiteLLMTeam</span>
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="nt">metadata</span><span class="p">:</span>
 <a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">research-team</span>
 <a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">  </span><span class="nt">permission</span><span class="p">:</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">    </span><span class="nt">models</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"gpt-4o"</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">    </span><span class="nt">accessGroups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"shared-tooling"</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">  </span><span class="nt">accessGroups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"shared-tooling"</span><span class="p p-Indicator">]</span>
 </code></pre></div>
 <p>The operator resolves each name to its <code>access_group_id</code> and writes the list to
 the team's <strong>top-level</strong> <code>access_group_ids</code> (not to <code>object_permission</code>). An
@@ -2081,12 +2102,11 @@ is already broken.</p>
 <h2 id="access-groups-only-add">Access groups only ADD<a class="headerlink" href="#access-groups-only-add" title="Permanent link">&para;</a></h2>
 <div class="admonition danger">
 <p class="admonition-title">A group grant overrides the team's deny-by-default sentinel</p>
-<p>A <code>spec.permission</code> block that leaves <code>models</code> empty projects the
-<code>["__deny_all__"]</code> sentinel, which denies every model
-(<a href="../team/#resource-permissions-specpermission">Deny-by-default</a>). An
-attached access group <strong>overrides</strong> that: LiteLLM composes group grants
+<p>Every team is projected with the <code>["no-default-models"]</code> sentinel, which
+denies every model (<a href="../team/#access-a-closed-team-opened-by-access-groups">closed baseline</a>).
+An attached access group <strong>overrides</strong> that: LiteLLM composes group grants
 additively, so a group granting <code>gpt-4o</code> makes <code>gpt-4o</code> reachable by that
-team's keys even though <code>team.models</code> is still <code>["__deny_all__"]</code>.</p>
+team's keys even though <code>team.models</code> is still <code>["no-default-models"]</code>.</p>
 <p>Measured on stock LiteLLM 1.93.0 and covered by the <code>AG-04</code> e2e spec: the
 same team is denied <code>team_model_access_denied</code> before the attachment and
 succeeds after it, with its own <code>models</code> list unchanged.</p>
@@ -2138,8 +2158,8 @@ a group created in one never appears in the other.</p>
 </tr>
 <tr>
 <td>Attached via</td>
-<td><code>LiteLLMTeam.spec.permission.accessGroups</code> → <code>team.access_group_ids</code></td>
-<td><code>LiteLLMTeam.spec.permission.modelGroups</code> → merged into <code>team.models</code></td>
+<td><code>LiteLLMTeam.spec.accessGroups</code> → <code>team.access_group_ids</code></td>
+<td>A unified group's <code>spec.modelGroups</code> (LiteLLM expands the tag)</td>
 </tr>
 <tr>
 <td>Covers</td>
@@ -2150,17 +2170,24 @@ a group created in one never appears in the other.</p>
 </table>
 <p>So:</p>
 <ul>
-<li><code>spec.permission.accessGroups</code> takes <strong>unified</strong> group names — the ones this
+<li><code>LiteLLMTeam.spec.accessGroups</code> takes <strong>unified</strong> group names — the ones this
   CRD creates.</li>
-<li><code>spec.permission.modelGroups</code> takes <strong>legacy tag</strong> names — the ones
-  <code>model_info.access_groups</code> / <code>DEFAULT_ACCESS_GROUP</code> write. They merge into the
-  team's <code>models</code> list, which means they are subject to deny-by-default like any
-  other model entry; unified groups are not.</li>
+<li><code>LiteLLMAccessGroup.spec.modelGroups</code> takes <strong>legacy tag</strong> names — the ones
+  <code>model_info.access_groups</code> / <code>DEFAULT_ACCESS_GROUP</code> write.</li>
 </ul>
 <p>A <code>LiteLLMAccessGroup</code> named <code>anthropic</code> and a model tagged
-<code>model_info.access_groups: ["anthropic"]</code> are <strong>unrelated</strong>. Listing <code>anthropic</code>
-under <code>accessGroups</code> grants nothing from the tag, and listing it under
-<code>modelGroups</code> grants nothing from the CR.</p>
+<code>model_info.access_groups: ["anthropic"]</code> are <strong>unrelated</strong>. Attaching the
+<code>anthropic</code> group grants nothing from the tag unless the group lists
+<code>anthropic</code> under <code>modelGroups</code>. The same holds for the implicit group
+<code>default</code> and the <code>default</code> tag.</p>
+<h2 id="implicit-group-default">Implicit group <code>default</code><a class="headerlink" href="#implicit-group-default" title="Permanent link">&para;</a></h2>
+<p>With no <code>LiteLLMAccessGroup/default</code> CR the operator keeps a unified group
+named <code>default</code> in LiteLLM, <strong>empty</strong> (it grants nothing), and clears any grant
+added to it by hand. It is not linked to anything: the implicit <code>Team/default</code>
+does not attach it. Declare both CRs to link and fill them — see
+<a href="../team/#implicit-defaults-teamdefault-access-group-default">Implicit defaults</a>.
+Deleting the <code>default</code> CR empties the row instead of deleting it, so teams
+holding its id keep a valid reference.</p>
 <h2 id="deletion">Deletion<a class="headerlink" href="#deletion" title="Permanent link">&para;</a></h2>
 <p><code>spec.deletionPolicy</code> behaves as it does on the other kinds:</p>
 <ul>
@@ -2205,8 +2232,8 @@ the now-dangling id from enforcement.</p>
 <td>Expected — the group side does not mirror a team-side write. Read <code>GET /team/info</code>.</td>
 </tr>
 <tr>
-<td>A team can reach a model its <code>spec.permission.models</code> excludes</td>
-<td>An attached group grants it. Groups only ADD.</td>
+<td>A team can reach a model none of its intended groups grant</td>
+<td>Another attached group grants it. Groups only ADD.</td>
 </tr>
 </tbody>
 </table>

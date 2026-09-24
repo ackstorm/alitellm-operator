@@ -1968,8 +1968,8 @@ most one per reconcile pass per key:</p>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="nt">access_groups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"agents"</span><span class="p p-Indicator">]</span>
 </code></pre></div>
 <p>The operator forwards the selected tags as <code>agent_access_groups</code>. Teams reach
-tagged agents through <code>LiteLLMTeam.spec.permission.agentGroups</code> or
-<code>LiteLLMAccessGroup.spec.agentGroups</code>. The LiteLLM startup patch is required
+tagged agents through <code>LiteLLMAccessGroup.spec.agentGroups</code>, attached to a
+team via <code>LiteLLMTeam.spec.accessGroups</code>. The LiteLLM startup patch is required
 until upstream accepts, persists, and returns the field on <code>/v1/agents</code>.</p>
 <h2 id="drift-detection">Drift detection<a class="headerlink" href="#drift-detection" title="Permanent link">&para;</a></h2>
 <p>Per-reconcile SHA-256 hash over the rendered merged body (params +

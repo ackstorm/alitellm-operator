@@ -810,44 +810,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#reserved-overlay-keys-projectionoverride-warning" class="md-nav__link">
+  <a href="#access-a-closed-team-opened-by-access-groups" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Reserved overlay keys — ProjectionOverride warning
+        Access: a closed team opened by access groups
       
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#resource-permissions-specpermission" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Resource permissions — spec.permission
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Resource permissions — spec.permission">
+    <nav class="md-nav" aria-label="Access: a closed team opened by access groups">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#accessgroups" class="md-nav__link">
+  <a href="#migrating-from-specpermission-v08x" class="md-nav__link">
     <span class="md-ellipsis">
       
-        accessGroups
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#migration-from-specparamsobject_permission" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Migration from spec.params.object_permission
+        Migrating from spec.permission (≤ v0.8.x)
       
     </span>
   </a>
@@ -860,21 +838,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#teamdefault-carve-out" class="md-nav__link">
+  <a href="#implicit-defaults-teamdefault-access-group-default" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Team/default carve-out
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#specparams-pass-through-tags-enterprise-gate" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        spec.params pass-through + tags (Enterprise gate)
+        Implicit defaults: Team/default + access group default
       
     </span>
   </a>
@@ -1776,44 +1743,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#reserved-overlay-keys-projectionoverride-warning" class="md-nav__link">
+  <a href="#access-a-closed-team-opened-by-access-groups" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Reserved overlay keys — ProjectionOverride warning
+        Access: a closed team opened by access groups
       
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#resource-permissions-specpermission" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Resource permissions — spec.permission
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Resource permissions — spec.permission">
+    <nav class="md-nav" aria-label="Access: a closed team opened by access groups">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#accessgroups" class="md-nav__link">
+  <a href="#migrating-from-specpermission-v08x" class="md-nav__link">
     <span class="md-ellipsis">
       
-        accessGroups
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#migration-from-specparamsobject_permission" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Migration from spec.params.object_permission
+        Migrating from spec.permission (≤ v0.8.x)
       
     </span>
   </a>
@@ -1826,21 +1771,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#teamdefault-carve-out" class="md-nav__link">
+  <a href="#implicit-defaults-teamdefault-access-group-default" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Team/default carve-out
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#specparams-pass-through-tags-enterprise-gate" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        spec.params pass-through + tags (Enterprise gate)
+        Implicit defaults: Team/default + access group default
       
     </span>
   </a>
@@ -1890,16 +1824,15 @@
 
 
 <h1 id="litellmteam">LiteLLMTeam<a class="headerlink" href="#litellmteam" title="Permanent link">&para;</a></h1>
-<p>Declarative team in LiteLLM. Owns the LiteLLM team alias plus optional
-budget and RPM/TPM rate limits, projected via
+<p>Declarative team in LiteLLM. A team is a <strong>container</strong>: it owns the LiteLLM
+team alias, optional budget and RPM/TPM rate limits, and the list of
+<a href="../access-group/">access groups</a> it attaches. It grants nothing by itself —
+everything a team can reach is defined by its access groups. Projected via
 <code>POST /team/{new,update}</code>.</p>
 <p><code>metadata.name</code> IS the LiteLLM <code>team_alias</code> — bare name, no prefix, no
 overlay indirection. Two-level naming is intentionally NOT supported in
 v1alpha1.</p>
-<p>The operator does NOT manage team membership (delegated to external identity).
-Models allow-list and object permissions ARE managed via the typed
-<code>spec.permission</code> block (see below); when that block is absent they remain
-raw <code>spec.params</code> passthrough.</p>
+<p>The operator does NOT manage team membership (delegated to external identity).</p>
 <h2 id="quick-reference">Quick reference<a class="headerlink" href="#quick-reference" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -1936,14 +1869,14 @@ raw <code>spec.params</code> passthrough.</p>
 <td>Tokens/min → <code>tpm_limit</code>. Same pointer semantics as <code>rpm</code>.</td>
 </tr>
 <tr>
-<td><code>spec.params</code></td>
+<td><code>spec.accessGroups</code></td>
 <td>no</td>
-<td>Free-form bag, merged into <code>NewTeamRequest</code> top-level. <code>{{NAME}}</code> substitution in strings.</td>
+<td><code>LiteLLMAccessGroup</code> names, resolved to ids → <code>access_group_ids</code>. Empty → reaches nothing.</td>
 </tr>
 <tr>
-<td><code>spec.secrets[]</code></td>
+<td><code>spec.deletionPolicy</code></td>
 <td>no</td>
-<td>Substitution map for <code>spec.params</code> placeholders. <code>{as, secretRef: {name, key}}</code>.</td>
+<td><code>Orphan</code> (default) keeps the LiteLLM team on CR delete; <code>Delete</code> removes it.</td>
 </tr>
 </tbody>
 </table>
@@ -1963,9 +1896,11 @@ raw <code>spec.params</code> passthrough.</p>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nt">metadata</span><span class="p">:</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">finance</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">default</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="nt">spec</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{}</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="nt">accessGroups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">finance</span><span class="p p-Indicator">]</span><span class="w">   </span><span class="c1"># a LiteLLMAccessGroup named finance</span>
 </code></pre></div>
-<p>Result: LiteLLM team <code>team_alias=finance</code>, no budget, no rate limits.
+<p>Result: LiteLLM team <code>team_alias=finance</code>, no budget, no rate limits,
+attached to the <code>finance</code> access group.
 Both <code>max_budget</code> / <code>budget_duration</code> are sent as <code>null</code>; both
 <code>rpm_limit</code> / <code>tpm_limit</code> as <code>null</code>; the <code>*_limit_type</code> keys are
 omitted.</p>
@@ -2031,233 +1966,172 @@ and is never recreated.</p>
   across namespaces would collide on the same <code>team_id</code>. v1alpha1 does
   not guard against this.</li>
 </ul>
-<h2 id="reserved-overlay-keys-projectionoverride-warning">Reserved overlay keys — <code>ProjectionOverride</code> warning<a class="headerlink" href="#reserved-overlay-keys-projectionoverride-warning" title="Permanent link">&para;</a></h2>
-<p>The operator stamps these structural keys onto the request body and
-ALWAYS wins over <code>spec.params</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>team_alias, max_budget, budget_duration, rpm_limit, tpm_limit,
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>rpm_limit_type, tpm_limit_type
-</code></pre></div>
-<p><code>team_id</code> is ALSO operator-controlled per the
-<a href="#team_id-assignment">team_id assignment</a> rules (CREATE arm → name,
-UPDATE arm → existing id); setting it in <code>spec.params</code> has no effect.
-Unlike the seven keys above, a <code>spec.params.team_id</code> is overwritten
-SILENTLY — it does NOT emit a <code>ProjectionOverride</code> Warning Event.</p>
-<p>Setting any of these inside <code>spec.params</code> is silently overridden and
-emits a <code>reason=ProjectionOverride</code> Warning Event per colliding key.
-Use the typed <code>spec.budget</code> / <code>spec.rateLimits</code> sub-blocks instead.</p>
-<h2 id="resource-permissions-specpermission">Resource permissions — <code>spec.permission</code><a class="headerlink" href="#resource-permissions-specpermission" title="Permanent link">&para;</a></h2>
-<p><code>spec.permission</code> is a typed, operator-MANAGED block that controls which
-models, MCP servers, MCP toolsets, and A2A agents a team may use. When present, the
-operator OWNS the projected LiteLLM <code>models</code> and <code>object_permission</code> fields —
-out-of-band UI edits to them do NOT survive reconciliation.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="nt">permission</span><span class="p">:</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="nt">models</span><span class="p">:</span><span class="w">      </span><span class="p p-Indicator">[</span><span class="s">"gpt-4o"</span><span class="p p-Indicator">]</span><span class="w">        </span><span class="c1"># specific model names</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="nt">modelGroups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"anthropic"</span><span class="p p-Indicator">]</span><span class="w">     </span><span class="c1"># model access-group names (merged into models)</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">    </span><span class="nt">mcpServers</span><span class="p">:</span><span class="w">  </span><span class="p p-Indicator">[</span><span class="s">"hindsight"</span><span class="p p-Indicator">]</span><span class="w">     </span><span class="c1"># specific MCP server names/aliases</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">    </span><span class="nt">mcpGroups</span><span class="p">:</span><span class="w">   </span><span class="p p-Indicator">[</span><span class="s">"team-a"</span><span class="p p-Indicator">]</span><span class="w">        </span><span class="c1"># MCP access-group names</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">    </span><span class="nt">agents</span><span class="p">:</span><span class="w">      </span><span class="p p-Indicator">[</span><span class="s">"planner"</span><span class="p p-Indicator">]</span><span class="w">       </span><span class="c1"># A2A agent NAMES (resolved to UUIDs by the operator)</span>
-<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="w">    </span><span class="nt">agentGroups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"grp-a"</span><span class="p p-Indicator">]</span><span class="w">         </span><span class="c1"># A2A agent access-group names (see no-op note)</span>
-<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="w">    </span><span class="nt">mcpToolsets</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"research"</span><span class="p p-Indicator">]</span><span class="w">      </span><span class="c1"># LiteLLMMCPToolset NAMES (resolved to UUIDs)</span>
-<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="w">    </span><span class="nt">accessGroups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"shared"</span><span class="p p-Indicator">]</span><span class="w">       </span><span class="c1"># LiteLLMAccessGroup NAMES (resolved to UUIDs)</span>
-</code></pre></div>
-<p>Projection to LiteLLM:</p>
+<h2 id="access-a-closed-team-opened-by-access-groups">Access: a closed team opened by access groups<a class="headerlink" href="#access-a-closed-team-opened-by-access-groups" title="Permanent link">&para;</a></h2>
+<p>The operator always sends the same <strong>closed baseline</strong> on every create and
+update, whatever the spec says:</p>
 <table>
 <thead>
 <tr>
-<th>CR field</th>
-<th>LiteLLM target</th>
+<th>LiteLLM field</th>
+<th>Value</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>models</code> + <code>modelGroups</code></td>
-<td>top-level <code>team.models</code> (one merged list)</td>
+<td><code>models</code></td>
+<td><code>["no-default-models"]</code></td>
+</tr>
+<tr>
+<td><code>object_permission.agents</code></td>
+<td><code>["00000000-0000-0000-0000-000000000000"]</code></td>
+</tr>
+<tr>
+<td><code>object_permission.mcp_servers</code></td>
+<td><code>[]</code></td>
+</tr>
+<tr>
+<td><code>object_permission.mcp_access_groups</code></td>
+<td><code>[]</code></td>
+</tr>
+<tr>
+<td><code>object_permission.agent_access_groups</code></td>
+<td><code>[]</code></td>
+</tr>
+<tr>
+<td><code>object_permission.mcp_toolsets</code></td>
+<td><code>[]</code></td>
+</tr>
+<tr>
+<td><code>access_group_ids</code></td>
+<td>ids of <code>spec.accessGroups</code> (<code>[]</code> when empty)</td>
+</tr>
+</tbody>
+</table>
+<p>Why the sentinels: LiteLLM reads an <strong>empty</strong> <code>models</code> or <code>agents</code> list as
+"no filter", so a team with <code>models: []</code> sees every model on the proxy.
+<code>no-default-models</code> is LiteLLM's own sentinel — it is dropped from every
+model catalog, so a closed team lists zero models instead of a phantom row.
+Every field is sent every time (never omitted) because <code>POST /team/update</code>
+keeps an omitted field's old value.</p>
+<p>Access groups only <strong>add</strong>: an attached group overrides the sentinels for
+what it grants. A team without <code>accessGroups</code> reaches nothing.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">litellm.ackstorm.ai/v1alpha1</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">LiteLLMAccessGroup</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="nt">metadata</span><span class="p">:</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">dream</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">  </span><span class="nt">modelGroups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">default</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">openai</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">anthropic</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">  </span><span class="nt">mcpServerGroups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">default</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">gitlab</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">  </span><span class="nt">agentGroups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">agents</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="nn">---</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">litellm.ackstorm.ai/v1alpha1</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">LiteLLMTeam</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="nt">metadata</span><span class="p">:</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">dream</span>
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="w">  </span><span class="nt">accessGroups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">dream</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+<p>A name that is not registered yet parks the team <code>Ready=False,
+reason=AccessGroupNotFound</code> and requeues — create the <code>LiteLLMAccessGroup</code>
+and the team heals itself.</p>
+<p>MCP <strong>toolsets</strong> cannot be granted through a team: LiteLLM access groups
+have no toolset field (verified on 1.102.0), and the team always sends
+<code>mcp_toolsets: []</code>. See <a href="../mcp-toolset/">MCP toolset</a>.</p>
+<h3 id="migrating-from-specpermission-v08x">Migrating from <code>spec.permission</code> (≤ v0.8.x)<a class="headerlink" href="#migrating-from-specpermission-v08x" title="Permanent link">&para;</a></h3>
+<p><code>spec.permission</code>, <code>spec.params</code> and <code>spec.secrets</code> were removed in v0.9.0.
+Move each team's grant into an access group and attach it:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># before</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">LiteLLMTeam</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="nt">metadata</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">dream</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">  </span><span class="nt">permission</span><span class="p">:</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">    </span><span class="nt">modelGroups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">default</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">openai</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">    </span><span class="nt">mcpGroups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">default</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="c1"># after</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="nn">---</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">LiteLLMAccessGroup</span>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="nt">metadata</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">dream</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="w">  </span><span class="nt">modelGroups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">default</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">openai</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a><span class="w">  </span><span class="nt">mcpServerGroups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">default</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a><span class="nn">---</span>
+<a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">LiteLLMTeam</span>
+<a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a><span class="nt">metadata</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">dream</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a><span class="w">  </span><span class="nt">accessGroups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">dream</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th><code>spec.permission</code> field</th>
+<th><code>LiteLLMAccessGroup</code> field</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>models</code></td>
+<td><code>models</code></td>
+</tr>
+<tr>
+<td><code>modelGroups</code></td>
+<td><code>modelGroups</code></td>
 </tr>
 <tr>
 <td><code>mcpServers</code></td>
-<td><code>object_permission.mcp_servers</code></td>
+<td><code>mcpServers</code></td>
 </tr>
 <tr>
 <td><code>mcpGroups</code></td>
-<td><code>object_permission.mcp_access_groups</code></td>
+<td><code>mcpServerGroups</code></td>
 </tr>
 <tr>
 <td><code>agents</code></td>
-<td><code>object_permission.agents</code> (name→UUID resolved)</td>
+<td><code>agents</code></td>
 </tr>
 <tr>
 <td><code>agentGroups</code></td>
-<td><code>object_permission.agent_access_groups</code> (<strong>no-op</strong>, see below)</td>
-</tr>
-<tr>
-<td><code>mcpToolsets</code></td>
-<td><code>object_permission.mcp_toolsets</code> (name→UUID resolved)</td>
+<td><code>agentGroups</code></td>
 </tr>
 <tr>
 <td><code>accessGroups</code></td>
-<td>top-level <code>team.access_group_ids</code> (name→UUID resolved)</td>
+<td>→ <code>LiteLLMTeam.spec.accessGroups</code></td>
+</tr>
+<tr>
+<td><code>mcpToolsets</code></td>
+<td>none (not grantable)</td>
 </tr>
 </tbody>
 </table>
-<p><strong>Agent name resolution.</strong> LiteLLM enforces <code>object_permission.agents</code> on
-agent <code>agent_id</code> UUIDs and silently ignores names. The operator resolves each
-name via <code>GET /v1/agents</code>. If a referenced agent is not yet registered (the
-<code>LiteLLMA2AAgent</code> CR has not reconciled), the team is parked
-<code>Ready=False, reason=AgentNotFound</code> (listing the missing names) and requeued —
-it recovers automatically once the agent appears.</p>
-<p><strong>Toolset name resolution.</strong> Same shape as agents: LiteLLM matches
-<code>object_permission.mcp_toolsets</code> on <code>toolset_id</code> UUIDs, so the operator
-resolves each name via <code>GET /v1/mcp/toolset</code>. An unregistered name parks the
-team <code>Ready=False, reason=ToolsetNotFound</code> and requeues — create the
-<a href="../mcp-toolset/"><code>LiteLLMMCPToolset</code></a> CR and it recovers automatically.
-Multiple toolsets are <strong>unioned</strong> by LiteLLM (not last-wins), so listing
-several composes their tool grants. There is no access-group concept for
-toolsets — listing several here IS the grouping mechanism.</p>
-<p><strong><code>agentGroups</code></strong> projects to <code>object_permission.agent_access_groups</code>, letting
-teams reach A2A agents carrying those tags. The LiteLLM startup patch is
-required until upstream supports the <code>/v1/agents</code> write and response path.</p>
-<p><strong>Empty vs absent.</strong> An absent <code>spec.permission</code> block leaves any raw
-<code>spec.params.models</code> / <code>spec.params.object_permission</code> untouched (passthrough).
-A <strong>present</strong> block makes the operator OWN <code>models</code> and all five
-<code>object_permission</code> sub-fields: every one is sent to LiteLLM on each update,
-never omitted. Shrinking a list — including down to empty (<code>mcpServers: []</code>, or
-removing the last agent) — therefore <strong>does</strong> revoke access. This is
-security-critical: LiteLLM's <code>POST /team/update</code> merges per-field on the
-persistent <code>object_permission</code> row, so an <em>omitted</em> field keeps its stale
-value; the operator never omits a field so a revocation is never silently lost.</p>
-<p><strong>Deny-by-default.</strong> A present <code>spec.permission</code> block is a fail-CLOSED grant.
-LiteLLM turns on its <code>models</code> / <code>object_permission.agents</code> filter as soon as
-the list is non-empty (it never checks the elements exist), but it treats an
-<strong>empty</strong> list on those two fields as <em>no filter</em> — so an empty grant fails
-OPEN: the team inherits the full master-key ceiling (every model, every agent).
-To close that hole the operator projects a deny-all <strong>sentinel</strong> whenever a
-present block leaves those lists empty:</p>
-<table>
-<thead>
-<tr>
-<th>Field</th>
-<th>Empty grant →</th>
-<th>Effect</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>models</code> (+ <code>modelGroups</code>)</td>
-<td><code>["__deny_all__"]</code></td>
-<td>0 real models (a phantom entry appears in <code>/models</code>)</td>
-</tr>
-<tr>
-<td><code>agents</code></td>
-<td><code>["00000000-0000-0000-0000-000000000000"]</code> (null UUID)</td>
-<td>0 agents</td>
-</tr>
-<tr>
-<td><code>mcpServers</code> / <code>mcpGroups</code> / <code>agentGroups</code> / <code>mcpToolsets</code> / <code>accessGroups</code></td>
-<td><code>[]</code></td>
-<td>already fail-closed / no-op — no sentinel needed</td>
-</tr>
-</tbody>
-</table>
-<p><code>mcpToolsets</code> deliberately takes <strong>no</strong> sentinel. LiteLLM's toolset check reads
-"granted is None or id not in granted → deny", so an empty list already denies
-everything (an ungranted key gets <code>403 API key does not have access to toolset
-'&lt;uuid&gt;'</code>). Adding a sentinel there in the name of consistency would inject a
-bogus UUID into a filter that is already correct.</p>
-<p>So a <code>spec.permission</code> block that omits <code>models</code> (or sets it <code>[]</code>) grants the
-team <strong>no models</strong>, not all of them. To grant everything, list the models or
-model-groups explicitly. The sentinel applies only when the whole
-<code>spec.permission</code> block is present; an absent block (migration passthrough) is
-untouched. It is also scoped to the <em>empty</em> case — a populated <code>agents</code> list
-whose names don't resolve parks the team <code>AgentNotFound</code>, it is never replaced
-by the sentinel.</p>
-<p><strong>Precedence.</strong> With <code>spec.permission</code> present, any <code>models</code> or
-<code>object_permission</code> key inside <code>spec.params</code> is dropped and a
-<code>ProjectionOverride</code> Warning Event fires — the typed block always wins.</p>
-<h3 id="accessgroups"><code>accessGroups</code><a class="headerlink" href="#accessgroups" title="Permanent link">&para;</a></h3>
-<p>Names of <a href="../access-group/"><code>LiteLLMAccessGroup</code></a> resources to attach to this
-team. The operator resolves each name to its server-minted <code>access_group_id</code>
-via <code>GET /v1/access_group</code> and writes the resolved list to
-<code>team.access_group_ids</code>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="nt">permission</span><span class="p">:</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="nt">accessGroups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">anthropic-tier</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">internal-mcp</span><span class="p p-Indicator">]</span>
-</code></pre></div>
-<p>A name that does not resolve parks the team <code>Ready=False</code>,
-<code>reason=AccessGroupNotFound</code> and requeues — create the <code>LiteLLMAccessGroup</code>
-first, and the team self-heals. This is the same ordering dependency that
-<code>agents</code> and <code>mcpToolsets</code> have.</p>
-<p>Do not confuse <code>accessGroups</code> with <code>modelGroups</code>: <code>modelGroups</code> carries LEGACY
-model-TAG names and merges into <code>models</code>, while <code>accessGroups</code> carries unified
-access-group names from the <code>/v1/access_group</code> object family. The two
-namespaces are disjoint.</p>
-<div class="admonition warning">
-<p class="admonition-title">Access groups BYPASS deny-by-default</p>
-<p>A <code>spec.permission</code> block with an empty <code>models</code> list emits the
-<code>__deny_all__</code> sentinel, which denies every model (see the
-<strong>Deny-by-default</strong> note above). An attached access group <strong>overrides</strong>
-that: LiteLLM treats group grants as additive, so a group granting
-<code>gpt-4o</code> makes <code>gpt-4o</code> reachable by this team's keys even though
-<code>models</code> is <code>["__deny_all__"]</code>. Measured on LiteLLM 1.93.0.
-Treat <code>accessGroups</code> as a grant, never as a filter. Full rationale in
-the <a href="../access-group/#access-groups-only-add">LiteLLMAccessGroup guide</a>.</p>
-</div>
-<h3 id="migration-from-specparamsobject_permission">Migration from <code>spec.params.object_permission</code><a class="headerlink" href="#migration-from-specparamsobject_permission" title="Permanent link">&para;</a></h3>
-<p>Teams currently using <code>spec.params.object_permission</code> (or
-<code>spec.params.models</code>) continue to work unchanged as long as <code>spec.permission</code>
-is absent. To adopt the typed block, move each value:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># before</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">    </span><span class="nt">models</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"gpt-4o"</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">    </span><span class="nt">object_permission</span><span class="p">:</span>
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">      </span><span class="nt">mcp_servers</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"hindsight"</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="c1"># after</span>
-<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="w">  </span><span class="nt">permission</span><span class="p">:</span>
-<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="w">    </span><span class="nt">models</span><span class="p">:</span><span class="w">     </span><span class="p p-Indicator">[</span><span class="s">"gpt-4o"</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="w">    </span><span class="nt">mcpServers</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"hindsight"</span><span class="p p-Indicator">]</span>
-</code></pre></div>
-<p>Note that <code>object_permission.agents</code> in the old form required raw UUIDs; the
-new <code>spec.permission.agents</code> takes human-friendly NAMES instead.</p>
-<h2 id="teamdefault-carve-out"><code>Team/default</code> carve-out<a class="headerlink" href="#teamdefault-carve-out" title="Permanent link">&para;</a></h2>
-<p><code>metadata.name=default</code> is reserved. The operator:</p>
+<h2 id="implicit-defaults-teamdefault-access-group-default">Implicit defaults: <code>Team/default</code> + access group <code>default</code><a class="headerlink" href="#implicit-defaults-teamdefault-access-group-default" title="Permanent link">&para;</a></h2>
+<p>With no CRs declared, the operator keeps two <strong>empty, unlinked</strong> objects:</p>
 <ul>
-<li>Bootstraps the LiteLLM <code>team_alias=default</code> on manager start (after
-  <code>LiteLLMConnection/default</code> reaches <code>Ready=True</code>) with empty spec —
-  no Kubernetes CR is created.</li>
-<li>Reconciles a user-authored <code>Team/default</code> CR normally (ownership
-  transition — re-uses the LiteLLM team, does not recreate).</li>
-<li>Suppresses <code>POST /team/delete</code> when the CR is deleted: the implicit
-  empty spec is re-applied and the finalizer is removed. The default
-  team is never destroyed in LiteLLM.</li>
+<li>LiteLLM team <code>default</code> — closed baseline, <strong>no</strong> access groups.</li>
+<li>Unified access group <code>default</code> — grants nothing.</li>
 </ul>
-<h2 id="specparams-pass-through-tags-enterprise-gate"><code>spec.params</code> pass-through + <code>tags</code> (Enterprise gate)<a class="headerlink" href="#specparams-pass-through-tags-enterprise-gate" title="Permanent link">&para;</a></h2>
-<p><code>spec.params</code> is forwarded verbatim to the top-level
-<code>NewTeamRequest</code> body. Common pitfall:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span><span class="nt">tags</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">prod</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">finance</span><span class="p p-Indicator">]</span><span class="w">   </span><span class="c1"># HTTP 403 on OSS LiteLLM</span>
+<p>Declare the CRs to link and fill them:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">LiteLLMTeam</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nt">metadata</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">default</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span><span class="nt">accessGroups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">default</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="nn">---</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">LiteLLMAccessGroup</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="nt">metadata</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">default</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">  </span><span class="nt">models</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">ackstorm.smart</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">ackstorm.fast</span><span class="p p-Indicator">]</span>
 </code></pre></div>
-<p>LiteLLM 1.83.10 OSS rejects <code>tags</code> on <code>/team/new</code> as Enterprise-only.
-Holders of a LiteLLM Enterprise license can keep <code>tags</code> in <code>params</code>
-unchanged — the operator pass-through forwards it without code change.</p>
-<p>For free-form metadata that the operator does NOT touch, use the
-LiteLLM <code>metadata</code> map inside <code>params</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">    </span><span class="nt">metadata</span><span class="p">:</span>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">      </span><span class="nt">cost-center</span><span class="p">:</span><span class="w"> </span><span class="s">"1234"</span>
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">      </span><span class="nt">env</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">prod</span>
-</code></pre></div>
+<p>A declared CR always wins over the implicit state. Deleting it falls back to
+the empty state — the LiteLLM row (and its id) is <strong>kept</strong>, never deleted:
+<code>POST /team/delete</code> is suppressed for <code>Team/default</code>, and the <code>default</code> group
+is emptied rather than removed. Anything granted to <code>default</code> by hand in the
+LiteLLM UI, with no CR declaring it, is cleared by the operator.</p>
 <h2 id="status-what-to-read">Status: what to read<a class="headerlink" href="#status-what-to-read" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>team<span class="w"> </span>finance<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.status.lastRendered}{"\n"}'</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="c1"># {"at":"2026-05-24T...","hash":"abc...","paramsKeys":["metadata"],"teamID":"finance"}</span>
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="c1"># (teamID == metadata.name for operator-created teams; a UUID for teams</span>
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="c1">#  that already existed under a server-assigned id — see team_id assignment)</span>
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>
-<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>kubectl<span class="w"> </span>get<span class="w"> </span>team<span class="w"> </span>finance<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.status.conditions[?(@.type=="Ready")]}{"\n"}'</span>
-<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="c1"># {"type":"Ready","status":"True","reason":"Synced","message":""}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>team<span class="w"> </span>finance<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.status.lastRendered}{"\n"}'</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="c1"># {"at":"2026-05-24T...","hash":"abc...","teamID":"finance"}</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="c1"># (teamID == metadata.name for operator-created teams; a UUID for teams</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1">#  that already existed under a server-assigned id — see team_id assignment)</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>kubectl<span class="w"> </span>get<span class="w"> </span>team<span class="w"> </span>finance<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.status.conditions[?(@.type=="Ready")]}{"\n"}'</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="c1"># {"type":"Ready","status":"True","reason":"Synced","message":""}</span>
 </code></pre></div>
 <p>Other <code>Ready=False</code> reasons:</p>
 <ul>
@@ -2266,8 +2140,8 @@ LiteLLM <code>metadata</code> map inside <code>params</code>:</p>
   transition.</li>
 <li><code>LiteLLMRejected</code> — LiteLLM returned a 4xx (non-401). Inspect
   <code>message</code> for the upstream error.</li>
-<li><code>SecretNotFound</code> — a <code>spec.secrets[].secretRef</code> is missing OR a
-  <code>{{NAME}}</code> placeholder in <code>spec.params</code> has no matching <code>as</code> binding.</li>
+<li><code>AccessGroupNotFound</code> — a <code>spec.accessGroups</code> name is not registered in
+  LiteLLM yet. Requeued; heals once the <code>LiteLLMAccessGroup</code> exists.</li>
 </ul>
 <h2 id="see-also">See also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
 <ul>
