@@ -263,7 +263,7 @@ var _ = Describe("LiteLLMAccessGroup", Ordered, ContinueOnFailure, func() {
 		}, 60*time.Second, 3*time.Second).Should(Succeed())
 	})
 
-	// AG-03: spec.permission.accessGroups resolves NAMES to server-minted ids
+	// AG-03: spec.accessGroups resolves NAMES to server-minted ids
 	// and writes them to the team's top-level access_group_ids.
 	It("AG-03 attachment: a team reaches the group by name, read from /team/info", func() {
 		const agName = "e2e-ag-attach-group"
@@ -281,9 +281,7 @@ var _ = Describe("LiteLLMAccessGroup", Ordered, ContinueOnFailure, func() {
 
 		cr := newTeamCR(teamName, ns)
 		spec, _ := cr.Object["spec"].(map[string]interface{})
-		spec["permission"] = map[string]interface{}{
-			"accessGroups": []interface{}{agName},
-		}
+		spec["accessGroups"] = []interface{}{agName}
 		_, err = dyn.Resource(teamGVR).Namespace(ns).Create(ctx, cr, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(func() { deleteTeam(teamName) })
@@ -302,7 +300,7 @@ var _ = Describe("LiteLLMAccessGroup", Ordered, ContinueOnFailure, func() {
 	// the attaching team's deny-by-default sentinel. This is LiteLLM semantics
 	// colliding with this repo's fail-closed posture, and it is DOCUMENTED, not
 	// fixed (docs/user-guide/access-group.md). The spec exists so a future
-	// change to the sentinel or to projectPermission cannot quietly alter this
+	// change to the sentinel or to closedTeamGrant cannot quietly alter this
 	// blast radius without a red test.
 	//
 	// ASSERT BY ERROR TYPE, NEVER BY STATUS CODE. LiteLLM drifted the denial
@@ -338,10 +336,8 @@ var _ = Describe("LiteLLMAccessGroup", Ordered, ContinueOnFailure, func() {
 			g.Expect(modelID(obj)).NotTo(BeEmpty(), "bypass model not registered yet")
 		}, 90*time.Second, 3*time.Second).Should(Succeed())
 
-		By("baseline: a present-but-empty spec.permission denies the model")
+		By("baseline: a team with no accessGroups denies the model")
 		cr := newTeamCR(teamName, ns)
-		spec, _ := cr.Object["spec"].(map[string]interface{})
-		spec["permission"] = map[string]interface{}{}
 		_, err = dyn.Resource(teamGVR).Namespace(ns).Create(ctx, cr, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(func() { deleteTeam(teamName) })
@@ -359,7 +355,7 @@ var _ = Describe("LiteLLMAccessGroup", Ordered, ContinueOnFailure, func() {
 			))
 			g.Expect(out).To(ContainSubstring("team_model_access_denied"),
 				"baseline denial must cite team_model_access_denied, got: %s", out)
-			g.Expect(out).To(ContainSubstring("__deny_all__"),
+			g.Expect(out).To(ContainSubstring("no-default-models"),
 				"baseline denial must echo the deny-all sentinel, got: %s", out)
 		}, 90*time.Second, 5*time.Second).Should(Succeed())
 
@@ -375,7 +371,7 @@ var _ = Describe("LiteLLMAccessGroup", Ordered, ContinueOnFailure, func() {
 		obj, err := dyn.Resource(teamGVR).Namespace(ns).Get(ctx, teamName, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(unstructured.SetNestedStringSlice(obj.Object,
-			[]string{agName}, "spec", "permission", "accessGroups")).To(Succeed())
+			[]string{agName}, "spec", "accessGroups")).To(Succeed())
 		_, err = dyn.Resource(teamGVR).Namespace(ns).Update(ctx, obj, metav1.UpdateOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		Eventually(func(g Gomega) {
@@ -385,7 +381,7 @@ var _ = Describe("LiteLLMAccessGroup", Ordered, ContinueOnFailure, func() {
 		By("the SAME team's key is no longer denied — the sentinel is bypassed")
 		// A fresh key removes LiteLLM's key-object cache from the equation; the
 		// principal under test is the TEAM, whose models list is unchanged and
-		// still `["__deny_all__"]`.
+		// still `["no-default-models"]`.
 		allowKey := generateTeamKey(tid)
 		DeferCleanup(func() { deleteLiteLLMKey(allowKey) })
 		Eventually(func(g Gomega) {
@@ -398,7 +394,7 @@ var _ = Describe("LiteLLMAccessGroup", Ordered, ContinueOnFailure, func() {
 			))
 			g.Expect(out).NotTo(ContainSubstring("team_model_access_denied"),
 				"group grant did not override the deny-all sentinel, got: %s", out)
-			g.Expect(out).NotTo(ContainSubstring("__deny_all__"),
+			g.Expect(out).NotTo(ContainSubstring("no-default-models"),
 				"group grant did not override the deny-all sentinel, got: %s", out)
 		}, 120*time.Second, 5*time.Second).Should(Succeed())
 
@@ -407,7 +403,7 @@ var _ = Describe("LiteLLMAccessGroup", Ordered, ContinueOnFailure, func() {
 		// operator quietly dropping the sentinel.
 		matches := litellmTeamsByAlias(teamName)
 		Expect(matches).NotTo(BeEmpty())
-		Expect(matches[0]["models"]).To(ConsistOf("__deny_all__"),
+		Expect(matches[0]["models"]).To(ConsistOf("no-default-models"),
 			"team.models must still carry the sentinel — the widening comes from the group, got %v",
 			matches[0]["models"])
 	})
@@ -422,9 +418,7 @@ var _ = Describe("LiteLLMAccessGroup", Ordered, ContinueOnFailure, func() {
 
 		cr := newTeamCR(teamName, ns)
 		spec, _ := cr.Object["spec"].(map[string]interface{})
-		spec["permission"] = map[string]interface{}{
-			"accessGroups": []interface{}{agName},
-		}
+		spec["accessGroups"] = []interface{}{agName}
 		_, err := dyn.Resource(teamGVR).Namespace(ns).Create(ctx, cr, metav1.CreateOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(func() { deleteTeam(teamName) })
@@ -459,5 +453,15 @@ var _ = Describe("LiteLLMAccessGroup", Ordered, ContinueOnFailure, func() {
 			g.Expect(tid).NotTo(BeEmpty())
 			g.Expect(litellmTeamAccessGroupIDs(tid)).To(ConsistOf(wantID))
 		}, 120*time.Second, 3*time.Second).Should(Succeed())
+	})
+
+	// AG-06: with no LiteLLMAccessGroup/default CR (the e2e cluster declares
+	// none) the operator keeps an implicit, EMPTY unified group named default.
+	It("AG-06 implicit default: an empty group named default exists", func() {
+		Eventually(func(g Gomega) {
+			grp, ok := litellmAccessGroupByName("default")
+			g.Expect(ok).To(BeTrue(), "implicit access group default not in LiteLLM")
+			g.Expect(grp.AccessModelNames).To(BeEmpty(), "implicit default must grant no models")
+		}, 90*time.Second, 3*time.Second).Should(Succeed())
 	})
 })
