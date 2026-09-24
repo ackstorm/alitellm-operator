@@ -1,0 +1,275 @@
+{
+  "uid": "alitellm-litellm-anthropic-cache",
+  "title": "aLiteLLM — LiteLLM Anthropic prompt cache",
+  "tags": [
+    "alitellm",
+    "observability"
+  ],
+  "schemaVersion": 39,
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "refresh": "5m",
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {
+          "text": "Prometheus",
+          "value": "prometheus"
+        }
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "namespace",
+        "query": "label_values(litellm_spend_metric_total, namespace)",
+        "refresh": 2,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "name": "user",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "query": {
+          "query": "label_values(litellm_provider_cache_read_input_tokens_metric_total{api_provider=\"anthropic\",namespace=~\"$namespace\"}, user)",
+          "refId": "user"
+        },
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "refresh": 2
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Cache hit rate (range)",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Cache read / (read + write). Healthy above 90%. Low = context rebuilt often (subagents, compaction, /clear, >1h idle, prefix changes).",
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (user) (increase(litellm_provider_cache_read_input_tokens_metric_total{api_provider=\"anthropic\",namespace=~\"$namespace\",user=~\"$user\"}[$__range])) / clamp_min(sum by (user) (increase(litellm_provider_cache_read_input_tokens_metric_total{api_provider=\"anthropic\",namespace=~\"$namespace\",user=~\"$user\"}[$__range])) + sum by (user) (increase(litellm_provider_cache_creation_input_tokens_metric_total{api_provider=\"anthropic\",namespace=~\"$namespace\",user=~\"$user\"}[$__range])), 1)",
+          "legendFormat": "{{user}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.85
+              },
+              {
+                "color": "green",
+                "value": 0.9
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "title": "Cache-write tokens per request (range)",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Average tokens written to cache per request. Normal turns write a few k; full rebuilds write the whole context (>20k).",
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 8,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (user) (increase(litellm_provider_cache_creation_input_tokens_metric_total{api_provider=\"anthropic\",namespace=~\"$namespace\",user=~\"$user\"}[$__range])) / clamp_min(sum by (user) (increase(litellm_proxy_total_requests_metric_total{api_provider=\"anthropic\",namespace=~\"$namespace\",user=~\"$user\"}[$__range])), 1)",
+          "legendFormat": "{{user}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "title": "Cache-write tokens (range)",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Total 1h/5m cache writes. Also consumes Max/Pro subscription limits.",
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 16,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (user) (increase(litellm_provider_cache_creation_input_tokens_metric_total{api_provider=\"anthropic\",namespace=~\"$namespace\",user=~\"$user\"}[$__range]))",
+          "legendFormat": "{{user}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "title": "Cache hit rate over time",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Rolling 1h hit rate per user.",
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 6
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (user) (increase(litellm_provider_cache_read_input_tokens_metric_total{api_provider=\"anthropic\",namespace=~\"$namespace\",user=~\"$user\"}[1h])) / clamp_min(sum by (user) (increase(litellm_provider_cache_read_input_tokens_metric_total{api_provider=\"anthropic\",namespace=~\"$namespace\",user=~\"$user\"}[1h])) + sum by (user) (increase(litellm_provider_cache_creation_input_tokens_metric_total{api_provider=\"anthropic\",namespace=~\"$namespace\",user=~\"$user\"}[1h])), 1)",
+          "legendFormat": "{{user}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.85
+              },
+              {
+                "color": "green",
+                "value": 0.9
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "interval": "5m"
+    },
+    {
+      "id": 5,
+      "title": "Cache-write tokens per hour",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "description": "Spikes = full context rebuilds.",
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 6
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (user) (increase(litellm_provider_cache_creation_input_tokens_metric_total{api_provider=\"anthropic\",namespace=~\"$namespace\",user=~\"$user\"}[1h]))",
+          "legendFormat": "{{user}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "interval": "5m"
+    }
+  ]
+}
