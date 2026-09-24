@@ -21,5 +21,3 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
 spec:
   deletionPolicy: Delete
-  params:
-    team_alias: strict-team-example

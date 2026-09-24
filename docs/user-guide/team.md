@@ -1,7 +1,9 @@
 # LiteLLMTeam
 
-Declarative team in LiteLLM. Owns the LiteLLM team alias plus optional
-budget and RPM/TPM rate limits, projected via
+Declarative team in LiteLLM. A team is a **container**: it owns the LiteLLM
+team alias, optional budget and RPM/TPM rate limits, and the list of
+[access groups](access-group.md) it attaches. It grants nothing by itself —
+everything a team can reach is defined by its access groups. Projected via
 `POST /team/{new,update}`.
 
 `metadata.name` IS the LiteLLM `team_alias` — bare name, no prefix, no
@@ -9,9 +11,6 @@ overlay indirection. Two-level naming is intentionally NOT supported in
 v1alpha1.
 
 The operator does NOT manage team membership (delegated to external identity).
-Models allow-list and object permissions ARE managed via the typed
-`spec.permission` block (see below); when that block is absent they remain
-raw `spec.params` passthrough.
 
 ## Quick reference
 
@@ -22,8 +21,8 @@ raw `spec.params` passthrough.
 | `spec.budget.period` | no       | Reset interval → `budget_duration`. Regex `^[0-9]+[smhd]$` (e.g. `30d`, `12h`, `60s`).      |
 | `spec.rateLimits.rpm`| no       | Requests/min → `rpm_limit` (int). Pointer: `0` projects, omit clears. `Minimum=0`.          |
 | `spec.rateLimits.tpm`| no       | Tokens/min → `tpm_limit`. Same pointer semantics as `rpm`.                                  |
-| `spec.params`        | no       | Free-form bag, merged into `NewTeamRequest` top-level. `{{NAME}}` substitution in strings.  |
-| `spec.secrets[]`     | no       | Substitution map for `spec.params` placeholders. `{as, secretRef: {name, key}}`.            |
+| `spec.accessGroups`  | no       | `LiteLLMAccessGroup` names, resolved to ids → `access_group_ids`. Empty → reaches nothing.  |
+| `spec.deletionPolicy`| no       | `Orphan` (default) keeps the LiteLLM team on CR delete; `Delete` removes it.                |
 
 After `kubectl apply`, expect:
 
@@ -43,10 +42,12 @@ kind: LiteLLMTeam
 metadata:
   name: finance
   namespace: default
-spec: {}
+spec:
+  accessGroups: [finance]   # a LiteLLMAccessGroup named finance
 ```
 
-Result: LiteLLM team `team_alias=finance`, no budget, no rate limits.
+Result: LiteLLM team `team_alias=finance`, no budget, no rate limits,
+attached to the `finance` access group.
 Both `max_budget` / `budget_duration` are sent as `null`; both
 `rpm_limit` / `tpm_limit` as `null`; the `*_limit_type` keys are
 omitted.
@@ -128,221 +129,127 @@ Caveats:
   across namespaces would collide on the same `team_id`. v1alpha1 does
   not guard against this.
 
-## Reserved overlay keys — `ProjectionOverride` warning
+## Access: a closed team opened by access groups
 
-The operator stamps these structural keys onto the request body and
-ALWAYS wins over `spec.params`:
+The operator always sends the same **closed baseline** on every create and
+update, whatever the spec says:
 
-```
-team_alias, max_budget, budget_duration, rpm_limit, tpm_limit,
-rpm_limit_type, tpm_limit_type
-```
+| LiteLLM field                            | Value                                        |
+|------------------------------------------|----------------------------------------------|
+| `models`                                 | `["no-default-models"]`                      |
+| `object_permission.agents`               | `["00000000-0000-0000-0000-000000000000"]`   |
+| `object_permission.mcp_servers`          | `[]`                                         |
+| `object_permission.mcp_access_groups`    | `[]`                                         |
+| `object_permission.agent_access_groups`  | `[]`                                         |
+| `object_permission.mcp_toolsets`         | `[]`                                         |
+| `access_group_ids`                       | ids of `spec.accessGroups` (`[]` when empty) |
 
-`team_id` is ALSO operator-controlled per the
-[team_id assignment](#team_id-assignment) rules (CREATE arm → name,
-UPDATE arm → existing id); setting it in `spec.params` has no effect.
-Unlike the seven keys above, a `spec.params.team_id` is overwritten
-SILENTLY — it does NOT emit a `ProjectionOverride` Warning Event.
+Why the sentinels: LiteLLM reads an **empty** `models` or `agents` list as
+"no filter", so a team with `models: []` sees every model on the proxy.
+`no-default-models` is LiteLLM's own sentinel — it is dropped from every
+model catalog, so a closed team lists zero models instead of a phantom row.
+Every field is sent every time (never omitted) because `POST /team/update`
+keeps an omitted field's old value.
 
-Setting any of these inside `spec.params` is silently overridden and
-emits a `reason=ProjectionOverride` Warning Event per colliding key.
-Use the typed `spec.budget` / `spec.rateLimits` sub-blocks instead.
-
-## Resource permissions — `spec.permission`
-
-`spec.permission` is a typed, operator-MANAGED block that controls which
-models, MCP servers, MCP toolsets, and A2A agents a team may use. When present, the
-operator OWNS the projected LiteLLM `models` and `object_permission` fields —
-out-of-band UI edits to them do NOT survive reconciliation.
+Access groups only **add**: an attached group overrides the sentinels for
+what it grants. A team without `accessGroups` reaches nothing.
 
 ```yaml
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMAccessGroup
+metadata:
+  name: dream
 spec:
-  permission:
-    models:      ["gpt-4o"]        # specific model names
-    modelGroups: ["anthropic"]     # model access-group names (merged into models)
-    mcpServers:  ["hindsight"]     # specific MCP server names/aliases
-    mcpGroups:   ["team-a"]        # MCP access-group names
-    agents:      ["planner"]       # A2A agent NAMES (resolved to UUIDs by the operator)
-    agentGroups: ["grp-a"]         # A2A agent access-group names (see no-op note)
-    mcpToolsets: ["research"]      # LiteLLMMCPToolset NAMES (resolved to UUIDs)
-    accessGroups: ["shared"]       # LiteLLMAccessGroup NAMES (resolved to UUIDs)
+  modelGroups: [default, openai, anthropic]
+  mcpServerGroups: [default, gitlab]
+  agentGroups: [agents]
+---
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMTeam
+metadata:
+  name: dream
+spec:
+  accessGroups: [dream]
 ```
 
-Projection to LiteLLM:
+A name that is not registered yet parks the team `Ready=False,
+reason=AccessGroupNotFound` and requeues — create the `LiteLLMAccessGroup`
+and the team heals itself.
 
-| CR field       | LiteLLM target                              |
-|----------------|---------------------------------------------|
-| `models` + `modelGroups` | top-level `team.models` (one merged list) |
-| `mcpServers`   | `object_permission.mcp_servers`             |
-| `mcpGroups`    | `object_permission.mcp_access_groups`       |
-| `agents`       | `object_permission.agents` (name→UUID resolved) |
-| `agentGroups`  | `object_permission.agent_access_groups` (**no-op**, see below) |
-| `mcpToolsets`  | `object_permission.mcp_toolsets` (name→UUID resolved) |
-| `accessGroups` | top-level `team.access_group_ids` (name→UUID resolved) |
+MCP **toolsets** cannot be granted through a team: LiteLLM access groups
+have no toolset field (verified on 1.102.0), and the team always sends
+`mcp_toolsets: []`. See [MCP toolset](mcp-toolset.md).
 
-**Agent name resolution.** LiteLLM enforces `object_permission.agents` on
-agent `agent_id` UUIDs and silently ignores names. The operator resolves each
-name via `GET /v1/agents`. If a referenced agent is not yet registered (the
-`LiteLLMA2AAgent` CR has not reconciled), the team is parked
-`Ready=False, reason=AgentNotFound` (listing the missing names) and requeued —
-it recovers automatically once the agent appears.
+### Migrating from `spec.permission` (≤ v0.8.x)
 
-**Toolset name resolution.** Same shape as agents: LiteLLM matches
-`object_permission.mcp_toolsets` on `toolset_id` UUIDs, so the operator
-resolves each name via `GET /v1/mcp/toolset`. An unregistered name parks the
-team `Ready=False, reason=ToolsetNotFound` and requeues — create the
-[`LiteLLMMCPToolset`](mcp-toolset.md) CR and it recovers automatically.
-Multiple toolsets are **unioned** by LiteLLM (not last-wins), so listing
-several composes their tool grants. There is no access-group concept for
-toolsets — listing several here IS the grouping mechanism.
-
-**`agentGroups`** projects to `object_permission.agent_access_groups`, letting
-teams reach A2A agents carrying those tags. The LiteLLM startup patch is
-required until upstream supports the `/v1/agents` write and response path.
-
-**Empty vs absent.** An absent `spec.permission` block leaves any raw
-`spec.params.models` / `spec.params.object_permission` untouched (passthrough).
-A **present** block makes the operator OWN `models` and all five
-`object_permission` sub-fields: every one is sent to LiteLLM on each update,
-never omitted. Shrinking a list — including down to empty (`mcpServers: []`, or
-removing the last agent) — therefore **does** revoke access. This is
-security-critical: LiteLLM's `POST /team/update` merges per-field on the
-persistent `object_permission` row, so an *omitted* field keeps its stale
-value; the operator never omits a field so a revocation is never silently lost.
-
-**Deny-by-default.** A present `spec.permission` block is a fail-CLOSED grant.
-LiteLLM turns on its `models` / `object_permission.agents` filter as soon as
-the list is non-empty (it never checks the elements exist), but it treats an
-**empty** list on those two fields as *no filter* — so an empty grant fails
-OPEN: the team inherits the full master-key ceiling (every model, every agent).
-To close that hole the operator projects a deny-all **sentinel** whenever a
-present block leaves those lists empty:
-
-| Field | Empty grant → | Effect |
-|-------|---------------|--------|
-| `models` (+ `modelGroups`) | `["__deny_all__"]` | 0 real models (a phantom entry appears in `/models`) |
-| `agents` | `["00000000-0000-0000-0000-000000000000"]` (null UUID) | 0 agents |
-| `mcpServers` / `mcpGroups` / `agentGroups` / `mcpToolsets` / `accessGroups` | `[]` | already fail-closed / no-op — no sentinel needed |
-
-`mcpToolsets` deliberately takes **no** sentinel. LiteLLM's toolset check reads
-"granted is None or id not in granted → deny", so an empty list already denies
-everything (an ungranted key gets `403 API key does not have access to toolset
-'<uuid>'`). Adding a sentinel there in the name of consistency would inject a
-bogus UUID into a filter that is already correct.
-
-So a `spec.permission` block that omits `models` (or sets it `[]`) grants the
-team **no models**, not all of them. To grant everything, list the models or
-model-groups explicitly. The sentinel applies only when the whole
-`spec.permission` block is present; an absent block (migration passthrough) is
-untouched. It is also scoped to the *empty* case — a populated `agents` list
-whose names don't resolve parks the team `AgentNotFound`, it is never replaced
-by the sentinel.
-
-**Precedence.** With `spec.permission` present, any `models` or
-`object_permission` key inside `spec.params` is dropped and a
-`ProjectionOverride` Warning Event fires — the typed block always wins.
-
-### `accessGroups`
-
-Names of [`LiteLLMAccessGroup`](access-group.md) resources to attach to this
-team. The operator resolves each name to its server-minted `access_group_id`
-via `GET /v1/access_group` and writes the resolved list to
-`team.access_group_ids`.
-
-```yaml
-spec:
-  permission:
-    accessGroups: [anthropic-tier, internal-mcp]
-```
-
-A name that does not resolve parks the team `Ready=False`,
-`reason=AccessGroupNotFound` and requeues — create the `LiteLLMAccessGroup`
-first, and the team self-heals. This is the same ordering dependency that
-`agents` and `mcpToolsets` have.
-
-Do not confuse `accessGroups` with `modelGroups`: `modelGroups` carries LEGACY
-model-TAG names and merges into `models`, while `accessGroups` carries unified
-access-group names from the `/v1/access_group` object family. The two
-namespaces are disjoint.
-
-!!! warning "Access groups BYPASS deny-by-default"
-
-    A `spec.permission` block with an empty `models` list emits the
-    `__deny_all__` sentinel, which denies every model (see the
-    **Deny-by-default** note above). An attached access group **overrides**
-    that: LiteLLM treats group grants as additive, so a group granting
-    `gpt-4o` makes `gpt-4o` reachable by this team's keys even though
-    `models` is `["__deny_all__"]`. Measured on LiteLLM 1.93.0.
-    Treat `accessGroups` as a grant, never as a filter. Full rationale in
-    the [LiteLLMAccessGroup guide](access-group.md#access-groups-only-add).
-
-### Migration from `spec.params.object_permission`
-
-Teams currently using `spec.params.object_permission` (or
-`spec.params.models`) continue to work unchanged as long as `spec.permission`
-is absent. To adopt the typed block, move each value:
+`spec.permission`, `spec.params` and `spec.secrets` were removed in v0.9.0.
+Move each team's grant into an access group and attach it:
 
 ```yaml
 # before
-spec:
-  params:
-    models: ["gpt-4o"]
-    object_permission:
-      mcp_servers: ["hindsight"]
-# after
+kind: LiteLLMTeam
+metadata: { name: dream }
 spec:
   permission:
-    models:     ["gpt-4o"]
-    mcpServers: ["hindsight"]
+    modelGroups: [default, openai]
+    mcpGroups: [default]
+# after
+---
+kind: LiteLLMAccessGroup
+metadata: { name: dream }
+spec:
+  modelGroups: [default, openai]
+  mcpServerGroups: [default]
+---
+kind: LiteLLMTeam
+metadata: { name: dream }
+spec:
+  accessGroups: [dream]
 ```
 
-Note that `object_permission.agents` in the old form required raw UUIDs; the
-new `spec.permission.agents` takes human-friendly NAMES instead.
+| `spec.permission` field | `LiteLLMAccessGroup` field |
+|-------------------------|----------------------------|
+| `models`                | `models`                   |
+| `modelGroups`           | `modelGroups`              |
+| `mcpServers`            | `mcpServers`               |
+| `mcpGroups`             | `mcpServerGroups`          |
+| `agents`                | `agents`                   |
+| `agentGroups`           | `agentGroups`              |
+| `accessGroups`          | → `LiteLLMTeam.spec.accessGroups` |
+| `mcpToolsets`           | none (not grantable)       |
 
-## `Team/default` carve-out
+## Implicit defaults: `Team/default` + access group `default`
 
-`metadata.name=default` is reserved. The operator:
+With no CRs declared, the operator keeps two **empty, unlinked** objects:
 
-- Bootstraps the LiteLLM `team_alias=default` on manager start (after
-  `LiteLLMConnection/default` reaches `Ready=True`) with empty spec —
-  no Kubernetes CR is created.
-- Reconciles a user-authored `Team/default` CR normally (ownership
-  transition — re-uses the LiteLLM team, does not recreate).
-- Suppresses `POST /team/delete` when the CR is deleted: the implicit
-  empty spec is re-applied and the finalizer is removed. The default
-  team is never destroyed in LiteLLM.
+- LiteLLM team `default` — closed baseline, **no** access groups.
+- Unified access group `default` — grants nothing.
 
-## `spec.params` pass-through + `tags` (Enterprise gate)
-
-`spec.params` is forwarded verbatim to the top-level
-`NewTeamRequest` body. Common pitfall:
+Declare the CRs to link and fill them:
 
 ```yaml
+kind: LiteLLMTeam
+metadata: { name: default }
 spec:
-  params:
-    tags: [prod, finance]   # HTTP 403 on OSS LiteLLM
+  accessGroups: [default]
+---
+kind: LiteLLMAccessGroup
+metadata: { name: default }
+spec:
+  models: [ackstorm.smart, ackstorm.fast]
 ```
 
-LiteLLM 1.83.10 OSS rejects `tags` on `/team/new` as Enterprise-only.
-Holders of a LiteLLM Enterprise license can keep `tags` in `params`
-unchanged — the operator pass-through forwards it without code change.
-
-For free-form metadata that the operator does NOT touch, use the
-LiteLLM `metadata` map inside `params`:
-
-```yaml
-spec:
-  params:
-    metadata:
-      cost-center: "1234"
-      env: prod
-```
+A declared CR always wins over the implicit state. Deleting it falls back to
+the empty state — the LiteLLM row (and its id) is **kept**, never deleted:
+`POST /team/delete` is suppressed for `Team/default`, and the `default` group
+is emptied rather than removed. Anything granted to `default` by hand in the
+LiteLLM UI, with no CR declaring it, is cleared by the operator.
 
 ## Status: what to read
 
 ```bash
 kubectl get team finance -o jsonpath='{.status.lastRendered}{"\n"}'
-# {"at":"2026-05-24T...","hash":"abc...","paramsKeys":["metadata"],"teamID":"finance"}
+# {"at":"2026-05-24T...","hash":"abc...","teamID":"finance"}
 # (teamID == metadata.name for operator-created teams; a UUID for teams
 #  that already existed under a server-assigned id — see team_id assignment)
 
@@ -357,8 +264,8 @@ Other `Ready=False` reasons:
   transition.
 - `LiteLLMRejected` — LiteLLM returned a 4xx (non-401). Inspect
   `message` for the upstream error.
-- `SecretNotFound` — a `spec.secrets[].secretRef` is missing OR a
-  `{{NAME}}` placeholder in `spec.params` has no matching `as` binding.
+- `AccessGroupNotFound` — a `spec.accessGroups` name is not registered in
+  LiteLLM yet. Requeued; heals once the `LiteLLMAccessGroup` exists.
 
 ## See also
 

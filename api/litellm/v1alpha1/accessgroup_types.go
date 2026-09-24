@@ -6,7 +6,8 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 // AccessGroupSpec defines the desired state of a LiteLLM access group — a
 // reusable bundle of models, MCP servers, and A2A agents that a team reaches
-// through LiteLLMTeam.spec.permission.accessGroups.
+// through LiteLLMTeam.spec.accessGroups. A team grants nothing by itself, so
+// access groups are the only way a team reaches anything.
 //
 // SCOPE: this CRD owns the three RESOURCE dimensions only. It never writes
 // assigned_team_ids or assigned_key_ids. Team attachment is written from the
@@ -15,9 +16,12 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 // delta-repair machinery entirely.
 //
 // SECURITY: access groups only ADD. A group grant OVERRIDES a team's
-// deny-by-default sentinel (models: ["__deny_all__"]) — verified 2026-08-06 on
-// LiteLLM 1.93.0. Granting a model here makes it reachable by every team that
-// attaches this group, regardless of that team's own spec.permission.models.
+// deny-by-default sentinel (models: ["no-default-models"]) — verified
+// 2026-08-06 on LiteLLM 1.93.0. Granting a model here makes it reachable by
+// every team that attaches this group.
+//
+// A group named `default` always exists: with no CR the operator keeps it
+// EMPTY, and deleting its CR empties the row instead of deleting it.
 type AccessGroupSpec struct {
 	// Description is free text forwarded to LiteLLM's `description` field.
 	//

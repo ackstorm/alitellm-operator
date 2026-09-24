@@ -7,48 +7,23 @@
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
 #
-# Dogfood Team CR — finance team with budget.
+# Team CR — finance team with budget + rate limits, attached to an access
+# group. A team is a CONTAINER: it grants nothing by itself. The operator
+# always projects it closed (models ["no-default-models"], null-UUID agents,
+# [] for every MCP field) and ONLY the attached access groups open it.
 #
-# Mirror of config/samples/team-finance.yaml (Phase 6 reference sample).
-# Exercises spec §11 AC-T1 (budget projection) and AC-T6 (pass-through
-# spec.params bag). Named "finance" — NOT "default" (that name is reserved
-# for the operator's implicit-bootstrap Team/default per spec §7.4).
-#
-# The implicit Team/default is also reconciled on manager start (after
-# LiteLLMConnection/default first reaches Ready=True) with no budget and
-# no Kubernetes CR created by the operator (AC-T2).
+# Named "finance" — NOT "default". With no Team/default CR the operator keeps
+# an implicit LiteLLM team `default` (closed, no access groups).
 #
 # After apply, expect:
-#   (a) status.lastRendered.teamID populated with the team_id. On a fresh
-#       deploy the operator CREATES this team, so team_id == metadata.name
-#       ("finance") — human-readable, collision-free (CREATE-arm name-id).
-#       A team that ALREADY existed under a server-assigned UUID reaches
-#       the UPDATE arm via alias lookup and keeps that UUID (no migration,
-#       CREATE-only change; Phase 5 D-02 / DEF-§6.4/§6.6-ID-PERSIST pin).
-#       NOTE: team_id == metadata.name verbatim — no namespace prefix; two
-#       Team CRs sharing a name across namespaces would collide (single-
-#       namespace assumption, out of scope for v1alpha1).
-#   (b) team_alias=finance projected to LiteLLM (bare metadata.name).
-#   (c) max_budget=500.0 + budget_duration="30d" at the top level of
-#       POST /team/new body (spec.budget.limit + period projection).
-#   (d) rpm_limit=6000 + tpm_limit=1000000 at the top level of the body
-#       as Phase-10 typed-overlay projections from spec.rateLimits.{rpm,
-#       tpm}. The four rate-limit overlay keys (rpm_limit, tpm_limit,
-#       rpm_limit_type, tpm_limit_type) are operator-overlay-controlled
-#       per Feature 01 §2.1 — placing them inside spec.params would emit
-#       Warning ProjectionOverride events on every reconcile and
-#       silently null the user's values on the wire.
-#
-# CR-15 / D-7.1-15 (2026-05-19): the `tags` field was removed from
-# spec.params on 2026-05-19 — LiteLLM 1.83.10 gates `tags` on /team/new
-# behind an Enterprise license (LITELLM_LICENSE env var); the dogfood
-# cluster runs the OSS image, so sending `tags` returns 403 and blocks
-# Team/finance from reaching Ready=True. Teams that hold a LiteLLM
-# Enterprise license can re-add `tags: [...]` to spec.params without
-# operator changes — the operator's pass-through merge will project it
-# verbatim to the wire. The `blocked: false` line was also dropped per
-# CR-10 (the operator's body builder strips it; documenting here that
-# the sample no longer needs it either).
+#   (a) status.lastRendered.teamID == metadata.name ("finance") for a team the
+#       operator creates; a team that already existed under a server-assigned
+#       UUID keeps it (CREATE-only name-id).
+#   (b) max_budget=500.0 + budget_duration="30d", rpm_limit=6000 +
+#       tpm_limit=1000000 on the POST /team/new body.
+#   (c) access_group_ids = [id of LiteLLMAccessGroup "shared-tooling"]
+#       (14-accessgroup.yaml). Until that group exists the team parks
+#       Ready=False reason=AccessGroupNotFound and heals on its own.
 apiVersion: litellm.ackstorm.ai/v1alpha1
 kind: LiteLLMTeam
 metadata:
@@ -58,47 +33,14 @@ metadata:
     app.kubernetes.io/name: alitellm-operator
     app.kubernetes.io/managed-by: kustomize
 spec:
-  # Optional budget block. When absent (or its leaves removed), the operator
-  # sends max_budget=null + budget_duration=null on the wire, clearing the
-  # LiteLLM-side fields (spec §6.7 line 1194 — "clearing budget" contract).
+  # LiteLLMAccessGroup NAMES — the team's only grant. Groups only ADD.
+  accessGroups: ["shared-tooling"]
+  # Optional. Absent → max_budget / budget_duration sent as null (cleared).
   budget:
     limit: 500.0
     period: "30d"
-  # Phase 10 typed rate-limit sub-block (Feature 01 §1). Projects onto
-  # top-level rpm_limit / tpm_limit (always-emit; null on clear) plus
-  # operator-hardcoded rpm_limit_type / tpm_limit_type =
-  # "best_effort_throughput" (conditional-add; omitted when the
-  # corresponding *_limit is null per Feature 01 §2.1).
+  # Optional. Projects onto rpm_limit / tpm_limit; the *_limit_type keys are
+  # operator-controlled ("best_effort_throughput").
   rateLimits:
     rpm: 6000
     tpm: 1000000
-  # Typed, operator-MANAGED resource permissions. When present the operator
-  # OWNS the projected LiteLLM `models` + `object_permission` fields (out-of-band
-  # UI edits do not survive). agents take human-friendly NAMES (resolved to
-  # agent_id UUIDs via GET /v1/agents); agentGroups is a forward-compat no-op.
-  # permission:
-  #   models:      ["gpt-4o"]
-  #   modelGroups: ["anthropic"]
-  #   mcpServers:  ["hindsight"]
-  #   mcpGroups:   ["team-a"]
-  #   agents:      ["planner"]
-  #   mcpToolsets: ["example-research-tools"]
-  # accessGroups attaches LiteLLMAccessGroup CRs by NAME (resolved to
-  # access_group_id UUIDs). ⚠️ Groups only ADD: an attached group's grants
-  # override this team's own deny-by-default. See
-  # docs/user-guide/access-group.md and 14-accessgroup.yaml.
-  #   accessGroups: ["shared-tooling"]
-  # Pass-through bag — operator's 7 structural overlays
-  # (team_alias, max_budget, budget_duration, rpm_limit, tpm_limit,
-  # rpm_limit_type, tpm_limit_type) plus team_id ALL win over
-  # spec.params on key collision; a ProjectionOverride Warning Event
-  # fires per colliding key. spec.params is empty for the dogfood
-  # team — kept for forward-compat with future pass-through keys.
-  params: {}
-  # secrets declares the {{NAME}} placeholder substitution map for
-  # spec.params, same shape as the Model CR (see 02-model.yaml):
-  # secrets:
-  #   - as: SOME_TEAM_SECRET
-  #     secretRef:
-  #       name: some-team-secret
-  #       key: SOME_TEAM_SECRET

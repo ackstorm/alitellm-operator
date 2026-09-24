@@ -66,7 +66,9 @@ spec:
             description: |-
               MCPToolsetSpec defines the desired state of a LiteLLM MCP toolset — a
               named, curated collection of specific tools drawn from one or more MCP
-              servers, granted to teams via LiteLLMTeam.spec.permission.mcpToolsets.
+              servers. The operator does NOT grant toolsets: LiteLLM access groups have no
+              toolset field (1.102.0) and teams always send mcp_toolsets: []. Grant one on
+              a key's object_permission.mcp_toolsets outside the operator.
 
               The reconciler is a near-pure data transform. There is deliberately no
               validation, no tool enumeration, and no glob expansion (see

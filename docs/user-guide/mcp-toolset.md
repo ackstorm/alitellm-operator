@@ -1,7 +1,7 @@
 # LiteLLMMCPToolset
 
 A **toolset** is a named, curated subset of MCP tools drawn from one or more
-MCP servers — instead of granting a team a whole server, you grant it exactly
+MCP servers — instead of granting a whole server, a key is granted exactly
 the tools you picked. Projected via `POST /v1/mcp/toolset` /
 `PUT /v1/mcp/toolset` / `DELETE /v1/mcp/toolset/<id>`.
 
@@ -49,21 +49,17 @@ spec:
 This produces one LiteLLM toolset named `research-tools` carrying three
 `{server_id, tool_name}` pairs.
 
-## A toolset is inert until a team grants it
+## Granting a toolset — not through the operator
 
-Creating the CR registers the toolset but grants nobody access. Reference it
-from a team:
+Creating the CR registers the toolset but grants nobody access, and the
+operator has **no way to grant it**:
 
-```yaml
-apiVersion: litellm.ackstorm.ai/v1alpha1
-kind: LiteLLMTeam
-metadata:
-  name: research-team
-spec:
-  permission:
-    models: ["gpt-4o"]
-    mcpToolsets: ["research-tools"]
-```
+- `LiteLLMTeam` always sends `object_permission.mcp_toolsets: []` (a team is a
+  closed container opened only by [access groups](access-group.md)).
+- LiteLLM access groups have no toolset field — verified on 1.102.0:
+  `POST /v1/access_group` accepts an `access_mcp_toolset_ids` key with `201`
+  and silently drops it, and a team attached to that group still gets the
+  `403` below.
 
 A key that has not been granted the toolset gets:
 
@@ -71,13 +67,10 @@ A key that has not been granted the toolset gets:
 403 API key does not have access to toolset '<uuid>'
 ```
 
-Multiple toolsets listed on one team are **unioned** by LiteLLM, not
-last-wins. There is no access-group concept for toolsets in LiteLLM 1.93.0 —
-listing several in `mcpToolsets` IS the grouping mechanism.
-
-Ordering matters: the toolset must exist in LiteLLM before the team
-references it, or the team parks `Ready=False, reason=ToolsetNotFound` and
-requeues. It recovers on its own once the toolset appears.
+To grant one, set `object_permission.mcp_toolsets` (toolset UUIDs) on a
+**key** outside the operator, or grant the whole MCP server through an access
+group's `mcpServers` / `mcpServerGroups` instead. Multiple toolsets on one key
+are **unioned** by LiteLLM, not last-wins.
 
 ## No globs — tool names are explicit
 
@@ -173,6 +166,5 @@ confirmed (LiteLLM unreachable, 401): `Orphan` (default) drains the finalizer
 anyway; `Delete` blocks until the removal is confirmed. See
 [Deletion Semantics](../concepts/deletion-semantics.md).
 
-Deleting a toolset does **not** cascade to the teams that granted it — their
-`object_permission.mcp_toolsets` keeps the now-dangling UUID until the Team CR
-reconciles again.
+Deleting a toolset does **not** cascade to the keys that granted it — their
+`object_permission.mcp_toolsets` keeps the now-dangling UUID.

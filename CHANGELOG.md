@@ -7,7 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ⚠ BREAKING
+- **`LiteLLMTeam` is a pure access-group container.** Removed
+  `spec.permission`, `spec.params` and `spec.secrets`; added
+  `spec.accessGroups` (`LiteLLMAccessGroup` names → `access_group_ids`). Every
+  team is projected closed — `models: ["no-default-models"]`, null-UUID
+  `agents`, `[]` for all MCP fields — and only attached access groups open it.
+  Move grants into `LiteLLMAccessGroup` (`models`, `modelGroups`, `mcpServers`,
+  `mcpServerGroups`, `agents`, `agentGroups`); `permission.mcpGroups` becomes
+  `mcpServerGroups`. See `docs/user-guide/team.md` § "Migrating from
+  `spec.permission`". Release as a minor bump: a floating `0.8.X` pin must not
+  pick it up before the manifests change.
+- **MCP toolsets can no longer be granted through a team** — LiteLLM access
+  groups have no toolset field (verified 1.102.0). `reason=ToolsetNotFound` is
+  gone.
+- **Deny sentinel `__deny_all__` → `no-default-models`**, LiteLLM's own
+  sentinel, which its model catalogs drop.
+
 ### Added
+- **Implicit defaults.** With no CRs the operator keeps LiteLLM team `default`
+  (closed, no access groups) and a unified access group `default` (empty), NOT
+  linked. Declare `LiteLLMTeam/default {accessGroups: [default]}` and
+  `LiteLLMAccessGroup/default` to link and fill them. Deleting either CR falls
+  back to the empty state and keeps the LiteLLM row.
 - **`LiteLLMAccessGroup.spec.modelGroups` and `spec.mcpServerGroups`** — one
   name field and one tag field per dimension. `modelGroups` joins `models` in
   `access_model_names` (LiteLLM expands tags); `mcpServerGroups` expands MCP

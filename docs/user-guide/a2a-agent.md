@@ -114,8 +114,8 @@ spec:
 ```
 
 The operator forwards the selected tags as `agent_access_groups`. Teams reach
-tagged agents through `LiteLLMTeam.spec.permission.agentGroups` or
-`LiteLLMAccessGroup.spec.agentGroups`. The LiteLLM startup patch is required
+tagged agents through `LiteLLMAccessGroup.spec.agentGroups`, attached to a
+team via `LiteLLMTeam.spec.accessGroups`. The LiteLLM startup patch is required
 until upstream accepts, persists, and returns the field on `/v1/agents`.
 
 ## Drift detection
