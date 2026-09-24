@@ -600,15 +600,6 @@ func setupAndRun(m *testing.M) int {
 
 	// Phase 6: register the Team field indexer +
 	// TeamReconciler. Mirrors the Phase 3 Model + Phase 5 	// MCPServer + A2AAgent wiring blocks.
-	if err := mgr.GetFieldIndexer().IndexField(
-		ctx,
-		&litellmv1alpha1.LiteLLMTeam{},
-		TeamSecretRefIndexField,
-		IndexTeamSecretRefs,
-	); err != nil {
-		fmt.Fprintf(os.Stderr, "IndexField(Team secrets): %v\n", err)
-		return 1
-	}
 	teamReconciler = &TeamReconciler{
 		Client:            mgr.GetClient(),
 		Scheme:            mgr.GetScheme(),

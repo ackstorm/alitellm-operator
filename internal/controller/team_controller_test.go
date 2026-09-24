@@ -12,7 +12,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -163,7 +162,6 @@ func TestTeamReconciler_CreateOnFirstReconcile_NoBudget(t *testing.T) {
 	})
 
 	cr := teamSampleCR("team-create-nobudget")
-	cr.Spec.Params = runtime.RawExtension{Raw: []byte(`{"models":["gpt-4o"]}`)}
 	if err := k8sClient.Create(ctx, cr); err != nil {
 		t.Fatalf("create Team: %v", err)
 	}
@@ -206,10 +204,10 @@ func TestTeamReconciler_CreateOnFirstReconcile_NoBudget(t *testing.T) {
 	if bd != nil {
 		t.Errorf("body.budget_duration: want nil (JSON null), got %v (type %T)", bd, bd)
 	}
-	// Pass-through key from spec.params (non-overlay).
+	// Closed baseline: no accessGroups → deny-all sentinel.
 	models, _ := body["models"].([]any)
-	if len(models) != 1 {
-		t.Errorf("body.models: want 1 element passed through from spec.params, got %d (%v)", len(models), models)
+	if len(models) != 1 || models[0] != modelDenyAllSentinel {
+		t.Errorf("body.models: want [%s], got %v", modelDenyAllSentinel, models)
 	}
 }
 
@@ -487,85 +485,6 @@ func TestTeamReconciler_AC_T1_BudgetProjection(t *testing.T) {
 // Test 3: UpdateOnDrift (spec.params change)
 // ──────────────────────────────────────────────────────────────────────────
 
-// TestTeamReconciler_UpdateOnDrift_Params — behavior #3.
-// After Synced, mutate spec.params (non-overlay key) → next reconcile
-// issues exactly one POST /team/update; alitellm_operator_drift_corrected_total{action=
-// update_drifted} increments by 1; teamID unchanged.
-//
-// Phase 10 update (TRL-02/TRL-04): the drift-driver key changed from
-// `tpm_limit` (now structural-overlay-controlled — always emits the
-// operator's value, so spec.params mutation would NOT change the wire
-// body) to `models` (non-overlay pass-through). The test still
-// validates the hash-change → UPDATE → identity-preservation
-// invariant; only the user-controlled key shifted.
-func TestTeamReconciler_UpdateOnDrift_Params(t *testing.T) {
-	ctx := context.Background()
-	mockServer.SetMode(mock.ModeHappy)
-	mockServer.ResetCounters()
-	mockServer.ResetRecorded()
-	mockServer.ResetTeams()
-	teamReconciler.ResetImplicitDefaultCache() // Phase 6 cross-suite flake fix (07-CONTEXT.md §Phase-6-flake option α)
-	ensureNoTeam(t, ctx, "team-update-drift")
-	resetConnCacheSnapshot()
-
-	cleanupConn := setupReadyConnectionTeam(t, ctx)
-	t.Cleanup(func() {
-		cleanupConn()
-		ensureNoTeam(t, context.Background(), "team-update-drift")
-	})
-
-	cr := teamSampleCR("team-update-drift")
-	cr.Spec.Params = runtime.RawExtension{Raw: []byte(`{"models":["gpt-4o"]}`)}
-	if err := k8sClient.Create(ctx, cr); err != nil {
-		t.Fatalf("create Team: %v", err)
-	}
-	tm := pollTeamCondition(t, ctx, "team-update-drift", reasonSynced, 30*time.Second)
-	if tm.Status.LastRendered.TeamID == "" {
-		t.Fatalf("Team not Synced within 30s")
-	}
-	originalTeamID := tm.Status.LastRendered.TeamID
-	originalHash := tm.Status.LastRendered.Hash
-
-	before := testutil.ToFloat64(
-		metrics.DriftCorrectedTotal.WithLabelValues("team", "update_drifted"))
-
-	// Mutate spec.params (non-overlay key) → triggers UPDATE.
-	tm.Spec.Params = runtime.RawExtension{Raw: []byte(`{"models":["gpt-4o","claude-3-5-sonnet"]}`)}
-	if err := k8sClient.Update(ctx, tm); err != nil {
-		t.Fatalf("update Team spec.params: %v", err)
-	}
-
-	// Poll for hash change.
-	deadline := time.Now().Add(30 * time.Second)
-	var updated *litellmv1alpha1.LiteLLMTeam
-	for time.Now().Before(deadline) {
-		updated = pollTeamCondition(t, ctx, "team-update-drift", reasonSynced, 5*time.Second)
-		if updated.Status.LastRendered.Hash != originalHash {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	if updated.Status.LastRendered.Hash == originalHash {
-		t.Fatalf("hash unchanged after spec.params mutation; want new hash")
-	}
-	if updated.Status.LastRendered.TeamID != originalTeamID {
-		t.Errorf("teamID changed across UPDATE: was %q, got %q (UPDATE should preserve identity)",
-			originalTeamID, updated.Status.LastRendered.TeamID)
-	}
-
-	after := testutil.ToFloat64(
-		metrics.DriftCorrectedTotal.WithLabelValues("team", "update_drifted"))
-	if delta := after - before; delta < 1 {
-		t.Errorf("alitellm_operator_drift_corrected_total{action=update_drifted}: want +1, got delta=%v", delta)
-	}
-	// Verify the new value made it to the wire.
-	body := mockServer.LastTeamBody("team-update-drift")
-	models, _ := body["models"].([]any)
-	if len(models) != 2 {
-		t.Errorf("body.models after update: want 2 elements, got %d (%v)", len(models), models)
-	}
-}
-
 // ──────────────────────────────────────────────────────────────────────────
 // Test 4: HashEqualNoOp (idempotency)
 // ──────────────────────────────────────────────────────────────────────────
@@ -635,132 +554,6 @@ func projOverrideCount(events []corev1.Event, keyName string) int {
 		}
 	}
 	return n
-}
-
-// TestTeamReconciler_ProjectionOverride_TeamAlias — behavior #6.
-// spec.params contains team_alias: "user-supplied"; reconcile emits at
-// least one Warning Event with reason=ProjectionOverride mentioning
-// team_alias; body.team_alias on the wire is metadata.name (operator
-// overlay wins).
-func TestTeamReconciler_ProjectionOverride_TeamAlias(t *testing.T) {
-	ctx := context.Background()
-	mockServer.SetMode(mock.ModeHappy)
-	mockServer.ResetCounters()
-	mockServer.ResetRecorded()
-	mockServer.ResetTeams()
-	teamReconciler.ResetImplicitDefaultCache() // Phase 6 cross-suite flake fix (07-CONTEXT.md §Phase-6-flake option α)
-	ensureNoTeam(t, ctx, "team-proj-alias")
-	resetConnCacheSnapshot()
-
-	cleanupConn := setupReadyConnectionTeam(t, ctx)
-	t.Cleanup(func() {
-		cleanupConn()
-		ensureNoTeam(t, context.Background(), "team-proj-alias")
-	})
-
-	cr := teamSampleCR("team-proj-alias")
-	cr.Spec.Params = runtime.RawExtension{Raw: []byte(`{"team_alias":"user-supplied"}`)}
-	if err := k8sClient.Create(ctx, cr); err != nil {
-		t.Fatalf("create Team: %v", err)
-	}
-	tm := pollTeamCondition(t, ctx, "team-proj-alias", reasonSynced, 30*time.Second)
-	if tm.Status.LastRendered.TeamID == "" {
-		t.Fatalf("Team not Synced within 30s")
-	}
-	body := mockServer.LastTeamBody("team-proj-alias")
-	if v, _ := body["team_alias"].(string); v != "team-proj-alias" {
-		t.Errorf("body.team_alias: operator overlay must win — want %q, got %v",
-			"team-proj-alias", body["team_alias"])
-	}
-	// Give the event recorder a moment to flush.
-	time.Sleep(500 * time.Millisecond)
-	events := listTeamEvents(ctx, t, "team-proj-alias")
-	if n := projOverrideCount(events, "team_alias"); n < 1 {
-		t.Errorf("ProjectionOverride Event for team_alias: want >=1, got %d", n)
-	}
-}
-
-// TestTeamReconciler_ProjectionOverride_MaxBudget — behavior #7.
-// spec.params contains max_budget: 9999.0 AND spec.budget.limit=500.0;
-// Event emitted mentioning max_budget; body.max_budget on the wire is
-// 500.0 (operator overlay wins).
-func TestTeamReconciler_ProjectionOverride_MaxBudget(t *testing.T) {
-	ctx := context.Background()
-	mockServer.SetMode(mock.ModeHappy)
-	mockServer.ResetCounters()
-	mockServer.ResetRecorded()
-	mockServer.ResetTeams()
-	teamReconciler.ResetImplicitDefaultCache() // Phase 6 cross-suite flake fix (07-CONTEXT.md §Phase-6-flake option α)
-	ensureNoTeam(t, ctx, "team-proj-maxbudget")
-	resetConnCacheSnapshot()
-
-	cleanupConn := setupReadyConnectionTeam(t, ctx)
-	t.Cleanup(func() {
-		cleanupConn()
-		ensureNoTeam(t, context.Background(), "team-proj-maxbudget")
-	})
-
-	cr := teamSampleCR("team-proj-maxbudget")
-	cr.Spec.Budget = &litellmv1alpha1.BudgetSpec{Limit: floatPtr(500.0), Period: "30d"}
-	cr.Spec.Params = runtime.RawExtension{Raw: []byte(`{"max_budget":9999.0}`)}
-	if err := k8sClient.Create(ctx, cr); err != nil {
-		t.Fatalf("create Team: %v", err)
-	}
-	tm := pollTeamCondition(t, ctx, "team-proj-maxbudget", reasonSynced, 30*time.Second)
-	if tm.Status.LastRendered.TeamID == "" {
-		t.Fatalf("Team not Synced within 30s")
-	}
-	body := mockServer.LastTeamBody("team-proj-maxbudget")
-	if v, _ := body["max_budget"].(float64); v != 500.0 {
-		t.Errorf("body.max_budget: operator overlay must win — want 500.0, got %v", body["max_budget"])
-	}
-	time.Sleep(500 * time.Millisecond)
-	events := listTeamEvents(ctx, t, "team-proj-maxbudget")
-	if n := projOverrideCount(events, "max_budget"); n < 1 {
-		t.Errorf("ProjectionOverride Event for max_budget: want >=1, got %d", n)
-	}
-}
-
-// TestTeamReconciler_ProjectionOverride_BudgetDuration — // behavior #8. spec.params contains budget_duration: "1y" AND
-// spec.budget.period="30d"; Event emitted mentioning budget_duration;
-// body.budget_duration on the wire is "30d" (operator overlay wins).
-func TestTeamReconciler_ProjectionOverride_BudgetDuration(t *testing.T) {
-	ctx := context.Background()
-	mockServer.SetMode(mock.ModeHappy)
-	mockServer.ResetCounters()
-	mockServer.ResetRecorded()
-	mockServer.ResetTeams()
-	teamReconciler.ResetImplicitDefaultCache() // Phase 6 cross-suite flake fix (07-CONTEXT.md §Phase-6-flake option α)
-	ensureNoTeam(t, ctx, "team-proj-bdur")
-	resetConnCacheSnapshot()
-
-	cleanupConn := setupReadyConnectionTeam(t, ctx)
-	t.Cleanup(func() {
-		cleanupConn()
-		ensureNoTeam(t, context.Background(), "team-proj-bdur")
-	})
-
-	cr := teamSampleCR("team-proj-bdur")
-	cr.Spec.Budget = &litellmv1alpha1.BudgetSpec{Limit: floatPtr(500.0), Period: "30d"}
-	// Note: budget_duration value in params is a string the CRD's
-	// preserve-unknown-fields accepts.
-	cr.Spec.Params = runtime.RawExtension{Raw: []byte(`{"budget_duration":"1y"}`)}
-	if err := k8sClient.Create(ctx, cr); err != nil {
-		t.Fatalf("create Team: %v", err)
-	}
-	tm := pollTeamCondition(t, ctx, "team-proj-bdur", reasonSynced, 30*time.Second)
-	if tm.Status.LastRendered.TeamID == "" {
-		t.Fatalf("Team not Synced within 30s")
-	}
-	body := mockServer.LastTeamBody("team-proj-bdur")
-	if v, _ := body["budget_duration"].(string); v != "30d" {
-		t.Errorf("body.budget_duration: operator overlay must win — want %q, got %v", "30d", body["budget_duration"])
-	}
-	time.Sleep(500 * time.Millisecond)
-	events := listTeamEvents(ctx, t, "team-proj-bdur")
-	if n := projOverrideCount(events, "budget_duration"); n < 1 {
-		t.Errorf("ProjectionOverride Event for budget_duration: want >=1, got %d", n)
-	}
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -1026,166 +819,6 @@ func TestTeamReconciler_RateLimitsClearing_EmptyBlock(t *testing.T) {
 	}
 }
 
-// TestTeamReconciler_ProjectionOverride_RPMLimit — TRL-05 collision.
-// spec.rateLimits.rpm=6000 + spec.params.rpm_limit=9999. Operator
-// overlay wins (body.rpm_limit=6000) AND ProjectionOverride event
-// emitted naming rpm_limit.
-func TestTeamReconciler_ProjectionOverride_RPMLimit(t *testing.T) {
-	ctx := context.Background()
-	mockServer.SetMode(mock.ModeHappy)
-	mockServer.ResetCounters()
-	mockServer.ResetRecorded()
-	mockServer.ResetTeams()
-	teamReconciler.ResetImplicitDefaultCache()
-	ensureNoTeam(t, ctx, "team-proj-rpm-limit")
-	resetConnCacheSnapshot()
-
-	cleanupConn := setupReadyConnectionTeam(t, ctx)
-	t.Cleanup(func() {
-		cleanupConn()
-		ensureNoTeam(t, context.Background(), "team-proj-rpm-limit")
-	})
-
-	cr := teamSampleCR("team-proj-rpm-limit")
-	cr.Spec.RateLimits = &litellmv1alpha1.RateLimitsSpec{RPM: int32Ptr(6000)}
-	cr.Spec.Params = runtime.RawExtension{Raw: []byte(`{"rpm_limit":9999}`)}
-	if err := k8sClient.Create(ctx, cr); err != nil {
-		t.Fatalf("create Team: %v", err)
-	}
-	tm := pollTeamCondition(t, ctx, "team-proj-rpm-limit", reasonSynced, 30*time.Second)
-	if tm.Status.LastRendered.TeamID == "" {
-		t.Fatalf("Team not Synced within 30s")
-	}
-	body := mockServer.LastTeamBody("team-proj-rpm-limit")
-	if v, _ := body["rpm_limit"].(float64); v != 6000.0 {
-		t.Errorf("body.rpm_limit: operator overlay must win — want 6000, got %v", body["rpm_limit"])
-	}
-	time.Sleep(500 * time.Millisecond)
-	events := listTeamEvents(ctx, t, "team-proj-rpm-limit")
-	if n := projOverrideCount(events, "rpm_limit"); n < 1 {
-		t.Errorf("ProjectionOverride Event for rpm_limit: want >=1, got %d", n)
-	}
-}
-
-// TestTeamReconciler_ProjectionOverride_TPMLimit — TRL-05 collision (mirror).
-func TestTeamReconciler_ProjectionOverride_TPMLimit(t *testing.T) {
-	ctx := context.Background()
-	mockServer.SetMode(mock.ModeHappy)
-	mockServer.ResetCounters()
-	mockServer.ResetRecorded()
-	mockServer.ResetTeams()
-	teamReconciler.ResetImplicitDefaultCache()
-	ensureNoTeam(t, ctx, "team-proj-tpm-limit")
-	resetConnCacheSnapshot()
-
-	cleanupConn := setupReadyConnectionTeam(t, ctx)
-	t.Cleanup(func() {
-		cleanupConn()
-		ensureNoTeam(t, context.Background(), "team-proj-tpm-limit")
-	})
-
-	cr := teamSampleCR("team-proj-tpm-limit")
-	cr.Spec.RateLimits = &litellmv1alpha1.RateLimitsSpec{TPM: int32Ptr(1000000)}
-	cr.Spec.Params = runtime.RawExtension{Raw: []byte(`{"tpm_limit":99999}`)}
-	if err := k8sClient.Create(ctx, cr); err != nil {
-		t.Fatalf("create Team: %v", err)
-	}
-	tm := pollTeamCondition(t, ctx, "team-proj-tpm-limit", reasonSynced, 30*time.Second)
-	if tm.Status.LastRendered.TeamID == "" {
-		t.Fatalf("Team not Synced within 30s")
-	}
-	body := mockServer.LastTeamBody("team-proj-tpm-limit")
-	if v, _ := body["tpm_limit"].(float64); v != 1000000.0 {
-		t.Errorf("body.tpm_limit: operator overlay must win — want 1000000, got %v", body["tpm_limit"])
-	}
-	time.Sleep(500 * time.Millisecond)
-	events := listTeamEvents(ctx, t, "team-proj-tpm-limit")
-	if n := projOverrideCount(events, "tpm_limit"); n < 1 {
-		t.Errorf("ProjectionOverride Event for tpm_limit: want >=1, got %d", n)
-	}
-}
-
-// TestTeamReconciler_ProjectionOverride_RPMLimitType — TRL-05 collision.
-// spec.rateLimits.rpm=6000 (so operator emits rpm_limit_type=
-// "best_effort_throughput") + spec.params.rpm_limit_type="high_priority".
-// Operator hardcoded value wins AND event emitted.
-func TestTeamReconciler_ProjectionOverride_RPMLimitType(t *testing.T) {
-	ctx := context.Background()
-	mockServer.SetMode(mock.ModeHappy)
-	mockServer.ResetCounters()
-	mockServer.ResetRecorded()
-	mockServer.ResetTeams()
-	teamReconciler.ResetImplicitDefaultCache()
-	ensureNoTeam(t, ctx, "team-proj-rpm-type")
-	resetConnCacheSnapshot()
-
-	cleanupConn := setupReadyConnectionTeam(t, ctx)
-	t.Cleanup(func() {
-		cleanupConn()
-		ensureNoTeam(t, context.Background(), "team-proj-rpm-type")
-	})
-
-	cr := teamSampleCR("team-proj-rpm-type")
-	cr.Spec.RateLimits = &litellmv1alpha1.RateLimitsSpec{RPM: int32Ptr(6000)}
-	cr.Spec.Params = runtime.RawExtension{Raw: []byte(`{"rpm_limit_type":"high_priority"}`)}
-	if err := k8sClient.Create(ctx, cr); err != nil {
-		t.Fatalf("create Team: %v", err)
-	}
-	tm := pollTeamCondition(t, ctx, "team-proj-rpm-type", reasonSynced, 30*time.Second)
-	if tm.Status.LastRendered.TeamID == "" {
-		t.Fatalf("Team not Synced within 30s")
-	}
-	body := mockServer.LastTeamBody("team-proj-rpm-type")
-	if v, _ := body["rpm_limit_type"].(string); v != rateLimitTypeBestEffort {
-		t.Errorf("body.rpm_limit_type: operator hardcoded value must win — want %q, got %v",
-			rateLimitTypeBestEffort, body["rpm_limit_type"])
-	}
-	time.Sleep(500 * time.Millisecond)
-	events := listTeamEvents(ctx, t, "team-proj-rpm-type")
-	if n := projOverrideCount(events, "rpm_limit_type"); n < 1 {
-		t.Errorf("ProjectionOverride Event for rpm_limit_type: want >=1, got %d", n)
-	}
-}
-
-// TestTeamReconciler_ProjectionOverride_TPMLimitType — TRL-05 (mirror).
-func TestTeamReconciler_ProjectionOverride_TPMLimitType(t *testing.T) {
-	ctx := context.Background()
-	mockServer.SetMode(mock.ModeHappy)
-	mockServer.ResetCounters()
-	mockServer.ResetRecorded()
-	mockServer.ResetTeams()
-	teamReconciler.ResetImplicitDefaultCache()
-	ensureNoTeam(t, ctx, "team-proj-tpm-type")
-	resetConnCacheSnapshot()
-
-	cleanupConn := setupReadyConnectionTeam(t, ctx)
-	t.Cleanup(func() {
-		cleanupConn()
-		ensureNoTeam(t, context.Background(), "team-proj-tpm-type")
-	})
-
-	cr := teamSampleCR("team-proj-tpm-type")
-	cr.Spec.RateLimits = &litellmv1alpha1.RateLimitsSpec{TPM: int32Ptr(1000000)}
-	cr.Spec.Params = runtime.RawExtension{Raw: []byte(`{"tpm_limit_type":"high_priority"}`)}
-	if err := k8sClient.Create(ctx, cr); err != nil {
-		t.Fatalf("create Team: %v", err)
-	}
-	tm := pollTeamCondition(t, ctx, "team-proj-tpm-type", reasonSynced, 30*time.Second)
-	if tm.Status.LastRendered.TeamID == "" {
-		t.Fatalf("Team not Synced within 30s")
-	}
-	body := mockServer.LastTeamBody("team-proj-tpm-type")
-	if v, _ := body["tpm_limit_type"].(string); v != rateLimitTypeBestEffort {
-		t.Errorf("body.tpm_limit_type: operator hardcoded value must win — want %q, got %v",
-			rateLimitTypeBestEffort, body["tpm_limit_type"])
-	}
-	time.Sleep(500 * time.Millisecond)
-	events := listTeamEvents(ctx, t, "team-proj-tpm-type")
-	if n := projOverrideCount(events, "tpm_limit_type"); n < 1 {
-		t.Errorf("ProjectionOverride Event for tpm_limit_type: want >=1, got %d", n)
-	}
-}
-
 // TestTeamReconciler_RateLimits_NegativeRPM_Rejected — TRL-01 admission gate.
 // Apply a CR with spec.rateLimits.rpm=-1 via the typed Go struct; the
 // API server's OpenAPI Minimum=0 schema constraint rejects with
@@ -1232,84 +865,6 @@ func TestTeamReconciler_RateLimits_NegativeTPM_Rejected(t *testing.T) {
 	if !strings.Contains(err.Error(), "tpm") &&
 		!strings.Contains(err.Error(), "greater than or equal to 0") {
 		t.Errorf("expected rejection message to mention tpm or 'greater than or equal to 0'; got %q", err.Error())
-	}
-}
-
-// ──────────────────────────────────────────────────────────────────────────
-// Test 8: AC-T6 ParamsPassthrough
-// ──────────────────────────────────────────────────────────────────────────
-
-// TestTeamReconciler_AC_T6_ParamsPassthrough — behavior; AC-T6
-// (spec §11). spec.params={tpm_limit:1000000, rpm_limit:6000,
-// tags:["engineering","production"], blocked:false}.
-//
-// Phase 10 update (TRL-02/TRL-05): tpm_limit and rpm_limit are now
-// structural-overlay-controlled — operator overlay wins, forcing them
-// to nil when spec.rateLimits is absent, AND emitting a
-// ProjectionOverride Warning Event per colliding key. tags + blocked
-// remain pass-through (no collision with the 7 overlay keys).
-// blocked=false is dropped from the body per CR-10 / D-7.1-10 (the
-// LiteLLM 1.83.10 403-on-blocked-false workaround at
-// team_controller.go Step 7).
-func TestTeamReconciler_AC_T6_ParamsPassthrough(t *testing.T) {
-	ctx := context.Background()
-	mockServer.SetMode(mock.ModeHappy)
-	mockServer.ResetCounters()
-	mockServer.ResetRecorded()
-	mockServer.ResetTeams()
-	teamReconciler.ResetImplicitDefaultCache() // Phase 6 cross-suite flake fix (07-CONTEXT.md §Phase-6-flake option α)
-	ensureNoTeam(t, ctx, "team-passthrough-ac-t6")
-	resetConnCacheSnapshot()
-
-	cleanupConn := setupReadyConnectionTeam(t, ctx)
-	t.Cleanup(func() {
-		cleanupConn()
-		ensureNoTeam(t, context.Background(), "team-passthrough-ac-t6")
-	})
-
-	cr := teamSampleCR("team-passthrough-ac-t6")
-	cr.Spec.Params = runtime.RawExtension{
-		Raw: []byte(`{"tpm_limit":1000000,"rpm_limit":6000,"tags":["engineering","production"],"blocked":false}`),
-	}
-	if err := k8sClient.Create(ctx, cr); err != nil {
-		t.Fatalf("create Team: %v", err)
-	}
-	tm := pollTeamCondition(t, ctx, "team-passthrough-ac-t6", reasonSynced, 30*time.Second)
-	if tm.Status.LastRendered.TeamID == "" {
-		t.Fatalf("Team not Synced within 30s")
-	}
-	body := mockServer.LastTeamBody("team-passthrough-ac-t6")
-	if body == nil {
-		t.Fatalf("LastTeamBody is nil")
-	}
-	// Phase 10: tpm_limit and rpm_limit are operator-overlaid; absent
-	// spec.rateLimits → both forced to nil on the wire.
-	if v, ok := body["tpm_limit"]; !ok || v != nil {
-		t.Errorf("body.tpm_limit: operator overlay must force nil when spec.rateLimits absent — got ok=%v v=%v", ok, v)
-	}
-	if v, ok := body["rpm_limit"]; !ok || v != nil {
-		t.Errorf("body.rpm_limit: operator overlay must force nil when spec.rateLimits absent — got ok=%v v=%v", ok, v)
-	}
-	// Pass-through keys (no collision with overlay set).
-	tags, _ := body["tags"].([]any)
-	if len(tags) != 2 {
-		t.Errorf("body.tags: want 2 elements (pass-through), got %d (%v)", len(tags), tags)
-	}
-	// blocked=false is dropped by Step 7 CR-10 workaround; don't assert
-	// the key is present.
-	if v, _ := body["team_alias"].(string); v != "team-passthrough-ac-t6" {
-		t.Errorf("body.team_alias: want bare name, got %v", body["team_alias"])
-	}
-	// Phase 10: ProjectionOverride events MUST fire for both rate-limit
-	// colliding keys (the user set both in spec.params; the operator
-	// overlay wins; the Event surfaces the collision).
-	time.Sleep(500 * time.Millisecond)
-	events := listTeamEvents(ctx, t, "team-passthrough-ac-t6")
-	if n := projOverrideCount(events, "tpm_limit"); n < 1 {
-		t.Errorf("ProjectionOverride Event for tpm_limit: want >=1, got %d", n)
-	}
-	if n := projOverrideCount(events, "rpm_limit"); n < 1 {
-		t.Errorf("ProjectionOverride Event for rpm_limit: want >=1, got %d", n)
 	}
 }
 
@@ -1437,118 +992,9 @@ func TestTeamReconciler_401FastPath(t *testing.T) {
 // Test 11: SecretSubstitution
 // ──────────────────────────────────────────────────────────────────────────
 
-// TestTeamReconciler_SecretSubstitution — behavior #11.
-// spec.params={"api_key":"{{API_KEY}}"} + spec.secrets=[{as:API_KEY,
-// secretRef:{name:s1, key:k}}] + Secret s1.k="resolved-value". POST
-// /team/new body.api_key == "resolved-value".
-func TestTeamReconciler_SecretSubstitution(t *testing.T) {
-	ctx := context.Background()
-	mockServer.SetMode(mock.ModeHappy)
-	mockServer.ResetCounters()
-	mockServer.ResetRecorded()
-	mockServer.ResetTeams()
-	teamReconciler.ResetImplicitDefaultCache() // Phase 6 cross-suite flake fix (07-CONTEXT.md §Phase-6-flake option α)
-	ensureNoTeam(t, ctx, "team-secret-sub")
-	resetConnCacheSnapshot()
-
-	secretName := "team-secret-sub-secret"
-	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      secretName,
-			Namespace: WatchNamespace,
-		},
-		Data: map[string][]byte{"k": []byte("resolved-value")},
-	}
-	_ = k8sClient.Delete(ctx, secret)
-	time.Sleep(50 * time.Millisecond)
-	if err := k8sClient.Create(ctx, secret); err != nil {
-		t.Fatalf("create Secret: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = k8sClient.Delete(context.Background(), secret)
-	})
-
-	cleanupConn := setupReadyConnectionTeam(t, ctx)
-	t.Cleanup(func() {
-		cleanupConn()
-		ensureNoTeam(t, context.Background(), "team-secret-sub")
-	})
-
-	cr := teamSampleCR("team-secret-sub")
-	cr.Spec.Params = runtime.RawExtension{Raw: []byte(`{"api_key":"{{API_KEY}}"}`)}
-	cr.Spec.Secrets = []litellmv1alpha1.SecretSubstitution{
-		{
-			As: "API_KEY",
-			SecretRef: litellmv1alpha1.SecretKeyRef{
-				Name: secretName,
-				Key:  "k",
-			},
-		},
-	}
-	if err := k8sClient.Create(ctx, cr); err != nil {
-		t.Fatalf("create Team: %v", err)
-	}
-
-	tm := pollTeamCondition(t, ctx, "team-secret-sub", reasonSynced, 30*time.Second)
-	if tm.Status.LastRendered.TeamID == "" {
-		t.Fatalf("Team not Synced within 30s")
-	}
-	body := mockServer.LastTeamBody("team-secret-sub")
-	if v, _ := body["api_key"].(string); v != "resolved-value" {
-		t.Errorf("body.api_key: want substituted value %q, got %v", "resolved-value", body["api_key"])
-	}
-
-	// AC-S1 carry-forward: secret value must NOT appear in
-	// status.conditions[].message (narrow check; redaction canary
-	// suite covers the broader log+events surface).
-	c := apimeta.FindStatusCondition(tm.Status.Conditions, conditionTypeReady)
-	if c != nil && strings.Contains(c.Message, "resolved-value") {
-		t.Errorf("§9.1 FAIL: secret value leaked into status.conditions[Ready].message=%q", c.Message)
-	}
-}
-
 // ──────────────────────────────────────────────────────────────────────────
 // Test 12: SecretNotFound
 // ──────────────────────────────────────────────────────────────────────────
-
-// TestTeamReconciler_SecretNotFound — behavior #12.
-// spec.params={"x":"{{MISSING}}"} with NO matching spec.secrets[].as.
-// Ready=False reason=SecretNotFound; zero LiteLLM mutation calls.
-func TestTeamReconciler_SecretNotFound(t *testing.T) {
-	ctx := context.Background()
-	mockServer.SetMode(mock.ModeHappy)
-	mockServer.ResetCounters()
-	mockServer.ResetRecorded()
-	mockServer.ResetTeams()
-	teamReconciler.ResetImplicitDefaultCache() // Phase 6 cross-suite flake fix (07-CONTEXT.md §Phase-6-flake option α)
-	ensureNoTeam(t, ctx, "team-secret-missing")
-	resetConnCacheSnapshot()
-
-	cleanupConn := setupReadyConnectionTeam(t, ctx)
-	t.Cleanup(func() {
-		cleanupConn()
-		ensureNoTeam(t, context.Background(), "team-secret-missing")
-	})
-
-	cr := teamSampleCR("team-secret-missing")
-	cr.Spec.Params = runtime.RawExtension{Raw: []byte(`{"x":"{{MISSING}}"}`)}
-	if err := k8sClient.Create(ctx, cr); err != nil {
-		t.Fatalf("create Team: %v", err)
-	}
-
-	tm := pollTeamCondition(t, ctx, "team-secret-missing", "SecretNotFound", 30*time.Second)
-	c := apimeta.FindStatusCondition(tm.Status.Conditions, conditionTypeReady)
-	if c == nil || c.Reason != "SecretNotFound" {
-		t.Fatalf("Ready.Reason: want SecretNotFound, got %+v", c)
-	}
-	if !strings.Contains(c.Message, "MISSING") {
-		t.Errorf("Ready.Message: want substring 'MISSING', got %q", c.Message)
-	}
-
-	if got := mockServer.MutationsByTeamAlias("team-secret-missing"); got != 0 {
-		t.Errorf("SecretNotFound: want 0 LiteLLM mutations, got %d", got)
-	}
-}
 
 // ──────────────────────────────────────────────────────────────────────────
 // Test 13: AC-DC1 HandManagedCoexistence (team slice)
@@ -1991,6 +1437,14 @@ func TestTeamReconciler_ImplicitDefault_BodyShape_ClearsRateLimits(t *testing.T)
 	}
 	if _, ok := body["tpm_limit_type"]; ok {
 		t.Errorf("CR-01 regression: tpm_limit_type PRESENT on implicit-default CREATE body; want absent")
+	}
+
+	// The implicit default is an empty container: closed, no access groups.
+	if m, _ := body["models"].([]any); len(m) != 1 || m[0] != modelDenyAllSentinel {
+		t.Errorf("implicit default models: want [%s], got %v", modelDenyAllSentinel, body["models"])
+	}
+	if ids, ok := body["access_group_ids"].([]any); !ok || len(ids) != 0 {
+		t.Errorf("implicit default access_group_ids: want [], got %v", body["access_group_ids"])
 	}
 }
 
@@ -2845,143 +2299,11 @@ func TestTeamReconciler_AC_T3_DeleteConnectionUnavailable(t *testing.T) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// spec.permission projection tests
+// spec.accessGroups + closed-baseline tests
 // ──────────────────────────────────────────────────────────────────────────
 
-// TestTeamPermission_ProjectsModelsAndMcp — a present permission block with
-// models/modelGroups/mcpServers/mcpGroups projects onto the top-level `models`
-// list and `object_permission` on the POST /team/new body.
-func TestTeamPermission_ProjectsModelsAndMcp(t *testing.T) {
-	ctx := context.Background()
-	mockServer.SetMode(mock.ModeHappy)
-	mockServer.ResetCounters()
-	mockServer.ResetRecorded()
-	mockServer.ResetTeams()
-	mockServer.ResetAgents()
-	teamReconciler.ResetImplicitDefaultCache()
-	ensureNoTeam(t, ctx, "team-perm-models")
-	resetConnCacheSnapshot()
-
-	cleanupConn := setupReadyConnectionTeam(t, ctx)
-	t.Cleanup(func() {
-		cleanupConn()
-		ensureNoTeam(t, context.Background(), "team-perm-models")
-	})
-
-	cr := teamSampleCR("team-perm-models")
-	cr.Spec.Permission = &litellmv1alpha1.PermissionSpec{
-		Models:      []string{"gpt-4o"},
-		ModelGroups: []string{"anthropic"},
-		McpServers:  []string{"hindsight"},
-		McpGroups:   []string{"team-a"},
-	}
-	if err := k8sClient.Create(ctx, cr); err != nil {
-		t.Fatalf("create Team: %v", err)
-	}
-
-	pollTeamCondition(t, ctx, "team-perm-models", reasonSynced, 30*time.Second)
-	body := mockServer.LastTeamBody("team-perm-models")
-	if body == nil {
-		t.Fatalf("LastTeamBody nil")
-	}
-	models, _ := body["models"].([]any)
-	if len(models) != 2 {
-		t.Errorf("body.models: want [gpt-4o anthropic], got %v", body["models"])
-	}
-	op, ok := body["object_permission"].(map[string]any)
-	if !ok {
-		t.Fatalf("body.object_permission: want map, got %T (%v)", body["object_permission"], body["object_permission"])
-	}
-	if mcp, _ := op["mcp_servers"].([]any); len(mcp) != 1 || mcp[0] != "hindsight" {
-		t.Errorf("object_permission.mcp_servers: got %v", op["mcp_servers"])
-	}
-	if grp, _ := op["mcp_access_groups"].([]any); len(grp) != 1 || grp[0] != "team-a" {
-		t.Errorf("object_permission.mcp_access_groups: got %v", op["mcp_access_groups"])
-	}
-}
-
-// TestTeamPermission_ResolvesAgentNamesToUUIDs — agent NAMES in the block are
-// resolved to agent_id UUIDs (via GET /v1/agents) on the projected body.
-func TestTeamPermission_ResolvesAgentNamesToUUIDs(t *testing.T) {
-	ctx := context.Background()
-	mockServer.SetMode(mock.ModeHappy)
-	mockServer.ResetCounters()
-	mockServer.ResetRecorded()
-	mockServer.ResetTeams()
-	mockServer.ResetAgents()
-	teamReconciler.ResetImplicitDefaultCache()
-	ensureNoTeam(t, ctx, "team-perm-agents")
-	resetConnCacheSnapshot()
-
-	// Register the agent in the mock so GET /v1/agents resolves it.
-	agentID := mockServer.AddHandManagedAgent("planner")
-
-	cleanupConn := setupReadyConnectionTeam(t, ctx)
-	t.Cleanup(func() {
-		cleanupConn()
-		ensureNoTeam(t, context.Background(), "team-perm-agents")
-	})
-
-	cr := teamSampleCR("team-perm-agents")
-	cr.Spec.Permission = &litellmv1alpha1.PermissionSpec{Agents: []string{"planner"}}
-	if err := k8sClient.Create(ctx, cr); err != nil {
-		t.Fatalf("create Team: %v", err)
-	}
-
-	pollTeamCondition(t, ctx, "team-perm-agents", reasonSynced, 30*time.Second)
-	body := mockServer.LastTeamBody("team-perm-agents")
-	op, ok := body["object_permission"].(map[string]any)
-	if !ok {
-		t.Fatalf("object_permission: want map, got %T", body["object_permission"])
-	}
-	agents, _ := op["agents"].([]any)
-	if len(agents) != 1 || agents[0] != agentID {
-		t.Errorf("object_permission.agents: want [%s] (resolved UUID), got %v", agentID, op["agents"])
-	}
-	// The block omits models → deny-by-default: the outgoing body carries the
-	// deny-all sentinel, not an empty list (which would fail OPEN in LiteLLM).
-	if m, _ := body["models"].([]any); len(m) != 1 || m[0] != modelDenyAllSentinel {
-		t.Errorf("body.models: want deny-all sentinel [%s] (block omits models), got %v", modelDenyAllSentinel, body["models"])
-	}
-}
-
-// TestTeamPermission_AgentNotFoundRequeues — an agent name absent from
-// GET /v1/agents parks the Team Ready=False/AgentNotFound (no /team/new).
-func TestTeamPermission_AgentNotFoundRequeues(t *testing.T) {
-	ctx := context.Background()
-	mockServer.SetMode(mock.ModeHappy)
-	mockServer.ResetCounters()
-	mockServer.ResetRecorded()
-	mockServer.ResetTeams()
-	mockServer.ResetAgents()
-	teamReconciler.ResetImplicitDefaultCache()
-	ensureNoTeam(t, ctx, "team-perm-ghost")
-	resetConnCacheSnapshot()
-
-	cleanupConn := setupReadyConnectionTeam(t, ctx)
-	t.Cleanup(func() {
-		cleanupConn()
-		ensureNoTeam(t, context.Background(), "team-perm-ghost")
-	})
-
-	cr := teamSampleCR("team-perm-ghost")
-	cr.Spec.Permission = &litellmv1alpha1.PermissionSpec{Agents: []string{"ghost"}}
-	if err := k8sClient.Create(ctx, cr); err != nil {
-		t.Fatalf("create Team: %v", err)
-	}
-
-	tm := pollTeamCondition(t, ctx, "team-perm-ghost", reasonAgentNotFound, 30*time.Second)
-	c := apimeta.FindStatusCondition(tm.Status.Conditions, conditionTypeReady)
-	if c == nil || c.Status != metav1.ConditionFalse || c.Reason != reasonAgentNotFound {
-		t.Fatalf("Ready condition: want False/AgentNotFound, got %+v", c)
-	}
-	if got := mockServer.MutationsByTeamAlias("team-perm-ghost"); got != 0 {
-		t.Errorf("MutationsByTeamAlias: want 0 (parked before /team/new), got %d", got)
-	}
-}
-
 // TestTeamPermission_ResolvesAccessGroupNamesToIDs — access-group NAMES in the
-// block are resolved to access_group_id UUIDs (via GET /v1/access_group) and
+// spec.accessGroups are resolved to access_group_id UUIDs (via GET /v1/access_group) and
 // land on the TOP-LEVEL access_group_ids, never inside object_permission.
 func TestTeamPermission_ResolvesAccessGroupNamesToIDs(t *testing.T) {
 	ctx := context.Background()
@@ -3005,7 +2327,7 @@ func TestTeamPermission_ResolvesAccessGroupNamesToIDs(t *testing.T) {
 	})
 
 	cr := teamSampleCR("team-perm-ag")
-	cr.Spec.Permission = &litellmv1alpha1.PermissionSpec{AccessGroups: []string{"shared-tier"}}
+	cr.Spec.AccessGroups = []string{"shared-tier"}
 	if err := k8sClient.Create(ctx, cr); err != nil {
 		t.Fatalf("create Team: %v", err)
 	}
@@ -3056,7 +2378,7 @@ func TestTeamPermission_AccessGroupNotFoundRequeues(t *testing.T) {
 	})
 
 	cr := teamSampleCR("team-perm-ag-ghost")
-	cr.Spec.Permission = &litellmv1alpha1.PermissionSpec{AccessGroups: []string{"ghost-group"}}
+	cr.Spec.AccessGroups = []string{"ghost-group"}
 	if err := k8sClient.Create(ctx, cr); err != nil {
 		t.Fatalf("create Team: %v", err)
 	}
@@ -3071,160 +2393,47 @@ func TestTeamPermission_AccessGroupNotFoundRequeues(t *testing.T) {
 	}
 }
 
-// TestTeamPermission_OverridesParamsModels — a permission block deletes a
-// colliding spec.params.models key (permission wins).
-func TestTeamPermission_OverridesParamsModels(t *testing.T) {
+// TestTeam_ClosedBaselineWithoutGroups — a team with no accessGroups is
+// projected fully closed; the fail-open fields carry their sentinels and every
+// fail-closed field is an explicit [].
+func TestTeam_ClosedBaselineWithoutGroups(t *testing.T) {
 	ctx := context.Background()
 	mockServer.SetMode(mock.ModeHappy)
 	mockServer.ResetCounters()
 	mockServer.ResetRecorded()
 	mockServer.ResetTeams()
-	mockServer.ResetAgents()
+	mockServer.ResetAccessGroups()
 	teamReconciler.ResetImplicitDefaultCache()
-	ensureNoTeam(t, ctx, "team-perm-override")
+	ensureNoTeam(t, ctx, "team-closed")
 	resetConnCacheSnapshot()
 
 	cleanupConn := setupReadyConnectionTeam(t, ctx)
 	t.Cleanup(func() {
 		cleanupConn()
-		ensureNoTeam(t, context.Background(), "team-perm-override")
+		ensureNoTeam(t, context.Background(), "team-closed")
 	})
 
-	cr := teamSampleCR("team-perm-override")
-	cr.Spec.Params = runtime.RawExtension{Raw: []byte(`{"models":["stale-from-params"]}`)}
-	cr.Spec.Permission = &litellmv1alpha1.PermissionSpec{Models: []string{"gpt-4o"}}
-	if err := k8sClient.Create(ctx, cr); err != nil {
+	if err := k8sClient.Create(ctx, teamSampleCR("team-closed")); err != nil {
 		t.Fatalf("create Team: %v", err)
 	}
-
-	pollTeamCondition(t, ctx, "team-perm-override", reasonSynced, 30*time.Second)
-	body := mockServer.LastTeamBody("team-perm-override")
-	models, _ := body["models"].([]any)
-	if len(models) != 1 || models[0] != "gpt-4o" {
-		t.Errorf("body.models: want [gpt-4o] (permission wins over params), got %v", body["models"])
+	pollTeamCondition(t, ctx, "team-closed", reasonSynced, 30*time.Second)
+	body := mockServer.LastTeamBody("team-closed")
+	if body == nil {
+		t.Fatal("LastTeamBody nil")
 	}
-}
-
-// TestTeamPermission_AbsentBlockPassesParamsThrough — with NO permission
-// block, spec.params.models still passes through unchanged (migration path).
-func TestTeamPermission_AbsentBlockPassesParamsThrough(t *testing.T) {
-	ctx := context.Background()
-	mockServer.SetMode(mock.ModeHappy)
-	mockServer.ResetCounters()
-	mockServer.ResetRecorded()
-	mockServer.ResetTeams()
-	mockServer.ResetAgents()
-	teamReconciler.ResetImplicitDefaultCache()
-	ensureNoTeam(t, ctx, "team-perm-absent")
-	resetConnCacheSnapshot()
-
-	cleanupConn := setupReadyConnectionTeam(t, ctx)
-	t.Cleanup(func() {
-		cleanupConn()
-		ensureNoTeam(t, context.Background(), "team-perm-absent")
-	})
-
-	cr := teamSampleCR("team-perm-absent")
-	cr.Spec.Params = runtime.RawExtension{Raw: []byte(`{"models":["passthrough-model"]}`)}
-	// No cr.Spec.Permission.
-	if err := k8sClient.Create(ctx, cr); err != nil {
-		t.Fatalf("create Team: %v", err)
+	if m, _ := body["models"].([]any); len(m) != 1 || m[0] != modelDenyAllSentinel {
+		t.Errorf("models: want [%s], got %v", modelDenyAllSentinel, body["models"])
 	}
-
-	pollTeamCondition(t, ctx, "team-perm-absent", reasonSynced, 30*time.Second)
-	body := mockServer.LastTeamBody("team-perm-absent")
-	models, _ := body["models"].([]any)
-	if len(models) != 1 || models[0] != "passthrough-model" {
-		t.Errorf("body.models: want passthrough [passthrough-model], got %v", body["models"])
-	}
-}
-
-// TestTeamPermission_ShrinkToEmptyRevokes is the security regression for the
-// v0.7.25 fix: when a permission sublist is emptied, the outgoing /team/update
-// body MUST carry that field as [] (an explicit LiteLLM clear), NOT omit it.
-// LiteLLM's per-field merge keeps an OMITTED field's stale value, so omission
-// silently fails to revoke (CR Ready=Synced while access persists). Covers
-// both a non-empty shrink (drop one item) and a shrink-to-empty (clear a
-// field) in the same transition.
-func TestTeamPermission_ShrinkToEmptyRevokes(t *testing.T) {
-	ctx := context.Background()
-	mockServer.SetMode(mock.ModeHappy)
-	mockServer.ResetCounters()
-	mockServer.ResetRecorded()
-	mockServer.ResetTeams()
-	mockServer.ResetAgents()
-	teamReconciler.ResetImplicitDefaultCache()
-	ensureNoTeam(t, ctx, "team-perm-shrink")
-	resetConnCacheSnapshot()
-
-	cleanupConn := setupReadyConnectionTeam(t, ctx)
-	t.Cleanup(func() {
-		cleanupConn()
-		ensureNoTeam(t, context.Background(), "team-perm-shrink")
-	})
-
-	cr := teamSampleCR("team-perm-shrink")
-	cr.Spec.Permission = &litellmv1alpha1.PermissionSpec{
-		McpServers: []string{"a", "b"},
-		McpGroups:  []string{"g1"},
-	}
-	if err := k8sClient.Create(ctx, cr); err != nil {
-		t.Fatalf("create Team: %v", err)
-	}
-	pollTeamCondition(t, ctx, "team-perm-shrink", reasonSynced, 30*time.Second)
-
-	// Transition: drop "b" from mcpServers (non-empty shrink) AND empty
-	// mcpGroups (shrink-to-empty).
-	key := client.ObjectKey{Name: "team-perm-shrink", Namespace: WatchNamespace}
-	var fresh litellmv1alpha1.LiteLLMTeam
-	if err := k8sClient.Get(ctx, key, &fresh); err != nil {
-		t.Fatalf("get Team: %v", err)
-	}
-	fresh.Spec.Permission = &litellmv1alpha1.PermissionSpec{
-		McpServers: []string{"a"},
-		McpGroups:  []string{},
-	}
-	if err := k8sClient.Update(ctx, &fresh); err != nil {
-		t.Fatalf("update Team: %v", err)
-	}
-
-	// Poll until the /team/update body reflects the shrink (mcp_servers len 1).
-	var op map[string]any
-	deadline := time.Now().Add(30 * time.Second)
-	for time.Now().Before(deadline) {
-		if body := mockServer.LastTeamBody("team-perm-shrink"); body != nil {
-			if o, ok := body["object_permission"].(map[string]any); ok {
-				if mcp, _ := o["mcp_servers"].([]any); len(mcp) == 1 {
-					op = o
-					break
-				}
-			}
-		}
-		time.Sleep(200 * time.Millisecond)
-	}
-	if op == nil {
-		t.Fatalf("timed out waiting for shrunk /team/update body")
-	}
-
-	// Non-empty shrink: "b" gone.
-	if mcp, _ := op["mcp_servers"].([]any); len(mcp) != 1 || mcp[0] != "a" {
-		t.Errorf("mcp_servers: want [a] (b revoked), got %v", op["mcp_servers"])
-	}
-	// Shrink-to-empty: the field MUST be present as [] — the security assertion.
-	grp, present := op["mcp_access_groups"]
-	if !present {
-		t.Error("mcp_access_groups ABSENT from /team/update body — an emptied field must be sent as [] to revoke; omitting it lets LiteLLM keep the stale grant")
-	} else if g, _ := grp.([]any); len(g) != 0 {
-		t.Errorf("mcp_access_groups: want [] (cleared), got %v", grp)
-	}
-	// agents is a fail-open field the block never set → deny-by-default: it
-	// carries the null-UUID sentinel (present, non-empty), NOT []. Still emitted
-	// unconditionally (always-emit contract).
+	op, _ := body["object_permission"].(map[string]any)
 	if a, _ := op["agents"].([]any); len(a) != 1 || a[0] != agentDenyAllSentinel {
-		t.Errorf("agents: want deny-all sentinel [%s] (block omits agents), got %v", agentDenyAllSentinel, op["agents"])
+		t.Errorf("object_permission.agents: want null-UUID sentinel, got %v", op["agents"])
 	}
-	// agent_access_groups is fail-closed / no-op → still emitted as [].
-	if _, ok := op["agent_access_groups"]; !ok {
-		t.Error("agent_access_groups ABSENT — always-emit contract requires it present as []")
+	for _, k := range []string{"mcp_servers", "mcp_access_groups", "agent_access_groups", "mcp_toolsets"} {
+		if v, ok := op[k].([]any); !ok || len(v) != 0 {
+			t.Errorf("object_permission.%s: want [], got %v", k, op[k])
+		}
+	}
+	if ids, ok := body["access_group_ids"].([]any); !ok || len(ids) != 0 {
+		t.Errorf("access_group_ids: want [], got %v", body["access_group_ids"])
 	}
 }

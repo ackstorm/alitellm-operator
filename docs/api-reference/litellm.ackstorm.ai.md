@@ -184,10 +184,10 @@ _Appears in:_
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
 | `description` _string_ | Description is free text forwarded to LiteLLM's `description` field. |  |  |
-| `models` _string array_ | Models lists concrete LiteLLM model names, forwarded to<br />access_model_names without resolution. Put model access-group TAGS in<br />ModelGroups instead. |  |  |
-| `modelGroups` _string array_ | ModelGroups lists model access-group TAGS (model_info.access_groups).<br />Unioned with Models into access_model_names; LiteLLM expands tags itself. |  |  |
+| `models` _string array_ | Models lists concrete LiteLLM model names, forwarded to<br />access_model_names without resolution. Put model access-group TAGS in<br />ModelGroups instead (both land in the same LiteLLM field; the split is a<br />convention, not validated — the operator cannot tell a tag from a name).<br />The list is sorted before projection, so declaration order is not preserved. |  |  |
+| `modelGroups` _string array_ | ModelGroups lists model access-group TAGS (model_info.access_groups,<br />e.g. `openai`, `a2a`). Unioned with Models into access_model_names;<br />LiteLLM expands tags itself (verified for inference on v1.99.1). |  |  |
 | `mcpServers` _string array_ | MCPServers is the list of MCP server NAMES this group grants. Each name<br />is resolved to a server_id via GET /v1/mcp/server before projection,<br />because access_mcp_server_ids matches on ids and silently ignores names.<br />An unresolved name parks the CR Ready=False reason=MCPServerNotFound;<br />it is re-driven by the periodic SafetyRelistRunnable, not requeued<br />(ordering dependency with LiteLLMMCPServer CRs — it self-heals once<br />the server exists). |  |  |
-| `mcpServerGroups` _string array_ | MCPServerGroups is a list of MCP server access-group TAGS. Every<br />registered LiteLLMMCPServer in this namespace whose params.mcp_access_groups<br />(or access_groups) contains one of these tags is added to access_mcp_server_ids. |  |  |
+| `mcpServerGroups` _string array_ | MCPServerGroups is a list of MCP server access-group TAGS. Every<br />LiteLLMMCPServer in this namespace whose spec.params.mcp_access_groups<br />(or the access_groups alias) contains one of these tags, and which is<br />registered (status.lastRendered.serverID set), is added to this group's<br />access_mcp_server_ids alongside spec.mcpServers. Re-resolved whenever any<br />LiteLLMMCPServer changes. A tag matching no server is not an error.<br />SECURITY: this widens automatically — tagging a new server grants it to<br />every team that attaches this group. |  |  |
 | `agents` _string array_ | Agents is the list of A2A agent NAMES this group grants. Each name is<br />resolved to an agent_id via GET /v1/agents, same reason and same<br />parking behaviour as MCPServers (reason=AgentNotFound). |  |  |
 | `agentGroups` _string array_ | AgentGroups is a list of A2A agent access-group TAGS. Every<br />LiteLLMA2AAgent in this namespace whose spec.params.agent_access_groups<br />(or the access_groups alias) contains one of these tags, and which is<br />registered (status.lastRendered.agentID set), is added to this group's<br />access_agent_ids alongside spec.agents. Re-resolved whenever any<br />LiteLLMA2AAgent changes. A tag matching no agent is not an error.<br />SECURITY: this widens automatically — tagging a new agent grants it to<br />every team that attaches this group. |  |  |
 | `deletionPolicy` _string_ | DeletionPolicy controls finalizer behavior when the LiteLLM-side DELETE<br />cannot be confirmed. Defaults to "Orphan" per REL-06 anti-storm. | Orphan | Enum: [Orphan Delete] <br /> |
@@ -997,7 +997,7 @@ discovered IDs into a fan-out of Kubernetes LiteLLMModel child CRs in
 WATCH_NAMESPACE. Discovery NEVER calls LiteLLM directly; each child
 reconciles into LiteLLM via the Phase 3 LiteLLMModel controller.
 
-The seven CR-level XValidation rules above enforce the per-type
+The CR-level XValidation rules above enforce the per-type
 required/forbidden field matrix from spec §6.3 (provider table) plus
 the MDISC-05 refresh-interval 1-minute floor. SEC-03 list-uniqueness
 for spec.secrets[].as is deferred to the child LiteLLMModel's runtime check
@@ -1658,6 +1658,10 @@ controller (Pipeline A).
 Provider field matrix (CR-level CEL XValidation, see markers on the
 ModelDiscovery struct below) per spec §6.3 provider table:
 
+	a2a — no upstream: one candidate per REGISTERED LiteLLMA2AAgent in the
+	      namespace; forbids credentialsSecretRef, region, baseUrl. Child
+	      params.model = <A2A_MODEL_PROVIDER, default a2a1>/<agent name>;
+	      default prefix a2a.
 	anthropic — requires credentialsSecretRef; forbids region, baseUrl.
 	bedrock — requires region; forbids baseUrl; credentialsSecretRef optional.
 	elevenlabs — requires credentialsSecretRef; forbids region, baseUrl.
@@ -1810,75 +1814,6 @@ _Appears in:_
 | `lastRendered` _[LastRenderedStatus](#lastrenderedstatus)_ | LastRendered is the operator-side drift source of truth (D-01, D-07).<br />It records the post-substitution rendered state that was last<br />successfully applied to LiteLLM. The reconciler compares the current<br />desired state hash against lastRendered.hash to detect drift without<br />querying the LiteLLM API (bypassing Probe 4a/4b encrypted-response<br />issues — see spec/DEFECTS-1.82.6.md). |  |  |
 
 
-#### PermissionSpec
-
-
-
-PermissionSpec is the optional typed resource-permission sub-block on
-TeamSpec. Unlike the pre-existing `spec.params` passthrough, this block is
-operator-MANAGED and reconciled: the operator OWNS the projected LiteLLM
-`team.models` and `object_permission` fields whenever this block is
-present, so out-of-band UI edits to those fields do NOT survive
-reconciliation (see the TEAM-03/TEAM-04 note on TeamSpec).
-
-Modeled as a pointer at the TeamSpec level (`Permission *PermissionSpec`)
-so whole-block absence (nil) is distinguishable from a present-but-empty
-block. Absent block → the operator manages nothing here and the raw
-`spec.params.models` / `spec.params.object_permission` (if any) pass
-through unchanged (migration path). Present block → the operator projects
-every non-empty sublist and deletes any colliding `spec.params` key
-(emitting a ProjectionOverride Event).
-
-Empty-vs-absent: an ABSENT block (`Permission == nil`) means the operator
-manages nothing here (raw `spec.params` passthrough preserved). A PRESENT
-block means the operator OWNS `models` and ALL FOUR `object_permission`
-sub-fields and emits every one on the wire UNCONDITIONALLY, NEVER omitted.
-This is security-critical: LiteLLM's POST /team/update merges per-field on
-the persistent object_permission row, so an OMITTED field keeps its stale
-value — omitting a shrunk-to-empty list silently fails to revoke access.
-
-Deny-by-default: a PRESENT block is a fail-CLOSED grant. LiteLLM activates
-its `models` / object_permission.agents filter as soon as the list is
-non-empty and never validates the elements exist — but it reads an EMPTY
-list on those two fields as "no filter", so an empty grant fails OPEN (the
-team inherits the full master-key ceiling: verified in prod, a new team with
-models=[] object_permission=None saw all 427 models / 7 agents). To close
-that hole the operator projects a deny-all SENTINEL — `["__deny_all__"]` for
-`models`, the null UUID for `agents` — whenever a present block leaves those
-lists empty. The three fail-CLOSED fields (mcp_servers, mcp_access_groups,
-agent_access_groups) are still sent as an explicit `[]` (a clear). A
-populated list on any field replaces verbatim; the sentinel appears ONLY on
-the empty case of the two fail-open fields.
-
-Projection to LiteLLM (verified empirically against LiteLLM 1.83.10):
-  - Models + ModelGroups → merged into the top-level `models` list (LiteLLM
-    accepts specific model names AND model-access-group names mixed there).
-  - McpServers → object_permission.mcp_servers (LiteLLM resolves name→id).
-  - McpGroups  → object_permission.mcp_access_groups.
-  - Agents     → object_permission.agents. LiteLLM enforces on agent_id
-    UUIDs and SILENTLY IGNORES names, so the operator resolves each name to
-    its agent_id via GET /v1/agents before projecting. An unresolved name
-    (A2A agent not registered yet) requeues the Team with
-    reason=AgentNotFound rather than hard-failing.
-  - AgentGroups → object_permission.agent_access_groups.
-
-
-
-_Appears in:_
-- [TeamSpec](#teamspec)
-
-| Field | Description | Default | Validation |
-| --- | --- | --- | --- |
-| `models` _string array_ | Models is the list of specific LiteLLM model NAMES this team may use.<br />Merged with ModelGroups into the single top-level `models` list. When a<br />present permission block leaves BOTH Models and ModelGroups empty the<br />operator projects the deny-all sentinel `["__deny_all__"]` (fail-closed)<br />— an empty `models` list fails OPEN in LiteLLM. See the deny-by-default<br />note above. |  |  |
-| `modelGroups` _string array_ | ModelGroups is the list of model ACCESS-GROUP names this team may use.<br />Merged with Models into the single top-level `models` list. |  |  |
-| `accessGroups` _string array_ | AccessGroups is the list of LiteLLMAccessGroup NAMES this team is<br />attached to. Each name is resolved to an access_group_id via<br />GET /v1/access_group and projected onto the team's TOP-LEVEL<br />`access_group_ids` — NOT onto object_permission.<br />Distinct from ModelGroups: that field carries legacy model-TAG names<br />and merges into `models`. This one carries unified access-group names<br />from the /v1/access_group object family. The two namespaces are<br />disjoint (a unified group does not appear in /access_group/list).<br />SECURITY: an attached group only ADDS. A group granting a model<br />OVERRIDES this team's deny-by-default sentinel — verified 2026-08-06<br />on LiteLLM 1.93.0: a team with models:["__deny_all__"] plus an<br />attached group granting a model stops being denied. Treat every<br />attached group as a widening of this team's ceiling.<br />An unresolved name parks the Team Ready=False<br />reason=AccessGroupNotFound and requeues (ordering dependency with<br />LiteLLMAccessGroup CRs, same shape as AgentNotFound). |  |  |
-| `mcpServers` _string array_ | McpServers is the list of specific MCP server NAMES (aliases) this team<br />may use. Projected onto object_permission.mcp_servers; LiteLLM resolves<br />names to server ids automatically. |  |  |
-| `mcpGroups` _string array_ | McpGroups is the list of MCP access-group names this team may use.<br />Projected onto object_permission.mcp_access_groups. |  |  |
-| `agents` _string array_ | Agents is the list of A2A agent NAMES (human-friendly) this team may<br />use. The operator resolves each name to its agent_id UUID via<br />GET /v1/agents before projecting onto object_permission.agents — LiteLLM<br />enforces on UUIDs and ignores names. An unresolved name requeues the<br />Team (reason=AgentNotFound). When a present permission block leaves this<br />list empty the operator projects the null-UUID deny-all sentinel<br />(fail-closed) — an empty agents list fails OPEN in LiteLLM. The sentinel<br />is scoped to the empty case only; it never substitutes for an unresolved<br />name. See the deny-by-default note above. |  |  |
-| `agentGroups` _string array_ | AgentGroups is the list of A2A agent access-group TAGS this team may use.<br />Projected onto object_permission.agent_access_groups. Effective only on a<br />LiteLLM carrying the agent_access_groups patch (gitops<br />patch_agent_access_groups.py) until upstream ships it. |  |  |
-| `mcpToolsets` _string array_ | McpToolsets is the list of LiteLLMMCPToolset NAMES this team may use.<br />The operator resolves each name to its toolset_id UUID via<br />GET /v1/mcp/toolset before projecting onto<br />object_permission.mcp_toolsets — LiteLLM matches on the UUID. An<br />unresolved name requeues the Team (reason=ToolsetNotFound), mirroring<br />the agents ordering dependency.<br />Multiple toolsets are UNIONED by LiteLLM, not last-wins, so listing<br />several here composes their tool grants. There is no access-group<br />concept for toolsets in LiteLLM 1.93.0 — the toolset IS the grouping<br />primitive, and listing several here is the group.<br />NO deny-all sentinel: unlike `models` and `agents`, LiteLLM's toolset<br />check is fail-CLOSED ("None means no grants configured → deny"), so an<br />empty list correctly grants nothing and is emitted as a plain `[]`. |  |  |
-
-
 #### RateLimitsSpec
 
 
@@ -1988,7 +1923,6 @@ _Appears in:_
 - [MCPServerSpec](#mcpserverspec)
 - [ModelDiscoverySpec](#modeldiscoveryspec)
 - [ModelSpec](#modelspec)
-- [TeamSpec](#teamspec)
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
@@ -2046,7 +1980,7 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `hash` _string_ | Hash is the SHA-256 hex of the RFC 8785-canonicalized merged<br />post-substitution body (`spec.params` merged with the seven operator<br />overlays `\{team_alias, max_budget, budget_duration, rpm_limit,<br />tpm_limit, rpm_limit_type, tpm_limit_type\}` — the two `*_type` keys<br />are conditional-add per Feature 01 §2.1, so the hash incorporates<br />5–7 overlay keys depending on which `*_limit` leaves are non-nil).<br />An empty hash indicates the Team has not yet been successfully<br />reconciled (Phase 3 D-01, Phase 5 D-03). |  |  |
+| `hash` _string_ | Hash is the SHA-256 hex of the RFC 8785-canonicalized rendered body<br />(team_alias, budget + rate-limit keys, the closed baseline and the<br />resolved access_group_ids).<br />An empty hash indicates the Team has not yet been successfully<br />reconciled (Phase 3 D-01, Phase 5 D-03). |  |  |
 | `teamID` _string_ | TeamID is the LiteLLM-assigned UUID (`team_id`) for this team<br />entry. Pinned per Phase 3 D-04 + Phase 5 D-02 so the reconciler<br />can call `POST /team/delete` (with body `\{"team_ids": [.]\}`)<br />directly on the finalizer path without re-resolving by alias. On<br />first reconcile, resolved via `ListTeamsByAlias` + smallest-<br />`team_id` duplicate rule from spec §7.1.<br />Diverges from spec §6.7 (silent on persistence — the spec says<br />"the operator resolves the LiteLLM team ID by alias" on deletion;<br />pinning saves the list call). Documented in<br />`spec/DEFECTS-1.82.6.md` row `DEF-§6.4/§6.6-ID-PERSIST` (Team is<br />the third member of the ID-pin family). |  |  |
 | `at` _[Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#time-v1-meta)_ | At is the timestamp of the last SUCCESSFUL render (NOT every<br />reconcile attempt — transient failures do not update this field). |  |  |
 
@@ -2055,79 +1989,18 @@ _Appears in:_
 
 
 
-TeamSpec defines the desired state of Team per spec §6.7 (`_FINALv3` shape).
+TeamSpec defines the desired state of a LiteLLM team.
 
-TEAM-01: a user can declare a Team CR that projects a LiteLLM team alias
-(taken bare-from-`metadata.name`, no `team-` prefix) plus an optional
-budget. `metadata.name` IS the LiteLLM `team_alias` — there is no
-`spec.alias` and no overlay-metadata indirection.
+A LiteLLMTeam is a CONTAINER, not a grant: it holds budget / rate limits and
+attaches unified access groups. The operator always projects a fully closed
+team (models ["no-default-models"], null-UUID agents, [] for every MCP
+field) and access is opened ONLY by the attached groups, so what a team can
+reach is defined entirely by its LiteLLMAccessGroup CRs.
 
-TEAM-02: `spec.budget.limit` (USD float64, pointer so absence → null
-on wire) and `spec.budget.period` (duration string, CEL-validated against
-`^[0-9]+[smhd]$`) project verbatim onto LiteLLM's `max_budget` and
-`budget_duration` fields. Whole-block `spec.budget` absence clears BOTH
-LiteLLM fields by emitting explicit nulls in the `POST /team/update` body
-(§6.7 "Clearing budget" + §5.1 wholesale-replace, Q10).
+`metadata.name` IS the LiteLLM `team_alias` (and the `team_id` on CREATE).
 
-TEAM-03: TeamSpec carries EXACTLY four fields — `Budget`,
-`RateLimits`, `Params`, `Secrets` — and explicitly omits the
-following Go-level fields that `_FINALv3` removed from earlier
-scaffolds (spec changelog lines 37–38):
-- resource gating projecting to LiteLLM `models` and
-`object_permission.*` is now MANAGED via the typed `spec.permission`
-sub-block (see PermissionSpec). This REVERSES the original _FINALv3
-delegation: when `spec.permission` is present the operator OWNS those
-LiteLLM fields, so out-of-band UI edits to `models` / `object_permission`
-do NOT survive reconciliation. When the block is ABSENT the original
-delegated/passthrough behavior is preserved (raw `spec.params.models` /
-`spec.params.object_permission` forward unchanged).
-- any team-membership field projecting to LiteLLM
-`members_with_roles`: user-to-team assignment is delegated to an
-external system, not represented in GitOps. Spec §6.7 "Semantics".
-- any access-control field projecting to LiteLLM `object_permission`
-or per-team-member permissions: unmanaged LiteLLM Team fields per
-spec §5.1 + §7.4.
-- any overlay naming field — the bare `metadata.name` IS the
-`team_alias`; no two-level naming indirection.
-
-TEAM-04: `spec.params` is a JSON pass-through bag
-(x-kubernetes-preserve-unknown-fields: true) merged into the LiteLLM
-`POST /team/new` / `POST /team/update` body at the top level of
-`NewTeamRequest`. The seven operator structural overlays
-(`team_alias`, `max_budget`, `budget_duration`, `rpm_limit`,
-`tpm_limit`, `rpm_limit_type`, `tpm_limit_type`) WIN over
-`spec.params` per spec §5.1 + Feature 01 §2.1 (typed-field overlay
-tier) — collisions emit a `reason=ProjectionOverride` Event from the
-reconciler (06-02 + Phase 10). `members_with_roles` remains unmanaged if
-placed inside `params`. `models` and `object_permission` inside `params`
-are ALSO passthrough-unmanaged ONLY when `spec.permission` is absent; when
-`spec.permission` is present the operator deletes those params keys
-(ProjectionOverride Event) and owns the projected values (see
-PermissionSpec).
-
-`spec.secrets[]` is the standard substitution map (§5.2, Phase 3 D-05)
-shared with Model / MCPServer / A2AAgent; same `{{NAME}}` placeholder
-semantics inside `params` string-typed leaves.
-
-Phase 10 (TRL-01..TRL-07) adds `spec.rateLimits.{rpm,tpm}` — a typed
-sub-block parallel to `spec.budget`, projecting onto top-level `rpm_limit`
-and `tpm_limit` (with operator-hardcoded `rpm_limit_type` /
-`tpm_limit_type` overlays — see Feature 01 §1.2/§1.3 for why the *_type
-fields are not exposed as CR knobs). Pointer-modeled (so `0` is
-distinguishable from omitted), an OpenAPI minimum-0 schema constraint
-admits only non-negative values, and clearing follows the same
-explicit-null contract as Budget (§6.7 + Feature 01 §2.1). The 4 new
-top-level overlay keys join the existing 3 (`team_alias`, `max_budget`,
-`budget_duration`) for 7 structural overlays total — worst-case 7
-ProjectionOverride Warning Events per reconcile when `spec.params`
-collides on all 7 keys.
-
-Forward-reference (NOT codified in this type): implements the
-`Team/default` carve-out — synthetic reconcile on manager start +
-30-min safety re-list, plus deletion protection (`POST /team/delete`
-suppressed when `metadata.name == "default"` — operator re-applies the
-implicit empty spec instead). implements the finalizer DELETE
-path for non-default teams, keyed on `status.lastRendered.teamID`.
+With no `LiteLLMTeam/default` CR the operator keeps an implicit `default`
+team — closed, no access groups. Deleting the CR falls back to that state.
 
 
 
@@ -2136,11 +2009,9 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
+| `accessGroups` _string array_ | AccessGroups is the list of LiteLLMAccessGroup NAMES this team is<br />attached to, resolved to ids via GET /v1/access_group and projected<br />onto the team's `access_group_ids`. Empty → the team reaches nothing.<br />An unresolved name parks the Team Ready=False reason=AccessGroupNotFound<br />and requeues (ordering dependency with LiteLLMAccessGroup CRs).<br />SECURITY: groups only ADD. Every attached group widens the team. |  |  |
 | `budget` _[BudgetSpec](#budgetspec)_ | Budget is the optional budget sub-block. Modeled as `*BudgetSpec`<br />(pointer) so the reconciler can distinguish whole-block absence<br />from an empty `BudgetSpec\{\}`. When absent, the reconciler emits<br />`max_budget: null` AND `budget_duration: null` on the<br />`POST /team/update` body (spec §6.7 "Clearing budget"). |  |  |
 | `rateLimits` _[RateLimitsSpec](#ratelimitsspec)_ | RateLimits is the optional rate-limits sub-block (per Feature 01 §1,<br />parallel to `spec.budget`). Modeled as `*RateLimitsSpec` (pointer)<br />so the reconciler can distinguish whole-block absence from an empty<br />`RateLimitsSpec\{\}`. When absent (whole-block or empty-struct —<br />mirrors Budget §6.7 precedent), the reconciler emits `rpm_limit:<br />null` AND `tpm_limit: null` on the `POST /team/update` body AND<br />OMITS both `rpm_limit_type` and `tpm_limit_type` keys (Feature 01<br />§2.1). The `*_type` keys are hardcoded to `best_effort_throughput`<br />by the operator whenever the corresponding `*_limit` is non-null —<br />they are never exposed as CR fields (Feature 01 §1.2, §1.3). |  |  |
-| `permission` _[PermissionSpec](#permissionspec)_ | Permission is the optional typed, operator-MANAGED resource-permission<br />sub-block (see PermissionSpec). When present, the operator OWNS the<br />projected LiteLLM `models` and `object_permission` fields and deletes any<br />colliding `spec.params.models` / `spec.params.object_permission` key<br />(emitting a ProjectionOverride Event). When absent, those raw params keys<br />pass through unchanged (migration path). Modeled as a pointer so<br />whole-block absence is distinguishable from an empty block. |  |  |
-| `params` _[RawExtension](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#rawextension-runtime-pkg)_ | Params is a pass-through bag of fields forwarded verbatim to the<br />LiteLLM `POST /team/new` / `POST /team/update` body at the top<br />level of `NewTeamRequest`. Any JSON object is accepted<br />(x-kubernetes-preserve-unknown-fields: true). String-typed leaf<br />values may contain `\{\{NAME\}\}` placeholders resolved from<br />`spec.secrets[]` before the body reaches LiteLLM (§5.2, Phase 3<br />D-05). Non-string leaves are forwarded unchanged (Phase 3 SEC-02<br />carry-forward).<br />The operator NEVER adds, defaults, or removes keys inside this bag<br />— the user's declared keyset IS the desired state. The operator's<br />seven structural overlays (`team_alias`, `max_budget`,<br />`budget_duration`, `rpm_limit`, `tpm_limit`, `rpm_limit_type`,<br />`tpm_limit_type`) ALWAYS win over `spec.params` per spec §5.1 +<br />Feature 01 §2.1; if the user sets any of those keys inside `params`,<br />the reconciler emits a per-key `reason=ProjectionOverride` Event<br />after the merge (worst-case 7 events on one reconcile).<br />On each reconcile, the rendered post-substitution body is hashed<br />(SHA-256) and compared against `status.lastRendered.hash` to detect<br />drift without polling LiteLLM (Phase 3 D-01). |  |  |
-| `secrets` _[SecretSubstitution](#secretsubstitution) array_ | Secrets is the substitution map for resolving `\{\{NAME\}\}`<br />placeholders in `spec.params` string-typed leaves (§5.2, Phase 3<br />D-05). Each entry maps an uppercase NAME (the `as` field) to a<br />Kubernetes Secret key (`secretRef`). Placeholders in the bag are<br />replaced with the resolved plaintext value before the body is<br />forwarded to LiteLLM. Secret material NEVER appears in logs,<br />Events, or `status.conditions[].message` (§9.1, AC-S1 — exercised<br />in envtest redaction canaries).<br />SEC-03 uniqueness of `spec.secrets[].as` values is enforced as a<br />runtime check in the Team reconciler (same pattern as Model plan<br />03-06 and MCPServer — CEL list-uniqueness was deferred<br />to v1beta1). |  |  |
 | `deletionPolicy` _string_ | DeletionPolicy controls finalizer behavior when the LiteLLM-side<br />DELETE cannot be confirmed (LiteLLM unavailable, 401, transient<br />error already retried). Defaults to "Orphan" to preserve REL-06<br />anti-storm: the CR is freed even if the LiteLLM entry may linger.<br />"Delete" blocks finalizer removal until the LiteLLM-side ack<br />succeeds, suitable for GitOps users who must not see "synced"<br />while a backend resource still exists.<br />Annotation override (`litellm.ackstorm.ai/deletion-policy-override`)<br />takes precedence over this field for runtime break-glass without a<br />spec mutation. | Orphan | Enum: [Orphan Delete] <br /> |
 
 

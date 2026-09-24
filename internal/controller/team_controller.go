@@ -5,7 +5,6 @@ package controller
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -14,7 +13,6 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -36,7 +34,6 @@ import (
 	"github.com/ackstorm/alitellm-operator/internal/controller/deletionpolicy"
 	"github.com/ackstorm/alitellm-operator/internal/litellm"
 	"github.com/ackstorm/alitellm-operator/internal/metrics"
-	"github.com/ackstorm/alitellm-operator/internal/substitution"
 )
 
 // teamFinalizer is the finalizer name managed by the LiteLLMTeam reconciler.
@@ -58,24 +55,6 @@ const teamAliasDefault = "default"
 // value supported by LiteLLM 1.83.10 (Feature 01 §2.1). Operator
 // hardcodes it whenever the corresponding *_limit is non-null.
 const rateLimitTypeBestEffort = "best_effort_throughput"
-
-// TeamSecretRefIndexField is the field indexer path registered in
-// cmd/main.go for reverse-mapping Secret names back to Teams that
-// reference them (Phase 3 D-06 pattern carry-forward for SEC-09 rotation
-// propagation). The literal path string is identical to MCPServer's
-// because field indexers are scoped per-type.
-const TeamSecretRefIndexField = ".spec.secrets[*].secretRef.name" // #nosec G101 -- field-selector JSONPath, not a credential
-
-// IndexTeamSecretRefs is the field indexer function for
-// TeamSecretRefIndexField. Mirrors IndexMCPServerSecretRefs verbatim,
-// specialized for the LiteLLMTeam type.
-func IndexTeamSecretRefs(o client.Object) []string {
-	team, ok := o.(*litellmv1alpha1.LiteLLMTeam)
-	if !ok {
-		return nil
-	}
-	return secretRefNames(team.Spec.Secrets)
-}
 
 // Events RBAC marker inheritance (Phase 5 Task 0 audit, recorded
 // in 05-01-SUMMARY.md): the package-wide
@@ -101,38 +80,14 @@ func IndexTeamSecretRefs(o client.Object) []string {
 // non-deleting Teams only.
 // - Step 2: Connection-gating per Phase 3 D-08: !snap.Ready → writeStatus
 // (LiteLLMUnavailable, echo-reason) → return nil. Zero LiteLLM calls.
-// - Step 2.5: SEC-03 uniqueness of spec.secrets[].as values (runtime
-// check mirroring Phase 3 LiteLLMModel / Phase 5).
-// - Step 3: Resolve spec.secrets[] → secretMap. Missing Secret or
-// missing key → SecretNotFound, zero LiteLLM calls.
-// - Step 4: Decode spec.params + single-pass substitution. Team uses
-// single-pass (only spec.params has placeholders — there is no
-// spec.agentCard sibling bag like A2A's D-04 two-pass).
-// - Step 5: SEC-07 UnusedSecretRef Event for each declared `as` not
-// referenced by any {{NAME}} match in spec.params.
-// - Step 6: ProjectionOverride emission for seven structural-overlay
-// collision keys (spec §6.7 + Feature 01 §2.1):
-// (a) team_alias — overlay wins; metadata.name replaces user value.
-// (b) max_budget — overlay wins; spec.budget.limit OR JSON null.
-// (c) budget_duration — overlay wins; spec.budget.period OR JSON null.
-// (d) rpm_limit — overlay wins; spec.rateLimits.rpm OR JSON null.
-// (e) tpm_limit — overlay wins; spec.rateLimits.tpm OR JSON null.
-// (f) rpm_limit_type — overlay hardcodes "best_effort_throughput"
-// iff rpm_limit non-null; key absent on the wire otherwise.
-// (g) tpm_limit_type — overlay hardcodes "best_effort_throughput"
-// iff tpm_limit non-null; key absent on the wire otherwise.
-// team_id is NOT a collision point — TeamSpec has no team_id field, and
-// the overlay is server-assigned on CREATE / pinned-by-status on UPDATE.
-// - Step 7: Build the merged body as map[string]any (NOT a typed struct
-// with `,omitempty` JSON tags — that would drop nil pointers and violate
-// spec §6.7 line 1194's clearing-budget contract
-// which requires explicit null on absent max_budget / budget_duration —
-// and equivalently Feature 01 §2.1 for absent rpm_limit / tpm_limit).
-// Structural overlays applied AFTER copying paramsMap so they always
-// win. 5 keys always-emit (team_alias + max_budget + budget_duration +
-// rpm_limit + tpm_limit), 2 *_type keys conditional-add (omitted when
-// corresponding *_limit is null — encoding/json then drops the key from
-// the wire entirely, per Feature 01 §2.1).
+// - Step 7: Build the body as map[string]any (NOT a typed struct with
+// `,omitempty` — that would drop the explicit nulls the budget / rate-limit
+// clearing contract needs, spec §6.7 line 1194 + Feature 01 §2.1). 5 keys
+// always-emit (team_alias + max_budget + budget_duration + rpm_limit +
+// tpm_limit), 2 *_type keys conditional-add.
+// - Step 7b: Resolve spec.accessGroups → ids (unresolved → park
+// AccessGroupNotFound + requeue) and merge closedTeamGrant: the team is
+// always closed; only attached groups open it.
 // - Step 8: Compute currentRenderedHash (SHA-256 of canonical JSON of
 // the merged body, per Phase 3 D-01).
 // - Step 9: Hash-equal steady-state short-circuit (no mutation when
@@ -161,12 +116,9 @@ type TeamReconciler struct {
 	// Cache is the interface (per Phase 2 D-12) — NEVER the concrete
 	// *connection.Cache. Tests substitute fakes without code change.
 	Cache connection.ConnectionCache
-	// Recorder emits Kubernetes Events on the LiteLLMTeam object —
-	// Normal/UnusedSecretRef (SEC-07) + Warning/ProjectionOverride
-	// (spec §6.7 + Feature 01 §2.1; seven call sites: team_alias,
-	// max_budget, budget_duration, rpm_limit, tpm_limit,
-	// rpm_limit_type, tpm_limit_type). Non-nil in production;
-	// tests pass mgr.GetEventRecorderFor("team-controller").
+	// Recorder emits Kubernetes Events on the LiteLLMTeam object (deletion
+	// ack-missing). Non-nil in production; tests pass
+	// mgr.GetEventRecorderFor("team-controller").
 	Recorder  record.EventRecorder
 	Namespace string
 	Log       logr.Logger
@@ -275,168 +227,12 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return ctrl.Result{}, nil
 	}
 
-	// ─── Step 2.5: SEC-03 uniqueness of spec.secrets[].as values ──────────
-	if msg := checkDuplicateSecretAs(team.Spec.Secrets, "SEC-03: must be unique within a LiteLLMTeam"); msg != "" {
-		if werr := r.writeStatus(ctx, &team, metav1.ConditionFalse, "InvalidConfig", msg); werr != nil {
-			logStatusUpdateErr(logger, werr, "reason", "InvalidConfig")
-		}
-		metrics.ReconcileTotal.WithLabelValues(teamKind, "success").Inc()
-		return ctrl.Result{}, nil
-	}
-
-	// ─── Step 3: Resolve Secrets referenced by spec.secrets[] ─────────────
-	secretMap, missMsg, err := resolveSecretMap(ctx, r.Client, team.Namespace, team.Spec.Secrets)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	if missMsg != "" {
-		if werr := r.writeStatus(ctx, &team, metav1.ConditionFalse, reasonSecretNotFound, missMsg); werr != nil {
-			logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
-		}
-		metrics.ReconcileTotal.WithLabelValues(teamKind, "success").Inc()
-		return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
-	}
-
-	// ─── Step 4: Decode spec.params + single-pass substitution ────────────
-	paramsMap := make(map[string]any)
-	if len(team.Spec.Params.Raw) > 0 {
-		if err := json.Unmarshal(team.Spec.Params.Raw, &paramsMap); err != nil {
-			msg := "spec.params: invalid JSON: " + err.Error()
-			if werr := r.writeStatus(ctx, &team, metav1.ConditionFalse, "InvalidConfig", msg); werr != nil {
-				logStatusUpdateErr(logger, werr, "reason", "InvalidConfig")
-			}
-			return ctrl.Result{}, nil
-		}
-	}
-
-	// Team is single-pass on spec.params (no spec.agentCard sibling bag).
-	referencedParams, missingParams, _ := substitution.Substitute(paramsMap, secretMap)
-	if len(missingParams) > 0 {
-		msg := fmt.Sprintf("placeholder {{%s}} has no matching spec.secrets[].as", missingParams[0])
-		if werr := r.writeStatus(ctx, &team, metav1.ConditionFalse, reasonSecretNotFound, msg); werr != nil {
-			logStatusUpdateErr(logger, werr, "reason", reasonSecretNotFound)
-		}
-		metrics.ReconcileTotal.WithLabelValues(teamKind, "success").Inc()
-		return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
-	}
-
-	// ─── Step 5: SEC-07 UnusedSecretRef detection ──────────────────────────
-	referencedSet := make(map[string]struct{})
-	for _, n := range referencedParams {
-		referencedSet[n] = struct{}{}
-	}
-	for _, entry := range team.Spec.Secrets {
-		if _, ok := referencedSet[entry.As]; !ok {
-			r.Recorder.Eventf(&team, corev1.EventTypeNormal, "UnusedSecretRef",
-				"spec.secrets[].as %q is declared but unreferenced by any {{NAME}} placeholder in spec.params",
-				entry.As)
-		}
-	}
-
-	// ─── Step 6: ProjectionOverride emission (seven collision keys) ──────
+	// ─── Step 7: Build body as map[string]any ─────────────────────────────
 	//
-	// Each Event fires at most once per reconcile pass. Operator structural
-	// overlays ALWAYS win over identically-keyed entries in spec.params per
-	// spec §6.7 + Feature 01 §2.1; the Event surfaces the override for user
-	// observability. The seven call sites MUST each have a DISTINCT message
-	// string so consumers can grep on the colliding key (Phase 5 A2A
-	// pattern; D-06 acceptance of worst-case 7 events per reconcile).
-	//
-	// (1) `team_alias` — user-set spec.params.team_alias is overridden by
-	// metadata.name (the bare-name-as-alias contract).
-	if _, hasUserAlias := paramsMap["team_alias"]; hasUserAlias {
-		r.Recorder.Eventf(&team, corev1.EventTypeWarning, eventReasonProjectionOverride,
-			"key %q overridden by typed-field projection (operator overlays metadata.name per spec §6.7)",
-			"team_alias")
-	}
-	// (2) `max_budget` — user-set spec.params.max_budget is overridden by
-	// spec.budget.limit (operator structural overlay always wins;
-	// absent budget → JSON null per §6.7 line 1194).
-	if _, hasUserMaxBudget := paramsMap["max_budget"]; hasUserMaxBudget {
-		r.Recorder.Eventf(&team, corev1.EventTypeWarning, eventReasonProjectionOverride,
-			"key %q overridden by typed-field projection (operator overlays spec.budget.limit per spec §6.7)",
-			"max_budget")
-	}
-	// (3) `budget_duration` — user-set spec.params.budget_duration is
-	// overridden by spec.budget.period (operator structural overlay
-	// always wins; absent budget → JSON null per §6.7 line 1194).
-	if _, hasUserBudgetDuration := paramsMap["budget_duration"]; hasUserBudgetDuration {
-		r.Recorder.Eventf(&team, corev1.EventTypeWarning, eventReasonProjectionOverride,
-			"key %q overridden by typed-field projection (operator overlays spec.budget.period per spec §6.7)",
-			"budget_duration")
-	}
-	// (4) `rpm_limit` — user-set spec.params.rpm_limit is overridden by
-	// spec.rateLimits.rpm (operator structural overlay always wins;
-	// absent rateLimits → JSON null per Feature 01 §2.1).
-	if _, hasUserRPMLimit := paramsMap["rpm_limit"]; hasUserRPMLimit {
-		r.Recorder.Eventf(&team, corev1.EventTypeWarning, eventReasonProjectionOverride,
-			"key %q overridden by typed-field projection (operator overlays spec.rateLimits.rpm per Feature 01 §2.1)",
-			"rpm_limit")
-	}
-	// (5) `tpm_limit` — user-set spec.params.tpm_limit is overridden by
-	// spec.rateLimits.tpm (operator structural overlay always wins;
-	// absent rateLimits → JSON null per Feature 01 §2.1).
-	if _, hasUserTPMLimit := paramsMap["tpm_limit"]; hasUserTPMLimit {
-		r.Recorder.Eventf(&team, corev1.EventTypeWarning, eventReasonProjectionOverride,
-			"key %q overridden by typed-field projection (operator overlays spec.rateLimits.tpm per Feature 01 §2.1)",
-			"tpm_limit")
-	}
-	// (6) `rpm_limit_type` — user-set spec.params.rpm_limit_type is
-	// overridden by the operator-hardcoded "best_effort_throughput"
-	// value (Feature 01 §1.2 — the *_type fields are not exposed as CR
-	// knobs in v1alpha1; only "best_effort_throughput" is supported).
-	if _, hasUserRPMLimitType := paramsMap["rpm_limit_type"]; hasUserRPMLimitType {
-		r.Recorder.Eventf(&team, corev1.EventTypeWarning, eventReasonProjectionOverride,
-			"key %q overridden by typed-field projection (operator hardcodes best_effort_throughput per Feature 01 §1.2)",
-			"rpm_limit_type")
-	}
-	// (7) `tpm_limit_type` — user-set spec.params.tpm_limit_type is
-	// overridden by the operator-hardcoded "best_effort_throughput"
-	// value (Feature 01 §1.2 — the *_type fields are not exposed as CR
-	// knobs in v1alpha1; only "best_effort_throughput" is supported).
-	if _, hasUserTPMLimitType := paramsMap["tpm_limit_type"]; hasUserTPMLimitType {
-		r.Recorder.Eventf(&team, corev1.EventTypeWarning, eventReasonProjectionOverride,
-			"key %q overridden by typed-field projection (operator hardcodes best_effort_throughput per Feature 01 §1.2)",
-			"tpm_limit_type")
-	}
-
-	// ─── Step 6b: spec.permission owns models + object_permission ─────────
-	//
-	// When the typed permission block is present the operator OWNS the LiteLLM
-	// `models` and `object_permission` fields (TEAM-03/TEAM-04 reversal). Any
-	// same-named key in spec.params is dropped and a ProjectionOverride Event
-	// fires — the typed block always wins. Absent block → params passthrough
-	// is untouched (migration path).
-	if team.Spec.Permission != nil {
-		for _, key := range []string{"models", "object_permission"} {
-			if _, collides := paramsMap[key]; collides {
-				r.Recorder.Eventf(&team, corev1.EventTypeWarning, eventReasonProjectionOverride,
-					"key %q overridden by typed-field projection (operator overlays spec.permission)",
-					key)
-				delete(paramsMap, key)
-			}
-		}
-	}
-
-	// ─── Step 7: Build merged body as map[string]any ──────────────────────
-	//
-	// Start with a copy of paramsMap, then overlay the operator's
-	// structural keys so they win on collision. Using map[string]any
-	// preserves JSON null on the wire for absent budget / rate-limit keys
-	// (spec §6.7 line 1194: max_budget + budget_duration are always present
-	// in the body with explicit null when the CR omits spec.budget;
-	// Feature 01 §2.1: rpm_limit + tpm_limit are always present with
-	// explicit null when the CR omits spec.rateLimits or the corresponding
-	// leaf).
-	//
-	// Capacity hint +7: team_alias + max_budget + budget_duration +
-	// rpm_limit + tpm_limit + rpm_limit_type + tpm_limit_type. The two
-	// *_type keys are conditional-add (omitted when corresponding *_limit
-	// is null) but we hint for the worst case to avoid one map grow.
-	body := make(map[string]any, len(paramsMap)+7)
-	for k, v := range paramsMap {
-		body[k] = v
-	}
+	// map[string]any (NOT a typed struct with omitempty) preserves JSON null on
+	// the wire for absent budget / rate-limit keys (spec §6.7 line 1194;
+	// Feature 01 §2.1).
+	body := make(map[string]any, 10)
 	body["team_alias"] = team.Name
 	// max_budget: nil when absent (preserved as JSON null by encoding/json).
 	if team.Spec.Budget != nil && team.Spec.Budget.Limit != nil {
@@ -474,98 +270,25 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		// tpm_limit_type intentionally OMITTED (not set to nil) when
 		// tpm_limit is null — Feature 01 §2.1 contract.
 	}
-	// CR-10 / D-7.1-10: drop "blocked": false from the body before calling
-	// LiteLLM 1.83.10. Sending blocked=false (the schema default) triggers
-	// HTTP 403 because LiteLLM 1.83.10 enforces an admin-only restriction on
-	// setting the blocked flag at team creation time. The implicit LiteLLMTeam/default
-	// (working path) never sends blocked, confirming the delta. Only send
-	// blocked when the user explicitly sets it to true (which IS a meaningful
-	// operator action — it prevents the team from making LiteLLM calls).
-	if v, ok := body["blocked"]; ok {
-		blocked, isBool := v.(bool)
-		if isBool && !blocked {
-			delete(body, "blocked")
-		}
-	}
-
-	// ─── Step 7b: Project spec.permission onto the body ───────────────────
+	// ─── Step 7b: closed baseline + attached access groups ────────────────
 	//
-	// Applied BEFORE the Step 8 hash so the projected models + object_permission
-	// participate in drift detection and CREATE/UPDATE routing automatically.
-	// Resolves A2A agent names → agent_id UUIDs (LiteLLM ignores names).
-	if perm := team.Spec.Permission; perm != nil {
-		// Build the name→UUID map only when agents are actually referenced.
-		// ponytail: GET /v1/agents runs per reconcile when agents are set;
-		// cache it if it ever shows up in a profile (Teams reconcile rarely).
-		var agentNameToID map[string]string
-		if len(perm.Agents) > 0 {
-			agents, aerr := snap.Client.ListAgents(ctx)
-			if aerr != nil && !errors.Is(aerr, litellm.ErrNotFound) {
-				return r.classifyMutationError(ctx, &team, logger, aerr, "GET /v1/agents")
-			}
-			// ErrNotFound → zero agents registered → empty map → all names
-			// missing → AgentNotFound requeue below.
-			agentNameToID = make(map[string]string, len(agents))
-			for _, a := range agents {
-				agentNameToID[a.AgentName] = a.AgentID
-			}
+	// Applied BEFORE the Step 8 hash so the resolved ids participate in drift
+	// detection. A group appearing/disappearing changes the hash → one update.
+	var groupIDs []string
+	if len(team.Spec.AccessGroups) > 0 {
+		groups, gerr := snap.Client.ListAccessGroups(ctx)
+		if gerr != nil && !errors.Is(gerr, litellm.ErrNotFound) {
+			return r.classifyMutationError(ctx, &team, logger, gerr, "GET /v1/access_group")
 		}
-
-		// Same shape for MCP toolset names → toolset_id UUIDs.
-		var toolsetNameToID map[string]string
-		if len(perm.McpToolsets) > 0 {
-			toolsets, terr := snap.Client.ListMCPToolsets(ctx)
-			if terr != nil && !errors.Is(terr, litellm.ErrNotFound) {
-				return r.classifyMutationError(ctx, &team, logger, terr, "GET /v1/mcp/toolset")
-			}
-			// ErrNotFound → zero toolsets registered → empty map → all names
-			// missing → ToolsetNotFound requeue below.
-			toolsetNameToID = make(map[string]string, len(toolsets))
-			for _, ts := range toolsets {
-				toolsetNameToID[ts.ToolsetName] = ts.ToolsetID
-			}
+		// ErrNotFound → zero groups registered → every name missing below.
+		nameToID := make(map[string]string, len(groups))
+		for _, g := range groups {
+			nameToID[g.AccessGroupName] = g.AccessGroupID
 		}
-
-		// Same shape for unified access-group names → access_group_id UUIDs.
-		var accessGroupNameToID map[string]string
-		if len(perm.AccessGroups) > 0 {
-			groups, gerr := snap.Client.ListAccessGroups(ctx)
-			if gerr != nil && !errors.Is(gerr, litellm.ErrNotFound) {
-				return r.classifyMutationError(ctx, &team, logger, gerr, "GET /v1/access_group")
-			}
-			// ErrNotFound → zero groups registered → empty map → all names
-			// missing → AccessGroupNotFound requeue below.
-			accessGroupNameToID = make(map[string]string, len(groups))
-			for _, g := range groups {
-				accessGroupNameToID[g.AccessGroupName] = g.AccessGroupID
-			}
-		}
-
-		models, objectPermission, accessGroupIDs, missing := projectPermission(perm, agentNameToID, toolsetNameToID, accessGroupNameToID)
-		if len(missing.Agents) > 0 {
-			msg := fmt.Sprintf("spec.permission.agents not yet registered in LiteLLM: %s",
-				strings.Join(missing.Agents, ", "))
-			if werr := r.writeStatus(ctx, &team, metav1.ConditionFalse, reasonAgentNotFound, msg); werr != nil {
-				logStatusUpdateErr(logger, werr, "reason", reasonAgentNotFound)
-			}
-			metrics.ReconcileTotal.WithLabelValues(teamKind, "success").Inc()
-			// Ordering dependency with LiteLLMA2AAgent CRs — requeue like
-			// SecretNotFound rather than hard-fail.
-			return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
-		}
-		if len(missing.Toolsets) > 0 {
-			msg := fmt.Sprintf("spec.permission.mcpToolsets not yet registered in LiteLLM: %s",
-				strings.Join(missing.Toolsets, ", "))
-			if werr := r.writeStatus(ctx, &team, metav1.ConditionFalse, reasonToolsetNotFound, msg); werr != nil {
-				logStatusUpdateErr(logger, werr, "reason", reasonToolsetNotFound)
-			}
-			metrics.ReconcileTotal.WithLabelValues(teamKind, "success").Inc()
-			// Ordering dependency with LiteLLMMCPToolset CRs — requeue.
-			return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
-		}
-		if len(missing.AccessGroups) > 0 {
-			msg := fmt.Sprintf("spec.permission.accessGroups not yet registered in LiteLLM: %s",
-				strings.Join(missing.AccessGroups, ", "))
+		var missing []string
+		groupIDs, missing = resolveNames(team.Spec.AccessGroups, nameToID)
+		if len(missing) > 0 {
+			msg := fmt.Sprintf("spec.accessGroups not yet registered in LiteLLM: %s", strings.Join(missing, ", "))
 			if werr := r.writeStatus(ctx, &team, metav1.ConditionFalse, reasonAccessGroupNotFound, msg); werr != nil {
 				logStatusUpdateErr(logger, werr, "reason", reasonAccessGroupNotFound)
 			}
@@ -573,22 +296,9 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			// Ordering dependency with LiteLLMAccessGroup CRs — requeue.
 			return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
 		}
-
-		// ALWAYS-EMIT (security-critical): with a present permission block the
-		// operator OWNS `models` + `object_permission` wholesale and MUST send
-		// both unconditionally — projectPermission returns non-nil slices so an
-		// emptied field serializes as `[]` (an explicit LiteLLM clear). A `len>0`
-		// guard here (or an omitted key) lets LiteLLM's per-field /team/update
-		// merge keep the STALE value → silent revocation failure. See
-		// projectPermission's ALWAYS-EMIT contract.
-		body["models"] = models
-		body["object_permission"] = objectPermission
-		// ALWAYS-EMIT: access_group_ids is sent unconditionally whenever a
-		// spec.permission block is present, as [] when empty. POST /team/update
-		// merges per field — an OMITTED field keeps its stale value (measured on
-		// 1.93.0), so a shrink-to-empty would silently fail to revoke. This is the
-		// same trap as the v0.7.25 object_permission leak.
-		body["access_group_ids"] = emptyIfNil(accessGroupIDs)
+	}
+	for k, v := range closedTeamGrant(groupIDs) {
+		body[k] = v
 	}
 
 	// ─── Step 8: Compute currentRenderedHash (Phase 3 D-01) ───────────────
@@ -817,6 +527,27 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	return ctrl.Result{}, nil
 }
 
+// implicitDefaultBody is the rendered body of the implicit Team/default (no
+// CR): no budget / rate limits, closed, no access groups. Linking it to an
+// access group is the user's job — declare LiteLLMTeam/default. Shared by the
+// synthetic reconcile and the Team/default deletion fallback so their hashes
+// stay aligned.
+func implicitDefaultBody() map[string]any {
+	body := map[string]any{
+		"team_alias":      teamAliasDefault,
+		"max_budget":      nil,
+		"budget_duration": nil,
+		"rpm_limit":       nil, // Feature 01 §2.1 — always-emit nil on clear
+		"tpm_limit":       nil,
+		// rpm_limit_type / tpm_limit_type INTENTIONALLY ABSENT — conditional-add
+		// per Feature 01 §2.1: omitted (not nil) when *_limit is nil.
+	}
+	for k, v := range closedTeamGrant(nil) {
+		body[k] = v
+	}
+	return body
+}
+
 // reconcileImplicitDefault is invoked from Step 1 when the synthetic
 // LiteLLMTeam/default reconcile.Request is processed and no Kubernetes
 // LiteLLMTeam/default CR exists. Spec §7.4 line 1313 + §6.7 lines 1215–1229.
@@ -862,17 +593,8 @@ func (r *TeamReconciler) reconcileImplicitDefault(ctx context.Context, logger lo
 		return ctrl.Result{}, nil
 	}
 
-	// ─── Build implicit body (no params, no overlays beyond structural) ───
-	body := map[string]any{
-		"team_alias":      teamAliasDefault,
-		"max_budget":      nil,
-		"budget_duration": nil,
-		"rpm_limit":       nil, // Feature 01 §2.1 — always-emit nil on clear (synthetic-default never carries rateLimits)
-		"tpm_limit":       nil, // Feature 01 §2.1 — always-emit nil on clear
-		// rpm_limit_type / tpm_limit_type INTENTIONALLY ABSENT — conditional-add
-		// per Feature 01 §2.1: when *_limit is nil, *_type is OMITTED from the
-		// body (not set to nil) so encoding/json drops the key from the wire.
-	}
+	// ─── Build implicit body ──────────────────────────────────────────────
+	body := implicitDefaultBody()
 
 	// ─── Hash + steady-state short-circuit (in-memory cache) ──────────────
 	canonicalBytes, err := canonicalJSON(body)
@@ -934,15 +656,8 @@ func (r *TeamReconciler) reconcileImplicitDefault(ctx context.Context, logger lo
 			return ctrl.Result{}, nil
 		}
 		// Body needs team_id pin for POST /team/update (spec §6.7).
-		updateBody := map[string]any{
-			"team_alias":      teamAliasDefault,
-			"team_id":         existing.TeamID,
-			"max_budget":      nil,
-			"budget_duration": nil,
-			"rpm_limit":       nil, // Feature 01 §2.1 — always-emit nil; required for wholesale-replace clear semantics
-			"tpm_limit":       nil, // Feature 01 §2.1 — always-emit nil
-			// rpm_limit_type / tpm_limit_type INTENTIONALLY ABSENT (conditional-add).
-		}
+		updateBody := implicitDefaultBody()
+		updateBody["team_id"] = existing.TeamID
 		if _, uerr := snap.Client.UpdateTeamRaw(ctx, updateBody); uerr != nil {
 			return r.classifyMutationError(ctx, nil, logger, uerr, "POST /team/update (implicit default)")
 		}
@@ -1045,15 +760,8 @@ func (r *TeamReconciler) reconcileDeletion(ctx context.Context, team *litellmv1a
 		}
 
 		if resolvedTeamID != "" {
-			body := map[string]any{
-				"team_alias":      teamAliasDefault,
-				"team_id":         resolvedTeamID,
-				"max_budget":      nil,
-				"budget_duration": nil,
-				"rpm_limit":       nil, // Feature 01 §2.1 — AC-T4 re-applies implicit empty spec; clears any user-set rateLimits on the wire
-				"tpm_limit":       nil, // Feature 01 §2.1 — AC-T4 re-applies implicit empty spec
-				// rpm_limit_type / tpm_limit_type INTENTIONALLY ABSENT (conditional-add).
-			}
+			body := implicitDefaultBody()
+			body["team_id"] = resolvedTeamID
 			if _, uerr := snap.Client.UpdateTeamRaw(ctx, body); uerr != nil {
 				// 401 fast-path: cache invalidated; remove finalizer
 				// anyway (anti-storm — re-bootstrap on next reconcile).
@@ -1080,13 +788,7 @@ func (r *TeamReconciler) reconcileDeletion(ctx context.Context, team *litellmv1a
 				// observe steady state (the rendered body did not
 				// actually change between this UPDATE and the synthetic
 				// reconcile's implicit body).
-				canonicalBytes, cerr := canonicalJSON(map[string]any{
-					"team_alias":      teamAliasDefault,
-					"max_budget":      nil,
-					"budget_duration": nil,
-					"rpm_limit":       nil, // CR-01 — must mirror reconcileImplicitDefault CREATE-arm body (line 639) so hash cache aligns
-					"tpm_limit":       nil,
-				})
+				canonicalBytes, cerr := canonicalJSON(implicitDefaultBody())
 				// M-B3: skip seeding the cache on a marshal error rather than
 				// caching a hash over empty bytes (which would cause false drift
 				// + an extra UPDATE next reconcile). The static nil/string body
@@ -1383,20 +1085,10 @@ func (r *TeamReconciler) writeStatus(
 	return err
 }
 
-// secretToTeams maps a Secret update event to the set of LiteLLMTeam CRs that
-// reference it via spec.secrets[].secretRef.name (Phase 3 D-06
-// rotation-propagation pattern). Uses the field indexer registered in
-// cmd/main.go.
-func (r *TeamReconciler) secretToTeams(ctx context.Context, obj client.Object) []reconcile.Request {
-	return secretToRequests(ctx, r.Client, r.Log, &litellmv1alpha1.LiteLLMTeamList{}, obj.GetNamespace(), obj.GetName(), TeamSecretRefIndexField, "secretToTeams")
-}
-
 // SetupWithManager registers the TeamReconciler with controller-runtime.
 //
 // Watches:
 // - For(&LiteLLMTeam{}) — primary watch.
-// - Watches(&Secret{}, secretToTeams) — SEC-09 rotation propagation
-// for placeholders in spec.params.
 // - WatchesRawSource(source.TypedFunc) — optional synthetic
 // LiteLLMTeam/default request channel. The TeamDefaultRunnable enqueues
 // reconcile.Request{NamespacedName:{Namespace, "default"}} onto this
@@ -1414,10 +1106,6 @@ func (r *TeamReconciler) SetupWithManager(mgr ctrl.Manager, requeueCh ...chan re
 	}
 	b := ctrl.NewControllerManagedBy(mgr).
 		For(&litellmv1alpha1.LiteLLMTeam{}, builder.WithPredicates()).
-		Watches(
-			&corev1.Secret{},
-			handler.EnqueueRequestsFromMapFunc(r.secretToTeams),
-		).
 		Watches(
 			&litellmv1alpha1.LiteLLMConnection{},
 			handler.EnqueueRequestsFromMapFunc(r.connectionToTeams),

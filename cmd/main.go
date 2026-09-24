@@ -485,15 +485,6 @@ func main() {
 	// default synthetic reconcile (TEAM-07 / AC-T2) is wired separately.
 	// The finalizer-add and deletion-path code lives in the per-CR
 	// reconciler.
-	if err := mgr.GetFieldIndexer().IndexField(
-		context.Background(),
-		&litellmv1alpha1.LiteLLMTeam{},
-		controller.TeamSecretRefIndexField,
-		controller.IndexTeamSecretRefs,
-	); err != nil {
-		setupLog.Error(err, "unable to register Team secrets field indexer")
-		os.Exit(1)
-	}
 	// Phase 6 — TeamDefaultRunnable: spec §7.4 line 1313
 	// mandates a synthetic Team/default reconcile on manager start (after
 	// LiteLLMConnection/default first reaches Ready=True) + every 30-min
