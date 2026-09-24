@@ -3499,13 +3499,25 @@ attaches this group, regardless of that team's own spec.permission.models.</p>
 </tr>
 <tr>
 <td><code>models</code> <em>string array</em></td>
-<td>Models lists LiteLLM model names or legacy model access-group tags.<br />Entries are forwarded to access_model_names without resolution.<br />Tag expansion for inference was verified on LiteLLM v1.99.1;<br />the model catalog can return the tag itself instead of expanded names.<br />The list is sorted before projection, so declaration order is not preserved.</td>
+<td>Models lists concrete LiteLLM model names, forwarded to<br />access_model_names without resolution. Put model access-group TAGS in<br />ModelGroups instead.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>modelGroups</code> <em>string array</em></td>
+<td>ModelGroups lists model access-group TAGS (model_info.access_groups).<br />Unioned with Models into access_model_names; LiteLLM expands tags itself.</td>
 <td></td>
 <td></td>
 </tr>
 <tr>
 <td><code>mcpServers</code> <em>string array</em></td>
 <td>MCPServers is the list of MCP server NAMES this group grants. Each name<br />is resolved to a server_id via GET /v1/mcp/server before projection,<br />because access_mcp_server_ids matches on ids and silently ignores names.<br />An unresolved name parks the CR Ready=False reason=MCPServerNotFound;<br />it is re-driven by the periodic SafetyRelistRunnable, not requeued<br />(ordering dependency with LiteLLMMCPServer CRs — it self-heals once<br />the server exists).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>mcpServerGroups</code> <em>string array</em></td>
+<td>MCPServerGroups is a list of MCP server access-group TAGS. Every<br />registered LiteLLMMCPServer in this namespace whose params.mcp_access_groups<br />(or access_groups) contains one of these tags is added to access_mcp_server_ids.</td>
 <td></td>
 <td></td>
 </tr>
