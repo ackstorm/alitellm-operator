@@ -983,45 +983,6 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#opencode-catalog" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        OpenCode catalog
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="OpenCode catalog">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#what-ends-up-in-it" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        What ends up in it
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#things-worth-knowing" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Things worth knowing
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
     </ul>
   
 </nav>
@@ -1676,45 +1637,6 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#opencode-catalog" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        OpenCode catalog
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="OpenCode catalog">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#what-ends-up-in-it" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        What ends up in it
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#things-worth-knowing" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Things worth knowing
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
     </ul>
   
 </nav>
@@ -1791,64 +1713,6 @@ a name LiteLLM does not know is written happily and fails only at call time.</p>
 (<code>&lt;discovery&gt;-aliases-&lt;n&gt;</code>). They are ordinary alias CRs — same map, same
 conflict rules — but owned by the discovery: edit the discovery, not them.
 See <a href="../model-discovery/#default-aliases-specaliases">Default aliases</a>.</p>
-<h2 id="opencode-catalog">OpenCode catalog<a class="headerlink" href="#opencode-catalog" title="Permanent link">&para;</a></h2>
-<p>Clients like <a href="https://opencode.ai">OpenCode</a> do not read model capabilities
-from the proxy. They look the model id up in their own catalog
-(<a href="https://models.dev">models.dev</a>) and fall back to defaults when it is absent
-— and an alias like <code>ackstorm.smart</code> is in nobody's catalog. The symptom is a
-model that works but is advertised as text-only: no image, audio or PDF attach,
-sometimes no tool calling, even though LiteLLM reports all of it correctly.</p>
-<p>The operator can close that gap by rendering the alias set into a catalog
-document and writing it to a ConfigMap, for a static file server to publish.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Helm values</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nt">opencodeCatalog</span><span class="p">:</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="c1"># Namespace the ConfigMap is written to — normally the namespace of the</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span><span class="c1"># service that will MOUNT it, since a ConfigMap can only be mounted by a pod</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="c1"># in its own namespace.</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">alitellm-auth</span>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">opencode-catalog</span>
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">  </span><span class="c1"># The PUBLIC LiteLLM URL clients reach. The operator cannot derive this: its</span>
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">  </span><span class="c1"># own endpoint is the in-cluster Service.</span>
-<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">  </span><span class="nt">apiBase</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://api.example.com/v1</span>
-<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="w">  </span><span class="c1"># Optional filters to restrict which alias names are rendered into the catalog.</span>
-<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="w">  </span><span class="nt">filters</span><span class="p">:</span>
-<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="w">    </span><span class="nt">include</span><span class="p">:</span>
-<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"^ackstorm\\..*"</span>
-<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="w">    </span><span class="nt">exclude</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[]</span>
-</code></pre></div>
-<p>The ConfigMap holds one key, <code>api.json</code>. Serve it so that it lands at
-<code>&lt;base&gt;/api.json</code>, then point clients at the base:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">OPENCODE_MODELS_URL</span><span class="o">=</span>https://platform.example.com/public/opencode
-</code></pre></div>
-<p>Users can then delete their hand-written provider block entirely — <code>npm</code>, <code>api</code>
-and <code>env</code> all come from the catalog.</p>
-<h3 id="what-ends-up-in-it">What ends up in it<a class="headerlink" href="#what-ends-up-in-it" title="Permanent link">&para;</a></h3>
-<p>Every alias whose target resolves to a <code>mode: chat</code> model. Embeddings, tts,
-stt, image generation and routers are dropped: OpenCode cannot drive them, so
-they would be dead rows in its picker. An alias whose target LiteLLM does not
-know is dropped too.</p>
-<p>Capabilities are read from the <strong>target's</strong> <code>model_info</code>, not the alias's —
-<code>supports_vision</code> → <code>attachment</code> plus the <code>image</code> modality, <code>supports_pdf_input</code>
-→ <code>pdf</code>, and so on. Per-token prices are converted to the per-million figures
-models.dev expects.</p>
-<h3 id="things-worth-knowing">Things worth knowing<a class="headerlink" href="#things-worth-knowing" title="Permanent link">&para;</a></h3>
-<p><strong>The catalog replaces the upstream one, it does not merge.</strong> While a client
-points at it, that client sees <em>only</em> this provider — anthropic, openai and the
-rest disappear from its picker. That is the intent for a proxy-only setup; if
-it is not yours, serve a catalog that includes the upstream document.</p>
-<p><strong>Updates are not instant, by design.</strong> An alias edit reaches a client through
-the ConfigMap, the kubelet's volume sync (~60s) and the client's own cache. A
-client typically only re-reads at startup. Nothing here is built to be fast,
-because aliases change rarely.</p>
-<p><strong>A catalog failure never affects your aliases.</strong> The write happens after the
-aliases are already in LiteLLM, so a ConfigMap problem emits a Warning Event
-(<code>CatalogWriteFailed</code>) and leaves <code>Ready</code> alone. Check events on the CR, not
-the condition.</p>
-<p><strong>Cross-namespace writes need RBAC.</strong> When <code>opencodeCatalog.namespace</code> differs
-from the release namespace, the chart adds a Role and RoleBinding scoped to it.
-No ClusterRoleBinding is created — the operator does not gain cluster-wide
-ConfigMap write for the sake of one file.</p>
 
 
 
