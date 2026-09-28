@@ -5,6 +5,7 @@
 package e2e_test
 
 import (
+	"bytes"
 	"regexp"
 	"strings"
 
@@ -38,8 +39,14 @@ var _ = Describe("Metrics AC-O1", func() {
 		// curlPodBody retries past the kubectl-run attach race (which can
 		// drop the body to empty); accept once the exposition carries at
 		// least one HELP line, then assert the §10 surface below.
+		// cr_status_age_seconds is a custom collector that emits NO HELP
+		// line until some CR records a success — when this spec runs first
+		// after an operator restart, that has not happened yet, so wait
+		// for it too.
 		out := curlPodBody("default", "metrics-poke",
-			func(b []byte) bool { return helpRE.Match(b) },
+			func(b []byte) bool {
+				return helpRE.Match(b) && bytes.Contains(b, []byte("# HELP alitellm_operator_cr_status_age_seconds"))
+			},
 			"curl", "-sS", "--max-time", "10",
 			"http://alitellm-operator-metrics.default.svc.cluster.local:8080/metrics",
 		)

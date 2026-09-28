@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- **OpenCode model catalog (`api.json`).** OpenCode no longer reads it: since
+  alitellm-auth v0.19.0 the plugin fetches `GET /clients/opencode/config` and
+  alitellm-auth builds the per-user config from LiteLLM directly. Dropped the
+  catalog renderer and ConfigMap writer, the `OPENCODE_CATALOG_*` env vars, the
+  chart's `opencodeCatalog` values block and its cross-namespace Role /
+  RoleBinding, and the operator's namespaced `configmaps` write permission
+  (nothing else used it; leader election keeps its own). The operator does NOT
+  garbage-collect an existing catalog ConfigMap — delete it by hand
+  (`kubectl -n <ns> delete configmap opencode-catalog`). `LiteLLMModelAlias`
+  reconciliation of `router_settings.model_group_alias` is unchanged.
+
 ### ⚠ BREAKING
 - **`LiteLLMTeam` is a pure access-group container.** Removed
   `spec.permission`, `spec.params` and `spec.secrets`; added
