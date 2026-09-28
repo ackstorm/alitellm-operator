@@ -66,9 +66,8 @@ func (m ModelInfo) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON is the inverse of MarshalJSON: typed fields decode normally
 // and every remaining key lands in Extra. Without it Extra stays nil on
 // decode and all the model_info capability flags (supports_vision,
-// supports_pdf_input, max_input_tokens, ...) are dropped — the catalog
-// renderer reads exactly those. Typed keys are removed from Extra so a
-// decode→encode round-trip does not emit them twice.
+// supports_pdf_input, max_input_tokens, ...) are dropped. Typed keys are
+// removed from Extra so a decode→encode round-trip does not emit them twice.
 func (m *ModelInfo) UnmarshalJSON(data []byte) error {
 	type alias ModelInfo // shed the custom unmarshaler to avoid recursion
 	var typed alias

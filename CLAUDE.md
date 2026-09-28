@@ -132,7 +132,7 @@ alitellm-operator/
 | Docs site, mkdocs, mike, gh-pages flow | `references/docs/documentation.md`       |
 | CI / PR / release lifecycle (push/PR matrix) | `references/docs/workflow.md`        |
 | Access groups / team attachment         | `docs/user-guide/access-group.md` (two disjoint namespaces + the only-ADD bypass); team = closed container, `closedTeamGrant` in `internal/controller/team_permission.go` |
-| Model aliases / OpenCode catalog        | `docs/user-guide/model-alias.md` (aggregate map + the catalog ConfigMap) |
+| Model aliases                          | `docs/user-guide/model-alias.md` (aggregate map) |
 | OLM packaging                          | NOT supported — explicit scope decision (no OperatorHub) |
 
 ## CI gating — one-line summary
@@ -1334,18 +1334,20 @@ lists — the effective set becomes every agent on the proxy.
 
 ### ❌ Writing a ConfigMap outside `WATCH_NAMESPACE` with the manager client
 ```go
-// modelalias reconcile, catalog ConfigMap in the SERVING namespace
+// e.g. a ConfigMap in another (serving) namespace
 controllerutil.CreateOrUpdate(ctx, r.Client, cm, mutate)
-// Error: unable to get: alitellm-auth/opencode-catalog because of
+// Error: unable to get: <ns>/<name> because of
 // unknown namespace for the cache
 ```
 ✅ Use a non-caching client for that object:
 ```go
 // cmd/main.go
-catalogWriter, _ := client.New(mgr.GetConfig(), client.Options{Scheme: mgr.GetScheme()})
+writer, _ := client.New(mgr.GetConfig(), client.Options{Scheme: mgr.GetScheme()})
 // reconciler
-controllerutil.CreateOrUpdate(ctx, r.CatalogWriter, cm, mutate)
+controllerutil.CreateOrUpdate(ctx, r.Writer, cm, mutate)
 ```
+Hit by the OpenCode catalog ConfigMap writer (removed in v0.9.1 — nothing
+in the operator writes outside `WATCH_NAMESPACE` today).
 WHY IT FAILS: `cache.Options.DefaultNamespaces` scopes the manager cache to the
 single `WATCH_NAMESPACE` (SCOPE-04). `CreateOrUpdate` issues a **Get** first,
 which goes through that cache, so an object in any other namespace fails
