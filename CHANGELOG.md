@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Removed
+- **`configmaps` grant on the leader-election Role.** Kubebuilder scaffold
+  leftover: controller-runtime elects over `coordination.k8s.io/leases` only
+  (client-go dropped the configmaps lock), so the Role now holds `leases` +
+  `events`. Verified the operator still acquires its lease.
 - **OpenCode model catalog (`api.json`).** OpenCode no longer reads it: since
   alitellm-auth v0.19.0 the plugin fetches `GET /clients/opencode/config` and
   alitellm-auth builds the per-user config from LiteLLM directly. Dropped the
