@@ -15,6 +15,11 @@
 # Duplicate model IDs across regions resolve to the FIRST region; each
 # child's aws_region_name is the region it was found in.
 #
+# Inference profiles (opt-in): models served in a region only through a
+# cross-region profile are skipped unless listed here, e.g.
+#   inferenceProfiles: [eu]        # global.* = no data residency
+# Needs IAM bedrock:ListInferenceProfiles.
+#
 # Bedrock model ID example: "anthropic.claude-3-sonnet-20240229-v1:0"
 # The `:` between `v1` and `0` is normalized to `-` for the K8s child
 # Model's metadata.name (spec §6.3 line 756 — see MDISC-10). The RAW ID

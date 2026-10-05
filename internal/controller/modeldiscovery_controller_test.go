@@ -219,7 +219,7 @@ func TestBuildChildModel_BedrockOverlay(t *testing.T) {
 		Spec: litellmv1alpha1.ModelDiscoverySpec{
 			Type:    "bedrock",
 			Regions: []string{"us-east-1"},
-			Params: k8sruntime.RawExtension{Raw: []byte(`{"rpm":50,"timeout":30}`)},
+			Params:  k8sruntime.RawExtension{Raw: []byte(`{"rpm":50,"timeout":30}`)},
 		},
 	}
 	child, err := buildChildModel(md, "bedrock.anthropic-claude-3-sonnet",
@@ -2249,4 +2249,42 @@ func TestModelDiscovery_Regions_CELReject(t *testing.T) {
 	nonBedrock := modeldiscoverySampleCR("cel-regions-anthropic", "anthropic")
 	nonBedrock.Spec.Regions = []string{"eu-west-1"}
 	assertModelDiscoveryCELReject(t, nonBedrock, "spec.regions is only allowed with spec.type=bedrock")
+}
+
+func TestModelDiscovery_InferenceProfiles_CELReject(t *testing.T) {
+	md := modeldiscoverySampleCR("cel-profiles-anthropic", "anthropic")
+	md.Spec.InferenceProfiles = []string{"eu"}
+	assertModelDiscoveryCELReject(t, md, "spec.inferenceProfiles is only allowed with spec.type=bedrock")
+}
+
+// TestModelDiscovery_BedrockInferenceProfile_ChildNameIsBaseID: a candidate
+// routed through an inference profile keeps the base model ID as the child
+// name; only params.model carries the profile ID.
+func TestModelDiscovery_BedrockInferenceProfile_ChildNameIsBaseID(t *testing.T) {
+	ctx := context.Background()
+	const mdName = "bedrock-profiles"
+
+	ensureNoModelDiscovery(t, ctx, mdName)
+	t.Cleanup(func() { ensureNoModelDiscovery(t, context.Background(), mdName) })
+
+	providers.RegisterTestProvider(t, "bedrock", newFakeProvider("bedrock", []providers.Candidate{
+		{ID: "amazon.nova-pro-v1:0", ModelID: "eu.amazon.nova-pro-v1:0",
+			Params: map[string]string{"aws_region_name": "eu-west-1"}},
+	}))
+	ensureCredentialSecret(t, ctx, mdName+"-creds", "bedrock")
+
+	md := modeldiscoverySampleCR(mdName, "bedrock")
+	md.Spec.InferenceProfiles = []string{"eu"}
+	if err := k8sClient.Create(ctx, md); err != nil {
+		t.Fatalf("create ModelDiscovery: %v", err)
+	}
+
+	child := pollChildModel(t, ctx, "bedrock.amazon.nova-pro-v1-0", 30*time.Second)
+	var params map[string]any
+	if err := json.Unmarshal(child.Spec.Params.Raw, &params); err != nil {
+		t.Fatalf("decode params: %v", err)
+	}
+	if got, want := params["model"], "bedrock/eu.amazon.nova-pro-v1:0"; got != want {
+		t.Errorf("params.model = %v; want %s", got, want)
+	}
 }

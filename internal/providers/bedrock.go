@@ -33,7 +33,8 @@ import (
 const providerTypeBedrock = "bedrock"
 
 type bedrockProvider struct {
-	regions []bedrockRegion // spec order; earlier wins on duplicate names (reconciler-side)
+	regions  []bedrockRegion // spec order; earlier wins on duplicate names (reconciler-side)
+	profiles []string        // allowed inference-profile geographies, preference order; empty = off
 }
 
 type bedrockRegion struct {
@@ -101,7 +102,7 @@ func newBedrock(ctx context.Context, cfg ProviderConfig) (Provider, error) {
 	if len(cfg.Regions) == 0 {
 		return nil, errMissingRegion
 	}
-	p := &bedrockProvider{}
+	p := &bedrockProvider{profiles: cfg.InferenceProfiles}
 	for _, region := range cfg.Regions {
 		client, err := newBedrockClient(ctx, cfg.AWSCreds, region)
 		if err != nil {
@@ -162,7 +163,7 @@ func (p *bedrockProvider) Type() string { return providerTypeBedrock }
 func (p *bedrockProvider) List(ctx context.Context) ([]Candidate, error) {
 	var candidates []Candidate
 	for _, r := range p.regions {
-		cands, err := r.list(ctx)
+		cands, err := r.list(ctx, p.profiles)
 		if err != nil {
 			return nil, err
 		}
@@ -171,11 +172,18 @@ func (p *bedrockProvider) List(ctx context.Context) ([]Candidate, error) {
 	return candidates, nil
 }
 
-// list calls ListFoundationModels with ByInferenceType=OnDemand and
-// applies the in-Go 3-way pre-filter to mirror autoconfig
-// providers.py:251-254 verbatim. The SDK's ByInferenceType filters
-// PROVISIONED-only models server-side; the ACTIVE and non-EMBEDDING
-// conditions run client-side because the SDK lacks equivalent params.
+// list calls ListFoundationModels and applies the in-Go 3-way pre-filter
+// (autoconfig providers.py:251-254): ACTIVE, ON_DEMAND, non-EMBEDDING.
+//
+// With profiles empty the request filters ByInferenceType=OnDemand
+// server-side (today's behaviour). With profiles set it lists every model
+// plus the region's SYSTEM_DEFINED inference profiles: an ACTIVE,
+// non-embedding model WITHOUT in-region ON_DEMAND support is kept when an
+// ACTIVE profile "<geo>.<modelId>" exists for the first matching geography
+// in profiles order; its Candidate.ModelID is that profile ID while ID stays
+// the base model ID (stable child name). In-region ON_DEMAND always beats a
+// profile. LiteLLM's cost lookup strips the geo prefix
+// (get_bedrock_base_model), so pricing resolves without base_model.
 //
 // Returns:
 // - *ProviderAuthError on smithy.APIError codes in awsAuthErrorCodes
@@ -183,26 +191,68 @@ func (p *bedrockProvider) List(ctx context.Context) ([]Candidate, error) {
 // SDK config faults, deserialization errors)
 // - sanitized error strings — sanitizeAWSError strips credential
 // fragments before wrapping (§9.1)
-func (r bedrockRegion) list(ctx context.Context) ([]Candidate, error) {
-	out, err := r.client.ListFoundationModels(ctx, &bedrock.ListFoundationModelsInput{
-		ByInferenceType: bedrocktypes.InferenceTypeOnDemand,
-	})
+func (r bedrockRegion) list(ctx context.Context, profiles []string) ([]Candidate, error) {
+	in := &bedrock.ListFoundationModelsInput{}
+	if len(profiles) == 0 {
+		in.ByInferenceType = bedrocktypes.InferenceTypeOnDemand
+	}
+	out, err := r.client.ListFoundationModels(ctx, in)
 	if err != nil {
 		return nil, classifyBedrockError(r.name, err)
+	}
+	var active map[string]struct{}
+	if len(profiles) > 0 {
+		if active, err = r.activeProfiles(ctx); err != nil {
+			return nil, err
+		}
 	}
 
 	candidates := make([]Candidate, 0, len(out.ModelSummaries))
 	for _, m := range out.ModelSummaries {
-		if !shouldKeep(m) {
-			continue
-		}
-		candidates = append(candidates, Candidate{
-			ID:          awsv2.ToString(m.ModelId),
+		id := awsv2.ToString(m.ModelId)
+		c := Candidate{
+			ID:          id,
 			DisplayName: awsv2.ToString(m.ModelName),
 			Params:      map[string]string{"aws_region_name": r.name},
-		})
+		}
+		if !shouldKeep(m) {
+			if !isActiveNonEmbedding(m) {
+				continue
+			}
+			for _, geo := range profiles {
+				if _, ok := active[geo+"."+id]; ok {
+					c.ModelID = geo + "." + id
+					break
+				}
+			}
+			if c.ModelID == "" {
+				continue
+			}
+		}
+		candidates = append(candidates, c)
 	}
 	return candidates, nil
+}
+
+// activeProfiles returns the IDs of the region's ACTIVE SYSTEM_DEFINED
+// inference profiles (all pages).
+func (r bedrockRegion) activeProfiles(ctx context.Context) (map[string]struct{}, error) {
+	ids := map[string]struct{}{}
+	pages := bedrock.NewListInferenceProfilesPaginator(r.client, &bedrock.ListInferenceProfilesInput{
+		TypeEquals: bedrocktypes.InferenceProfileTypeSystemDefined,
+	})
+	for pages.HasMorePages() {
+		page, err := pages.NextPage(ctx)
+		if err != nil {
+			return nil, classifyBedrockError(r.name, err)
+		}
+		for _, p := range page.InferenceProfileSummaries {
+			if p.Status == bedrocktypes.InferenceProfileStatusActive {
+				ids[awsv2.ToString(p.InferenceProfileId)] = struct{}{}
+			}
+		}
+	}
+	return ids, nil
 }
 
 // shouldKeep applies the 3-way pre-filter (autoconfig providers.py:251-254):
@@ -220,16 +270,15 @@ func (r bedrockRegion) list(ctx context.Context) ([]Candidate, error) {
 // values which fail the filter — the closed-set predicate stays
 // conservative (T-04-03c-T2 accept disposition in the threat model).
 func shouldKeep(m bedrocktypes.FoundationModelSummary) bool {
-	if m.ModelLifecycle == nil || m.ModelLifecycle.Status != bedrocktypes.FoundationModelLifecycleStatusActive {
-		return false
-	}
-	if !slices.Contains(m.InferenceTypesSupported, bedrocktypes.InferenceTypeOnDemand) {
-		return false
-	}
-	if slices.Contains(m.OutputModalities, bedrocktypes.ModelModalityEmbedding) {
-		return false
-	}
-	return true
+	return isActiveNonEmbedding(m) && slices.Contains(m.InferenceTypesSupported, bedrocktypes.InferenceTypeOnDemand)
+}
+
+// isActiveNonEmbedding is shouldKeep without the ON_DEMAND condition: the
+// gate for routing a model through an inference profile instead.
+func isActiveNonEmbedding(m bedrocktypes.FoundationModelSummary) bool {
+	return m.ModelLifecycle != nil &&
+		m.ModelLifecycle.Status == bedrocktypes.FoundationModelLifecycleStatusActive &&
+		!slices.Contains(m.OutputModalities, bedrocktypes.ModelModalityEmbedding)
 }
 
 // classifyBedrockError maps smithy.APIError codes to *ProviderAuthError

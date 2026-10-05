@@ -91,6 +91,11 @@ type ProviderConfig struct {
 	// reconciler).
 	Regions []string
 
+	// InferenceProfiles is spec.inferenceProfiles: ordered geography
+	// prefixes (eu, us, apac, global, …) bedrock may route through when a
+	// model has no in-region ON_DEMAND support. Empty disables profiles.
+	InferenceProfiles []string
+
 	// APIKey is the resolved string from spec.credentialsSecretRef.
 	// Required for anthropic/gemini/openai; optional for kubeai;
 	// unused by bedrock.

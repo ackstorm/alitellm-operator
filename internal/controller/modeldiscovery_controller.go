@@ -419,11 +419,12 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	cfg := providers.ProviderConfig{
-		Type:       md.Spec.Type,
-		BaseURL:    md.Spec.BaseURL,
-		Region:     md.Spec.Region,
-		Regions:    md.Spec.Regions,
-		HTTPClient: r.HTTPClient,
+		Type:              md.Spec.Type,
+		BaseURL:           md.Spec.BaseURL,
+		Region:            md.Spec.Region,
+		Regions:           md.Spec.Regions,
+		HTTPClient:        r.HTTPClient,
+		InferenceProfiles: md.Spec.InferenceProfiles,
 	}
 	switch md.Spec.Type {
 	case providerTypeAnthropic:

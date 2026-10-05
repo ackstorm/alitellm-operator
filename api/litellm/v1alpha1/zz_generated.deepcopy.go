@@ -1458,6 +1458,11 @@ func (in *ModelDiscoverySpec) DeepCopyInto(out *ModelDiscoverySpec) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.InferenceProfiles != nil {
+		in, out := &in.InferenceProfiles, &out.InferenceProfiles
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	in.Params.DeepCopyInto(&out.Params)
 	in.Info.DeepCopyInto(&out.Info)
 	if in.Secrets != nil {

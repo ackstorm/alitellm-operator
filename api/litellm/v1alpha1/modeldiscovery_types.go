@@ -170,6 +170,22 @@ type ModelDiscoverySpec struct {
 	// +listType=set
 	Regions []string `json:"regions,omitempty"`
 
+	// InferenceProfiles opts Bedrock discovery into cross-region inference
+	// profiles (spec.type=bedrock only). It is an ordered list of allowed
+	// profile geography prefixes (eu, us, apac, global, …). For an ACTIVE,
+	// non-embedding model without ON_DEMAND support in a listed region, the
+	// first geography (list order) whose system-defined profile
+	// "<geo>.<modelId>" exists is used: the child's params.model becomes
+	// bedrock/<geo>.<modelId> while the child NAME stays the base model ID.
+	// In-region ON_DEMAND always beats a profile. Empty (default) = no
+	// profiles. Requires bedrock:ListInferenceProfiles. NOTE: global.
+	// profiles may process requests in any AWS region (no data residency).
+	//
+	// +optional
+	// +kubebuilder:validation:MinItems=1
+	// +listType=set
+	InferenceProfiles []string `json:"inferenceProfiles,omitempty"`
+
 	// BaseURL is the upstream provider's base endpoint. Required for
 	// kubeai (e.g. "http://kubeai.kubeai.svc/openai/v1"); optional for
 	// openai (default OpenAI-platform endpoint applies on omit); forbidden
@@ -592,6 +608,7 @@ type FailedCandidate struct {
 // +kubebuilder:validation:XValidation:rule="self.spec.type != 'anthropic' || (has(self.spec.credentialsSecretRef) && !has(self.spec.region) && !has(self.spec.baseUrl))",message="anthropic requires spec.credentialsSecretRef and forbids spec.region/spec.baseUrl"
 // +kubebuilder:validation:XValidation:rule="self.spec.type != 'bedrock' || (has(self.spec.regions) && !has(self.spec.region) && !has(self.spec.baseUrl))",message="bedrock requires spec.regions and forbids spec.region/spec.baseUrl"
 // +kubebuilder:validation:XValidation:rule="!has(self.spec.regions) || self.spec.type == 'bedrock'",message="spec.regions is only allowed with spec.type=bedrock"
+// +kubebuilder:validation:XValidation:rule="!has(self.spec.inferenceProfiles) || self.spec.type == 'bedrock'",message="spec.inferenceProfiles is only allowed with spec.type=bedrock"
 // +kubebuilder:validation:XValidation:rule="self.spec.type != 'elevenlabs' || (has(self.spec.credentialsSecretRef) && !has(self.spec.region) && !has(self.spec.baseUrl))",message="elevenlabs requires spec.credentialsSecretRef and forbids spec.region/spec.baseUrl"
 // +kubebuilder:validation:XValidation:rule="self.spec.type != 'gemini' || (has(self.spec.credentialsSecretRef) && !has(self.spec.region) && !has(self.spec.baseUrl))",message="gemini requires spec.credentialsSecretRef and forbids spec.region/spec.baseUrl"
 // +kubebuilder:validation:XValidation:rule="self.spec.type != 'kubeai' || (has(self.spec.baseUrl) && !has(self.spec.credentialsSecretRef) && !has(self.spec.region))",message="kubeai requires spec.baseUrl and forbids spec.credentialsSecretRef/spec.region"

@@ -14,6 +14,7 @@ child reconciles into LiteLLM via the `LiteLLMModel` controller
 | `spec.prefix`               | no              | DNS-1123 segment prepended to each child's `metadata.name`. Default: lowercased `spec.type`. |
 | `spec.credentialsSecretRef` | per-provider    | Secret holding upstream API key (operator-side ONLY — never propagated to children).   |
 | `spec.regions`              | bedrock only    | Ordered AWS regions (min 1, unique); first region wins on a duplicate child name.      |
+| `spec.inferenceProfiles`    | no (bedrock only) | Ordered inference-profile geographies (`eu`, `us`, `apac`, `global`, …) for models without in-region ON_DEMAND. Default empty = off. |
 | `spec.baseUrl`              | kubeai (req), openai (opt) | Provider HTTP endpoint. Any non-empty value auto-overlays into each child's `api_base` (so LiteLLM routes inference to the same endpoint models were discovered from). |
 | `spec.litellmProvider`      | no (openai only) | Overrides the LiteLLM pricing-prefix provider stamped on each child's `litellm_params.model` (default: derived from `spec.type`). E.g. `openrouter` to bill under OpenRouter's cost table. CEL-restricted to `type: openai`. |
 | `spec.aliases[]`            | no              | Alias rules: `<prefix><child><suffix> → <child>`, optional `include` filter.      |
@@ -142,6 +143,38 @@ created or deleted, so children discovered from the healthy regions stay
 in place until the region recovers. Changing the region order can move a
 child to another region on the next refresh (an in-place update, same
 name).
+
+### Inference profiles — opt-in
+
+Some models are offered in a region ONLY through cross-region inference
+profiles (e.g. `eu.amazon.nova-pro-v1:0`, `global.openai.gpt-6-sol`). They
+never appear with the default ON_DEMAND listing. Opt in with an ordered list
+of allowed profile geographies:
+
+```yaml
+spec:
+  type: bedrock
+  regions: [eu-north-1, eu-west-1]
+  inferenceProfiles: [eu]
+```
+
+Per region the operator also lists the SYSTEM_DEFINED inference profiles.
+For an ACTIVE, non-embedding model WITHOUT ON_DEMAND support in that region,
+it uses the first geography in list order whose ACTIVE profile
+`<geo>.<modelId>` exists; otherwise the model is skipped. In-region
+ON_DEMAND always beats a profile.
+
+The child's `params.model` is `bedrock/<geo>.<modelId>`, but the child
+NAME stays the base model ID (`bedrock.amazon.nova-pro-v1-0`), so names
+and aliases do not change if the model later becomes ON_DEMAND. LiteLLM
+prices profile IDs by stripping the geography prefix, so cost tracking
+works without `model_info.base_model`.
+
+- Needs IAM `bedrock:ListInferenceProfiles` (in addition to
+  `bedrock:ListFoundationModels`).
+- `global.` profiles may process requests in ANY AWS region — no EU data
+  residency. List `global` only if that is acceptable; order expresses
+  preference (`[eu, global]` = EU when available, else global).
 
 ## KubeAI — in-cluster OpenAI-compatible
 
