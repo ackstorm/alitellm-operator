@@ -1,8 +1,8 @@
-# ModelDiscovery sample: Amazon Bedrock (single region per CR)
+# ModelDiscovery sample: Amazon Bedrock
 #
 # CEL rules exercised:
 #   - spec.type=bedrock matches the Enum constraint
-#   - region is REQUIRED for bedrock
+#   - regions is REQUIRED for bedrock (region is forbidden)
 #   - baseUrl is FORBIDDEN for bedrock
 #   - credentialsSecretRef is OPTIONAL (commented variant below shows the
 #     IRSA / Pod Identity / EC2-instance-profile path with the field
@@ -10,11 +10,10 @@
 #     per D-05)
 #   - refresh.interval >= 1m (MDISC-05 floor)
 #
-# Multi-region note: each AWS region requires its OWN ModelDiscovery CR
-# with a DISTINCT spec.prefix to avoid name collisions on identical model
-# IDs across regions. Example pair:
-#   - ModelDiscovery/bedrock-us-east-1  (spec.prefix: bedrock-use1)
-#   - ModelDiscovery/bedrock-eu-west-1  (spec.prefix: bedrock-euw1)
+# Multi-region: list several regions in order, e.g.
+#   regions: [us-east-1, us-west-2]
+# Duplicate model IDs across regions resolve to the FIRST region; each
+# child's aws_region_name is the region it was found in.
 #
 # Bedrock model ID example: "anthropic.claude-3-sonnet-20240229-v1:0"
 # The `:` between `v1` and `0` is normalized to `-` for the K8s child
@@ -35,7 +34,7 @@ metadata:
   namespace: default
 spec:
   type: bedrock
-  region: us-east-1
+  regions: [us-east-1]
   prefix: bedrock-use1
   credentialsSecretRef:
     name: aws-bedrock-credentials

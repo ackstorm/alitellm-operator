@@ -13,7 +13,7 @@ child reconciles into LiteLLM via the `LiteLLMModel` controller
 | `spec.type`                 | yes             | Enum: `a2a`, `anthropic`, `bedrock`, `elevenlabs`, `gemini`, `kubeai`, `openai`.              |
 | `spec.prefix`               | no              | DNS-1123 segment prepended to each child's `metadata.name`. Default: lowercased `spec.type`. |
 | `spec.credentialsSecretRef` | per-provider    | Secret holding upstream API key (operator-side ONLY — never propagated to children).   |
-| `spec.region`               | bedrock only    | AWS region. One region per CR (multi-region → multiple CRs).                           |
+| `spec.regions`              | bedrock only    | Ordered AWS regions (min 1, unique); first region wins on a duplicate child name.      |
 | `spec.baseUrl`              | kubeai (req), openai (opt) | Provider HTTP endpoint. Any non-empty value auto-overlays into each child's `api_base` (so LiteLLM routes inference to the same endpoint models were discovered from). |
 | `spec.litellmProvider`      | no (openai only) | Overrides the LiteLLM pricing-prefix provider stamped on each child's `litellm_params.model` (default: derived from `spec.type`). E.g. `openrouter` to bill under OpenRouter's cost table. CEL-restricted to `type: openai`. |
 | `spec.aliases[]`            | no              | Alias rules: `<prefix><child><suffix> → <child>`, optional `include` filter.      |
@@ -30,7 +30,7 @@ child reconciles into LiteLLM via the `LiteLLMModel` controller
 |-------------|-----------------------------|-------------------------------|---------------------------------------------------------------------------|
 | `a2a`       | none                        | `credentialsSecretRef`, `region`, `baseUrl` | none — lists `LiteLLMA2AAgent` CRs                          |
 | `anthropic` | `credentialsSecretRef`      | `region`, `baseUrl`           | `ANTHROPIC_API_KEY`                                                       |
-| `bedrock`   | `region`                    | `baseUrl`                     | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (+ optional `AWS_SESSION_TOKEN`) |
+| `bedrock`   | `regions`                   | `region`, `baseUrl`           | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (+ optional `AWS_SESSION_TOKEN`) |
 | `elevenlabs`| `credentialsSecretRef`      | `region`, `baseUrl`           | `ELEVENLABS_API_KEY`                                                      |
 | `gemini`    | `credentialsSecretRef`      | `region`, `baseUrl`           | `GEMINI_API_KEY` (or `GOOGLE_API_KEY`)                                    |
 | `kubeai`    | `baseUrl`                   | `credentialsSecretRef`, `region` | none                                                                   |
@@ -95,13 +95,13 @@ Note `api_key: "{{ANTHROPIC_API_KEY}}"` lives in
 the placeholder at its own reconcile — Discovery itself never reads
 the inference key.
 
-## Bedrock — region + AWS creds
+## Bedrock — regions + AWS creds
 
 ```yaml
 spec:
   type: bedrock
   prefix: bedrock
-  region: eu-north-1
+  regions: [eu-north-1]
   credentialsSecretRef:
     name: bedrock-credentials
   secrets:
@@ -116,7 +116,32 @@ spec:
 ```
 
 The reconciler also overlays `aws_region_name: eu-north-1` into each
-child's `spec.params` (typed overlay — overwrite-wins).
+child's `spec.params`, unless `spec.params` already sets `aws_region_name`
+(user-supplied wins).
+
+### Multiple regions — first wins
+
+No single region carries every model. List several in order (`spec.region`
+was removed for bedrock in v0.10.0 — use a one-element `regions` list):
+
+```yaml
+spec:
+  type: bedrock
+  regions: [eu-north-1, eu-west-1]
+```
+
+Each region is listed in order and candidates are de-duplicated by child
+name: the first region that yields a name wins, later duplicates are
+dropped (logged at V(1)). Each child gets `aws_region_name` = the region
+it was found in (e.g. `openai.gpt-oss-120b-1:0` exists in both and is
+pinned to `eu-north-1`; Gemma 3, only in `eu-west-1`, is pinned there).
+
+If any region fails to list, the whole refresh fails
+(`SourceReachable=False`, the message names the region) and NO child is
+created or deleted, so children discovered from the healthy regions stay
+in place until the region recovers. Changing the region order can move a
+child to another region on the next refresh (an in-place update, same
+name).
 
 ## KubeAI — in-cluster OpenAI-compatible
 

@@ -422,6 +422,7 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		Type:       md.Spec.Type,
 		BaseURL:    md.Spec.BaseURL,
 		Region:     md.Spec.Region,
+		Regions:    md.Spec.Regions,
 		HTTPClient: r.HTTPClient,
 	}
 	switch md.Spec.Type {
@@ -551,8 +552,21 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return prefix + "." + normalized
 	}
 
+	// De-duplicate by child name, first wins: a multi-region Bedrock
+	// Discovery returns the same model once per region, in spec order.
+	// byID is keyed by raw ID (same ID ⇒ same child name, so it is unique
+	// here) and lets Step 9 recover each kept candidate's routing.
+	byID := make(map[string]providers.Candidate, len(candidates))
+	seenNames := make(map[string]struct{}, len(candidates))
 	candidateIDs := make([]string, 0, len(candidates))
 	for _, c := range candidates {
+		name := childNameOf(c.ID)
+		if _, dup := seenNames[name]; dup {
+			logger.V(1).Info("dropping duplicate candidate (first wins)", "rawID", c.ID, "childName", name)
+			continue
+		}
+		seenNames[name] = struct{}{}
+		byID[c.ID] = c
 		candidateIDs = append(candidateIDs, c.ID)
 	}
 	// Patterns match the raw upstream ID OR either user-visible name form:
@@ -701,7 +715,7 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			continue
 		}
 
-		child, buildErr := buildChildModel(&md, childName, rawID, litellmProvider, r.Namespace)
+		child, buildErr := buildChildModel(&md, childName, byID[rawID], litellmProvider, r.Namespace)
 		if buildErr != nil {
 			// Build-side errors are deterministic — surface as ChildCRWriteFailed.
 			metrics.ChildCRWritesTotal.WithLabelValues(modelDiscoveryKind, "create", "error").Inc()
@@ -1028,8 +1042,8 @@ const childDeletingRequeue = 5 * time.Second
 // - Spec.Params built via the "empty-safe overlay" pattern: if
 // md.Spec.Params is absent/empty, start with an empty map; else
 // decode the user's bag; then overlay the operator's typed fields
-// (model = "<litellm-provider>/<rawID>", optionally aws_region_name
-// for Bedrock); re-marshal.
+// (model = "<litellm-provider>/<cand.ModelID or cand.ID>", then
+// cand.Params unless the user set the key); re-marshal.
 // - Spec.Info / Spec.Secrets propagated VERBATIM (MDISC-23).
 //
 // MDISC-15 / AC-S1: the function does NOT take any credential parameter.
@@ -1037,7 +1051,7 @@ const childDeletingRequeue = 5 * time.Second
 // passed to providers.Registry only, never to this builder.
 func buildChildModel(
 	md *litellmv1alpha1.LiteLLMModelDiscovery,
-	childName, rawID, litellmProvider, namespace string,
+	childName string, cand providers.Candidate, litellmProvider, namespace string,
 ) (*litellmv1alpha1.LiteLLMModel, error) {
 	// Step 1: empty-safe overlay base. The dual guard
 	// (`md.Spec.Params.Raw == nil || len(md.Spec.Params.Raw) == 0`) covers
@@ -1053,9 +1067,17 @@ func buildChildModel(
 	}
 
 	// Step 2: typed-field overlay (D-07).
-	paramsMap["model"] = litellmProvider + "/" + rawID
-	if md.Spec.Type == providerTypeBedrock {
-		paramsMap["aws_region_name"] = md.Spec.Region
+	modelID := cand.ID
+	if cand.ModelID != "" {
+		modelID = cand.ModelID
+	}
+	paramsMap["model"] = litellmProvider + "/" + modelID
+	// Provider-supplied routing (e.g. Bedrock aws_region_name = the region
+	// the model was found in). User-supplied params win, like api_base below.
+	for k, v := range cand.Params {
+		if _, userSet := paramsMap[k]; !userSet {
+			paramsMap[k] = v
+		}
 	}
 	// FIX.txt H-2 (2026-05-22): kubeai requires api_base on every child so
 	// the LiteLLM proxy can route inference requests (hosted_vllm/<id>).
@@ -1064,8 +1086,7 @@ func buildChildModel(
 	// Together, Groq, vLLM) discovers models against baseUrl but LiteLLM
 	// routes inference to api.openai.com unless api_base is pinned, so the
 	// provider key gets rejected there (issue: OpenRouter key → OpenAI 401).
-	// Parallel to the bedrock spec.region → aws_region_name overlay above,
-	// but presence-checked: user-supplied params.api_base is a legitimate
+	// Presence-checked like the candidate Params overlay above: user-supplied params.api_base is a legitimate
 	// routing override (e.g. a test sidecar) and wins. Empty baseUrl (plain
 	// OpenAI/Anthropic/Gemini) injects nothing → LiteLLM's own default.
 	if md.Spec.BaseURL != "" {

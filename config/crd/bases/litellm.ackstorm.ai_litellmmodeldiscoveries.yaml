@@ -356,20 +356,24 @@ spec:
                 type: object
               region:
                 description: |-
-                  Region is the AWS region for Bedrock control-plane discovery
-                  (required when spec.type=bedrock, forbidden otherwise — see the
-                  CR-level CEL rule on the ModelDiscovery struct). One region per
-                  CR per PROJECT.md Key Decision; multi-region requires multiple CRs
-                  with distinct spec.prefix (e.g. bedrock-use1, bedrock-euw1).
-
-                  The value is overlaid as aws_region_name in each generated child
-                  Model's spec.params. This is one of two typed-field overlays the
-                  reconciler applies per CONTEXT.md D-07: bedrock spec.region →
-                  aws_region_name (overwrite-wins) and kubeai spec.baseUrl →
-                  api_base (user-supplied wins; see BaseURL doc, FIX.txt H-2). Plain
-                  string — AWS region codes are open-ended and not enumerated here;
-                  CEL gates presence per provider.
+                  Region is unused by every current type and CEL-forbidden for all of
+                  them (Bedrock uses spec.regions). Plain string; CEL gates presence
+                  per provider.
                 type: string
+              regions:
+                description: |-
+                  Regions is the ordered list of AWS regions for Bedrock discovery
+                  (required for spec.type=bedrock, forbidden otherwise). Each
+                  region is listed in order and candidates are de-duplicated by child
+                  name: the first region that yields a name wins, later duplicates are
+                  dropped. Each child gets aws_region_name = the region it was found in.
+                  If any region fails to list, the whole refresh fails and no child is
+                  created or deleted (children from the healthy regions are kept).
+                items:
+                  type: string
+                minItems: 1
+                type: array
+                x-kubernetes-list-type: set
               secrets:
                 description: |-
                   Secrets is the substitution map PROPAGATED verbatim into every
@@ -727,8 +731,11 @@ spec:
         - message: anthropic requires spec.credentialsSecretRef and forbids spec.region/spec.baseUrl
           rule: self.spec.type != 'anthropic' || (has(self.spec.credentialsSecretRef)
             && !has(self.spec.region) && !has(self.spec.baseUrl))
-        - message: bedrock requires spec.region and forbids spec.baseUrl
-          rule: self.spec.type != 'bedrock' || (has(self.spec.region) && !has(self.spec.baseUrl))
+        - message: bedrock requires spec.regions and forbids spec.region/spec.baseUrl
+          rule: self.spec.type != 'bedrock' || (has(self.spec.regions) && !has(self.spec.region)
+            && !has(self.spec.baseUrl))
+        - message: spec.regions is only allowed with spec.type=bedrock
+          rule: '!has(self.spec.regions) || self.spec.type == ''bedrock'''
         - message: elevenlabs requires spec.credentialsSecretRef and forbids spec.region/spec.baseUrl
           rule: self.spec.type != 'elevenlabs' || (has(self.spec.credentialsSecretRef)
             && !has(self.spec.region) && !has(self.spec.baseUrl))

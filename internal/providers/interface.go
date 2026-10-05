@@ -18,9 +18,19 @@ import (
 // "Claude 3.5 Sonnet"). Provider-specific extras (Gemini token limits,
 // Bedrock modalities) flow through spec.info propagation at the
 // Discovery CR level, NOT this struct.
+//
+// ModelID and Params carry per-candidate routing the reconciler cannot
+// derive from spec alone. ModelID, when set, replaces ID in
+// spec.params.model (a Bedrock inference profile ID) while ID keeps
+// naming the child, so the child name is stable if the routing changes.
+// Params are overlaid onto the child's spec.params unless the user set the
+// same key (e.g. Bedrock aws_region_name = the region the model was found
+// in). Neither field may carry credential material (MDISC-15).
 type Candidate struct {
 	ID          string
 	DisplayName string
+	ModelID     string
+	Params      map[string]string
 }
 
 // Provider is the uniform contract for one upstream model source.
@@ -60,7 +70,7 @@ type Provider interface {
 // OpenAI-compatible providers — Together, vLLM, Groq, OpenRouter).
 // - kubeai: requires HTTPClient + BaseURL (CEL-required). APIKey
 // optional. (Filled by.)
-// - bedrock: requires Region. AWSCreds optional — nil falls through
+// - bedrock: requires Regions. AWSCreds optional — nil falls through
 // to default credential chain. HTTPClient is unused (aws-sdk-go-v2
 // constructs its own internal transport). (Filled by.)
 type ProviderConfig struct {
@@ -73,10 +83,13 @@ type ProviderConfig struct {
 	// required for kubeai.
 	BaseURL string
 
-	// Region is the AWS region for bedrock (CEL-required for that
-	// type; CEL-forbidden elsewhere). Single region per CR per
-	// MDISC-16 / PROJECT.md Key Decision.
+	// Region is spec.region verbatim.
 	Region string
+
+	// Regions is spec.regions: the ordered AWS regions bedrock lists.
+	// Earlier regions win on a duplicate child name (resolved by the
+	// reconciler).
+	Regions []string
 
 	// APIKey is the resolved string from spec.credentialsSecretRef.
 	// Required for anthropic/gemini/openai; optional for kubeai;

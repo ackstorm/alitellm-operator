@@ -150,22 +150,25 @@ type ModelDiscoverySpec struct {
 	// +optional
 	CredentialsSecretRef *SecretObjectRef `json:"credentialsSecretRef,omitempty"`
 
-	// Region is the AWS region for Bedrock control-plane discovery
-	// (required when spec.type=bedrock, forbidden otherwise — see the
-	// CR-level CEL rule on the ModelDiscovery struct). One region per
-	// CR per PROJECT.md Key Decision; multi-region requires multiple CRs
-	// with distinct spec.prefix (e.g. bedrock-use1, bedrock-euw1).
-	//
-	// The value is overlaid as aws_region_name in each generated child
-	// Model's spec.params. This is one of two typed-field overlays the
-	// reconciler applies per CONTEXT.md D-07: bedrock spec.region →
-	// aws_region_name (overwrite-wins) and kubeai spec.baseUrl →
-	// api_base (user-supplied wins; see BaseURL doc, FIX.txt H-2). Plain
-	// string — AWS region codes are open-ended and not enumerated here;
-	// CEL gates presence per provider.
+	// Region is unused by every current type and CEL-forbidden for all of
+	// them (Bedrock uses spec.regions). Plain string; CEL gates presence
+	// per provider.
 	//
 	// +optional
 	Region string `json:"region,omitempty"`
+
+	// Regions is the ordered list of AWS regions for Bedrock discovery
+	// (required for spec.type=bedrock, forbidden otherwise). Each
+	// region is listed in order and candidates are de-duplicated by child
+	// name: the first region that yields a name wins, later duplicates are
+	// dropped. Each child gets aws_region_name = the region it was found in.
+	// If any region fails to list, the whole refresh fails and no child is
+	// created or deleted (children from the healthy regions are kept).
+	//
+	// +optional
+	// +kubebuilder:validation:MinItems=1
+	// +listType=set
+	Regions []string `json:"regions,omitempty"`
 
 	// BaseURL is the upstream provider's base endpoint. Required for
 	// kubeai (e.g. "http://kubeai.kubeai.svc/openai/v1"); optional for
@@ -587,7 +590,8 @@ type FailedCandidate struct {
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=".metadata.creationTimestamp"
 // +kubebuilder:validation:XValidation:rule="self.spec.type != 'a2a' || (!has(self.spec.credentialsSecretRef) && !has(self.spec.region) && !has(self.spec.baseUrl))",message="a2a forbids spec.credentialsSecretRef/spec.region/spec.baseUrl"
 // +kubebuilder:validation:XValidation:rule="self.spec.type != 'anthropic' || (has(self.spec.credentialsSecretRef) && !has(self.spec.region) && !has(self.spec.baseUrl))",message="anthropic requires spec.credentialsSecretRef and forbids spec.region/spec.baseUrl"
-// +kubebuilder:validation:XValidation:rule="self.spec.type != 'bedrock' || (has(self.spec.region) && !has(self.spec.baseUrl))",message="bedrock requires spec.region and forbids spec.baseUrl"
+// +kubebuilder:validation:XValidation:rule="self.spec.type != 'bedrock' || (has(self.spec.regions) && !has(self.spec.region) && !has(self.spec.baseUrl))",message="bedrock requires spec.regions and forbids spec.region/spec.baseUrl"
+// +kubebuilder:validation:XValidation:rule="!has(self.spec.regions) || self.spec.type == 'bedrock'",message="spec.regions is only allowed with spec.type=bedrock"
 // +kubebuilder:validation:XValidation:rule="self.spec.type != 'elevenlabs' || (has(self.spec.credentialsSecretRef) && !has(self.spec.region) && !has(self.spec.baseUrl))",message="elevenlabs requires spec.credentialsSecretRef and forbids spec.region/spec.baseUrl"
 // +kubebuilder:validation:XValidation:rule="self.spec.type != 'gemini' || (has(self.spec.credentialsSecretRef) && !has(self.spec.region) && !has(self.spec.baseUrl))",message="gemini requires spec.credentialsSecretRef and forbids spec.region/spec.baseUrl"
 // +kubebuilder:validation:XValidation:rule="self.spec.type != 'kubeai' || (has(self.spec.baseUrl) && !has(self.spec.credentialsSecretRef) && !has(self.spec.region))",message="kubeai requires spec.baseUrl and forbids spec.credentialsSecretRef/spec.region"

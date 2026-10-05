@@ -56,9 +56,87 @@ func newTestBedrockProvider(t *testing.T, opts ...func(*middleware.Stack) error)
 		),
 		APIOptions: opts,
 	}
-	return &bedrockProvider{
+	return &bedrockProvider{regions: []bedrockRegion{{
+		name:   "us-east-1",
 		client: bedrock.NewFromConfig(awsCfg),
-		region: "us-east-1",
+	}}}
+}
+
+// newTestBedrockMultiRegion builds a provider with one client per region,
+// each wired with its own APIOptions so a test can answer per region.
+func newTestBedrockMultiRegion(t *testing.T, regions []string, opts map[string]func(*middleware.Stack) error) *bedrockProvider {
+	t.Helper()
+	p := &bedrockProvider{}
+	for _, r := range regions {
+		awsCfg := awsv2.Config{
+			Region:      r,
+			Credentials: credentials.NewStaticCredentialsProvider("DUMMYAKID", "DUMMYSECRET", ""),
+			APIOptions:  []func(*middleware.Stack) error{opts[r]},
+		}
+		p.regions = append(p.regions, bedrockRegion{name: r, client: bedrock.NewFromConfig(awsCfg)})
+	}
+	return p
+}
+
+// onDemandModel is an ACTIVE, ON_DEMAND, text-output summary fixture.
+func onDemandModel(id string) bedrocktypes.FoundationModelSummary {
+	return bedrocktypes.FoundationModelSummary{
+		ModelId:                 awsv2.String(id),
+		ModelLifecycle:          &bedrocktypes.FoundationModelLifecycle{Status: bedrocktypes.FoundationModelLifecycleStatusActive},
+		InferenceTypesSupported: []bedrocktypes.InferenceType{bedrocktypes.InferenceTypeOnDemand},
+		OutputModalities:        []bedrocktypes.ModelModality{bedrocktypes.ModelModalityText},
+	}
+}
+
+// TestBedrock_MultiRegion_OrderAndRegionParams: regions are listed in spec
+// order and every candidate carries the region it was found in. Duplicates
+// across regions are returned as-is — the reconciler de-duplicates by child
+// name (first wins), so order is the contract here.
+func TestBedrock_MultiRegion_OrderAndRegionParams(t *testing.T) {
+	p := newTestBedrockMultiRegion(t, []string{"eu-north-1", "eu-west-1"}, map[string]func(*middleware.Stack) error{
+		"eu-north-1": injectBedrockMockOutput(t, &bedrock.ListFoundationModelsOutput{ModelSummaries: []bedrocktypes.FoundationModelSummary{
+			onDemandModel("zai.glm-5"), onDemandModel("openai.gpt-oss-120b-1:0"),
+		}}, nil),
+		"eu-west-1": injectBedrockMockOutput(t, &bedrock.ListFoundationModelsOutput{ModelSummaries: []bedrocktypes.FoundationModelSummary{
+			onDemandModel("google.gemma-3-27b-it"), onDemandModel("openai.gpt-oss-120b-1:0"),
+		}}, nil),
+	})
+	cands, err := p.List(context.Background())
+	if err != nil {
+		t.Fatalf("List err: %v", err)
+	}
+	want := [][2]string{
+		{"zai.glm-5", "eu-north-1"},
+		{"openai.gpt-oss-120b-1:0", "eu-north-1"},
+		{"google.gemma-3-27b-it", "eu-west-1"},
+		{"openai.gpt-oss-120b-1:0", "eu-west-1"},
+	}
+	if len(cands) != len(want) {
+		t.Fatalf("got %d candidates %+v; want %d", len(cands), cands, len(want))
+	}
+	for i, w := range want {
+		if cands[i].ID != w[0] || cands[i].Params["aws_region_name"] != w[1] {
+			t.Errorf("cand[%d] = %s@%s; want %s@%s", i, cands[i].ID, cands[i].Params["aws_region_name"], w[0], w[1])
+		}
+	}
+}
+
+// TestBedrock_MultiRegion_OneRegionFails: any failing region fails the
+// whole List (D-09 atomic snapshot — the reconciler then neither creates
+// nor deletes children), and the error names the region.
+func TestBedrock_MultiRegion_OneRegionFails(t *testing.T) {
+	p := newTestBedrockMultiRegion(t, []string{"eu-north-1", "eu-west-1"}, map[string]func(*middleware.Stack) error{
+		"eu-north-1": injectBedrockMockOutput(t, &bedrock.ListFoundationModelsOutput{ModelSummaries: []bedrocktypes.FoundationModelSummary{
+			onDemandModel("zai.glm-5"),
+		}}, nil),
+		"eu-west-1": injectBedrockMockOutput(t, nil, &smithy.GenericAPIError{Code: "InternalFailure", Fault: smithy.FaultServer}),
+	})
+	cands, err := p.List(context.Background())
+	if err == nil {
+		t.Fatalf("want error; got %+v", cands)
+	}
+	if !strings.Contains(err.Error(), "eu-west-1") {
+		t.Errorf("error %q does not name the failing region", err)
 	}
 }
 
@@ -216,8 +294,7 @@ func TestBedrock_5xx_ReturnsPlainError(t *testing.T) {
 // CEL-required).
 func TestBedrock_MissingRegion_ReturnsConstructorError(t *testing.T) {
 	_, err := newBedrock(context.Background(), ProviderConfig{
-		Type:   "bedrock",
-		Region: "",
+		Type: "bedrock",
 	})
 	if err == nil {
 		t.Fatal("empty Region: want err")
@@ -298,10 +375,10 @@ func TestBedrock_CredentialCanary(t *testing.T) {
 			injectBedrockMockOutput(t, nil, apiErr),
 		},
 	}
-	p := &bedrockProvider{
+	p := &bedrockProvider{regions: []bedrockRegion{{
+		name:   "us-east-1",
 		client: bedrock.NewFromConfig(awsCfg),
-		region: "us-east-1",
-	}
+	}}}
 	_, listErr := p.List(context.Background())
 	if listErr == nil {
 		t.Fatal("canary: want err; got nil")
@@ -319,3 +396,4 @@ func TestBedrock_CredentialCanary(t *testing.T) {
 		t.Fatalf("canary leaked into log buffer: %s", buf.String())
 	}
 }
+

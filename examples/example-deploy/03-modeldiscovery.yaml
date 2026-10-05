@@ -140,7 +140,9 @@ metadata:
 spec:
   type: bedrock
   prefix: bedrock
-  region: eu-north-1
+  # Listed in order; first region wins on a duplicate model; each child is
+  # pinned (aws_region_name) to the region it was found in.
+  regions: [eu-north-1, eu-west-1]
   credentialsSecretRef:
     name: bedrock-credentials
   secrets:
