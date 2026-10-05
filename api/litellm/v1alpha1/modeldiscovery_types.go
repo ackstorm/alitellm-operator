@@ -176,6 +176,8 @@ type ModelDiscoverySpec struct {
 	//
 	// +optional
 	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=16
+	// +kubebuilder:validation:items:Pattern=`^[a-z0-9-]+$`
 	// +listType=set
 	Regions []string `json:"regions,omitempty"`
 
@@ -186,12 +188,16 @@ type ModelDiscoverySpec struct {
 	// first geography (list order) whose system-defined profile
 	// "<geo>.<modelId>" exists is used: the child's params.model becomes
 	// bedrock/<geo>.<modelId> while the child NAME stays the base model ID.
-	// In-region ON_DEMAND always beats a profile. Empty (default) = no
+	// Within one region, ON_DEMAND always beats a profile; across regions
+	// the first region yielding the child name wins (a profile in an
+	// earlier region beats ON_DEMAND in a later one). Empty (default) = no
 	// profiles. Requires bedrock:ListInferenceProfiles. NOTE: global.
 	// profiles may process requests in any AWS region (no data residency).
 	//
 	// +optional
 	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=8
+	// +kubebuilder:validation:items:Pattern=`^[a-z-]+$`
 	// +listType=set
 	InferenceProfiles []string `json:"inferenceProfiles,omitempty"`
 
@@ -212,9 +218,7 @@ type ModelDiscoverySpec struct {
 	// spec.baseUrl → spec.params.api_base on each generated child Model,
 	// so the LiteLLM proxy can route hosted_vllm/<id> inference requests
 	// at runtime. User-supplied params.api_base wins over the auto-overlay
-	// (presence check). Diverges from the bedrock region overlay's
-	// overwrite-wins semantics on purpose: api_base is a legitimate per-
-	// child routing override.
+	// (presence check), like every other routing overlay.
 	//
 	// +optional
 	BaseURL string `json:"baseUrl,omitempty"`
@@ -222,8 +226,11 @@ type ModelDiscoverySpec struct {
 	// Params is a pass-through bag of fields propagated VERBATIM into
 	// every generated child Model's spec.params (MDISC-23). On top of this
 	// bag, the Discovery reconciler overlays two typed fields per child:
-	// - model: "<litellm-provider>/<raw-id>" (e.g. "anthropic/claude-3-5-sonnet-20241022")
-	// - aws_region_name: <spec.region> (bedrock only)
+	// - model: "<litellm-provider>/<raw-id>" (e.g. "anthropic/claude-3-5-sonnet-20241022";
+	//   a Bedrock inference profile ID instead of the raw ID when one is used)
+	// - provider routing, only where this bag does not set the key:
+	//   aws_region_name (bedrock: the region the model was found in),
+	//   vertex_location / vertex_project (vertex), api_base (custom baseUrl)
 	// All other keys are forwarded unchanged. {{NAME}} substitution
 	// happens on the child Model's own reconcile (§5.2 propagation rule
 	// per AC-SEC4-PROPAGATE), NOT on Discovery's reconcile.

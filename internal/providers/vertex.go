@@ -4,7 +4,9 @@ package providers
 
 import (
 	"context"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +14,7 @@ import (
 	"net/url"
 	"path"
 	"regexp"
+	"strings"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/jwt"
@@ -36,7 +39,7 @@ var vertexLocationRe = regexp.MustCompile(`^[a-z0-9-]+$`)
 
 var (
 	errVertexLocation = errors.New("vertex: spec.region must be a Vertex location (e.g. eu, us, global, europe-west1)")
-	errVertexKey      = errors.New("vertex: VERTEX_CREDENTIALS is not a service-account JSON key (needs client_email, private_key, project_id)")
+	errVertexKey      = errors.New("vertex: VERTEX_CREDENTIALS is not a service-account JSON key (needs client_email, project_id and a PEM PKCS#8/PKCS#1 private_key)")
 )
 
 // vertexKey is the subset of a service-account JSON key the provider reads.
@@ -62,13 +65,28 @@ func newVertexImpl(_ context.Context, cfg ProviderConfig) (Provider, error) {
 	var k vertexKey
 	// The decode error is dropped: json syntax errors can quote key bytes.
 	if json.Unmarshal(cfg.VertexCredentials, &k) != nil ||
-		k.ClientEmail == "" || k.PrivateKey == "" || k.ProjectID == "" {
+		k.ClientEmail == "" || k.ProjectID == "" || !parsablePrivateKey(k.PrivateKey) {
 		return nil, errVertexKey
 	}
 	return &vertexProvider{key: k, location: cfg.Region, httpClient: cfg.HTTPClient}, nil
 }
 
 func (p *vertexProvider) Type() string { return providerTypeVertex }
+
+// parsablePrivateKey validates up front what jwt would otherwise reject at
+// token time: jwt wraps its errors with %v, so a bad key and a token
+// endpoint outage would be indistinguishable there.
+func parsablePrivateKey(pemKey string) bool {
+	block, _ := pem.Decode([]byte(pemKey))
+	if block == nil {
+		return false
+	}
+	if _, err := x509.ParsePKCS8PrivateKey(block.Bytes); err == nil {
+		return true
+	}
+	_, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	return err == nil
+}
 
 // vertexBaseURL maps a Vertex location to its API host:
 // global → aiplatform.googleapis.com; multi-region eu/us → the regional
@@ -110,13 +128,10 @@ func (p *vertexProvider) token(ctx context.Context) (string, error) {
 				Cause:    fmt.Errorf("token exchange: status %d %s", status, re.ErrorCode),
 			}
 		}
-		var ue *url.Error
-		if errors.As(err, &ue) {
-			return "", fmt.Errorf("vertex: token exchange: %w", ue)
-		}
-		// Remaining errors are local (unparseable private_key); their text is
-		// not guaranteed key-free, so it is dropped.
-		return "", &ProviderAuthError{Provider: providerTypeVertex, Cause: errors.New("token exchange: invalid private_key")}
+		// The key was parsed in the constructor, so what is left is transport
+		// or token-response decoding (jwt wraps with %v: no *url.Error to
+		// match). Text carries the pinned token URL at most — no key bytes.
+		return "", fmt.Errorf("vertex: token exchange: %v", err)
 	}
 	return tok.AccessToken, nil
 }
@@ -183,7 +198,13 @@ func (p *vertexProvider) List(ctx context.Context) ([]Candidate, error) {
 			}
 			for _, m := range decoded.PublisherModels {
 				// "publishers/google/models/gemini-3.8-flash" → "gemini-3.8-flash"
-				candidates = append(candidates, Candidate{ID: path.Base(m.Name), Params: params})
+				id := path.Base(m.Name)
+				// Gemini only (Imagen, Veo, Chirp, text-embedding are not chat
+				// models); embeddings dropped like Bedrock's EMBEDDING filter.
+				if !strings.HasPrefix(id, "gemini-") || strings.Contains(id, "embedding") {
+					continue
+				}
+				candidates = append(candidates, Candidate{ID: id, Params: params})
 			}
 			return decoded.NextPageToken, nil
 		}()

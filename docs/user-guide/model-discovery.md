@@ -165,8 +165,10 @@ spec:
 Per region the operator also lists the SYSTEM_DEFINED inference profiles.
 For an ACTIVE, non-embedding model WITHOUT ON_DEMAND support in that region,
 it uses the first geography in list order whose ACTIVE profile
-`<geo>.<modelId>` exists; otherwise the model is skipped. In-region
-ON_DEMAND always beats a profile.
+`<geo>.<modelId>` exists; otherwise the model is skipped. Within one
+region, ON_DEMAND always beats a profile. Across regions the first region
+that yields the child name wins, so a profile in an earlier region beats
+ON_DEMAND in a later one.
 
 The child's `params.model` is `bedrock/<geo>.<modelId>`, but the child
 NAME stays the base model ID (`bedrock.amazon.nova-pro-v1-0`), so names
@@ -213,6 +215,13 @@ spec:
   `global` uses `aiplatform.googleapis.com`. `eu` and `us` use
   `aiplatform.<loc>.rep.googleapis.com`. A single region uses
   `<loc>-aiplatform.googleapis.com`.
+- **Gemini only.** IDs not starting with `gemini-` (Imagen, Veo, Chirp,
+  `text-embedding-*`) and `*embedding*` models are dropped.
+- **LiteLLM side.** For `eu`/`us`, LiteLLM must map `vertex_location` to the
+  multi-region host `aiplatform.<loc>.rep.googleapis.com` (verified on the
+  ackstorm deployment, 2026-10-05). Older LiteLLM builds may call
+  `<loc>-aiplatform.googleapis.com` instead, which does not exist for `eu`.
+  Check the LiteLLM image before relying on `eu`/`us`.
 - **Children.** `params.model = vertex_ai/<id>`, plus `vertex_location =
   spec.region` and `vertex_project = <project_id of the key>` unless
   `spec.params` sets them. Default prefix `vertex`; pricing provider

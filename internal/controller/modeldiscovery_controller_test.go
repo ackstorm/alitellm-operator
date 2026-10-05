@@ -2356,3 +2356,35 @@ func TestModelDiscovery_Vertex_GeneratesChildren(t *testing.T) {
 		}
 	}
 }
+
+// TestModelDiscovery_DedupeAfterFilter: two raw IDs normalize to the same
+// child name; excluding the first must let the second through (filters run
+// BEFORE the first-wins de-duplication).
+func TestModelDiscovery_DedupeAfterFilter(t *testing.T) {
+	ctx := context.Background()
+	const mdName = "dedupe-after-filter"
+
+	ensureNoModelDiscovery(t, ctx, mdName)
+	t.Cleanup(func() { ensureNoModelDiscovery(t, context.Background(), mdName) })
+
+	providers.RegisterTestProvider(t, "openai", newFakeProvider("openai", []providers.Candidate{
+		{ID: "acme/model-x"},
+		{ID: "acme:model-x"},
+	}))
+	ensureCredentialSecret(t, ctx, mdName+"-creds", "openai")
+
+	md := modeldiscoverySampleCR(mdName, "openai")
+	md.Spec.Filters = &litellmv1alpha1.ModelDiscoveryFilters{Exclude: []string{"acme/model-x"}}
+	if err := k8sClient.Create(ctx, md); err != nil {
+		t.Fatalf("create ModelDiscovery: %v", err)
+	}
+
+	child := pollChildModel(t, ctx, "openai.acme-model-x", 30*time.Second)
+	var params map[string]any
+	if err := json.Unmarshal(child.Spec.Params.Raw, &params); err != nil {
+		t.Fatalf("decode params: %v", err)
+	}
+	if got, want := params["model"], "openai/acme:model-x"; got != want {
+		t.Errorf("params.model = %v; want %s", got, want)
+	}
+}

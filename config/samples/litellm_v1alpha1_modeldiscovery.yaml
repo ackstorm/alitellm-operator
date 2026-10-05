@@ -11,7 +11,7 @@
 # plan 04-01 + spec §11 AC-MD1 (Pipeline B: Discovery generates Kubernetes
 # Model child CRs) and AC-FILT1 (RE2 include/exclude filter with
 # include-first-then-exclude order). This file complements the per-provider
-# samples in modeldiscovery-{anthropic,bedrock,gemini,kubeai,openai}.yaml;
+# samples in modeldiscovery-{anthropic,bedrock,elevenlabs,gemini,kubeai,openai,vertex}.yaml;
 # those files are the recommended reference for production use. Applied with
 # `kubectl apply -f config/samples/litellm_v1alpha1_modeldiscovery.yaml`
 # after the operator's CRDs are installed. LiteLLMConnection is NOT required
@@ -28,9 +28,10 @@
 #   (d) A refresh occurs every 10 minutes; removed models from the provider
 #       are detected via K8s label-selector-based vanish detection.
 #
-# NOTE: Per CONTEXT.md §8 / plan 07-03 audit: the 5 per-provider samples
-# (modeldiscovery-{anthropic,bedrock,gemini,kubeai,openai}.yaml) satisfy
-# DEPLOY-02's "≥1 ModelDiscovery per provider type (5 total)" requirement.
+# NOTE: Per CONTEXT.md §8 / plan 07-03 audit: the per-provider samples
+# (modeldiscovery-{anthropic,bedrock,elevenlabs,gemini,kubeai,openai,vertex}.yaml)
+# satisfy DEPLOY-02's "≥1 ModelDiscovery per provider type" requirement
+# (a2a has no sample: it lists LiteLLMA2AAgent CRs).
 # This file is the scaffold default — enriched to header-convention quality.
 apiVersion: litellm.ackstorm.ai/v1alpha1
 kind: LiteLLMModelDiscovery
@@ -41,8 +42,8 @@ metadata:
     app.kubernetes.io/name: alitellm-operator
     app.kubernetes.io/managed-by: kustomize
 spec:
-  # type selects the provider (CEL enum: anthropic, bedrock, gemini, kubeai,
-  # openai). See modeldiscovery-{anthropic,...}.yaml for provider-specific
+  # type selects the provider (CEL enum: a2a, anthropic, bedrock, elevenlabs,
+  # gemini, kubeai, openai, vertex). See modeldiscovery-{anthropic,...}.yaml for provider-specific
   # samples with full CEL constraint commentary.
   type: openai
   # baseUrl defaults to https://api.openai.com/v1 when absent. Override to

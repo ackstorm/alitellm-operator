@@ -94,7 +94,7 @@ func TestVertex_List_TokenPaginationProjectHeader(t *testing.T) {
 	fakeTokenServer(t)
 	pages := map[string]string{
 		"":   `{"publisherModels":[{"name":"publishers/google/models/gemini-3.8-flash","versionId":"default","launchStage":"GA"}],"nextPageToken":"p2"}`,
-		"p2": `{"publisherModels":[{"name":"publishers/google/models/gemini-3.5-flash-lite"}]}`,
+		"p2": `{"publisherModels":[{"name":"publishers/google/models/gemini-3.5-flash-lite"},{"name":"publishers/google/models/imagen-4.0-generate-001"},{"name":"publishers/google/models/gemini-embedding-001"}]}`,
 	}
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1beta1/publishers/google/models" {
@@ -184,13 +184,15 @@ func TestVertex_TokenRejected_AuthErrorNoBody(t *testing.T) {
 	}
 }
 
-// TestVertex_KeyCanary: malformed keys and an unparseable private_key never
-// echo key material into errors.
+// TestVertex_KeyCanary: malformed keys and an unparseable private_key are
+// rejected by the constructor without echoing key material.
 func TestVertex_KeyCanary(t *testing.T) {
 	const canary = "KEY-CANARY-0123456789"
+	bad := "-----BEGIN PRIVATE KEY-----\n" + canary + "\n-----END PRIVATE KEY-----\n"
 	for name, key := range map[string][]byte{
-		"not json":       []byte(`{"private_key":"` + canary + `"`),
-		"missing fields": []byte(`{"private_key":"` + canary + `"}`),
+		"not json":        []byte(`{"private_key":"` + canary + `"`),
+		"missing fields":  []byte(`{"private_key":"` + canary + `"}`),
+		"bad private_key": vertexKeyJSON(t, bad),
 	} {
 		_, err := newVertexImpl(context.Background(), ProviderConfig{
 			Region: "eu", VertexCredentials: key, HTTPClient: http.DefaultClient,
@@ -198,13 +200,6 @@ func TestVertex_KeyCanary(t *testing.T) {
 		if err == nil || strings.Contains(err.Error(), canary) {
 			t.Errorf("%s: err=%v; want error without canary", name, err)
 		}
-	}
-
-	fakeTokenServer(t)
-	bad := "-----BEGIN PRIVATE KEY-----\n" + canary + "\n-----END PRIVATE KEY-----\n"
-	_, err := newTestVertex(t, vertexKeyJSON(t, bad)).List(context.Background())
-	if err == nil || strings.Contains(err.Error(), canary) {
-		t.Errorf("bad private_key: err=%v; want error without canary", err)
 	}
 }
 
@@ -218,5 +213,18 @@ func TestVertex_LocationValidated(t *testing.T) {
 		if err == nil {
 			t.Errorf("location %q: want error", loc)
 		}
+	}
+}
+
+// TestVertex_TokenEndpointDown_NotAuth: a token-endpoint outage is a plain
+// (Unreachable) error, not an auth failure blaming the key.
+func TestVertex_TokenEndpointDown_NotAuth(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	SetTestBaseURL(t, vertexTokenURLKey, srv.URL)
+	srv.Close()
+	_, err := newTestVertex(t, vertexTestKey(t)).List(context.Background())
+	var authErr *ProviderAuthError
+	if err == nil || errors.As(err, &authErr) {
+		t.Fatalf("want plain error; got %T %v", err, err)
 	}
 }

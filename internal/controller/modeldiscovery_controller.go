@@ -16,8 +16,10 @@
 // `LiteLLMConnection/default`.
 // - Discovery propagates `spec.params` + `spec.info` + `spec.secrets[]`
 // verbatim into every generated child (MDISC-23). The only typed-field
-// overlay is `spec.params.model = "<litellm-provider>/<raw-id>"` (and
-// `spec.params.aws_region_name = spec.region` for Bedrock).
+// overlays are `spec.params.model = "<litellm-provider>/<raw-id or
+// Candidate.ModelID>"`, plus the provider's per-candidate routing
+// (Candidate.Params: Bedrock aws_region_name, Vertex vertex_location /
+// vertex_project) and api_base for a custom baseUrl — user params win.
 // - Credentials from `spec.credentialsSecretRef` are used ONLY for the
 // provider-side discovery call. They are NEVER copied into the child's
 // spec/metadata. The post-render canary
@@ -567,21 +569,8 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return prefix + "." + normalized
 	}
 
-	// De-duplicate by child name, first wins: a multi-region Bedrock
-	// Discovery returns the same model once per region, in spec order.
-	// byID is keyed by raw ID (same ID ⇒ same child name, so it is unique
-	// here) and lets Step 9 recover each kept candidate's routing.
-	byID := make(map[string]providers.Candidate, len(candidates))
-	seenNames := make(map[string]struct{}, len(candidates))
 	candidateIDs := make([]string, 0, len(candidates))
 	for _, c := range candidates {
-		name := childNameOf(c.ID)
-		if _, dup := seenNames[name]; dup {
-			logger.V(1).Info("dropping duplicate candidate (first wins)", "rawID", c.ID, "childName", name)
-			continue
-		}
-		seenNames[name] = struct{}{}
-		byID[c.ID] = c
 		candidateIDs = append(candidateIDs, c.ID)
 	}
 	// Patterns match the raw upstream ID OR either user-visible name form:
@@ -607,6 +596,33 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			// Treat as a controller bug; return err for backoff.
 			return ctrl.Result{}, filterErr
 		}
+	}
+
+	// De-duplicate the KEPT set by child name, first wins, in provider
+	// order: a multi-region Bedrock Discovery returns the same model once per
+	// region, in spec order. Filtering first means an exclude that drops one
+	// raw ID still lets a later ID with the same child name through. byID is
+	// keyed by raw ID (same ID ⇒ same child name, so unique here) and lets
+	// Step 9 recover each kept candidate's routing.
+	keptSet := make(map[string]struct{}, len(kept))
+	for _, id := range kept {
+		keptSet[id] = struct{}{}
+	}
+	byID := make(map[string]providers.Candidate, len(kept))
+	seenNames := make(map[string]struct{}, len(kept))
+	kept = kept[:0]
+	for _, c := range candidates {
+		if _, ok := keptSet[c.ID]; !ok {
+			continue
+		}
+		name := childNameOf(c.ID)
+		if _, dup := seenNames[name]; dup {
+			logger.V(1).Info("dropping duplicate candidate (first wins)", "rawID", c.ID, "childName", name)
+			continue
+		}
+		seenNames[name] = struct{}{}
+		byID[c.ID] = c
+		kept = append(kept, c.ID)
 	}
 
 	// ─── Step 8: Derive child names ─────────────
