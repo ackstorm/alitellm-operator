@@ -978,10 +978,49 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#bedrock-region-aws-creds" class="md-nav__link">
+  <a href="#bedrock-regions-aws-creds" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Bedrock — region + AWS creds
+        Bedrock — regions + AWS creds
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Bedrock — regions + AWS creds">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#multiple-regions-first-wins" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multiple regions — first wins
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#inference-profiles-opt-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inference profiles — opt-in
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#vertex-ai-gemini-with-a-location-eu-residency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Vertex AI — Gemini with a location (EU residency)
       
     </span>
   </a>
@@ -1837,10 +1876,49 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#bedrock-region-aws-creds" class="md-nav__link">
+  <a href="#bedrock-regions-aws-creds" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Bedrock — region + AWS creds
+        Bedrock — regions + AWS creds
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Bedrock — regions + AWS creds">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#multiple-regions-first-wins" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multiple regions — first wins
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#inference-profiles-opt-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inference profiles — opt-in
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#vertex-ai-gemini-with-a-location-eu-residency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Vertex AI — Gemini with a location (EU residency)
       
     </span>
   </a>
@@ -2030,7 +2108,7 @@ child reconciles into LiteLLM via the <code>LiteLLMModel</code> controller
 <tr>
 <td><code>spec.type</code></td>
 <td>yes</td>
-<td>Enum: <code>a2a</code>, <code>anthropic</code>, <code>bedrock</code>, <code>elevenlabs</code>, <code>gemini</code>, <code>kubeai</code>, <code>openai</code>.</td>
+<td>Enum: <code>a2a</code>, <code>anthropic</code>, <code>bedrock</code>, <code>elevenlabs</code>, <code>gemini</code>, <code>kubeai</code>, <code>openai</code>, <code>vertex</code>.</td>
 </tr>
 <tr>
 <td><code>spec.prefix</code></td>
@@ -2044,8 +2122,18 @@ child reconciles into LiteLLM via the <code>LiteLLMModel</code> controller
 </tr>
 <tr>
 <td><code>spec.region</code></td>
+<td>vertex only</td>
+<td>Vertex location (<code>eu</code>, <code>us</code>, <code>global</code>, <code>europe-west1</code>, …). Pattern <code>^[a-z0-9-]+$</code>.</td>
+</tr>
+<tr>
+<td><code>spec.regions</code></td>
 <td>bedrock only</td>
-<td>AWS region. One region per CR (multi-region → multiple CRs).</td>
+<td>Ordered AWS regions (min 1, unique); first region wins on a duplicate child name.</td>
+</tr>
+<tr>
+<td><code>spec.inferenceProfiles</code></td>
+<td>no (bedrock only)</td>
+<td>Ordered inference-profile geographies (<code>eu</code>, <code>us</code>, <code>apac</code>, <code>global</code>, …) for models without in-region ON_DEMAND. Default empty = off.</td>
 </tr>
 <tr>
 <td><code>spec.baseUrl</code></td>
@@ -2119,8 +2207,8 @@ child reconciles into LiteLLM via the <code>LiteLLMModel</code> controller
 </tr>
 <tr>
 <td><code>bedrock</code></td>
-<td><code>region</code></td>
-<td><code>baseUrl</code></td>
+<td><code>regions</code></td>
+<td><code>region</code>, <code>baseUrl</code></td>
 <td><code>AWS_ACCESS_KEY_ID</code>, <code>AWS_SECRET_ACCESS_KEY</code> (+ optional <code>AWS_SESSION_TOKEN</code>)</td>
 </tr>
 <tr>
@@ -2147,8 +2235,15 @@ child reconciles into LiteLLM via the <code>LiteLLMModel</code> controller
 <td><code>region</code></td>
 <td><code>OPENAI_API_KEY</code></td>
 </tr>
+<tr>
+<td><code>vertex</code></td>
+<td><code>credentialsSecretRef</code>, <code>region</code></td>
+<td><code>baseUrl</code></td>
+<td><code>VERTEX_CREDENTIALS</code> (service-account JSON key)</td>
+</tr>
 </tbody>
 </table>
+<p><code>spec.regions</code> and <code>spec.inferenceProfiles</code> are bedrock-only for every type.</p>
 <p>The per-type XValidation rules on the CRD enforce this matrix at admission.</p>
 <h2 id="credential-boundary-mdisc-15-non-negotiable">Credential boundary (MDISC-15) — non-negotiable<a class="headerlink" href="#credential-boundary-mdisc-15-non-negotiable" title="Permanent link">&para;</a></h2>
 <p><code>spec.credentialsSecretRef</code> is for the OPERATOR'S <code>GET /v1/models</code>
@@ -2196,11 +2291,11 @@ appears in any generated child's rendered fields.</p>
 <code>spec.secrets[]</code> (propagated). The child Model's reconciler resolves
 the placeholder at its own reconcile — Discovery itself never reads
 the inference key.</p>
-<h2 id="bedrock-region-aws-creds">Bedrock — region + AWS creds<a class="headerlink" href="#bedrock-region-aws-creds" title="Permanent link">&para;</a></h2>
+<h2 id="bedrock-regions-aws-creds">Bedrock — regions + AWS creds<a class="headerlink" href="#bedrock-regions-aws-creds" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">spec</span><span class="p">:</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bedrock</span>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span><span class="nt">prefix</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bedrock</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span><span class="nt">region</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">eu-north-1</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span><span class="nt">regions</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">eu-north-1</span><span class="p p-Indicator">]</span>
 <a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span><span class="nt">credentialsSecretRef</span><span class="p">:</span>
 <a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bedrock-credentials</span>
 <a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">  </span><span class="nt">secrets</span><span class="p">:</span>
@@ -2214,17 +2309,111 @@ the inference key.</p>
 <a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="w">  </span><span class="nt">refresh</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> interval</span><span class="p">:</span><span class="w"> </span><span class="nv">10m</span><span class="w"> </span><span class="p p-Indicator">}</span>
 </code></pre></div>
 <p>The reconciler also overlays <code>aws_region_name: eu-north-1</code> into each
-child's <code>spec.params</code> (typed overlay — overwrite-wins).</p>
-<h2 id="kubeai-in-cluster-openai-compatible">KubeAI — in-cluster OpenAI-compatible<a class="headerlink" href="#kubeai-in-cluster-openai-compatible" title="Permanent link">&para;</a></h2>
+child's <code>spec.params</code>, unless <code>spec.params</code> already sets <code>aws_region_name</code>
+(user-supplied wins).</p>
+<h3 id="multiple-regions-first-wins">Multiple regions — first wins<a class="headerlink" href="#multiple-regions-first-wins" title="Permanent link">&para;</a></h3>
+<p>No single region carries every model. List several in order (<code>spec.region</code>
+was removed for bedrock in v0.10.0 — use a one-element <code>regions</code> list):</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">kubeai</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span><span class="nt">prefix</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">kubeai</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span><span class="nt">baseUrl</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://kubeai.kubeai.svc/openai/v1</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">  </span><span class="nt">credentialsSecretRef</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">kubeai-credentials</span><span class="w"> </span><span class="p p-Indicator">}</span><span class="w">   </span><span class="c1"># may be empty</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">    </span><span class="nt">rpm</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">25</span>
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">    </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">300</span>
-<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="w">  </span><span class="nt">refresh</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> interval</span><span class="p">:</span><span class="w"> </span><span class="nv">10m</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bedrock</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span><span class="nt">regions</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">eu-north-1</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">eu-west-1</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+<p>Each region is listed in order and candidates are de-duplicated by child
+name: the first region that yields a name wins, later duplicates are
+dropped (logged at V(1)). Each child gets <code>aws_region_name</code> = the region
+it was found in (e.g. <code>openai.gpt-oss-120b-1:0</code> exists in both and is
+pinned to <code>eu-north-1</code>; Gemma 3, only in <code>eu-west-1</code>, is pinned there).</p>
+<p>If any region fails to list, the whole refresh fails
+(<code>SourceReachable=False</code>, the message names the region) and NO child is
+created or deleted, so children discovered from the healthy regions stay
+in place until the region recovers. Changing the region order can move a
+child to another region on the next refresh (an in-place update, same
+name).</p>
+<h3 id="inference-profiles-opt-in">Inference profiles — opt-in<a class="headerlink" href="#inference-profiles-opt-in" title="Permanent link">&para;</a></h3>
+<p>Some models are offered in a region ONLY through cross-region inference
+profiles (e.g. <code>eu.amazon.nova-pro-v1:0</code>, <code>global.openai.gpt-6-sol</code>). They
+never appear with the default ON_DEMAND listing. Opt in with an ordered list
+of allowed profile geographies:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bedrock</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span><span class="nt">regions</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">eu-north-1</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">eu-west-1</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span><span class="nt">inferenceProfiles</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">eu</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+<p>Per region the operator also lists the SYSTEM_DEFINED inference profiles.
+For an ACTIVE, non-embedding model WITHOUT ON_DEMAND support in that region,
+it uses the first geography in list order whose ACTIVE profile
+<code>&lt;geo&gt;.&lt;modelId&gt;</code> exists; otherwise the model is skipped. Within one
+region, ON_DEMAND always beats a profile. Across regions the first region
+that yields the child name wins, so a profile in an earlier region beats
+ON_DEMAND in a later one.</p>
+<p>The child's <code>params.model</code> is <code>bedrock/&lt;geo&gt;.&lt;modelId&gt;</code>, but the child
+NAME stays the base model ID (<code>bedrock.amazon.nova-pro-v1-0</code>), so names
+and aliases do not change if the model later becomes ON_DEMAND. LiteLLM
+prices profile IDs by stripping the geography prefix, so cost tracking
+works without <code>model_info.base_model</code>.</p>
+<ul>
+<li>Needs IAM <code>bedrock:ListInferenceProfiles</code> (in addition to
+  <code>bedrock:ListFoundationModels</code>).</li>
+<li><code>global.</code> profiles may process requests in ANY AWS region — no EU data
+  residency. List <code>global</code> only if that is acceptable; order expresses
+  preference (<code>[eu, global]</code> = EU when available, else global).</li>
+</ul>
+<h2 id="vertex-ai-gemini-with-a-location-eu-residency">Vertex AI — Gemini with a location (EU residency)<a class="headerlink" href="#vertex-ai-gemini-with-a-location-eu-residency" title="Permanent link">&para;</a></h2>
+<p>Gemini through Vertex AI instead of the Gemini Developer API (<code>gemini</code>
+type). Only the <code>google</code> publisher (Gemini) is discovered; Claude, partner
+and open-weight MaaS models are out of scope.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">vertex</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span><span class="nt">region</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">eu</span><span class="w">                     </span><span class="c1"># Vertex location</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">  </span><span class="nt">prefix</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">vertex</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">  </span><span class="nt">credentialsSecretRef</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">vertex-credentials</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">  </span><span class="nt">filters</span><span class="p">:</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">    </span><span class="nt">exclude</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">".*-live.*"</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">".*-image.*"</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">".*-transcribe.*"</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">".*-tts.*"</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="w">    </span><span class="nt">vertex_credentials</span><span class="p">:</span><span class="w"> </span><span class="s">"{{VERTEX_CREDENTIALS}}"</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="w">  </span><span class="nt">secrets</span><span class="p">:</span>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> as</span><span class="p">:</span><span class="w"> </span><span class="nv">VERTEX_CREDENTIALS</span><span class="p p-Indicator">,</span><span class="nt"> secretRef</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">vertex-credentials</span><span class="p p-Indicator">,</span><span class="nt"> key</span><span class="p">:</span><span class="w"> </span><span class="nv">VERTEX_CREDENTIALS</span><span class="w"> </span><span class="p p-Indicator">}</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="w">  </span><span class="nt">info</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> access_groups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"vertex"</span><span class="p p-Indicator">]</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="w">  </span><span class="nt">refresh</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> interval</span><span class="p">:</span><span class="w"> </span><span class="nv">15m</span><span class="w"> </span><span class="p p-Indicator">}</span>
+</code></pre></div>
+<ul>
+<li><strong>Credentials.</strong> The Secret key <code>VERTEX_CREDENTIALS</code> holds a
+  service-account JSON key. The operator signs a JWT with it
+  (<code>client_email</code>, <code>private_key</code>, scope <code>cloud-platform</code>) and exchanges it at
+  <code>https://oauth2.googleapis.com/token</code>. The key's <code>token_uri</code> is ignored on
+  purpose, so a crafted key cannot redirect the signed assertion.</li>
+<li><strong>Listing.</strong> <code>GET {endpoint}/v1beta1/publishers/google/models</code> with
+  <code>x-goog-user-project: &lt;project_id&gt;</code>. The listing is location-aware: <code>eu</code>
+  returns only models served in the EU. The endpoint depends on the location.
+  <code>global</code> uses <code>aiplatform.googleapis.com</code>. <code>eu</code> and <code>us</code> use
+  <code>aiplatform.&lt;loc&gt;.rep.googleapis.com</code>. A single region uses
+  <code>&lt;loc&gt;-aiplatform.googleapis.com</code>.</li>
+<li><strong>Gemini only.</strong> IDs not starting with <code>gemini-</code> (Imagen, Veo, Chirp,
+  <code>text-embedding-*</code>) and <code>*embedding*</code> models are dropped.</li>
+<li><strong>LiteLLM side.</strong> For <code>eu</code>/<code>us</code>, LiteLLM must map <code>vertex_location</code> to the
+  multi-region host <code>aiplatform.&lt;loc&gt;.rep.googleapis.com</code> (verified on the
+  ackstorm deployment, 2026-10-05). Older LiteLLM builds may call
+  <code>&lt;loc&gt;-aiplatform.googleapis.com</code> instead, which does not exist for <code>eu</code>.
+  Check the LiteLLM image before relying on <code>eu</code>/<code>us</code>.</li>
+<li><strong>Children.</strong> <code>params.model = vertex_ai/&lt;id&gt;</code>, plus <code>vertex_location =
+  spec.region</code> and <code>vertex_project = &lt;project_id of the key&gt;</code> unless
+  <code>spec.params</code> sets them. Default prefix <code>vertex</code>; pricing provider
+  <code>vertex_ai</code>.</li>
+<li><strong>Inference credentials stay user-side</strong>, like gemini's <code>api_key</code>: the
+  <code>secrets</code> bag + <code>params.vertex_credentials: "{{VERTEX_CREDENTIALS}}"</code>.
+  Discovery never copies the key to children; the multi-line JSON survives
+  substitution intact.</li>
+</ul>
+<h2 id="kubeai-in-cluster-openai-compatible">KubeAI — in-cluster OpenAI-compatible<a class="headerlink" href="#kubeai-in-cluster-openai-compatible" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">kubeai</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span><span class="nt">prefix</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">kubeai</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span><span class="nt">baseUrl</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://kubeai.kubeai.svc/openai/v1</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">  </span><span class="nt">credentialsSecretRef</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">kubeai-credentials</span><span class="w"> </span><span class="p p-Indicator">}</span><span class="w">   </span><span class="c1"># may be empty</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">    </span><span class="nt">rpm</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">25</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">    </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">300</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">  </span><span class="nt">refresh</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> interval</span><span class="p">:</span><span class="w"> </span><span class="nv">10m</span><span class="w"> </span><span class="p p-Indicator">}</span>
 </code></pre></div>
 <p>The reconciler overlays <code>api_base: &lt;spec.baseUrl&gt;</code> into each child's
 <code>spec.params</code> (user-supplied <code>api_base</code> wins on collision). No <code>model:</code>
@@ -2232,11 +2421,11 @@ prefix translation — children land as <code>hosted_vllm/&lt;raw-id&gt;</code> 
 <code>openai/&lt;raw-id&gt;</code> per provider semantics.</p>
 <h2 id="openai-compatible-third-parties">OpenAI-compatible third-parties<a class="headerlink" href="#openai-compatible-third-parties" title="Permanent link">&para;</a></h2>
 <p>Set <code>type: openai</code> + <code>baseUrl: &lt;provider's /v1&gt;</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">openai</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span><span class="nt">baseUrl</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://api.together.xyz/v1</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span><span class="nt">credentialsSecretRef</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">together-api-key</span><span class="w"> </span><span class="p p-Indicator">}</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">  </span><span class="nt">refresh</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> interval</span><span class="p">:</span><span class="w"> </span><span class="nv">10m</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">openai</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">  </span><span class="nt">baseUrl</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://api.together.xyz/v1</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">  </span><span class="nt">credentialsSecretRef</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">together-api-key</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">  </span><span class="nt">refresh</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> interval</span><span class="p">:</span><span class="w"> </span><span class="nv">10m</span><span class="w"> </span><span class="p p-Indicator">}</span>
 </code></pre></div>
 <p>Works for vLLM, Together, Groq, OpenRouter, Anyscale — anything that
 implements OpenAI's <code>GET /v1/models</code> + chat-completions. The reconciler
@@ -2249,12 +2438,12 @@ to the third-party endpoint instead of <code>api.openai.com</code>.</p>
 when they actually run on a third-party gateway. Set <code>spec.litellmProvider</code>
 to the gateway's LiteLLM provider name so the pricing prefix (and thus the
 cost table) matches:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">openai</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span><span class="nt">baseUrl</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://openrouter.ai/api/v1</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">  </span><span class="nt">litellmProvider</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">openrouter</span><span class="w">        </span><span class="c1"># children stamp `openrouter/&lt;id&gt;`</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">  </span><span class="nt">credentialsSecretRef</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">openrouter-api-key</span><span class="w"> </span><span class="p p-Indicator">}</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">  </span><span class="nt">refresh</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> interval</span><span class="p">:</span><span class="w"> </span><span class="nv">10m</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">openai</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">  </span><span class="nt">baseUrl</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://openrouter.ai/api/v1</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">  </span><span class="nt">litellmProvider</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">openrouter</span><span class="w">        </span><span class="c1"># children stamp `openrouter/&lt;id&gt;`</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">  </span><span class="nt">credentialsSecretRef</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">openrouter-api-key</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">  </span><span class="nt">refresh</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> interval</span><span class="p">:</span><span class="w"> </span><span class="nv">10m</span><span class="w"> </span><span class="p p-Indicator">}</span>
 </code></pre></div>
 <p>Only the pricing prefix on <code>litellm_params.model</code> changes — the child CR
 NAME still derives from <code>spec.type</code>/<code>spec.prefix</code>, so enabling this on an
@@ -2269,22 +2458,22 @@ requires <code>credentialsSecretRef</code> and forbids <code>region</code>/<code
 public endpoint). The reconciler calls <code>GET https://api.elevenlabs.io/v1/models</code>
 with the <code>xi-api-key</code> header and generates children with
 <code>spec.params.model: "elevenlabs/&lt;raw-id&gt;"</code>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">litellm.ackstorm.ai/v1alpha1</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">LiteLLMModelDiscovery</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="nt">metadata</span><span class="p">:</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">elevenlabs</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">elevenlabs</span>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">  </span><span class="nt">prefix</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">elevenlabs</span>
-<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">  </span><span class="nt">credentialsSecretRef</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">elevenlabs-credentials</span><span class="w"> </span><span class="p p-Indicator">}</span><span class="w">   </span><span class="c1"># key: ELEVENLABS_API_KEY</span>
-<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">  </span><span class="nt">secrets</span><span class="p">:</span>
-<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> as</span><span class="p">:</span><span class="w"> </span><span class="nv">ELEVENLABS_API_KEY</span><span class="p p-Indicator">,</span><span class="nt"> secretRef</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">elevenlabs-credentials</span><span class="p p-Indicator">,</span><span class="nt"> key</span><span class="p">:</span><span class="w"> </span><span class="nv">ELEVENLABS_API_KEY</span><span class="w"> </span><span class="p p-Indicator">}</span><span class="w"> </span><span class="p p-Indicator">}</span>
-<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
-<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="w">    </span><span class="nt">api_key</span><span class="p">:</span><span class="w"> </span><span class="s">"{{ELEVENLABS_API_KEY}}"</span>
-<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="w">  </span><span class="nt">filters</span><span class="p">:</span>
-<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="w">    </span><span class="nt">include</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="w"> </span><span class="s">"^eleven_.*_v2$"</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">"^eleven_v3$"</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">"^scribe_v1$"</span><span class="w"> </span><span class="p p-Indicator">]</span>
-<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="w">  </span><span class="nt">refresh</span><span class="p">:</span>
-<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a><span class="w">    </span><span class="nt">interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10m</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">litellm.ackstorm.ai/v1alpha1</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">LiteLLMModelDiscovery</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="nt">metadata</span><span class="p">:</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">elevenlabs</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">elevenlabs</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="w">  </span><span class="nt">prefix</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">elevenlabs</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="w">  </span><span class="nt">credentialsSecretRef</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">elevenlabs-credentials</span><span class="w"> </span><span class="p p-Indicator">}</span><span class="w">   </span><span class="c1"># key: ELEVENLABS_API_KEY</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="w">  </span><span class="nt">secrets</span><span class="p">:</span>
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> as</span><span class="p">:</span><span class="w"> </span><span class="nv">ELEVENLABS_API_KEY</span><span class="p p-Indicator">,</span><span class="nt"> secretRef</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">elevenlabs-credentials</span><span class="p p-Indicator">,</span><span class="nt"> key</span><span class="p">:</span><span class="w"> </span><span class="nv">ELEVENLABS_API_KEY</span><span class="w"> </span><span class="p p-Indicator">}</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="w">  </span><span class="nt">params</span><span class="p">:</span>
+<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="w">    </span><span class="nt">api_key</span><span class="p">:</span><span class="w"> </span><span class="s">"{{ELEVENLABS_API_KEY}}"</span>
+<a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a><span class="w">  </span><span class="nt">filters</span><span class="p">:</span>
+<a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a><span class="w">    </span><span class="nt">include</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="w"> </span><span class="s">"^eleven_.*_v2$"</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">"^eleven_v3$"</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">"^scribe_v1$"</span><span class="w"> </span><span class="p p-Indicator">]</span>
+<a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a><span class="w">  </span><span class="nt">refresh</span><span class="p">:</span>
+<a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a><span class="w">    </span><span class="nt">interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10m</span>
 </code></pre></div>
 <p><code>/v1/models</code> returns TTS, STT, and voice-conversion models mixed together;
 use <code>filters.include</code> to narrow. The discovery-time <code>credentialsSecretRef</code>
@@ -2298,20 +2487,20 @@ and not being deleted. Each becomes <code>&lt;prefix&gt;.&lt;agent name&gt;</cod
 <code>params.model: &lt;A2A_MODEL_PROVIDER, default a2a1&gt;/&lt;agent name&gt;</code>. A new or
 removed agent re-drives the Discovery immediately (watch), so
 <code>refresh.interval</code> is only a safety net.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">litellm.ackstorm.ai/v1alpha1</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">LiteLLMModelDiscovery</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="nt">metadata</span><span class="p">:</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">a2a-agents</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">a2a</span>
-<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="w">  </span><span class="nt">prefix</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">agent</span><span class="w">                 </span><span class="c1"># default would be a2a</span>
-<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="w">  </span><span class="nt">filters</span><span class="p">:</span>
-<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="w">    </span><span class="nt">exclude</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"internal-.*"</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="w">  </span><span class="nt">info</span><span class="p">:</span>
-<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="s">"A2A</span><span class="nv"> </span><span class="s">agents"</span>
-<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="w">    </span><span class="nt">access_groups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"a2a"</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="w">  </span><span class="nt">refresh</span><span class="p">:</span>
-<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a><span class="w">    </span><span class="nt">interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">15m</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">litellm.ackstorm.ai/v1alpha1</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">LiteLLMModelDiscovery</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="nt">metadata</span><span class="p">:</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">a2a-agents</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">a2a</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="w">  </span><span class="nt">prefix</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">agent</span><span class="w">                 </span><span class="c1"># default would be a2a</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="w">  </span><span class="nt">filters</span><span class="p">:</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="w">    </span><span class="nt">exclude</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"internal-.*"</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="w">  </span><span class="nt">info</span><span class="p">:</span>
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="s">"A2A</span><span class="nv"> </span><span class="s">agents"</span>
+<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a><span class="w">    </span><span class="nt">access_groups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"a2a"</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a><span class="w">  </span><span class="nt">refresh</span><span class="p">:</span>
+<a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a><span class="w">    </span><span class="nt">interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">15m</span>
 </code></pre></div>
 <p>If a candidate's name is held by a model that is being deleted, the Discovery
 retries every 5s until the name is free, then takes it over.</p>
@@ -2366,24 +2555,24 @@ non-<code>[a-z0-9.-]</code> char to <code>-</code>, collapses runs, and trims le
 non-alphanumerics), so a character that distinguishes two raw IDs can vanish
 from the visible name. OpenRouter is the sharp case — it publishes rolling
 aliases under a <code>~</code> prefix:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>anthropic/claude-sonnet-5        → openrouter.anthropic-claude-sonnet-5
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>~anthropic/claude-sonnet-latest  → openrouter.anthropic-claude-sonnet-latest
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>anthropic/claude-sonnet-5        → openrouter.anthropic-claude-sonnet-5
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>~anthropic/claude-sonnet-latest  → openrouter.anthropic-claude-sonnet-latest
 </code></pre></div>
 <p><code>exclude: ["anthropic-.*"]</code> drops <strong>both</strong>: it misses the second candidate's
 raw ID (which starts with <code>~</code>) but matches its normalized name. Matching the
 raw form only — the behavior up to v0.8.1 — kept it, with nothing in the status
 to explain why.</p>
 <p>To list the raw IDs a provider publishes:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>curl<span class="w"> </span>-s<span class="w"> </span>-H<span class="w"> </span><span class="s2">"Authorization: Bearer </span><span class="nv">$KEY</span><span class="s2">"</span><span class="w"> </span>https://openrouter.ai/api/v1/models<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">  </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">'.data[].id'</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>sort
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>curl<span class="w"> </span>-s<span class="w"> </span>-H<span class="w"> </span><span class="s2">"Authorization: Bearer </span><span class="nv">$KEY</span><span class="s2">"</span><span class="w"> </span>https://openrouter.ai/api/v1/models<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">  </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">'.data[].id'</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>sort
 </code></pre></div>
 <p>or, for models already generated, read each child's <code>spec.params.model</code> (the
 raw ID verbatim, behind the <code>&lt;litellmProvider&gt;/</code> pricing prefix):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>litellmmodel<span class="w"> </span>-l<span class="w"> </span>litellm.ackstorm.ai/generated-by<span class="o">=</span>openrouter-discovery<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">  </span>-o<span class="w"> </span>custom-columns<span class="o">=</span>CHILD:.metadata.name,UPSTREAM:.spec.params.model
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>litellmmodel<span class="w"> </span>-l<span class="w"> </span>litellm.ackstorm.ai/generated-by<span class="o">=</span>openrouter-discovery<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">  </span>-o<span class="w"> </span>custom-columns<span class="o">=</span>CHILD:.metadata.name,UPSTREAM:.spec.params.model
 </code></pre></div>
 <h2 id="child-name-generation">Child name generation<a class="headerlink" href="#child-name-generation" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>&lt;prefix&gt;.&lt;normalized-raw-id&gt;
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>&lt;prefix&gt;.&lt;normalized-raw-id&gt;
 </code></pre></div>
 <ul>
 <li><code>prefix</code> defaults to lowercased(<code>spec.type</code>).</li>
@@ -2403,13 +2592,13 @@ follow-up PR adds alpha-last-wins ownership transfer).</p>
 <code>claude-opus-5-5[1m]</code> for the 1M-context variant. Alias rules give generated
 children extra names without hand-writing a <code>LiteLLMModelAlias</code>. Each rule
 emits <code>&lt;prefix&gt;&lt;child&gt;&lt;suffix&gt; → &lt;child&gt;</code> for every child it matches:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nt">spec</span><span class="p">:</span>
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">anthropic</span>
-<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">  </span><span class="nt">disablePrefix</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">  </span><span class="nt">aliases</span><span class="p">:</span>
-<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">suffix</span><span class="p">:</span><span class="w"> </span><span class="s">"[1m]"</span><span class="w">                              </span><span class="c1"># claude-opus-5-5[1m] → claude-opus-5-5</span>
-<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="w">      </span><span class="nt">include</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"claude-(opus|sonnet|fable)"</span><span class="p p-Indicator">]</span><span class="w">     </span><span class="c1"># only these children</span>
-<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">prefix</span><span class="p">:</span><span class="w"> </span><span class="s">"anthropic/"</span><span class="w">                        </span><span class="c1"># anthropic/&lt;child&gt; → &lt;child&gt;, every child</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">anthropic</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">  </span><span class="nt">disablePrefix</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="w">  </span><span class="nt">aliases</span><span class="p">:</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">suffix</span><span class="p">:</span><span class="w"> </span><span class="s">"[1m]"</span><span class="w">                              </span><span class="c1"># claude-opus-5-5[1m] → claude-opus-5-5</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="w">      </span><span class="nt">include</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"claude-(opus|sonnet|fable)"</span><span class="p p-Indicator">]</span><span class="w">     </span><span class="c1"># only these children</span>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">prefix</span><span class="p">:</span><span class="w"> </span><span class="s">"anthropic/"</span><span class="w">                        </span><span class="c1"># anthropic/&lt;child&gt; → &lt;child&gt;, every child</span>
 </code></pre></div>
 <table>
 <thead>
@@ -2450,10 +2639,10 @@ the rules deletes the CRs, deleting the discovery garbage-collects them.</p>
   <code>aliasSuffix: "[1m]"</code> → <code>aliases: [{suffix: "[1m]"}]</code>.</li>
 </ul>
 <h2 id="status-what-to-read">Status — what to read<a class="headerlink" href="#status-what-to-read" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>mdisc<span class="w"> </span>openai<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.status}{"\n"}'</span>
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="c1"># {"discoveredCount":7,"generatedCount":7,"generatedChildren":["openai.gpt-4.1",...],"lastRefreshAt":"...","conditions":[...]}</span>
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>
-<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>kubectl<span class="w"> </span>get<span class="w"> </span>mdisc<span class="w">                       </span><span class="c1"># printer columns: Type Ready Reason Discovered Generated Age</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>mdisc<span class="w"> </span>openai<span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.status}{"\n"}'</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="c1"># {"discoveredCount":7,"generatedCount":7,"generatedChildren":["openai.gpt-4.1",...],"lastRefreshAt":"...","conditions":[...]}</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>kubectl<span class="w"> </span>get<span class="w"> </span>mdisc<span class="w">                       </span><span class="c1"># printer columns: Type Ready Reason Discovered Generated Age</span>
 </code></pre></div>
 <p>Conditions written every reconcile:</p>
 <ul>

@@ -5092,7 +5092,7 @@ survive in LiteLLM.
 <p>LiteLLMModelDiscovery is the Schema for the litellmmodeldiscoveries API — the
 first Pipeline B CRD (spec §3.3 / §7.1, _FINALv3 two-pipeline model).
 A LiteLLMModelDiscovery CR points the operator at one upstream provider
-(anthropic, bedrock, elevenlabs, gemini, kubeai, or openai) and reconciles
+(a2a, anthropic, bedrock, elevenlabs, gemini, kubeai, openai, or vertex) and reconciles
 discovered IDs into a fan-out of Kubernetes LiteLLMModel child CRs in
 WATCH_NAMESPACE. Discovery NEVER calls LiteLLM directly; each child
 reconciles into LiteLLM via the Phase 3 LiteLLMModel controller.</p>
@@ -5108,6 +5108,7 @@ bedrock: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY (AWS_SESSION_TOKEN optional)
 elevenlabs: ELEVENLABS_API_KEY
 gemini: GEMINI_API_KEY (or GOOGLE_API_KEY per provider docs)
 openai: OPENAI_API_KEY
+vertex: VERTEX_CREDENTIALS (service-account JSON key)
 kubeai: n/a (no credentialsSecretRef)
 </code></pre></div>
 <p>The reconciler validates required keys at credential-resolution time
@@ -6189,8 +6190,8 @@ resource root via a +kubebuilder:validation:XValidation CEL rule
 <h4 id="modeldiscoveryspec">ModelDiscoverySpec<a class="headerlink" href="#modeldiscoveryspec" title="Permanent link">&para;</a></h4>
 <p>ModelDiscoverySpec defines the desired state of ModelDiscovery — the
 flat _FINALv3 shape (spec §6.3). One ModelDiscovery CR points the
-operator at a single upstream provider (anthropic, bedrock, elevenlabs,
-gemini, kubeai, or openai) and generates a fan-out of Kubernetes Model child
+operator at a single upstream provider (a2a, anthropic, bedrock,
+elevenlabs, gemini, kubeai, openai, or vertex) and generates a fan-out of Kubernetes Model child
 CRs (Pipeline B per spec §3.3). Discovery NEVER calls LiteLLM directly;
 each generated child reconciles into LiteLLM via the Phase 3 Model
 controller (Pipeline A).</p>
@@ -6201,17 +6202,21 @@ ModelDiscovery struct below) per spec §6.3 provider table:</p>
       params.model = &lt;A2A_MODEL_PROVIDER, default a2a1&gt;/&lt;agent name&gt;;
       default prefix a2a.
 anthropic — requires credentialsSecretRef; forbids region, baseUrl.
-bedrock — requires region; forbids baseUrl; credentialsSecretRef optional.
+bedrock — requires regions; forbids region, baseUrl; credentialsSecretRef
+      optional; inferenceProfiles optional.
 elevenlabs — requires credentialsSecretRef; forbids region, baseUrl.
 gemini — requires credentialsSecretRef; forbids region, baseUrl.
 kubeai — requires baseUrl; forbids credentialsSecretRef, region.
 openai — requires credentialsSecretRef; baseUrl optional; forbids region.
+vertex — Gemini on Vertex AI (google publisher only); requires
+      credentialsSecretRef + region (the Vertex location); forbids baseUrl.
 </code></pre></div>
+<p>spec.regions and spec.inferenceProfiles are bedrock-only.</p>
 <p>spec.litellmProvider (optional; spec.type=openai only) overrides the LiteLLM
 pricing-prefix provider used for cost tracking (default: derived from
 spec.type) — e.g. <code>openrouter</code> to bill discovered models under OpenRouter's
 cost table without a new provider type. See the LitellmProvider field doc.</p>
-<p>MDISC-01 enforces spec.type ∈ {a2a, anthropic, bedrock, elevenlabs, gemini, kubeai, openai}
+<p>MDISC-01 enforces spec.type ∈ {a2a, anthropic, bedrock, elevenlabs, gemini, kubeai, openai, vertex}
 at admission via the +kubebuilder:validation:Enum marker. MDISC-04
 (prefix), MDISC-05 (refresh.interval floor), MDISC-15 (credential
 surface), and MDISC-22/23 (propagation bags) are all schema-side.</p>
@@ -6231,7 +6236,7 @@ surface), and MDISC-22/23 (propagation bags) are all schema-side.</p>
 <td><code>type</code> <em>string</em></td>
 <td>Type discriminates the upstream provider. Enforced at admission via<br />the +kubebuilder:validation:Enum marker (MDISC-01). The reconciler<br />dispatches to internal/providers/<type>.go via the registry; per-type<br />branching outside the registry is prohibited (CONTEXT.md D-01).</td>
 <td></td>
-<td>Enum: [a2a anthropic bedrock elevenlabs gemini kubeai openai] <br />Required: {} <br /></td>
+<td>Enum: [a2a anthropic bedrock elevenlabs gemini kubeai openai vertex] <br />Required: {} <br /></td>
 </tr>
 <tr>
 <td><code>litellmProvider</code> <em>string</em></td>
@@ -6265,19 +6270,31 @@ surface), and MDISC-22/23 (propagation bags) are all schema-side.</p>
 </tr>
 <tr>
 <td><code>region</code> <em>string</em></td>
-<td>Region is the AWS region for Bedrock control-plane discovery<br />(required when spec.type=bedrock, forbidden otherwise — see the<br />CR-level CEL rule on the ModelDiscovery struct). One region per<br />CR per PROJECT.md Key Decision; multi-region requires multiple CRs<br />with distinct spec.prefix (e.g. bedrock-use1, bedrock-euw1).<br />The value is overlaid as aws_region_name in each generated child<br />Model's spec.params. This is one of two typed-field overlays the<br />reconciler applies per CONTEXT.md D-07: bedrock spec.region →<br />aws_region_name (overwrite-wins) and kubeai spec.baseUrl →<br />api_base (user-supplied wins; see BaseURL doc, FIX.txt H-2). Plain<br />string — AWS region codes are open-ended and not enumerated here;<br />CEL gates presence per provider.</td>
+<td>Region is the Vertex AI location for spec.type=vertex (required<br />there, CEL-forbidden for every other type; Bedrock uses<br />spec.regions). Examples: eu, us (multi-region endpoints<br />aiplatform.<loc>.rep.googleapis.com), global, europe-west1. The<br />listing is location-aware, and each child gets vertex_location =<br />this value unless spec.params sets it.</td>
 <td></td>
+<td>Pattern: <code>^[a-z0-9-]+$</code> <br /></td>
+</tr>
+<tr>
+<td><code>regions</code> <em>string array</em></td>
+<td>Regions is the ordered list of AWS regions for Bedrock discovery<br />(required for spec.type=bedrock, forbidden otherwise). Each<br />region is listed in order and candidates are de-duplicated by child<br />name: the first region that yields a name wins, later duplicates are<br />dropped. Each child gets aws_region_name = the region it was found in.<br />If any region fails to list, the whole refresh fails and no child is<br />created or deleted (children from the healthy regions are kept).</td>
 <td></td>
+<td>MaxItems: 16 <br />MinItems: 1 <br />items:Pattern: ^[a-z0-9-]+$ <br /></td>
+</tr>
+<tr>
+<td><code>inferenceProfiles</code> <em>string array</em></td>
+<td>InferenceProfiles opts Bedrock discovery into cross-region inference<br />profiles (spec.type=bedrock only). It is an ordered list of allowed<br />profile geography prefixes (eu, us, apac, global, …). For an ACTIVE,<br />non-embedding model without ON_DEMAND support in a listed region, the<br />first geography (list order) whose system-defined profile<br />"<geo>.<modelId>" exists is used: the child's params.model becomes<br />bedrock/<geo>.<modelId> while the child NAME stays the base model ID.<br />Within one region, ON_DEMAND always beats a profile; across regions<br />the first region yielding the child name wins (a profile in an<br />earlier region beats ON_DEMAND in a later one). Empty (default) = no<br />profiles. Requires bedrock:ListInferenceProfiles. NOTE: global.<br />profiles may process requests in any AWS region (no data residency).</td>
+<td></td>
+<td>MaxItems: 8 <br />MinItems: 1 <br />items:Pattern: ^[a-z-]+$ <br /></td>
 </tr>
 <tr>
 <td><code>baseUrl</code> <em>string</em></td>
-<td>BaseURL is the upstream provider's base endpoint. Required for<br />kubeai (e.g. "http://kubeai.kubeai.svc/openai/v1"); optional for<br />openai (default OpenAI-platform endpoint applies on omit); forbidden<br />for anthropic, bedrock, gemini.<br />Discovery calls <BaseURL>/models (OpenAI-compatible wire shape) for<br />kubeai + openai variants. For OpenAI-compatible providers (vLLM,<br />Together, Groq, OpenRouter) the user sets spec.type=openai and<br />spec.baseUrl=<provider URL>; the per-request Bearer key comes from<br />spec.credentialsSecretRef. No URL pattern is enforced at the CRD<br />layer; CEL only gates presence/absence per provider type.<br />kubeai-only typed-field overlay (D-07, FIX.txt H-2 2026-05-22):<br />when spec.type=kubeai, the reconciler also overlays<br />spec.baseUrl → spec.params.api_base on each generated child Model,<br />so the LiteLLM proxy can route hosted_vllm/<id> inference requests<br />at runtime. User-supplied params.api_base wins over the auto-overlay<br />(presence check). Diverges from the bedrock region overlay's<br />overwrite-wins semantics on purpose: api_base is a legitimate per-<br />child routing override.</td>
+<td>BaseURL is the upstream provider's base endpoint. Required for<br />kubeai (e.g. "http://kubeai.kubeai.svc/openai/v1"); optional for<br />openai (default OpenAI-platform endpoint applies on omit); forbidden<br />for a2a, anthropic, bedrock, elevenlabs, gemini, vertex.<br />Discovery calls <BaseURL>/models (OpenAI-compatible wire shape) for<br />kubeai + openai variants. For OpenAI-compatible providers (vLLM,<br />Together, Groq, OpenRouter) the user sets spec.type=openai and<br />spec.baseUrl=<provider URL>; the per-request Bearer key comes from<br />spec.credentialsSecretRef. No URL pattern is enforced at the CRD<br />layer; CEL only gates presence/absence per provider type.<br />kubeai-only typed-field overlay (D-07, FIX.txt H-2 2026-05-22):<br />when spec.type=kubeai, the reconciler also overlays<br />spec.baseUrl → spec.params.api_base on each generated child Model,<br />so the LiteLLM proxy can route hosted_vllm/<id> inference requests<br />at runtime. User-supplied params.api_base wins over the auto-overlay<br />(presence check), like every other routing overlay.</td>
 <td></td>
 <td></td>
 </tr>
 <tr>
 <td><code>params</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#rawextension-runtime-pkg">RawExtension</a></em></td>
-<td>Params is a pass-through bag of fields propagated VERBATIM into<br />every generated child Model's spec.params (MDISC-23). On top of this<br />bag, the Discovery reconciler overlays two typed fields per child:<br />- model: "<litellm-provider>/<raw-id>" (e.g. "anthropic/claude-3-5-sonnet-20241022")<br />- aws_region_name: <spec.region> (bedrock only)<br />All other keys are forwarded unchanged. {{NAME}} substitution<br />happens on the child Model's own reconcile (§5.2 propagation rule<br />per AC-SEC4-PROPAGATE), NOT on Discovery's reconcile.<br />Any JSON object is accepted (x-kubernetes-preserve-unknown-fields:<br />true). String-typed leaves may carry {{NAME}} placeholders matched<br />against spec.secrets[] on the child's reconcile.</td>
+<td>Params is a pass-through bag of fields propagated VERBATIM into<br />every generated child Model's spec.params (MDISC-23). On top of this<br />bag, the Discovery reconciler overlays two typed fields per child:<br />- model: "<litellm-provider>/<raw-id>" (e.g. "anthropic/claude-3-5-sonnet-20241022";<br />  a Bedrock inference profile ID instead of the raw ID when one is used)<br />- provider routing, only where this bag does not set the key:<br />  aws_region_name (bedrock: the region the model was found in),<br />  vertex_location / vertex_project (vertex), api_base (custom baseUrl)<br />All other keys are forwarded unchanged. {{NAME}} substitution<br />happens on the child Model's own reconcile (§5.2 propagation rule<br />per AC-SEC4-PROPAGATE), NOT on Discovery's reconcile.<br />Any JSON object is accepted (x-kubernetes-preserve-unknown-fields:<br />true). String-typed leaves may carry {{NAME}} placeholders matched<br />against spec.secrets[] on the child's reconcile.</td>
 <td></td>
 <td></td>
 </tr>
