@@ -42,6 +42,7 @@ var Registry = map[string]func(ctx context.Context, cfg ProviderConfig) (Provide
 	"gemini":     newGeminiImpl,
 	"kubeai":     newKubeAI,
 	"openai":     newOpenAIImpl,
+	"vertex":     newVertexImpl,
 }
 
 // Lookup returns the constructor registered for providerType and a

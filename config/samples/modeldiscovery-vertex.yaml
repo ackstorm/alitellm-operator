@@ -1,0 +1,47 @@
+# ModelDiscovery sample: Gemini on Google Vertex AI (google publisher only)
+#
+# CEL rules exercised:
+#   - spec.type=vertex matches the Enum constraint
+#   - credentialsSecretRef and region are REQUIRED for vertex
+#   - baseUrl / regions / inferenceProfiles are FORBIDDEN for vertex
+#   - refresh.interval >= 1m (MDISC-05 floor)
+#
+# region is the Vertex location: eu / us (multi-region endpoints
+# aiplatform.<loc>.rep.googleapis.com), global, or a single region
+# (europe-west1). The listing is location-aware: `eu` returns only the
+# models served in the EU.
+#
+# Required Secret: vertex-credentials with key:
+#   VERTEX_CREDENTIALS  (service-account JSON key; the SA needs
+#                        aiplatform.endpoints.predict, e.g. Vertex AI User)
+# The operator mints its own OAuth token from the key to list
+#   GET {endpoint}/v1beta1/publishers/google/models
+# Children get params.model = vertex_ai/<id>, vertex_location = region and
+# vertex_project = the key's project_id. The key itself reaches LiteLLM only
+# through the user-side secrets bag + params.vertex_credentials below.
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMModelDiscovery
+metadata:
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: vertex-eu
+  namespace: default
+spec:
+  type: vertex
+  region: eu
+  credentialsSecretRef:
+    name: vertex-credentials
+  secrets:
+    - as: VERTEX_CREDENTIALS
+      secretRef:
+        name: vertex-credentials
+        key: VERTEX_CREDENTIALS
+  params:
+    vertex_credentials: "{{VERTEX_CREDENTIALS}}"
+  info:
+    mode: chat
+  filters:
+    exclude: [".*-live.*", ".*-image.*", ".*-tts.*"]
+  refresh:
+    interval: 15m

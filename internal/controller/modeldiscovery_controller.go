@@ -16,8 +16,10 @@
 // `LiteLLMConnection/default`.
 // - Discovery propagates `spec.params` + `spec.info` + `spec.secrets[]`
 // verbatim into every generated child (MDISC-23). The only typed-field
-// overlay is `spec.params.model = "<litellm-provider>/<raw-id>"` (and
-// `spec.params.aws_region_name = spec.region` for Bedrock).
+// overlays are `spec.params.model = "<litellm-provider>/<raw-id or
+// Candidate.ModelID>"`, plus the provider's per-candidate routing
+// (Candidate.Params: Bedrock aws_region_name, Vertex vertex_location /
+// vertex_project) and api_base for a custom baseUrl — user params win.
 // - Credentials from `spec.credentialsSecretRef` are used ONLY for the
 // provider-side discovery call. They are NEVER copied into the child's
 // spec/metadata. The post-render canary
@@ -110,6 +112,7 @@ const (
 	providerTypeElevenLabs = "elevenlabs"
 	providerTypeKubeAI     = "kubeai"
 	providerTypeA2A        = "a2a"
+	providerTypeVertex     = "vertex"
 
 	// fieldOwner is the SSA field manager identity used by Discovery on
 	// every child LiteLLMModel write (D-06). Per the T-04-04-S1 mitigation in
@@ -419,10 +422,12 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	cfg := providers.ProviderConfig{
-		Type:       md.Spec.Type,
-		BaseURL:    md.Spec.BaseURL,
-		Region:     md.Spec.Region,
-		HTTPClient: r.HTTPClient,
+		Type:              md.Spec.Type,
+		BaseURL:           md.Spec.BaseURL,
+		Region:            md.Spec.Region,
+		Regions:           md.Spec.Regions,
+		HTTPClient:        r.HTTPClient,
+		InferenceProfiles: md.Spec.InferenceProfiles,
 	}
 	switch md.Spec.Type {
 	case providerTypeAnthropic:
@@ -484,6 +489,19 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			}
 			cfg.AWSCreds = creds
 		}
+	case providerTypeVertex:
+		// Service-account JSON key: the provider mints its own OAuth token
+		// from it. Only project_id (not secret) reaches the children.
+		key, missing, err := r.resolveStringKey(ctx, md.Namespace, md.Spec.CredentialsSecretRef, "VERTEX_CREDENTIALS")
+		if err != nil && !missing {
+			return ctrl.Result{}, err // transient → controller-runtime backoff
+		}
+		if missing {
+			res := r.writeReadyAndSource(ctx, &md, reasonSecretNotFound, err.Error())
+			res.RequeueAfter = connection.DefaultRequeueOnRejectedAfter
+			return res, nil
+		}
+		cfg.VertexCredentials = []byte(key)
 	case providerTypeKubeAI:
 		// kubeai has no credentialsSecretRef per spec §6.3 line 792 (CEL-forbidden).
 	case providerTypeA2A:
@@ -580,6 +598,33 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 	}
 
+	// De-duplicate the KEPT set by child name, first wins, in provider
+	// order: a multi-region Bedrock Discovery returns the same model once per
+	// region, in spec order. Filtering first means an exclude that drops one
+	// raw ID still lets a later ID with the same child name through. byID is
+	// keyed by raw ID (same ID ⇒ same child name, so unique here) and lets
+	// Step 9 recover each kept candidate's routing.
+	keptSet := make(map[string]struct{}, len(kept))
+	for _, id := range kept {
+		keptSet[id] = struct{}{}
+	}
+	byID := make(map[string]providers.Candidate, len(kept))
+	seenNames := make(map[string]struct{}, len(kept))
+	kept = kept[:0]
+	for _, c := range candidates {
+		if _, ok := keptSet[c.ID]; !ok {
+			continue
+		}
+		name := childNameOf(c.ID)
+		if _, dup := seenNames[name]; dup {
+			logger.V(1).Info("dropping duplicate candidate (first wins)", "rawID", c.ID, "childName", name)
+			continue
+		}
+		seenNames[name] = struct{}{}
+		byID[c.ID] = c
+		kept = append(kept, c.ID)
+	}
+
 	// ─── Step 8: Derive child names ─────────────
 	// 5-step normalization (internal/normalize) + DNS-1123 validation.
 	// Names that fail DNS-1123 land in status.skippedCandidates[reason=
@@ -598,6 +643,10 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		// Per spec §6.3 line 792: kubeai's litellm-provider mapping is
 		// "hosted_vllm" (not "kubeai"). All other types map verbatim.
 		litellmProvider = "hosted_vllm"
+	}
+	if litellmProvider == providerTypeVertex {
+		// LiteLLM's Vertex provider is "vertex_ai" (also the pricing key).
+		litellmProvider = "vertex_ai"
 	}
 	if litellmProvider == providerTypeA2A {
 		// The provider that speaks A2A is deployment-local (A2A_MODEL_PROVIDER).
@@ -701,7 +750,7 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			continue
 		}
 
-		child, buildErr := buildChildModel(&md, childName, rawID, litellmProvider, r.Namespace)
+		child, buildErr := buildChildModel(&md, childName, byID[rawID], litellmProvider, r.Namespace)
 		if buildErr != nil {
 			// Build-side errors are deterministic — surface as ChildCRWriteFailed.
 			metrics.ChildCRWritesTotal.WithLabelValues(modelDiscoveryKind, "create", "error").Inc()
@@ -1028,8 +1077,8 @@ const childDeletingRequeue = 5 * time.Second
 // - Spec.Params built via the "empty-safe overlay" pattern: if
 // md.Spec.Params is absent/empty, start with an empty map; else
 // decode the user's bag; then overlay the operator's typed fields
-// (model = "<litellm-provider>/<rawID>", optionally aws_region_name
-// for Bedrock); re-marshal.
+// (model = "<litellm-provider>/<cand.ModelID or cand.ID>", then
+// cand.Params unless the user set the key); re-marshal.
 // - Spec.Info / Spec.Secrets propagated VERBATIM (MDISC-23).
 //
 // MDISC-15 / AC-S1: the function does NOT take any credential parameter.
@@ -1037,7 +1086,7 @@ const childDeletingRequeue = 5 * time.Second
 // passed to providers.Registry only, never to this builder.
 func buildChildModel(
 	md *litellmv1alpha1.LiteLLMModelDiscovery,
-	childName, rawID, litellmProvider, namespace string,
+	childName string, cand providers.Candidate, litellmProvider, namespace string,
 ) (*litellmv1alpha1.LiteLLMModel, error) {
 	// Step 1: empty-safe overlay base. The dual guard
 	// (`md.Spec.Params.Raw == nil || len(md.Spec.Params.Raw) == 0`) covers
@@ -1053,9 +1102,17 @@ func buildChildModel(
 	}
 
 	// Step 2: typed-field overlay (D-07).
-	paramsMap["model"] = litellmProvider + "/" + rawID
-	if md.Spec.Type == providerTypeBedrock {
-		paramsMap["aws_region_name"] = md.Spec.Region
+	modelID := cand.ID
+	if cand.ModelID != "" {
+		modelID = cand.ModelID
+	}
+	paramsMap["model"] = litellmProvider + "/" + modelID
+	// Provider-supplied routing (e.g. Bedrock aws_region_name = the region
+	// the model was found in). User-supplied params win, like api_base below.
+	for k, v := range cand.Params {
+		if _, userSet := paramsMap[k]; !userSet {
+			paramsMap[k] = v
+		}
 	}
 	// FIX.txt H-2 (2026-05-22): kubeai requires api_base on every child so
 	// the LiteLLM proxy can route inference requests (hosted_vllm/<id>).
@@ -1064,8 +1121,7 @@ func buildChildModel(
 	// Together, Groq, vLLM) discovers models against baseUrl but LiteLLM
 	// routes inference to api.openai.com unless api_base is pinned, so the
 	// provider key gets rejected there (issue: OpenRouter key → OpenAI 401).
-	// Parallel to the bedrock spec.region → aws_region_name overlay above,
-	// but presence-checked: user-supplied params.api_base is a legitimate
+	// Presence-checked like the candidate Params overlay above: user-supplied params.api_base is a legitimate
 	// routing override (e.g. a test sidecar) and wins. Empty baseUrl (plain
 	// OpenAI/Anthropic/Gemini) injects nothing → LiteLLM's own default.
 	if md.Spec.BaseURL != "" {

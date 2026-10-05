@@ -50,7 +50,7 @@ func TestBuildChildModel_EmptyParams(t *testing.T) {
 	}
 
 	child, err := buildChildModel(md, "anthropic.claude-3-5-sonnet-20241022",
-		"claude-3-5-sonnet-20241022", "anthropic", "default")
+		providers.Candidate{ID: "claude-3-5-sonnet-20241022"}, "anthropic", "default")
 	if err != nil {
 		t.Fatalf("buildChildModel(empty params): unexpected error: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestBuildChildModel_KubeAIAPIBaseOverlay(t *testing.T) {
 			Params:  k8sruntime.RawExtension{Raw: []byte(`{"rpm":25,"timeout":300}`)},
 		},
 	}
-	child, err := buildChildModel(md, "kubeai-md-qwen3-4b", "qwen3-4b", "hosted_vllm", "default")
+	child, err := buildChildModel(md, "kubeai-md-qwen3-4b", providers.Candidate{ID: "qwen3-4b"}, "hosted_vllm", "default")
 	if err != nil {
 		t.Fatalf("buildChildModel: %v", err)
 	}
@@ -144,7 +144,7 @@ func TestBuildChildModel_KubeAIUserAPIBaseWins(t *testing.T) {
 			Params:  k8sruntime.RawExtension{Raw: []byte(`{"api_base":"` + userOverride + `"}`)},
 		},
 	}
-	child, err := buildChildModel(md, "kubeai-md-qwen3-4b", "qwen3-4b", "hosted_vllm", "default")
+	child, err := buildChildModel(md, "kubeai-md-qwen3-4b", providers.Candidate{ID: "qwen3-4b"}, "hosted_vllm", "default")
 	if err != nil {
 		t.Fatalf("buildChildModel: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestBuildChildModel_OpenAICustomBaseURLOverlay(t *testing.T) {
 			Params:  k8sruntime.RawExtension{Raw: []byte(`{"api_key":"{{OPENROUTER_API_KEY}}","rpm":60}`)},
 		},
 	}
-	child, err := buildChildModel(md, "openrouter-md-claude", "anthropic/claude-sonnet-5", "openai", "default")
+	child, err := buildChildModel(md, "openrouter-md-claude", providers.Candidate{ID: "anthropic/claude-sonnet-5"}, "openai", "default")
 	if err != nil {
 		t.Fatalf("buildChildModel: %v", err)
 	}
@@ -197,7 +197,7 @@ func TestBuildChildModel_NoBaseURLNoAPIBase(t *testing.T) {
 			Params: k8sruntime.RawExtension{Raw: []byte(`{"api_key":"sk-x"}`)},
 		},
 	}
-	child, err := buildChildModel(md, "openai-md-gpt4o", "gpt-4o", "openai", "default")
+	child, err := buildChildModel(md, "openai-md-gpt4o", providers.Candidate{ID: "gpt-4o"}, "openai", "default")
 	if err != nil {
 		t.Fatalf("buildChildModel: %v", err)
 	}
@@ -217,13 +217,16 @@ func TestBuildChildModel_BedrockOverlay(t *testing.T) {
 	md := &litellmv1alpha1.LiteLLMModelDiscovery{
 		ObjectMeta: metav1.ObjectMeta{Name: "bedrock-md", Namespace: "default", UID: "abcd"},
 		Spec: litellmv1alpha1.ModelDiscoverySpec{
-			Type:   "bedrock",
-			Region: "us-east-1",
-			Params: k8sruntime.RawExtension{Raw: []byte(`{"rpm":50,"timeout":30}`)},
+			Type:    "bedrock",
+			Regions: []string{"us-east-1"},
+			Params:  k8sruntime.RawExtension{Raw: []byte(`{"rpm":50,"timeout":30}`)},
 		},
 	}
 	child, err := buildChildModel(md, "bedrock.anthropic-claude-3-sonnet",
-		"anthropic.claude-3-sonnet-20240229-v1:0", "bedrock", "default")
+		providers.Candidate{
+			ID:     "anthropic.claude-3-sonnet-20240229-v1:0",
+			Params: map[string]string{"aws_region_name": "us-east-1"},
+		}, "bedrock", "default")
 	if err != nil {
 		t.Fatalf("buildChildModel: %v", err)
 	}
@@ -303,7 +306,7 @@ func (f *fakeProvider) setError(err error) {
 // pollChildModel waits up to timeout for the generated child LiteLLMModel
 // named childName to appear in WatchNamespace and returns it (fails the test
 // on timeout).
-func pollChildModel(t *testing.T, ctx context.Context, childName string, timeout time.Duration) *litellmv1alpha1.LiteLLMModel {
+func pollChildModel(t *testing.T, ctx context.Context, childName string, timeout time.Duration) *litellmv1alpha1.LiteLLMModel { //nolint:unparam // every caller uses 30s today; timeout stays explicit at call sites
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	key := client.ObjectKey{Name: childName, Namespace: WatchNamespace}
@@ -338,12 +341,17 @@ func modeldiscoverySampleCR(name, providerType string) *litellmv1alpha1.LiteLLMM
 			Name: name + "-creds",
 		}
 	case "bedrock":
-		md.Spec.Region = "us-east-1"
+		md.Spec.Regions = []string{"us-east-1"}
 		md.Spec.CredentialsSecretRef = &litellmv1alpha1.SecretObjectRef{
 			Name: name + "-creds",
 		}
 	case "kubeai":
 		md.Spec.BaseURL = "http://kubeai.test.svc/openai/v1"
+	case "vertex":
+		md.Spec.Region = "eu"
+		md.Spec.CredentialsSecretRef = &litellmv1alpha1.SecretObjectRef{
+			Name: name + "-creds",
+		}
 	}
 	return md
 }
@@ -446,6 +454,8 @@ func ensureCredentialSecret(t *testing.T, ctx context.Context, name, providerTyp
 	case "bedrock":
 		data["AWS_ACCESS_KEY_ID"] = []byte("AKIATESTCANARY12345")
 		data["AWS_SECRET_ACCESS_KEY"] = []byte("test-secret")
+	case "vertex":
+		data["VERTEX_CREDENTIALS"] = []byte(`{"project_id":"p","client_email":"e","private_key":"k"}`)
 	}
 	sec := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: WatchNamespace},
@@ -522,7 +532,8 @@ func TestModelDiscovery_AC_MD_NORM1_BedrockColonNormalization(t *testing.T) {
 	// Inject a fake Bedrock provider that returns the spec §6.3 line 756
 	// example verbatim.
 	fake := newFakeProvider("bedrock", []providers.Candidate{
-		{ID: "anthropic.claude-3-sonnet-20240229-v1:0", DisplayName: "Claude 3 Sonnet"},
+		{ID: "anthropic.claude-3-sonnet-20240229-v1:0", DisplayName: "Claude 3 Sonnet",
+			Params: map[string]string{"aws_region_name": "us-east-1"}},
 	})
 	providers.RegisterTestProvider(t, "bedrock", fake)
 
@@ -1257,6 +1268,7 @@ func TestModelDiscovery_Samples_CELAccept(t *testing.T) {
 		{file: "modeldiscovery-gemini.yaml"},
 		{file: "modeldiscovery-kubeai.yaml"},
 		{file: "modeldiscovery-openai.yaml"},
+		{file: "modeldiscovery-vertex.yaml"},
 	}
 
 	for _, tc := range cases {
@@ -2134,5 +2146,245 @@ func TestModelDiscovery_LitellmProvider_CELRejectNonOpenAI(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "only allowed with spec.type=openai") {
 		t.Errorf("error should name the CEL rule; got: %v", err)
+	}
+}
+
+// TestBuildChildModel_CandidateRouting: cand.ModelID replaces the raw ID in
+// params.model, and cand.Params overlay only keys the user did not set.
+func TestBuildChildModel_CandidateRouting(t *testing.T) {
+	md := &litellmv1alpha1.LiteLLMModelDiscovery{
+		ObjectMeta: metav1.ObjectMeta{Name: "bedrock-md", Namespace: "default", UID: "abcd"},
+		Spec: litellmv1alpha1.ModelDiscoverySpec{
+			Type:    "bedrock",
+			Regions: []string{"eu-north-1", "eu-west-1"},
+			Params:  k8sruntime.RawExtension{Raw: []byte(`{"aws_region_name":"user-pinned"}`)},
+		},
+	}
+	child, err := buildChildModel(md, "bedrock.amazon.nova-pro-v1-0", providers.Candidate{
+		ID:      "amazon.nova-pro-v1:0",
+		ModelID: "eu.amazon.nova-pro-v1:0",
+		Params:  map[string]string{"aws_region_name": "eu-west-1", "extra": "x"},
+	}, "bedrock", "default")
+	if err != nil {
+		t.Fatalf("buildChildModel: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(child.Spec.Params.Raw, &decoded); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got, want := decoded["model"], "bedrock/eu.amazon.nova-pro-v1:0"; got != want {
+		t.Errorf("model: got %v, want %s", got, want)
+	}
+	if got, want := decoded["aws_region_name"], "user-pinned"; got != want {
+		t.Errorf("aws_region_name: got %v, want %s (user params win)", got, want)
+	}
+	if got, want := decoded["extra"], "x"; got != want {
+		t.Errorf("extra: got %v, want %s", got, want)
+	}
+}
+
+// TestModelDiscovery_BedrockRegions_DedupeFirstWins: the same model listed
+// in two regions yields ONE child pinned to the first region.
+func TestModelDiscovery_BedrockRegions_DedupeFirstWins(t *testing.T) {
+	ctx := context.Background()
+	const mdName = "bedrock-regions"
+
+	ensureNoModelDiscovery(t, ctx, mdName)
+	t.Cleanup(func() { ensureNoModelDiscovery(t, context.Background(), mdName) })
+
+	region := func(r string) map[string]string { return map[string]string{"aws_region_name": r} }
+	providers.RegisterTestProvider(t, "bedrock", newFakeProvider("bedrock", []providers.Candidate{
+		{ID: "openai.gpt-oss-120b-1:0", Params: region("eu-north-1")},
+		{ID: "openai.gpt-oss-120b-1:0", Params: region("eu-west-1")},
+		{ID: "google.gemma-3-27b-it", Params: region("eu-west-1")},
+	}))
+	ensureCredentialSecret(t, ctx, mdName+"-creds", "bedrock")
+
+	md := modeldiscoverySampleCR(mdName, "bedrock")
+	md.Spec.Regions = []string{"eu-north-1", "eu-west-1"}
+	if err := k8sClient.Create(ctx, md); err != nil {
+		t.Fatalf("create ModelDiscovery: %v", err)
+	}
+
+	children := pollChildrenCount(t, ctx, mdName, 2, 30*time.Second)
+	got := map[string]string{}
+	for _, c := range children {
+		var params map[string]any
+		if err := json.Unmarshal(c.Spec.Params.Raw, &params); err != nil {
+			t.Fatalf("decode %s params: %v", c.Name, err)
+		}
+		got[c.Name], _ = params["aws_region_name"].(string)
+	}
+	want := map[string]string{
+		"bedrock.openai.gpt-oss-120b-1-0": "eu-north-1",
+		"bedrock.google.gemma-3-27b-it":   "eu-west-1",
+	}
+	for name, r := range want {
+		if got[name] != r {
+			t.Errorf("child %s aws_region_name = %q; want %q (all: %v)", name, got[name], r, got)
+		}
+	}
+}
+
+// assertModelDiscoveryCELReject creates md and asserts admission rejects it
+// with an error containing wantMsg.
+func assertModelDiscoveryCELReject(t *testing.T, md *litellmv1alpha1.LiteLLMModelDiscovery, wantMsg string) {
+	t.Helper()
+	ctx := context.Background()
+	ensureNoModelDiscovery(t, ctx, md.Name)
+	t.Cleanup(func() { ensureNoModelDiscovery(t, context.Background(), md.Name) })
+	err := k8sClient.Create(ctx, md)
+	if err == nil {
+		t.Fatalf("Create %s should be rejected (%s)", md.Name, wantMsg)
+	}
+	if !apierrors.IsInvalid(err) {
+		t.Fatalf("expected Invalid (CEL) admission error, got %T: %v", err, err)
+	}
+	if !strings.Contains(err.Error(), wantMsg) {
+		t.Errorf("error should contain %q; got: %v", wantMsg, err)
+	}
+}
+
+func TestModelDiscovery_Regions_CELReject(t *testing.T) {
+	legacy := modeldiscoverySampleCR("cel-bedrock-region", "bedrock")
+	legacy.Spec.Region = "eu-west-1"
+	assertModelDiscoveryCELReject(t, legacy, "bedrock requires spec.regions and forbids spec.region")
+
+	none := modeldiscoverySampleCR("cel-bedrock-no-regions", "bedrock")
+	none.Spec.Regions = nil
+	assertModelDiscoveryCELReject(t, none, "bedrock requires spec.regions")
+
+	nonBedrock := modeldiscoverySampleCR("cel-regions-anthropic", "anthropic")
+	nonBedrock.Spec.Regions = []string{"eu-west-1"}
+	assertModelDiscoveryCELReject(t, nonBedrock, "spec.regions is only allowed with spec.type=bedrock")
+}
+
+func TestModelDiscovery_InferenceProfiles_CELReject(t *testing.T) {
+	md := modeldiscoverySampleCR("cel-profiles-anthropic", "anthropic")
+	md.Spec.InferenceProfiles = []string{"eu"}
+	assertModelDiscoveryCELReject(t, md, "spec.inferenceProfiles is only allowed with spec.type=bedrock")
+}
+
+// TestModelDiscovery_BedrockInferenceProfile_ChildNameIsBaseID: a candidate
+// routed through an inference profile keeps the base model ID as the child
+// name; only params.model carries the profile ID.
+func TestModelDiscovery_BedrockInferenceProfile_ChildNameIsBaseID(t *testing.T) {
+	ctx := context.Background()
+	const mdName = "bedrock-profiles"
+
+	ensureNoModelDiscovery(t, ctx, mdName)
+	t.Cleanup(func() { ensureNoModelDiscovery(t, context.Background(), mdName) })
+
+	providers.RegisterTestProvider(t, "bedrock", newFakeProvider("bedrock", []providers.Candidate{
+		{ID: "amazon.nova-pro-v1:0", ModelID: "eu.amazon.nova-pro-v1:0",
+			Params: map[string]string{"aws_region_name": "eu-west-1"}},
+	}))
+	ensureCredentialSecret(t, ctx, mdName+"-creds", "bedrock")
+
+	md := modeldiscoverySampleCR(mdName, "bedrock")
+	md.Spec.InferenceProfiles = []string{"eu"}
+	if err := k8sClient.Create(ctx, md); err != nil {
+		t.Fatalf("create ModelDiscovery: %v", err)
+	}
+
+	child := pollChildModel(t, ctx, "bedrock.amazon.nova-pro-v1-0", 30*time.Second)
+	var params map[string]any
+	if err := json.Unmarshal(child.Spec.Params.Raw, &params); err != nil {
+		t.Fatalf("decode params: %v", err)
+	}
+	if got, want := params["model"], "bedrock/eu.amazon.nova-pro-v1:0"; got != want {
+		t.Errorf("params.model = %v; want %s", got, want)
+	}
+}
+
+func TestModelDiscovery_Vertex_CELReject(t *testing.T) {
+	noRegion := modeldiscoverySampleCR("cel-vertex-no-region", "vertex")
+	noRegion.Spec.Region = ""
+	assertModelDiscoveryCELReject(t, noRegion, "vertex requires spec.credentialsSecretRef and spec.region")
+
+	noCreds := modeldiscoverySampleCR("cel-vertex-no-creds", "vertex")
+	noCreds.Spec.CredentialsSecretRef = nil
+	assertModelDiscoveryCELReject(t, noCreds, "vertex requires spec.credentialsSecretRef and spec.region")
+
+	baseURL := modeldiscoverySampleCR("cel-vertex-baseurl", "vertex")
+	baseURL.Spec.BaseURL = "https://aiplatform.googleapis.com"
+	assertModelDiscoveryCELReject(t, baseURL, "forbids spec.baseUrl")
+
+	regions := modeldiscoverySampleCR("cel-vertex-regions", "vertex")
+	regions.Spec.Regions = []string{"eu"}
+	assertModelDiscoveryCELReject(t, regions, "spec.regions is only allowed with spec.type=bedrock")
+
+	// region is spliced into a hostname: only a plain location token passes.
+	host := modeldiscoverySampleCR("cel-vertex-host", "vertex")
+	host.Spec.Region = "eu.attacker.example"
+	assertModelDiscoveryCELReject(t, host, "spec.region")
+}
+
+// TestModelDiscovery_Vertex_GeneratesChildren: vertex maps to LiteLLM's
+// vertex_ai provider and the provider's location/project routing reaches the
+// child, while a user-set params key still wins.
+func TestModelDiscovery_Vertex_GeneratesChildren(t *testing.T) {
+	ctx := context.Background()
+	const mdName = "vertex-children"
+
+	ensureNoModelDiscovery(t, ctx, mdName)
+	t.Cleanup(func() { ensureNoModelDiscovery(t, context.Background(), mdName) })
+
+	providers.RegisterTestProvider(t, "vertex", newFakeProvider("vertex", []providers.Candidate{
+		{ID: "gemini-3.8-flash", Params: map[string]string{"vertex_location": "eu", "vertex_project": "alt06-gemini"}},
+	}))
+	ensureCredentialSecret(t, ctx, mdName+"-creds", "vertex")
+
+	md := modeldiscoverySampleCR(mdName, "vertex")
+	md.Spec.Params = k8sruntime.RawExtension{Raw: []byte(`{"vertex_project":"user-project"}`)}
+	if err := k8sClient.Create(ctx, md); err != nil {
+		t.Fatalf("create ModelDiscovery: %v", err)
+	}
+
+	child := pollChildModel(t, ctx, "vertex.gemini-3.8-flash", 30*time.Second)
+	var params map[string]any
+	if err := json.Unmarshal(child.Spec.Params.Raw, &params); err != nil {
+		t.Fatalf("decode params: %v", err)
+	}
+	for k, want := range map[string]string{
+		"model":           "vertex_ai/gemini-3.8-flash",
+		"vertex_location": "eu",
+		"vertex_project":  "user-project",
+	} {
+		if params[k] != want {
+			t.Errorf("params.%s = %v; want %s", k, params[k], want)
+		}
+	}
+}
+
+// TestModelDiscovery_DedupeAfterFilter: two raw IDs normalize to the same
+// child name; excluding the first must let the second through (filters run
+// BEFORE the first-wins de-duplication).
+func TestModelDiscovery_DedupeAfterFilter(t *testing.T) {
+	ctx := context.Background()
+	const mdName = "dedupe-after-filter"
+
+	ensureNoModelDiscovery(t, ctx, mdName)
+	t.Cleanup(func() { ensureNoModelDiscovery(t, context.Background(), mdName) })
+
+	providers.RegisterTestProvider(t, "openai", newFakeProvider("openai", []providers.Candidate{
+		{ID: "acme/model-x"},
+		{ID: "acme:model-x"},
+	}))
+	ensureCredentialSecret(t, ctx, mdName+"-creds", "openai")
+
+	md := modeldiscoverySampleCR(mdName, "openai")
+	md.Spec.Filters = &litellmv1alpha1.ModelDiscoveryFilters{Exclude: []string{"acme/model-x"}}
+	if err := k8sClient.Create(ctx, md); err != nil {
+		t.Fatalf("create ModelDiscovery: %v", err)
+	}
+
+	child := pollChildModel(t, ctx, "openai.acme-model-x", 30*time.Second)
+	var params map[string]any
+	if err := json.Unmarshal(child.Spec.Params.Raw, &params); err != nil {
+		t.Fatalf("decode params: %v", err)
+	}
+	if got, want := params["model"], "openai/acme:model-x"; got != want {
+		t.Errorf("params.model = %v; want %s", got, want)
 	}
 }

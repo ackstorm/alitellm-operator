@@ -5,6 +5,7 @@ package providers
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -56,9 +57,87 @@ func newTestBedrockProvider(t *testing.T, opts ...func(*middleware.Stack) error)
 		),
 		APIOptions: opts,
 	}
-	return &bedrockProvider{
+	return &bedrockProvider{regions: []bedrockRegion{{
+		name:   "us-east-1",
 		client: bedrock.NewFromConfig(awsCfg),
-		region: "us-east-1",
+	}}}
+}
+
+// newTestBedrockMultiRegion builds a provider with one client per region,
+// each wired with its own APIOptions so a test can answer per region.
+func newTestBedrockMultiRegion(t *testing.T, regions []string, opts map[string]func(*middleware.Stack) error) *bedrockProvider {
+	t.Helper()
+	p := &bedrockProvider{}
+	for _, r := range regions {
+		awsCfg := awsv2.Config{
+			Region:      r,
+			Credentials: credentials.NewStaticCredentialsProvider("DUMMYAKID", "DUMMYSECRET", ""),
+			APIOptions:  []func(*middleware.Stack) error{opts[r]},
+		}
+		p.regions = append(p.regions, bedrockRegion{name: r, client: bedrock.NewFromConfig(awsCfg)})
+	}
+	return p
+}
+
+// onDemandModel is an ACTIVE, ON_DEMAND, text-output summary fixture.
+func onDemandModel(id string) bedrocktypes.FoundationModelSummary {
+	return bedrocktypes.FoundationModelSummary{
+		ModelId:                 awsv2.String(id),
+		ModelLifecycle:          &bedrocktypes.FoundationModelLifecycle{Status: bedrocktypes.FoundationModelLifecycleStatusActive},
+		InferenceTypesSupported: []bedrocktypes.InferenceType{bedrocktypes.InferenceTypeOnDemand},
+		OutputModalities:        []bedrocktypes.ModelModality{bedrocktypes.ModelModalityText},
+	}
+}
+
+// TestBedrock_MultiRegion_OrderAndRegionParams: regions are listed in spec
+// order and every candidate carries the region it was found in. Duplicates
+// across regions are returned as-is — the reconciler de-duplicates by child
+// name (first wins), so order is the contract here.
+func TestBedrock_MultiRegion_OrderAndRegionParams(t *testing.T) {
+	p := newTestBedrockMultiRegion(t, []string{"eu-north-1", "eu-west-1"}, map[string]func(*middleware.Stack) error{
+		"eu-north-1": injectBedrockMockOutput(t, &bedrock.ListFoundationModelsOutput{ModelSummaries: []bedrocktypes.FoundationModelSummary{
+			onDemandModel("zai.glm-5"), onDemandModel("openai.gpt-oss-120b-1:0"),
+		}}, nil),
+		"eu-west-1": injectBedrockMockOutput(t, &bedrock.ListFoundationModelsOutput{ModelSummaries: []bedrocktypes.FoundationModelSummary{
+			onDemandModel("google.gemma-3-27b-it"), onDemandModel("openai.gpt-oss-120b-1:0"),
+		}}, nil),
+	})
+	cands, err := p.List(context.Background())
+	if err != nil {
+		t.Fatalf("List err: %v", err)
+	}
+	want := [][2]string{
+		{"zai.glm-5", "eu-north-1"},
+		{"openai.gpt-oss-120b-1:0", "eu-north-1"},
+		{"google.gemma-3-27b-it", "eu-west-1"},
+		{"openai.gpt-oss-120b-1:0", "eu-west-1"},
+	}
+	if len(cands) != len(want) {
+		t.Fatalf("got %d candidates %+v; want %d", len(cands), cands, len(want))
+	}
+	for i, w := range want {
+		if cands[i].ID != w[0] || cands[i].Params["aws_region_name"] != w[1] {
+			t.Errorf("cand[%d] = %s@%s; want %s@%s", i, cands[i].ID, cands[i].Params["aws_region_name"], w[0], w[1])
+		}
+	}
+}
+
+// TestBedrock_MultiRegion_OneRegionFails: any failing region fails the
+// whole List (D-09 atomic snapshot — the reconciler then neither creates
+// nor deletes children), and the error names the region.
+func TestBedrock_MultiRegion_OneRegionFails(t *testing.T) {
+	p := newTestBedrockMultiRegion(t, []string{"eu-north-1", "eu-west-1"}, map[string]func(*middleware.Stack) error{
+		"eu-north-1": injectBedrockMockOutput(t, &bedrock.ListFoundationModelsOutput{ModelSummaries: []bedrocktypes.FoundationModelSummary{
+			onDemandModel("zai.glm-5"),
+		}}, nil),
+		"eu-west-1": injectBedrockMockOutput(t, nil, &smithy.GenericAPIError{Code: "InternalFailure", Fault: smithy.FaultServer}),
+	})
+	cands, err := p.List(context.Background())
+	if err == nil {
+		t.Fatalf("want error; got %+v", cands)
+	}
+	if !strings.Contains(err.Error(), "eu-west-1") {
+		t.Errorf("error %q does not name the failing region", err)
 	}
 }
 
@@ -216,8 +295,7 @@ func TestBedrock_5xx_ReturnsPlainError(t *testing.T) {
 // CEL-required).
 func TestBedrock_MissingRegion_ReturnsConstructorError(t *testing.T) {
 	_, err := newBedrock(context.Background(), ProviderConfig{
-		Type:   "bedrock",
-		Region: "",
+		Type: "bedrock",
 	})
 	if err == nil {
 		t.Fatal("empty Region: want err")
@@ -298,10 +376,10 @@ func TestBedrock_CredentialCanary(t *testing.T) {
 			injectBedrockMockOutput(t, nil, apiErr),
 		},
 	}
-	p := &bedrockProvider{
+	p := &bedrockProvider{regions: []bedrockRegion{{
+		name:   "us-east-1",
 		client: bedrock.NewFromConfig(awsCfg),
-		region: "us-east-1",
-	}
+	}}}
 	_, listErr := p.List(context.Background())
 	if listErr == nil {
 		t.Fatal("canary: want err; got nil")
@@ -317,5 +395,166 @@ func TestBedrock_CredentialCanary(t *testing.T) {
 	// is the regression bumper if a future edit adds a log line.
 	if strings.Contains(buf.String(), canaryBedrockAccessKey) {
 		t.Fatalf("canary leaked into log buffer: %s", buf.String())
+	}
+}
+
+// bedrockOps answers both Bedrock operations from one middleware and
+// records the inputs it saw. profilePages[i] answers NextToken == "" (i=0)
+// or NextToken == strconv(i); each page but the last links to the next.
+type bedrockOps struct {
+	models       *bedrock.ListFoundationModelsOutput
+	profilePages []*bedrock.ListInferenceProfilesOutput
+	profileErr   error
+
+	modelsIn   []*bedrock.ListFoundationModelsInput
+	profilesIn []*bedrock.ListInferenceProfilesInput
+}
+
+func (o *bedrockOps) middleware() func(*middleware.Stack) error {
+	return func(stack *middleware.Stack) error {
+		return stack.Initialize.Add(middleware.InitializeMiddlewareFunc(
+			"TestBedrockOps",
+			func(ctx context.Context, in middleware.InitializeInput, next middleware.InitializeHandler) (middleware.InitializeOutput, middleware.Metadata, error) {
+				switch p := in.Parameters.(type) {
+				case *bedrock.ListFoundationModelsInput:
+					o.modelsIn = append(o.modelsIn, p)
+					return middleware.InitializeOutput{Result: o.models}, middleware.Metadata{}, nil
+				case *bedrock.ListInferenceProfilesInput:
+					o.profilesIn = append(o.profilesIn, p)
+					if o.profileErr != nil {
+						return middleware.InitializeOutput{}, middleware.Metadata{}, o.profileErr
+					}
+					i, _ := strconv.Atoi(awsv2.ToString(p.NextToken))
+					page := *o.profilePages[i]
+					if i+1 < len(o.profilePages) {
+						page.NextToken = awsv2.String(strconv.Itoa(i + 1))
+					}
+					return middleware.InitializeOutput{Result: &page}, middleware.Metadata{}, nil
+				}
+				return middleware.InitializeOutput{}, middleware.Metadata{}, errors.New("unexpected operation")
+			},
+		), middleware.Before)
+	}
+}
+
+func profileOnlyModel(id string) bedrocktypes.FoundationModelSummary {
+	m := onDemandModel(id)
+	m.InferenceTypesSupported = []bedrocktypes.InferenceType{"INFERENCE_PROFILE"}
+	return m
+}
+
+func systemProfile(id string, status bedrocktypes.InferenceProfileStatus) bedrocktypes.InferenceProfileSummary {
+	return bedrocktypes.InferenceProfileSummary{
+		InferenceProfileId: awsv2.String(id),
+		Status:             status,
+		Type:               bedrocktypes.InferenceProfileTypeSystemDefined,
+	}
+}
+
+// TestBedrock_InferenceProfiles_Selection: in-region ON_DEMAND beats any
+// profile; otherwise the first allowed geography (list order) whose ACTIVE
+// profile <geo>.<modelId> exists wins; no match drops the model. ID stays
+// the base model ID (stable child name), ModelID carries the profile.
+func TestBedrock_InferenceProfiles_Selection(t *testing.T) {
+	embed := profileOnlyModel("amazon.titan-embed-text-v2:0")
+	embed.OutputModalities = []bedrocktypes.ModelModality{bedrocktypes.ModelModalityEmbedding}
+	ops := &bedrockOps{
+		models: &bedrock.ListFoundationModelsOutput{ModelSummaries: []bedrocktypes.FoundationModelSummary{
+			onDemandModel("openai.gpt-oss-120b-1:0"),            // ON_DEMAND (a profile exists too)
+			profileOnlyModel("amazon.nova-pro-v1:0"),            // eu + global → eu (list order)
+			profileOnlyModel("openai.gpt-6-sol"),                // global only → global
+			profileOnlyModel("meta.llama4-maverick-17b-v1:0"),   // us only → dropped
+			profileOnlyModel("mistral.pixtral-large-2502-v1:0"), // eu profile INACTIVE → dropped
+			embed, // embedding → dropped
+		}},
+		profilePages: []*bedrock.ListInferenceProfilesOutput{
+			{InferenceProfileSummaries: []bedrocktypes.InferenceProfileSummary{
+				systemProfile("eu.openai.gpt-oss-120b-1:0", bedrocktypes.InferenceProfileStatusActive),
+				systemProfile("global.amazon.nova-pro-v1:0", bedrocktypes.InferenceProfileStatusActive),
+				systemProfile("us.meta.llama4-maverick-17b-v1:0", bedrocktypes.InferenceProfileStatusActive),
+			}},
+			{InferenceProfileSummaries: []bedrocktypes.InferenceProfileSummary{
+				systemProfile("eu.amazon.nova-pro-v1:0", bedrocktypes.InferenceProfileStatusActive),
+				systemProfile("global.openai.gpt-6-sol", bedrocktypes.InferenceProfileStatusActive),
+				systemProfile("eu.mistral.pixtral-large-2502-v1:0", "LEGACY"),
+				systemProfile("eu.amazon.titan-embed-text-v2:0", bedrocktypes.InferenceProfileStatusActive),
+			}},
+		},
+	}
+	p := newTestBedrockMultiRegion(t, []string{"eu-west-1"}, map[string]func(*middleware.Stack) error{
+		"eu-west-1": ops.middleware(),
+	})
+	p.profiles = []string{"eu", "global"}
+
+	cands, err := p.List(context.Background())
+	if err != nil {
+		t.Fatalf("List err: %v", err)
+	}
+	want := [][2]string{ // ID, ModelID
+		{"openai.gpt-oss-120b-1:0", ""},
+		{"amazon.nova-pro-v1:0", "eu.amazon.nova-pro-v1:0"},
+		{"openai.gpt-6-sol", "global.openai.gpt-6-sol"},
+	}
+	if len(cands) != len(want) {
+		t.Fatalf("got %+v; want %v", cands, want)
+	}
+	for i, w := range want {
+		if cands[i].ID != w[0] || cands[i].ModelID != w[1] || cands[i].Params["aws_region_name"] != "eu-west-1" {
+			t.Errorf("cand[%d] = %+v; want ID=%s ModelID=%q region=eu-west-1", i, cands[i], w[0], w[1])
+		}
+	}
+	if got := ops.modelsIn[0].ByInferenceType; got != "" {
+		t.Errorf("ListFoundationModels ByInferenceType = %q; want unset when profiles are enabled", got)
+	}
+	if len(ops.profilesIn) != 2 {
+		t.Fatalf("ListInferenceProfiles calls = %d; want 2 (paginated)", len(ops.profilesIn))
+	}
+	if got := ops.profilesIn[0].TypeEquals; got != bedrocktypes.InferenceProfileTypeSystemDefined {
+		t.Errorf("TypeEquals = %q; want SYSTEM_DEFINED", got)
+	}
+}
+
+// TestBedrock_NoInferenceProfiles_Unchanged: without the opt-in the request
+// is today's ON_DEMAND listing and inference profiles are never listed.
+func TestBedrock_NoInferenceProfiles_Unchanged(t *testing.T) {
+	ops := &bedrockOps{models: &bedrock.ListFoundationModelsOutput{ModelSummaries: []bedrocktypes.FoundationModelSummary{
+		onDemandModel("openai.gpt-oss-120b-1:0"), profileOnlyModel("amazon.nova-pro-v1:0"),
+	}}}
+	p := newTestBedrockMultiRegion(t, []string{"eu-west-1"}, map[string]func(*middleware.Stack) error{
+		"eu-west-1": ops.middleware(),
+	})
+	cands, err := p.List(context.Background())
+	if err != nil {
+		t.Fatalf("List err: %v", err)
+	}
+	if len(cands) != 1 || cands[0].ModelID != "" {
+		t.Errorf("got %+v; want only the ON_DEMAND model, no ModelID", cands)
+	}
+	if got := ops.modelsIn[0].ByInferenceType; got != bedrocktypes.InferenceTypeOnDemand {
+		t.Errorf("ByInferenceType = %q; want ON_DEMAND", got)
+	}
+	if len(ops.profilesIn) != 0 {
+		t.Errorf("ListInferenceProfiles called %d times; want 0", len(ops.profilesIn))
+	}
+}
+
+// TestBedrock_InferenceProfiles_AuthError: an IAM denial on
+// ListInferenceProfiles classifies as *ProviderAuthError naming the region.
+func TestBedrock_InferenceProfiles_AuthError(t *testing.T) {
+	ops := &bedrockOps{
+		models:     &bedrock.ListFoundationModelsOutput{},
+		profileErr: &smithy.GenericAPIError{Code: "AccessDeniedException", Fault: smithy.FaultClient},
+	}
+	p := newTestBedrockMultiRegion(t, []string{"eu-west-1"}, map[string]func(*middleware.Stack) error{
+		"eu-west-1": ops.middleware(),
+	})
+	p.profiles = []string{"eu"}
+	_, err := p.List(context.Background())
+	var authErr *ProviderAuthError
+	if !errors.As(err, &authErr) {
+		t.Fatalf("want *ProviderAuthError; got %T %v", err, err)
+	}
+	if !strings.Contains(err.Error(), "eu-west-1") {
+		t.Errorf("error %q does not name the region", err)
 	}
 }

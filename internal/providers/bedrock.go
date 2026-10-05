@@ -33,15 +33,20 @@ import (
 const providerTypeBedrock = "bedrock"
 
 type bedrockProvider struct {
-	client *bedrock.Client
-	region string
+	regions  []bedrockRegion // spec order; earlier wins on duplicate names (reconciler-side)
+	profiles []string        // allowed inference-profile geographies, preference order; empty = off
 }
 
-// errMissingRegion is the constructor-side sentinel for empty cfg.Region.
+type bedrockRegion struct {
+	name   string
+	client *bedrock.Client
+}
+
+// errMissingRegion is the constructor-side sentinel for empty cfg.Regions.
 // Bedrock CEL-required this; the constructor still
 // validates synchronously so failures surface in status.conditions[]
 // before any AWS API call would be issued.
-var errMissingRegion = errors.New("bedrock: spec.region is required")
+var errMissingRegion = errors.New("bedrock: spec.regions is required")
 
 // awsAccessKeyRe and awsCredentialRe are the package-level pre-compiled
 // regexes used by sanitizeAWSError. The two forms cover:
@@ -94,13 +99,25 @@ var awsAuthErrorCodes = map[string]struct{}{
 // before surfacing — config errors usually don't carry credentials,
 // but the wrap is the canary regression bumper.
 func newBedrock(ctx context.Context, cfg ProviderConfig) (Provider, error) {
-	if cfg.Region == "" {
+	if len(cfg.Regions) == 0 {
 		return nil, errMissingRegion
 	}
+	p := &bedrockProvider{profiles: cfg.InferenceProfiles}
+	for _, region := range cfg.Regions {
+		client, err := newBedrockClient(ctx, cfg.AWSCreds, region)
+		if err != nil {
+			return nil, err
+		}
+		p.regions = append(p.regions, bedrockRegion{name: region, client: client})
+	}
+	return p, nil
+}
 
+// newBedrockClient builds one region's client.
+func newBedrockClient(ctx context.Context, creds *awsv2.Credentials, region string) (*bedrock.Client, error) {
 	var awsCfg awsv2.Config
 	var err error
-	if cfg.AWSCreds != nil {
+	if creds != nil {
 		// D-05 path 1: explicit Secret. The static provider supplies
 		// the resolved Access Key / Secret / Session Token from the
 		// user's Secret; aws.NewCredentialsCache memoizes Retrieve
@@ -108,12 +125,12 @@ func newBedrock(ctx context.Context, cfg ProviderConfig) (Provider, error) {
 		// request; the cache short-circuits to the same struct value
 		// for the lifetime of this Client).
 		provider := credentials.NewStaticCredentialsProvider(
-			cfg.AWSCreds.AccessKeyID,
-			cfg.AWSCreds.SecretAccessKey,
-			cfg.AWSCreds.SessionToken,
+			creds.AccessKeyID,
+			creds.SecretAccessKey,
+			creds.SessionToken,
 		)
 		awsCfg, err = config.LoadDefaultConfig(ctx,
-			config.WithRegion(cfg.Region),
+			config.WithRegion(region),
 			config.WithCredentialsProvider(awsv2.NewCredentialsCache(provider)),
 		)
 	} else {
@@ -122,16 +139,12 @@ func newBedrock(ctx context.Context, cfg ProviderConfig) (Provider, error) {
 		// file → IMDSv2 → ECS task role → IRSA web-identity token →
 		// SSO. The operator pod controls the order via its own env
 		// (PROJECT.md leaves the pod's IAM identity to the operator).
-		awsCfg, err = config.LoadDefaultConfig(ctx, config.WithRegion(cfg.Region))
+		awsCfg, err = config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	}
 	if err != nil {
 		return nil, fmt.Errorf("bedrock: aws config: %w", sanitizeAWSError(err))
 	}
-
-	return &bedrockProvider{
-		client: bedrock.NewFromConfig(awsCfg),
-		region: cfg.Region,
-	}, nil
+	return bedrock.NewFromConfig(awsCfg), nil
 }
 
 // Type returns the discriminator literal "bedrock". Used by the
@@ -139,11 +152,38 @@ func newBedrock(ctx context.Context, cfg ProviderConfig) (Provider, error) {
 // registry.go is the D-01 anti-pattern.
 func (p *bedrockProvider) Type() string { return providerTypeBedrock }
 
-// List calls ListFoundationModels with ByInferenceType=OnDemand and
-// applies the in-Go 3-way pre-filter to mirror autoconfig
-// providers.py:251-254 verbatim. The SDK's ByInferenceType filters
-// PROVISIONED-only models server-side; the ACTIVE and non-EMBEDDING
-// conditions run client-side because the SDK lacks equivalent params.
+// List lists every region in spec order and concatenates the results.
+// Each candidate carries Params[aws_region_name] = the region it was found
+// in. Duplicates across regions are kept here: the reconciler de-duplicates
+// by child name, first wins.
+//
+// Any failing region fails the whole List. The reconciler then applies the
+// D-09 atomic-snapshot rule (no child created or deleted), so children
+// discovered from the healthy regions survive an outage of one region.
+func (p *bedrockProvider) List(ctx context.Context) ([]Candidate, error) {
+	var candidates []Candidate
+	for _, r := range p.regions {
+		cands, err := r.list(ctx, p.profiles)
+		if err != nil {
+			return nil, err
+		}
+		candidates = append(candidates, cands...)
+	}
+	return candidates, nil
+}
+
+// list calls ListFoundationModels and applies the in-Go 3-way pre-filter
+// (autoconfig providers.py:251-254): ACTIVE, ON_DEMAND, non-EMBEDDING.
+//
+// With profiles empty the request filters ByInferenceType=OnDemand
+// server-side (today's behaviour). With profiles set it lists every model
+// plus the region's SYSTEM_DEFINED inference profiles: an ACTIVE,
+// non-embedding model WITHOUT in-region ON_DEMAND support is kept when an
+// ACTIVE profile "<geo>.<modelId>" exists for the first matching geography
+// in profiles order; its Candidate.ModelID is that profile ID while ID stays
+// the base model ID (stable child name). In-region ON_DEMAND always beats a
+// profile. LiteLLM's cost lookup strips the geo prefix
+// (get_bedrock_base_model), so pricing resolves without base_model.
 //
 // Returns:
 // - *ProviderAuthError on smithy.APIError codes in awsAuthErrorCodes
@@ -151,29 +191,68 @@ func (p *bedrockProvider) Type() string { return providerTypeBedrock }
 // SDK config faults, deserialization errors)
 // - sanitized error strings — sanitizeAWSError strips credential
 // fragments before wrapping (§9.1)
-//
-// The returned []Candidate's ordering matches the SDK's response
-// ordering (FoundationModelSummary slice traversal). sorts
-// by raw ID before SSA-applying child Models for determinism.
-func (p *bedrockProvider) List(ctx context.Context) ([]Candidate, error) {
-	out, err := p.client.ListFoundationModels(ctx, &bedrock.ListFoundationModelsInput{
-		ByInferenceType: bedrocktypes.InferenceTypeOnDemand,
-	})
+func (r bedrockRegion) list(ctx context.Context, profiles []string) ([]Candidate, error) {
+	in := &bedrock.ListFoundationModelsInput{}
+	if len(profiles) == 0 {
+		in.ByInferenceType = bedrocktypes.InferenceTypeOnDemand
+	}
+	out, err := r.client.ListFoundationModels(ctx, in)
 	if err != nil {
-		return nil, classifyBedrockError(err)
+		return nil, classifyBedrockError(r.name, err)
+	}
+	var active map[string]struct{}
+	if len(profiles) > 0 {
+		if active, err = r.activeProfiles(ctx); err != nil {
+			return nil, err
+		}
 	}
 
 	candidates := make([]Candidate, 0, len(out.ModelSummaries))
 	for _, m := range out.ModelSummaries {
-		if !shouldKeep(m) {
-			continue
-		}
-		candidates = append(candidates, Candidate{
-			ID:          awsv2.ToString(m.ModelId),
+		id := awsv2.ToString(m.ModelId)
+		c := Candidate{
+			ID:          id,
 			DisplayName: awsv2.ToString(m.ModelName),
-		})
+			Params:      map[string]string{"aws_region_name": r.name},
+		}
+		if !shouldKeep(m) {
+			if !isActiveNonEmbedding(m) {
+				continue
+			}
+			for _, geo := range profiles {
+				if _, ok := active[geo+"."+id]; ok {
+					c.ModelID = geo + "." + id
+					break
+				}
+			}
+			if c.ModelID == "" {
+				continue
+			}
+		}
+		candidates = append(candidates, c)
 	}
 	return candidates, nil
+}
+
+// activeProfiles returns the IDs of the region's ACTIVE SYSTEM_DEFINED
+// inference profiles (all pages).
+func (r bedrockRegion) activeProfiles(ctx context.Context) (map[string]struct{}, error) {
+	ids := map[string]struct{}{}
+	pages := bedrock.NewListInferenceProfilesPaginator(r.client, &bedrock.ListInferenceProfilesInput{
+		TypeEquals: bedrocktypes.InferenceProfileTypeSystemDefined,
+	})
+	for pages.HasMorePages() {
+		page, err := pages.NextPage(ctx)
+		if err != nil {
+			return nil, classifyBedrockError(r.name, err)
+		}
+		for _, p := range page.InferenceProfileSummaries {
+			if p.Status == bedrocktypes.InferenceProfileStatusActive {
+				ids[awsv2.ToString(p.InferenceProfileId)] = struct{}{}
+			}
+		}
+	}
+	return ids, nil
 }
 
 // shouldKeep applies the 3-way pre-filter (autoconfig providers.py:251-254):
@@ -191,16 +270,15 @@ func (p *bedrockProvider) List(ctx context.Context) ([]Candidate, error) {
 // values which fail the filter — the closed-set predicate stays
 // conservative (T-04-03c-T2 accept disposition in the threat model).
 func shouldKeep(m bedrocktypes.FoundationModelSummary) bool {
-	if m.ModelLifecycle == nil || m.ModelLifecycle.Status != bedrocktypes.FoundationModelLifecycleStatusActive {
-		return false
-	}
-	if !slices.Contains(m.InferenceTypesSupported, bedrocktypes.InferenceTypeOnDemand) {
-		return false
-	}
-	if slices.Contains(m.OutputModalities, bedrocktypes.ModelModalityEmbedding) {
-		return false
-	}
-	return true
+	return isActiveNonEmbedding(m) && slices.Contains(m.InferenceTypesSupported, bedrocktypes.InferenceTypeOnDemand)
+}
+
+// isActiveNonEmbedding is shouldKeep without the ON_DEMAND condition: the
+// gate for routing a model through an inference profile instead.
+func isActiveNonEmbedding(m bedrocktypes.FoundationModelSummary) bool {
+	return m.ModelLifecycle != nil &&
+		m.ModelLifecycle.Status == bedrocktypes.FoundationModelLifecycleStatusActive &&
+		!slices.Contains(m.OutputModalities, bedrocktypes.ModelModalityEmbedding)
 }
 
 // classifyBedrockError maps smithy.APIError codes to *ProviderAuthError
@@ -211,17 +289,17 @@ func shouldKeep(m bedrocktypes.FoundationModelSummary) bool {
 // underlying APIError satisfies this assertion. Errors with no
 // embedded APIError (transport failures, context cancellation,
 // deserialization failures) flow through to the plain-error branch.
-func classifyBedrockError(err error) error {
+func classifyBedrockError(region string, err error) error {
 	var apiErr smithy.APIError
 	if errors.As(err, &apiErr) {
 		if _, isAuth := awsAuthErrorCodes[apiErr.ErrorCode()]; isAuth {
 			return &ProviderAuthError{
 				Provider: providerTypeBedrock,
-				Cause:    sanitizeAWSError(err),
+				Cause:    fmt.Errorf("region %s: %w", region, sanitizeAWSError(err)),
 			}
 		}
 	}
-	return fmt.Errorf("bedrock: list foundation models: %w", sanitizeAWSError(err))
+	return fmt.Errorf("bedrock: region %s: list foundation models: %w", region, sanitizeAWSError(err))
 }
 
 // sanitizeAWSError strips credential material from error strings before

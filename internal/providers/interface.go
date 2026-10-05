@@ -18,9 +18,19 @@ import (
 // "Claude 3.5 Sonnet"). Provider-specific extras (Gemini token limits,
 // Bedrock modalities) flow through spec.info propagation at the
 // Discovery CR level, NOT this struct.
+//
+// ModelID and Params carry per-candidate routing the reconciler cannot
+// derive from spec alone. ModelID, when set, replaces ID in
+// spec.params.model (a Bedrock inference profile ID) while ID keeps
+// naming the child, so the child name is stable if the routing changes.
+// Params are overlaid onto the child's spec.params unless the user set the
+// same key (e.g. Bedrock aws_region_name = the region the model was found
+// in). Neither field may carry credential material (MDISC-15).
 type Candidate struct {
 	ID          string
 	DisplayName string
+	ModelID     string
+	Params      map[string]string
 }
 
 // Provider is the uniform contract for one upstream model source.
@@ -29,7 +39,7 @@ type Candidate struct {
 // type-switches on the concrete provider.
 type Provider interface {
 	// Type returns the spec.type enum literal:
-	// "a2a"|"anthropic"|"bedrock"|"elevenlabs"|"gemini"|"kubeai"|"openai".
+	// "a2a"|"anthropic"|"bedrock"|"elevenlabs"|"gemini"|"kubeai"|"openai"|"vertex".
 	// The reconciler uses this only for metrics labels — branching on
 	// it is the D-01 anti-pattern this package exists to prevent.
 	Type() string
@@ -60,7 +70,9 @@ type Provider interface {
 // OpenAI-compatible providers — Together, vLLM, Groq, OpenRouter).
 // - kubeai: requires HTTPClient + BaseURL (CEL-required). APIKey
 // optional. (Filled by.)
-// - bedrock: requires Region. AWSCreds optional — nil falls through
+// - vertex: requires Region (location), VertexCredentials, HTTPClient.
+// Token exchange + listing both use HTTPClient.
+// - bedrock: requires Regions. AWSCreds optional — nil falls through
 // to default credential chain. HTTPClient is unused (aws-sdk-go-v2
 // constructs its own internal transport). (Filled by.)
 type ProviderConfig struct {
@@ -73,10 +85,19 @@ type ProviderConfig struct {
 	// required for kubeai.
 	BaseURL string
 
-	// Region is the AWS region for bedrock (CEL-required for that
-	// type; CEL-forbidden elsewhere). Single region per CR per
-	// MDISC-16 / PROJECT.md Key Decision.
+	// Region is spec.region: the Vertex location (eu, us, global,
+	// europe-west1, …) for vertex; unused by the other types.
 	Region string
+
+	// Regions is spec.regions: the ordered AWS regions bedrock lists.
+	// Earlier regions win on a duplicate child name (resolved by the
+	// reconciler).
+	Regions []string
+
+	// InferenceProfiles is spec.inferenceProfiles: ordered geography
+	// prefixes (eu, us, apac, global, …) bedrock may route through when a
+	// model has no in-region ON_DEMAND support. Empty disables profiles.
+	InferenceProfiles []string
 
 	// APIKey is the resolved string from spec.credentialsSecretRef.
 	// Required for anthropic/gemini/openai; optional for kubeai;
@@ -87,6 +108,12 @@ type ProviderConfig struct {
 	// (nil → fall through to default chain — IRSA / env / EC2
 	// instance profile / EKS Pod Identity). Per D-05.
 	AWSCreds *awsv2.Credentials
+
+	// VertexCredentials is the service-account JSON key (Secret key
+	// VERTEX_CREDENTIALS) for vertex. The provider reads client_email,
+	// private_key and project_id; project_id (not secret) reaches the child
+	// as vertex_project, the rest never leaves the provider (MDISC-15).
+	VertexCredentials []byte
 
 	// HTTPClient is the manager-owned shared *http.Client (per D-02:
 	// 10s total-request Timeout, 30s Transport.IdleConnTimeout — see

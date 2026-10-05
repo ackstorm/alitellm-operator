@@ -37,6 +37,8 @@ func drainAndClose(body io.ReadCloser) {
 // OpenAI-compatible providers (Together, vLLM, Groq, OpenRouter).
 //
 // kubeai has no production default — spec.baseUrl is CEL-required.
+// vertex has none either: its host depends on the location (vertexBaseURL);
+// baseURLFor returns "" and the provider falls back to that.
 // bedrock uses aws-sdk-go-v2's own endpoint resolution; it does not
 // flow through this map.
 var defaultBaseURLs = map[string]string{

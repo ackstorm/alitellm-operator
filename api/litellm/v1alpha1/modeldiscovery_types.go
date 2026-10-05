@@ -9,8 +9,8 @@ import (
 
 // ModelDiscoverySpec defines the desired state of ModelDiscovery — the
 // flat _FINALv3 shape (spec §6.3). One ModelDiscovery CR points the
-// operator at a single upstream provider (anthropic, bedrock, elevenlabs,
-// gemini, kubeai, or openai) and generates a fan-out of Kubernetes Model child
+// operator at a single upstream provider (a2a, anthropic, bedrock,
+// elevenlabs, gemini, kubeai, openai, or vertex) and generates a fan-out of Kubernetes Model child
 // CRs (Pipeline B per spec §3.3). Discovery NEVER calls LiteLLM directly;
 // each generated child reconciles into LiteLLM via the Phase 3 Model
 // controller (Pipeline A).
@@ -23,18 +23,23 @@ import (
 //	      params.model = <A2A_MODEL_PROVIDER, default a2a1>/<agent name>;
 //	      default prefix a2a.
 //	anthropic — requires credentialsSecretRef; forbids region, baseUrl.
-//	bedrock — requires region; forbids baseUrl; credentialsSecretRef optional.
+//	bedrock — requires regions; forbids region, baseUrl; credentialsSecretRef
+//	      optional; inferenceProfiles optional.
 //	elevenlabs — requires credentialsSecretRef; forbids region, baseUrl.
 //	gemini — requires credentialsSecretRef; forbids region, baseUrl.
 //	kubeai — requires baseUrl; forbids credentialsSecretRef, region.
 //	openai — requires credentialsSecretRef; baseUrl optional; forbids region.
+//	vertex — Gemini on Vertex AI (google publisher only); requires
+//	      credentialsSecretRef + region (the Vertex location); forbids baseUrl.
+//
+// spec.regions and spec.inferenceProfiles are bedrock-only.
 //
 // spec.litellmProvider (optional; spec.type=openai only) overrides the LiteLLM
 // pricing-prefix provider used for cost tracking (default: derived from
 // spec.type) — e.g. `openrouter` to bill discovered models under OpenRouter's
 // cost table without a new provider type. See the LitellmProvider field doc.
 //
-// MDISC-01 enforces spec.type ∈ {a2a, anthropic, bedrock, elevenlabs, gemini, kubeai, openai}
+// MDISC-01 enforces spec.type ∈ {a2a, anthropic, bedrock, elevenlabs, gemini, kubeai, openai, vertex}
 // at admission via the +kubebuilder:validation:Enum marker. MDISC-04
 // (prefix), MDISC-05 (refresh.interval floor), MDISC-15 (credential
 // surface), and MDISC-22/23 (propagation bags) are all schema-side.
@@ -45,7 +50,7 @@ type ModelDiscoverySpec struct {
 	// branching outside the registry is prohibited (CONTEXT.md D-01).
 	//
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum=a2a;anthropic;bedrock;elevenlabs;gemini;kubeai;openai
+	// +kubebuilder:validation:Enum=a2a;anthropic;bedrock;elevenlabs;gemini;kubeai;openai;vertex
 	Type string `json:"type"`
 
 	// LitellmProvider overrides the LiteLLM custom_llm_provider used to build
@@ -150,27 +155,56 @@ type ModelDiscoverySpec struct {
 	// +optional
 	CredentialsSecretRef *SecretObjectRef `json:"credentialsSecretRef,omitempty"`
 
-	// Region is the AWS region for Bedrock control-plane discovery
-	// (required when spec.type=bedrock, forbidden otherwise — see the
-	// CR-level CEL rule on the ModelDiscovery struct). One region per
-	// CR per PROJECT.md Key Decision; multi-region requires multiple CRs
-	// with distinct spec.prefix (e.g. bedrock-use1, bedrock-euw1).
-	//
-	// The value is overlaid as aws_region_name in each generated child
-	// Model's spec.params. This is one of two typed-field overlays the
-	// reconciler applies per CONTEXT.md D-07: bedrock spec.region →
-	// aws_region_name (overwrite-wins) and kubeai spec.baseUrl →
-	// api_base (user-supplied wins; see BaseURL doc, FIX.txt H-2). Plain
-	// string — AWS region codes are open-ended and not enumerated here;
-	// CEL gates presence per provider.
+	// Region is the Vertex AI location for spec.type=vertex (required
+	// there, CEL-forbidden for every other type; Bedrock uses
+	// spec.regions). Examples: eu, us (multi-region endpoints
+	// aiplatform.<loc>.rep.googleapis.com), global, europe-west1. The
+	// listing is location-aware, and each child gets vertex_location =
+	// this value unless spec.params sets it.
 	//
 	// +optional
+	// +kubebuilder:validation:Pattern=`^[a-z0-9-]+$`
 	Region string `json:"region,omitempty"`
+
+	// Regions is the ordered list of AWS regions for Bedrock discovery
+	// (required for spec.type=bedrock, forbidden otherwise). Each
+	// region is listed in order and candidates are de-duplicated by child
+	// name: the first region that yields a name wins, later duplicates are
+	// dropped. Each child gets aws_region_name = the region it was found in.
+	// If any region fails to list, the whole refresh fails and no child is
+	// created or deleted (children from the healthy regions are kept).
+	//
+	// +optional
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=16
+	// +kubebuilder:validation:items:Pattern=`^[a-z0-9-]+$`
+	// +listType=set
+	Regions []string `json:"regions,omitempty"`
+
+	// InferenceProfiles opts Bedrock discovery into cross-region inference
+	// profiles (spec.type=bedrock only). It is an ordered list of allowed
+	// profile geography prefixes (eu, us, apac, global, …). For an ACTIVE,
+	// non-embedding model without ON_DEMAND support in a listed region, the
+	// first geography (list order) whose system-defined profile
+	// "<geo>.<modelId>" exists is used: the child's params.model becomes
+	// bedrock/<geo>.<modelId> while the child NAME stays the base model ID.
+	// Within one region, ON_DEMAND always beats a profile; across regions
+	// the first region yielding the child name wins (a profile in an
+	// earlier region beats ON_DEMAND in a later one). Empty (default) = no
+	// profiles. Requires bedrock:ListInferenceProfiles. NOTE: global.
+	// profiles may process requests in any AWS region (no data residency).
+	//
+	// +optional
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=8
+	// +kubebuilder:validation:items:Pattern=`^[a-z-]+$`
+	// +listType=set
+	InferenceProfiles []string `json:"inferenceProfiles,omitempty"`
 
 	// BaseURL is the upstream provider's base endpoint. Required for
 	// kubeai (e.g. "http://kubeai.kubeai.svc/openai/v1"); optional for
 	// openai (default OpenAI-platform endpoint applies on omit); forbidden
-	// for anthropic, bedrock, gemini.
+	// for a2a, anthropic, bedrock, elevenlabs, gemini, vertex.
 	//
 	// Discovery calls <BaseURL>/models (OpenAI-compatible wire shape) for
 	// kubeai + openai variants. For OpenAI-compatible providers (vLLM,
@@ -184,9 +218,7 @@ type ModelDiscoverySpec struct {
 	// spec.baseUrl → spec.params.api_base on each generated child Model,
 	// so the LiteLLM proxy can route hosted_vllm/<id> inference requests
 	// at runtime. User-supplied params.api_base wins over the auto-overlay
-	// (presence check). Diverges from the bedrock region overlay's
-	// overwrite-wins semantics on purpose: api_base is a legitimate per-
-	// child routing override.
+	// (presence check), like every other routing overlay.
 	//
 	// +optional
 	BaseURL string `json:"baseUrl,omitempty"`
@@ -194,8 +226,11 @@ type ModelDiscoverySpec struct {
 	// Params is a pass-through bag of fields propagated VERBATIM into
 	// every generated child Model's spec.params (MDISC-23). On top of this
 	// bag, the Discovery reconciler overlays two typed fields per child:
-	// - model: "<litellm-provider>/<raw-id>" (e.g. "anthropic/claude-3-5-sonnet-20241022")
-	// - aws_region_name: <spec.region> (bedrock only)
+	// - model: "<litellm-provider>/<raw-id>" (e.g. "anthropic/claude-3-5-sonnet-20241022";
+	//   a Bedrock inference profile ID instead of the raw ID when one is used)
+	// - provider routing, only where this bag does not set the key:
+	//   aws_region_name (bedrock: the region the model was found in),
+	//   vertex_location / vertex_project (vertex), api_base (custom baseUrl)
 	// All other keys are forwarded unchanged. {{NAME}} substitution
 	// happens on the child Model's own reconcile (§5.2 propagation rule
 	// per AC-SEC4-PROPAGATE), NOT on Discovery's reconcile.
@@ -587,11 +622,14 @@ type FailedCandidate struct {
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=".metadata.creationTimestamp"
 // +kubebuilder:validation:XValidation:rule="self.spec.type != 'a2a' || (!has(self.spec.credentialsSecretRef) && !has(self.spec.region) && !has(self.spec.baseUrl))",message="a2a forbids spec.credentialsSecretRef/spec.region/spec.baseUrl"
 // +kubebuilder:validation:XValidation:rule="self.spec.type != 'anthropic' || (has(self.spec.credentialsSecretRef) && !has(self.spec.region) && !has(self.spec.baseUrl))",message="anthropic requires spec.credentialsSecretRef and forbids spec.region/spec.baseUrl"
-// +kubebuilder:validation:XValidation:rule="self.spec.type != 'bedrock' || (has(self.spec.region) && !has(self.spec.baseUrl))",message="bedrock requires spec.region and forbids spec.baseUrl"
+// +kubebuilder:validation:XValidation:rule="self.spec.type != 'bedrock' || (has(self.spec.regions) && !has(self.spec.region) && !has(self.spec.baseUrl))",message="bedrock requires spec.regions and forbids spec.region/spec.baseUrl"
+// +kubebuilder:validation:XValidation:rule="!has(self.spec.regions) || self.spec.type == 'bedrock'",message="spec.regions is only allowed with spec.type=bedrock"
+// +kubebuilder:validation:XValidation:rule="!has(self.spec.inferenceProfiles) || self.spec.type == 'bedrock'",message="spec.inferenceProfiles is only allowed with spec.type=bedrock"
 // +kubebuilder:validation:XValidation:rule="self.spec.type != 'elevenlabs' || (has(self.spec.credentialsSecretRef) && !has(self.spec.region) && !has(self.spec.baseUrl))",message="elevenlabs requires spec.credentialsSecretRef and forbids spec.region/spec.baseUrl"
 // +kubebuilder:validation:XValidation:rule="self.spec.type != 'gemini' || (has(self.spec.credentialsSecretRef) && !has(self.spec.region) && !has(self.spec.baseUrl))",message="gemini requires spec.credentialsSecretRef and forbids spec.region/spec.baseUrl"
 // +kubebuilder:validation:XValidation:rule="self.spec.type != 'kubeai' || (has(self.spec.baseUrl) && !has(self.spec.credentialsSecretRef) && !has(self.spec.region))",message="kubeai requires spec.baseUrl and forbids spec.credentialsSecretRef/spec.region"
 // +kubebuilder:validation:XValidation:rule="self.spec.type != 'openai' || (has(self.spec.credentialsSecretRef) && !has(self.spec.region))",message="openai requires spec.credentialsSecretRef and forbids spec.region"
+// +kubebuilder:validation:XValidation:rule="self.spec.type != 'vertex' || (has(self.spec.credentialsSecretRef) && has(self.spec.region) && !has(self.spec.baseUrl))",message="vertex requires spec.credentialsSecretRef and spec.region and forbids spec.baseUrl"
 // +kubebuilder:validation:XValidation:rule="!has(self.spec.litellmProvider) || self.spec.type == 'openai'",message="spec.litellmProvider override is only allowed with spec.type=openai"
 // +kubebuilder:validation:XValidation:rule="duration(self.spec.refresh.interval) >= duration('1m')",message="spec.refresh.interval must be >= 1m"
 // +kubebuilder:validation:XValidation:rule="!(has(self.spec.disablePrefix) && self.spec.disablePrefix) || !has(self.spec.prefix)",message="spec.prefix and spec.disablePrefix are mutually exclusive"
@@ -599,7 +637,7 @@ type FailedCandidate struct {
 // LiteLLMModelDiscovery is the Schema for the litellmmodeldiscoveries API — the
 // first Pipeline B CRD (spec §3.3 / §7.1, _FINALv3 two-pipeline model).
 // A LiteLLMModelDiscovery CR points the operator at one upstream provider
-// (anthropic, bedrock, elevenlabs, gemini, kubeai, or openai) and reconciles
+// (a2a, anthropic, bedrock, elevenlabs, gemini, kubeai, openai, or vertex) and reconciles
 // discovered IDs into a fan-out of Kubernetes LiteLLMModel child CRs in
 // WATCH_NAMESPACE. Discovery NEVER calls LiteLLM directly; each child
 // reconciles into LiteLLM via the Phase 3 LiteLLMModel controller.
@@ -618,6 +656,7 @@ type FailedCandidate struct {
 //	elevenlabs: ELEVENLABS_API_KEY
 //	gemini: GEMINI_API_KEY (or GOOGLE_API_KEY per provider docs)
 //	openai: OPENAI_API_KEY
+//	vertex: VERTEX_CREDENTIALS (service-account JSON key)
 //	kubeai: n/a (no credentialsSecretRef)
 //
 // The reconciler validates required keys at credential-resolution time

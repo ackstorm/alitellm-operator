@@ -10,10 +10,12 @@ child reconciles into LiteLLM via the `LiteLLMModel` controller
 
 | Field                       | Required        | Notes                                                                                  |
 |-----------------------------|-----------------|----------------------------------------------------------------------------------------|
-| `spec.type`                 | yes             | Enum: `a2a`, `anthropic`, `bedrock`, `elevenlabs`, `gemini`, `kubeai`, `openai`.              |
+| `spec.type`                 | yes             | Enum: `a2a`, `anthropic`, `bedrock`, `elevenlabs`, `gemini`, `kubeai`, `openai`, `vertex`.    |
 | `spec.prefix`               | no              | DNS-1123 segment prepended to each child's `metadata.name`. Default: lowercased `spec.type`. |
 | `spec.credentialsSecretRef` | per-provider    | Secret holding upstream API key (operator-side ONLY — never propagated to children).   |
-| `spec.region`               | bedrock only    | AWS region. One region per CR (multi-region → multiple CRs).                           |
+| `spec.region`               | vertex only     | Vertex location (`eu`, `us`, `global`, `europe-west1`, …). Pattern `^[a-z0-9-]+$`.     |
+| `spec.regions`              | bedrock only    | Ordered AWS regions (min 1, unique); first region wins on a duplicate child name.      |
+| `spec.inferenceProfiles`    | no (bedrock only) | Ordered inference-profile geographies (`eu`, `us`, `apac`, `global`, …) for models without in-region ON_DEMAND. Default empty = off. |
 | `spec.baseUrl`              | kubeai (req), openai (opt) | Provider HTTP endpoint. Any non-empty value auto-overlays into each child's `api_base` (so LiteLLM routes inference to the same endpoint models were discovered from). |
 | `spec.litellmProvider`      | no (openai only) | Overrides the LiteLLM pricing-prefix provider stamped on each child's `litellm_params.model` (default: derived from `spec.type`). E.g. `openrouter` to bill under OpenRouter's cost table. CEL-restricted to `type: openai`. |
 | `spec.aliases[]`            | no              | Alias rules: `<prefix><child><suffix> → <child>`, optional `include` filter.      |
@@ -30,11 +32,14 @@ child reconciles into LiteLLM via the `LiteLLMModel` controller
 |-------------|-----------------------------|-------------------------------|---------------------------------------------------------------------------|
 | `a2a`       | none                        | `credentialsSecretRef`, `region`, `baseUrl` | none — lists `LiteLLMA2AAgent` CRs                          |
 | `anthropic` | `credentialsSecretRef`      | `region`, `baseUrl`           | `ANTHROPIC_API_KEY`                                                       |
-| `bedrock`   | `region`                    | `baseUrl`                     | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (+ optional `AWS_SESSION_TOKEN`) |
+| `bedrock`   | `regions`                   | `region`, `baseUrl`           | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (+ optional `AWS_SESSION_TOKEN`) |
 | `elevenlabs`| `credentialsSecretRef`      | `region`, `baseUrl`           | `ELEVENLABS_API_KEY`                                                      |
 | `gemini`    | `credentialsSecretRef`      | `region`, `baseUrl`           | `GEMINI_API_KEY` (or `GOOGLE_API_KEY`)                                    |
 | `kubeai`    | `baseUrl`                   | `credentialsSecretRef`, `region` | none                                                                   |
 | `openai`    | `credentialsSecretRef`      | `region`                      | `OPENAI_API_KEY`                                                          |
+| `vertex`    | `credentialsSecretRef`, `region` | `baseUrl`                | `VERTEX_CREDENTIALS` (service-account JSON key)                           |
+
+`spec.regions` and `spec.inferenceProfiles` are bedrock-only for every type.
 
 The per-type XValidation rules on the CRD enforce this matrix at admission.
 
@@ -95,13 +100,13 @@ Note `api_key: "{{ANTHROPIC_API_KEY}}"` lives in
 the placeholder at its own reconcile — Discovery itself never reads
 the inference key.
 
-## Bedrock — region + AWS creds
+## Bedrock — regions + AWS creds
 
 ```yaml
 spec:
   type: bedrock
   prefix: bedrock
-  region: eu-north-1
+  regions: [eu-north-1]
   credentialsSecretRef:
     name: bedrock-credentials
   secrets:
@@ -116,7 +121,115 @@ spec:
 ```
 
 The reconciler also overlays `aws_region_name: eu-north-1` into each
-child's `spec.params` (typed overlay — overwrite-wins).
+child's `spec.params`, unless `spec.params` already sets `aws_region_name`
+(user-supplied wins).
+
+### Multiple regions — first wins
+
+No single region carries every model. List several in order (`spec.region`
+was removed for bedrock in v0.10.0 — use a one-element `regions` list):
+
+```yaml
+spec:
+  type: bedrock
+  regions: [eu-north-1, eu-west-1]
+```
+
+Each region is listed in order and candidates are de-duplicated by child
+name: the first region that yields a name wins, later duplicates are
+dropped (logged at V(1)). Each child gets `aws_region_name` = the region
+it was found in (e.g. `openai.gpt-oss-120b-1:0` exists in both and is
+pinned to `eu-north-1`; Gemma 3, only in `eu-west-1`, is pinned there).
+
+If any region fails to list, the whole refresh fails
+(`SourceReachable=False`, the message names the region) and NO child is
+created or deleted, so children discovered from the healthy regions stay
+in place until the region recovers. Changing the region order can move a
+child to another region on the next refresh (an in-place update, same
+name).
+
+### Inference profiles — opt-in
+
+Some models are offered in a region ONLY through cross-region inference
+profiles (e.g. `eu.amazon.nova-pro-v1:0`, `global.openai.gpt-6-sol`). They
+never appear with the default ON_DEMAND listing. Opt in with an ordered list
+of allowed profile geographies:
+
+```yaml
+spec:
+  type: bedrock
+  regions: [eu-north-1, eu-west-1]
+  inferenceProfiles: [eu]
+```
+
+Per region the operator also lists the SYSTEM_DEFINED inference profiles.
+For an ACTIVE, non-embedding model WITHOUT ON_DEMAND support in that region,
+it uses the first geography in list order whose ACTIVE profile
+`<geo>.<modelId>` exists; otherwise the model is skipped. Within one
+region, ON_DEMAND always beats a profile. Across regions the first region
+that yields the child name wins, so a profile in an earlier region beats
+ON_DEMAND in a later one.
+
+The child's `params.model` is `bedrock/<geo>.<modelId>`, but the child
+NAME stays the base model ID (`bedrock.amazon.nova-pro-v1-0`), so names
+and aliases do not change if the model later becomes ON_DEMAND. LiteLLM
+prices profile IDs by stripping the geography prefix, so cost tracking
+works without `model_info.base_model`.
+
+- Needs IAM `bedrock:ListInferenceProfiles` (in addition to
+  `bedrock:ListFoundationModels`).
+- `global.` profiles may process requests in ANY AWS region — no EU data
+  residency. List `global` only if that is acceptable; order expresses
+  preference (`[eu, global]` = EU when available, else global).
+
+## Vertex AI — Gemini with a location (EU residency)
+
+Gemini through Vertex AI instead of the Gemini Developer API (`gemini`
+type). Only the `google` publisher (Gemini) is discovered; Claude, partner
+and open-weight MaaS models are out of scope.
+
+```yaml
+spec:
+  type: vertex
+  region: eu                     # Vertex location
+  prefix: vertex
+  credentialsSecretRef: { name: vertex-credentials }
+  filters:
+    exclude: [".*-live.*", ".*-image.*", ".*-transcribe.*", ".*-tts.*"]
+  params:
+    vertex_credentials: "{{VERTEX_CREDENTIALS}}"
+  secrets:
+    - { as: VERTEX_CREDENTIALS, secretRef: { name: vertex-credentials, key: VERTEX_CREDENTIALS } }
+  info: { access_groups: ["vertex"] }
+  refresh: { interval: 15m }
+```
+
+- **Credentials.** The Secret key `VERTEX_CREDENTIALS` holds a
+  service-account JSON key. The operator signs a JWT with it
+  (`client_email`, `private_key`, scope `cloud-platform`) and exchanges it at
+  `https://oauth2.googleapis.com/token`. The key's `token_uri` is ignored on
+  purpose, so a crafted key cannot redirect the signed assertion.
+- **Listing.** `GET {endpoint}/v1beta1/publishers/google/models` with
+  `x-goog-user-project: <project_id>`. The listing is location-aware: `eu`
+  returns only models served in the EU. The endpoint depends on the location.
+  `global` uses `aiplatform.googleapis.com`. `eu` and `us` use
+  `aiplatform.<loc>.rep.googleapis.com`. A single region uses
+  `<loc>-aiplatform.googleapis.com`.
+- **Gemini only.** IDs not starting with `gemini-` (Imagen, Veo, Chirp,
+  `text-embedding-*`) and `*embedding*` models are dropped.
+- **LiteLLM side.** For `eu`/`us`, LiteLLM must map `vertex_location` to the
+  multi-region host `aiplatform.<loc>.rep.googleapis.com` (verified on the
+  ackstorm deployment, 2026-10-05). Older LiteLLM builds may call
+  `<loc>-aiplatform.googleapis.com` instead, which does not exist for `eu`.
+  Check the LiteLLM image before relying on `eu`/`us`.
+- **Children.** `params.model = vertex_ai/<id>`, plus `vertex_location =
+  spec.region` and `vertex_project = <project_id of the key>` unless
+  `spec.params` sets them. Default prefix `vertex`; pricing provider
+  `vertex_ai`.
+- **Inference credentials stay user-side**, like gemini's `api_key`: the
+  `secrets` bag + `params.vertex_credentials: "{{VERTEX_CREDENTIALS}}"`.
+  Discovery never copies the key to children; the multi-line JSON survives
+  substitution intact.
 
 ## KubeAI — in-cluster OpenAI-compatible
 

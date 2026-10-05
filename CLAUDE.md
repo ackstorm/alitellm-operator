@@ -569,6 +569,22 @@ NOT fully root-caused: the exact trigger stopped reproducing after the
 go1.26.4 → go1.26.6 bump + image rebuild, so treat a recurrence as new
 information rather than the same bug.
 
+### ❌ Every envtest reconcile times out at 30s — even on clean `main`
+```
+--- FAIL: TestModelDiscovery_ElevenLabs_GeneratesChildren (30.08s)
+    child Model "..." not created within 30s; Ready=nil
+# log: "Starting metrics server" → immediately "Stopping and waiting for ... runnables"
+```
+✅ Check `ss -ltn | grep 18080`. The suite manager binds metrics on the
+hardcoded `127.0.0.1:18080` (`MetricsAddr`, `suite_test.go`), and
+`scripts/dev.sh` runs with `--network=host`, so ANY foreign listener on that
+host port (another project's envtest, a port-forward) kills the manager at
+startup; tests then run against a dead manager. Run envtest in a container
+WITHOUT host networking (same mounts/env as `dev.sh`, drop `--network=host`)
+and invoke the underscore target directly, e.g.
+`docker run ... litellm-devtools:latest make _test-envtest-pkg PKG=./internal/controller/ FOCUS=...`.
+Seen 2026-10-05 on the shared dev host.
+
 ### ❌ Kubectl from host against the kind cluster
 ```bash
 kubectl get pods -n default
