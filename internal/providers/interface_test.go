@@ -10,14 +10,14 @@ import (
 
 // TestRegistry_HasAllProviders asserts the Registry map exposes
 // constructors for ALL spec.type values (a2a, anthropic, bedrock,
-// elevenlabs, gemini, kubeai, openai). D-01 forbids any switch on
+// elevenlabs, gemini, kubeai, openai, vertex). D-01 forbids any switch on
 // spec.type outside this map — so the integrity of the map keys IS the
 // per-type dispatch contract.
 func TestRegistry_HasAllProviders(t *testing.T) {
-	if got := len(Registry); got != 7 {
-		t.Fatalf("Registry: expected 7 entries; got %d", got)
+	if got := len(Registry); got != 8 {
+		t.Fatalf("Registry: expected 8 entries; got %d", got)
 	}
-	for _, k := range []string{"a2a", "anthropic", "bedrock", "elevenlabs", "gemini", "kubeai", "openai"} {
+	for _, k := range []string{"a2a", "anthropic", "bedrock", "elevenlabs", "gemini", "kubeai", "openai", "vertex"} {
 		if _, ok := Registry[k]; !ok {
 			t.Errorf("Registry: missing key %q", k)
 		}

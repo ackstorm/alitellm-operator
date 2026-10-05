@@ -33,7 +33,7 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
 spec:
   # Provider type — governs which provider client is instantiated.
-  # CEL enforces type ∈ {anthropic, bedrock, gemini, kubeai, openai}.
+  # CEL enforces type ∈ {a2a, anthropic, bedrock, elevenlabs, gemini, kubeai, openai, vertex}.
   type: openai
   # Provider credentials — read at reconcile-time from this Secret.
   # ONLY used for the operator's GET /v1/models call; NEVER injected
@@ -238,3 +238,33 @@ spec:
     exclude: []
   refresh:
     interval: 10m
+---
+# Vertex AI provider — Gemini through Vertex AI with an EU location.
+# `region` is the Vertex location; the listing returns only models served
+# there. The service-account key is used by the operator to list models and,
+# via the secrets bag, by LiteLLM for inference.
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMModelDiscovery
+metadata:
+  name: vertex
+  namespace: default
+  labels:
+    app.kubernetes.io/name: alitellm-operator
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  type: vertex
+  region: eu
+  prefix: vertex
+  credentialsSecretRef:
+    name: vertex-credentials
+  secrets:
+    - as: VERTEX_CREDENTIALS
+      secretRef:
+        name: vertex-credentials
+        key: VERTEX_CREDENTIALS
+  params:
+    vertex_credentials: "{{VERTEX_CREDENTIALS}}"
+  filters:
+    exclude: [".*-live.*", ".*-image.*", ".*-transcribe.*", ".*-tts.*"]
+  refresh:
+    interval: 15m

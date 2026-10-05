@@ -39,7 +39,7 @@ type Candidate struct {
 // type-switches on the concrete provider.
 type Provider interface {
 	// Type returns the spec.type enum literal:
-	// "a2a"|"anthropic"|"bedrock"|"elevenlabs"|"gemini"|"kubeai"|"openai".
+	// "a2a"|"anthropic"|"bedrock"|"elevenlabs"|"gemini"|"kubeai"|"openai"|"vertex".
 	// The reconciler uses this only for metrics labels — branching on
 	// it is the D-01 anti-pattern this package exists to prevent.
 	Type() string
@@ -70,6 +70,8 @@ type Provider interface {
 // OpenAI-compatible providers — Together, vLLM, Groq, OpenRouter).
 // - kubeai: requires HTTPClient + BaseURL (CEL-required). APIKey
 // optional. (Filled by.)
+// - vertex: requires Region (location), VertexCredentials, HTTPClient.
+// Token exchange + listing both use HTTPClient.
 // - bedrock: requires Regions. AWSCreds optional — nil falls through
 // to default credential chain. HTTPClient is unused (aws-sdk-go-v2
 // constructs its own internal transport). (Filled by.)
@@ -83,7 +85,8 @@ type ProviderConfig struct {
 	// required for kubeai.
 	BaseURL string
 
-	// Region is spec.region verbatim.
+	// Region is spec.region: the Vertex location (eu, us, global,
+	// europe-west1, …) for vertex; unused by the other types.
 	Region string
 
 	// Regions is spec.regions: the ordered AWS regions bedrock lists.
@@ -105,6 +108,12 @@ type ProviderConfig struct {
 	// (nil → fall through to default chain — IRSA / env / EC2
 	// instance profile / EKS Pod Identity). Per D-05.
 	AWSCreds *awsv2.Credentials
+
+	// VertexCredentials is the service-account JSON key (Secret key
+	// VERTEX_CREDENTIALS) for vertex. The provider reads client_email,
+	// private_key and project_id; project_id (not secret) reaches the child
+	// as vertex_project, the rest never leaves the provider (MDISC-15).
+	VertexCredentials []byte
 
 	// HTTPClient is the manager-owned shared *http.Client (per D-02:
 	// 10s total-request Timeout, 30s Transport.IdleConnTimeout — see

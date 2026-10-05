@@ -3,6 +3,7 @@
 package substitution
 
 import (
+	"encoding/json"
 	"reflect"
 	"sort"
 	"testing"
@@ -495,5 +496,33 @@ func TestSubstitute(t *testing.T) {
 				t.Errorf("missingPlaceholders = %v, want %v", sortedStrings(miss), c.wantMissing)
 			}
 		})
+	}
+}
+
+// TestSubstitute_MultiLineJSONKey: a pretty-printed service-account key
+// (newlines, quotes, escaped \n inside private_key) substituted into a
+// string leaf survives verbatim, and the rendered body is valid JSON whose
+// value still decodes to the original key.
+func TestSubstitute_MultiLineJSONKey(t *testing.T) {
+	key := "{\n  \"type\": \"service_account\",\n  \"project_id\": \"alt06-gemini\",\n" +
+		"  \"private_key\": \"-----BEGIN PRIVATE KEY-----\\nMIIEv\\n-----END PRIVATE KEY-----\\n\"\n}\n"
+	body := map[string]any{"model": "vertex_ai/gemini-3.8-flash", "vertex_credentials": "{{VERTEX_CREDENTIALS}}"}
+	if _, missing, err := Substitute(body, map[string]string{"VERTEX_CREDENTIALS": key}); err != nil || len(missing) != 0 {
+		t.Fatalf("Substitute: err=%v missing=%v", err, missing)
+	}
+	rendered, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(rendered, &decoded); err != nil {
+		t.Fatalf("rendered body is not valid JSON: %v\n%s", err, rendered)
+	}
+	if decoded["vertex_credentials"] != key {
+		t.Fatalf("key altered by substitution/rendering:\n got %q\nwant %q", decoded["vertex_credentials"], key)
+	}
+	var sa map[string]string
+	if err := json.Unmarshal([]byte(decoded["vertex_credentials"].(string)), &sa); err != nil || sa["project_id"] != "alt06-gemini" {
+		t.Fatalf("substituted key no longer decodes as JSON: %v %v", err, sa)
 	}
 }

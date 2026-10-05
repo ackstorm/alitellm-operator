@@ -10,9 +10,10 @@ child reconciles into LiteLLM via the `LiteLLMModel` controller
 
 | Field                       | Required        | Notes                                                                                  |
 |-----------------------------|-----------------|----------------------------------------------------------------------------------------|
-| `spec.type`                 | yes             | Enum: `a2a`, `anthropic`, `bedrock`, `elevenlabs`, `gemini`, `kubeai`, `openai`.              |
+| `spec.type`                 | yes             | Enum: `a2a`, `anthropic`, `bedrock`, `elevenlabs`, `gemini`, `kubeai`, `openai`, `vertex`.    |
 | `spec.prefix`               | no              | DNS-1123 segment prepended to each child's `metadata.name`. Default: lowercased `spec.type`. |
 | `spec.credentialsSecretRef` | per-provider    | Secret holding upstream API key (operator-side ONLY — never propagated to children).   |
+| `spec.region`               | vertex only     | Vertex location (`eu`, `us`, `global`, `europe-west1`, …). Pattern `^[a-z0-9-]+$`.     |
 | `spec.regions`              | bedrock only    | Ordered AWS regions (min 1, unique); first region wins on a duplicate child name.      |
 | `spec.inferenceProfiles`    | no (bedrock only) | Ordered inference-profile geographies (`eu`, `us`, `apac`, `global`, …) for models without in-region ON_DEMAND. Default empty = off. |
 | `spec.baseUrl`              | kubeai (req), openai (opt) | Provider HTTP endpoint. Any non-empty value auto-overlays into each child's `api_base` (so LiteLLM routes inference to the same endpoint models were discovered from). |
@@ -36,6 +37,9 @@ child reconciles into LiteLLM via the `LiteLLMModel` controller
 | `gemini`    | `credentialsSecretRef`      | `region`, `baseUrl`           | `GEMINI_API_KEY` (or `GOOGLE_API_KEY`)                                    |
 | `kubeai`    | `baseUrl`                   | `credentialsSecretRef`, `region` | none                                                                   |
 | `openai`    | `credentialsSecretRef`      | `region`                      | `OPENAI_API_KEY`                                                          |
+| `vertex`    | `credentialsSecretRef`, `region` | `baseUrl`                | `VERTEX_CREDENTIALS` (service-account JSON key)                           |
+
+`spec.regions` and `spec.inferenceProfiles` are bedrock-only for every type.
 
 The per-type XValidation rules on the CRD enforce this matrix at admission.
 
@@ -175,6 +179,48 @@ works without `model_info.base_model`.
 - `global.` profiles may process requests in ANY AWS region — no EU data
   residency. List `global` only if that is acceptable; order expresses
   preference (`[eu, global]` = EU when available, else global).
+
+## Vertex AI — Gemini with a location (EU residency)
+
+Gemini through Vertex AI instead of the Gemini Developer API (`gemini`
+type). Only the `google` publisher (Gemini) is discovered; Claude, partner
+and open-weight MaaS models are out of scope.
+
+```yaml
+spec:
+  type: vertex
+  region: eu                     # Vertex location
+  prefix: vertex
+  credentialsSecretRef: { name: vertex-credentials }
+  filters:
+    exclude: [".*-live.*", ".*-image.*", ".*-transcribe.*", ".*-tts.*"]
+  params:
+    vertex_credentials: "{{VERTEX_CREDENTIALS}}"
+  secrets:
+    - { as: VERTEX_CREDENTIALS, secretRef: { name: vertex-credentials, key: VERTEX_CREDENTIALS } }
+  info: { access_groups: ["vertex"] }
+  refresh: { interval: 15m }
+```
+
+- **Credentials.** The Secret key `VERTEX_CREDENTIALS` holds a
+  service-account JSON key. The operator signs a JWT with it
+  (`client_email`, `private_key`, scope `cloud-platform`) and exchanges it at
+  `https://oauth2.googleapis.com/token`. The key's `token_uri` is ignored on
+  purpose, so a crafted key cannot redirect the signed assertion.
+- **Listing.** `GET {endpoint}/v1beta1/publishers/google/models` with
+  `x-goog-user-project: <project_id>`. The listing is location-aware: `eu`
+  returns only models served in the EU. The endpoint depends on the location.
+  `global` uses `aiplatform.googleapis.com`. `eu` and `us` use
+  `aiplatform.<loc>.rep.googleapis.com`. A single region uses
+  `<loc>-aiplatform.googleapis.com`.
+- **Children.** `params.model = vertex_ai/<id>`, plus `vertex_location =
+  spec.region` and `vertex_project = <project_id of the key>` unless
+  `spec.params` sets them. Default prefix `vertex`; pricing provider
+  `vertex_ai`.
+- **Inference credentials stay user-side**, like gemini's `api_key`: the
+  `secrets` bag + `params.vertex_credentials: "{{VERTEX_CREDENTIALS}}"`.
+  Discovery never copies the key to children; the multi-line JSON survives
+  substitution intact.
 
 ## KubeAI — in-cluster OpenAI-compatible
 

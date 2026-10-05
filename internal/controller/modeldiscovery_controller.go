@@ -110,6 +110,7 @@ const (
 	providerTypeElevenLabs = "elevenlabs"
 	providerTypeKubeAI     = "kubeai"
 	providerTypeA2A        = "a2a"
+	providerTypeVertex     = "vertex"
 
 	// fieldOwner is the SSA field manager identity used by Discovery on
 	// every child LiteLLMModel write (D-06). Per the T-04-04-S1 mitigation in
@@ -486,6 +487,19 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			}
 			cfg.AWSCreds = creds
 		}
+	case providerTypeVertex:
+		// Service-account JSON key: the provider mints its own OAuth token
+		// from it. Only project_id (not secret) reaches the children.
+		key, missing, err := r.resolveStringKey(ctx, md.Namespace, md.Spec.CredentialsSecretRef, "VERTEX_CREDENTIALS")
+		if err != nil && !missing {
+			return ctrl.Result{}, err // transient → controller-runtime backoff
+		}
+		if missing {
+			res := r.writeReadyAndSource(ctx, &md, reasonSecretNotFound, err.Error())
+			res.RequeueAfter = connection.DefaultRequeueOnRejectedAfter
+			return res, nil
+		}
+		cfg.VertexCredentials = []byte(key)
 	case providerTypeKubeAI:
 		// kubeai has no credentialsSecretRef per spec §6.3 line 792 (CEL-forbidden).
 	case providerTypeA2A:
@@ -613,6 +627,10 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		// Per spec §6.3 line 792: kubeai's litellm-provider mapping is
 		// "hosted_vllm" (not "kubeai"). All other types map verbatim.
 		litellmProvider = "hosted_vllm"
+	}
+	if litellmProvider == providerTypeVertex {
+		// LiteLLM's Vertex provider is "vertex_ai" (also the pricing key).
+		litellmProvider = "vertex_ai"
 	}
 	if litellmProvider == providerTypeA2A {
 		// The provider that speaks A2A is deployment-local (A2A_MODEL_PROVIDER).

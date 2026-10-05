@@ -10,6 +10,7 @@ resources:
 - modeldiscovery-gemini.yaml
 - modeldiscovery-kubeai.yaml
 - modeldiscovery-openai.yaml
+- modeldiscovery-vertex.yaml
 - litellm_v1alpha1_mcpserver.yaml
 # Phase 5 plan 05-01 non-trivial MCPServer sample (http transport)
 - mcpserver-http.yaml

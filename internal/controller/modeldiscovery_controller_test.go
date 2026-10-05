@@ -306,7 +306,7 @@ func (f *fakeProvider) setError(err error) {
 // pollChildModel waits up to timeout for the generated child LiteLLMModel
 // named childName to appear in WatchNamespace and returns it (fails the test
 // on timeout).
-func pollChildModel(t *testing.T, ctx context.Context, childName string, timeout time.Duration) *litellmv1alpha1.LiteLLMModel {
+func pollChildModel(t *testing.T, ctx context.Context, childName string, timeout time.Duration) *litellmv1alpha1.LiteLLMModel { //nolint:unparam // every caller uses 30s today; timeout stays explicit at call sites
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	key := client.ObjectKey{Name: childName, Namespace: WatchNamespace}
@@ -347,6 +347,11 @@ func modeldiscoverySampleCR(name, providerType string) *litellmv1alpha1.LiteLLMM
 		}
 	case "kubeai":
 		md.Spec.BaseURL = "http://kubeai.test.svc/openai/v1"
+	case "vertex":
+		md.Spec.Region = "eu"
+		md.Spec.CredentialsSecretRef = &litellmv1alpha1.SecretObjectRef{
+			Name: name + "-creds",
+		}
 	}
 	return md
 }
@@ -449,6 +454,8 @@ func ensureCredentialSecret(t *testing.T, ctx context.Context, name, providerTyp
 	case "bedrock":
 		data["AWS_ACCESS_KEY_ID"] = []byte("AKIATESTCANARY12345")
 		data["AWS_SECRET_ACCESS_KEY"] = []byte("test-secret")
+	case "vertex":
+		data["VERTEX_CREDENTIALS"] = []byte(`{"project_id":"p","client_email":"e","private_key":"k"}`)
 	}
 	sec := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: WatchNamespace},
@@ -1261,6 +1268,7 @@ func TestModelDiscovery_Samples_CELAccept(t *testing.T) {
 		{file: "modeldiscovery-gemini.yaml"},
 		{file: "modeldiscovery-kubeai.yaml"},
 		{file: "modeldiscovery-openai.yaml"},
+		{file: "modeldiscovery-vertex.yaml"},
 	}
 
 	for _, tc := range cases {
@@ -2286,5 +2294,65 @@ func TestModelDiscovery_BedrockInferenceProfile_ChildNameIsBaseID(t *testing.T) 
 	}
 	if got, want := params["model"], "bedrock/eu.amazon.nova-pro-v1:0"; got != want {
 		t.Errorf("params.model = %v; want %s", got, want)
+	}
+}
+
+func TestModelDiscovery_Vertex_CELReject(t *testing.T) {
+	noRegion := modeldiscoverySampleCR("cel-vertex-no-region", "vertex")
+	noRegion.Spec.Region = ""
+	assertModelDiscoveryCELReject(t, noRegion, "vertex requires spec.credentialsSecretRef and spec.region")
+
+	noCreds := modeldiscoverySampleCR("cel-vertex-no-creds", "vertex")
+	noCreds.Spec.CredentialsSecretRef = nil
+	assertModelDiscoveryCELReject(t, noCreds, "vertex requires spec.credentialsSecretRef and spec.region")
+
+	baseURL := modeldiscoverySampleCR("cel-vertex-baseurl", "vertex")
+	baseURL.Spec.BaseURL = "https://aiplatform.googleapis.com"
+	assertModelDiscoveryCELReject(t, baseURL, "forbids spec.baseUrl")
+
+	regions := modeldiscoverySampleCR("cel-vertex-regions", "vertex")
+	regions.Spec.Regions = []string{"eu"}
+	assertModelDiscoveryCELReject(t, regions, "spec.regions is only allowed with spec.type=bedrock")
+
+	// region is spliced into a hostname: only a plain location token passes.
+	host := modeldiscoverySampleCR("cel-vertex-host", "vertex")
+	host.Spec.Region = "eu.attacker.example"
+	assertModelDiscoveryCELReject(t, host, "spec.region")
+}
+
+// TestModelDiscovery_Vertex_GeneratesChildren: vertex maps to LiteLLM's
+// vertex_ai provider and the provider's location/project routing reaches the
+// child, while a user-set params key still wins.
+func TestModelDiscovery_Vertex_GeneratesChildren(t *testing.T) {
+	ctx := context.Background()
+	const mdName = "vertex-children"
+
+	ensureNoModelDiscovery(t, ctx, mdName)
+	t.Cleanup(func() { ensureNoModelDiscovery(t, context.Background(), mdName) })
+
+	providers.RegisterTestProvider(t, "vertex", newFakeProvider("vertex", []providers.Candidate{
+		{ID: "gemini-3.8-flash", Params: map[string]string{"vertex_location": "eu", "vertex_project": "alt06-gemini"}},
+	}))
+	ensureCredentialSecret(t, ctx, mdName+"-creds", "vertex")
+
+	md := modeldiscoverySampleCR(mdName, "vertex")
+	md.Spec.Params = k8sruntime.RawExtension{Raw: []byte(`{"vertex_project":"user-project"}`)}
+	if err := k8sClient.Create(ctx, md); err != nil {
+		t.Fatalf("create ModelDiscovery: %v", err)
+	}
+
+	child := pollChildModel(t, ctx, "vertex.gemini-3.8-flash", 30*time.Second)
+	var params map[string]any
+	if err := json.Unmarshal(child.Spec.Params.Raw, &params); err != nil {
+		t.Fatalf("decode params: %v", err)
+	}
+	for k, want := range map[string]string{
+		"model":           "vertex_ai/gemini-3.8-flash",
+		"vertex_location": "eu",
+		"vertex_project":  "user-project",
+	} {
+		if params[k] != want {
+			t.Errorf("params.%s = %v; want %s", k, params[k], want)
+		}
 	}
 }
