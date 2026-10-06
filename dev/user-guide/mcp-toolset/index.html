@@ -1949,8 +1949,9 @@ tool list, which would be a silent authorization leak.</p>
 <p>The finalizer <code>mcptoolsets.litellm.ackstorm.ai/finalizer</code> issues
 <code>DELETE /v1/mcp/toolset/&lt;toolsetID&gt;</code> before the CR leaves etcd.
 <code>spec.deletionPolicy</code> controls what happens when that delete cannot be
-confirmed (LiteLLM unreachable, 401): <code>Orphan</code> (default) drains the finalizer
-anyway; <code>Delete</code> blocks until the removal is confirmed. See
+confirmed: <code>Orphan</code> (default) waits out a transient cause (LiteLLM unreachable,
+401) and drains only on a permanent one (connection deleted, deterministic 4xx);
+<code>Delete</code> blocks until the removal is confirmed. See
 <a href="../../concepts/deletion-semantics/">Deletion Semantics</a>.</p>
 <p>Deleting a toolset does <strong>not</strong> cascade to the keys that granted it — their
 <code>object_permission.mcp_toolsets</code> keeps the now-dangling UUID.</p>

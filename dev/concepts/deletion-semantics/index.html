@@ -1731,28 +1731,45 @@ LiteLLM is unavailable, the master key has been rotated and the
 operator gets a 401, the network is partitioned, etc. — the operator
 has to choose between two failure modes:</p>
 <ul>
-<li><strong>Orphan</strong> (default): remove the finalizer anyway. The CR is freed,
-  the Kubernetes garbage collector reaps it, and the cluster moves on.
-  The LiteLLM-side entry may persist until the operator regains
-  connectivity (next reconcile cycle).</li>
-<li><strong>Delete</strong>: refuse to remove the finalizer until LiteLLM acks.
-  The CR stays in <code>Terminating</code> indefinitely. Controller-runtime
-  exponential backoff keeps retrying.</li>
+<li><strong>Orphan</strong> (default): give up on the LiteLLM delete only when the
+  cause is <strong>permanent</strong> — the <code>LiteLLMConnection</code> is being deleted
+  (connection reason <code>Absent</code>, e.g. namespace teardown) or LiteLLM
+  answered a deterministic <code>4xx</code> that retrying cannot fix. The finalizer
+  is removed and the LiteLLM entry may persist. When the cause is
+  <strong>transient</strong> — LiteLLM unreachable or still connecting, a bad master
+  key, any <code>401</code> — the finalizer is kept and the delete is retried with
+  backoff (capped at 30s), so it lands as soon as LiteLLM is back.</li>
+<li><strong>Delete</strong>: refuse to remove the finalizer until LiteLLM acks,
+  whatever the cause. The CR stays in <code>Terminating</code> indefinitely.
+  Controller-runtime exponential backoff keeps retrying.</li>
 </ul>
-<p>This is governed by <code>spec.deletionPolicy</code> on five CRD kinds:
+<p>A confirmed-absent entry (<code>404</code>, or a name lookup that finds nothing)
+drains under either policy: the goal is already met.</p>
+<p>A <code>401</code> on the delete call is retried with per-CR exponential backoff
+(capped at 30s). It does not invalidate the connection: the connection
+probe alone decides whether the master key is bad, and once it does,
+deferred deletes make no LiteLLM calls at all.</p>
+<p>This is governed by <code>spec.deletionPolicy</code> on seven CRD kinds:
 <code>LiteLLMModel</code>, <code>LiteLLMTeam</code>, <code>LiteLLMMCPServer</code>, <code>LiteLLMA2AAgent</code>,
-<code>LiteLLMGuardRail</code>. <code>LiteLLMConnection</code> is excluded — its finalizer
+<code>LiteLLMGuardRail</code>, <code>LiteLLMMCPToolset</code>, <code>LiteLLMAccessGroup</code>. <code>LiteLLMConnection</code> is excluded — its finalizer
 runs no LiteLLM HTTP call.</p>
 <h2 id="why-two-modes">Why two modes<a class="headerlink" href="#why-two-modes" title="Permanent link">&para;</a></h2>
-<p>The operator's default behavior is <strong>Orphan</strong>. This is REL-06's
-"anti-storm" trade-off: if LiteLLM is down or auth has broken, the
-cluster operator can still rip out workloads and re-apply later
-without manual finalizer surgery. The downside is that LiteLLM may
-end up with orphan entries (a model registered in LiteLLM whose
-matching <code>LiteLLMModel</code> CR no longer exists).</p>
-<p>For most users this is fine — orphan entries don't break anything;
-they're just stale state that the next manual reconcile or cleanup
-will catch.</p>
+<p>The operator's default behavior is <strong>Orphan</strong>: deleting the
+<code>LiteLLMConnection</code> or the namespace never wedges on LiteLLM, and a
+deterministic rejection never retries forever. No LiteLLM HTTP call is
+made while the connection is not usable, so retrying a deferred delete
+does not storm LiteLLM (REL-06).</p>
+<p>Transient causes are retried rather than orphaned because nothing ever
+revisits an orphaned row: a LiteLLM outage of 7.5h once let a Discovery
+vanish-delete a child mid-outage, and the LiteLLM model row leaked with
+no CR left to clean it up.</p>
+<p><strong>Trade-off:</strong> during a LiteLLM outage, deleted CRs stay <code>Terminating</code>
+until LiteLLM is reachable again, and a Discovery being deleted waits
+for its children. If you must unblock a CR before LiteLLM recovers
+(accepting that its LiteLLM entry may leak), remove the finalizer by
+hand:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>kubectl<span class="w"> </span>patch<span class="w"> </span>litellmmodel<span class="w"> </span>my-model<span class="w"> </span>--type<span class="o">=</span>merge<span class="w"> </span>-p<span class="w"> </span><span class="s1">'{"metadata":{"finalizers":[]}}'</span>
+</code></pre></div>
 <p>For <strong>GitOps users</strong> (Argo CD, Flux), Orphan is the wrong default.
 GitOps tooling assumes that "CR gone from cluster" implies "resource
 gone from backing API". If LiteLLM keeps the entry alive after the CR
@@ -1768,12 +1785,15 @@ a Git commit changing <code>Delete</code> to <code>Orphan</code> (and wait for t
 sync) just to unstick the cluster.</p>
 <p>The annotation override gives you a runtime escape hatch that
 <strong>does not mutate spec</strong>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>kubectl<span class="w"> </span>annotate<span class="w"> </span>litellmmodel<span class="w"> </span>my-model<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span>litellm.ackstorm.ai/deletion-policy-override<span class="o">=</span>Orphan
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>kubectl<span class="w"> </span>annotate<span class="w"> </span>litellmmodel<span class="w"> </span>my-model<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span>litellm.ackstorm.ai/deletion-policy-override<span class="o">=</span>Orphan
 </code></pre></div>
 <p>On the next reconcile, the resolver sees the annotation and overrides
-the spec. The finalizer drains. The annotation can be removed once
-the incident is resolved.</p>
+the spec. The CR then follows Orphan: it drains once the cause is
+permanent (connection <code>Absent</code>, deterministic <code>4xx</code>). During a
+transient outage Orphan also waits, so the annotation alone does not
+unstick it — use the finalizer patch above. The annotation can be
+removed once the incident is resolved.</p>
 <p>The annotation accepts the same values as the field (<code>Orphan</code> |
 <code>Delete</code>). Any other value is silently ignored.</p>
 <h2 id="discovery-owned-children-always-orphan">Discovery-owned children always Orphan<a class="headerlink" href="#discovery-owned-children-always-orphan" title="Permanent link">&para;</a></h2>
@@ -1783,10 +1803,10 @@ their Discovery parent. For those children, the resolver <strong>forces
 Orphan</strong> regardless of <code>spec.deletionPolicy</code> or annotation.</p>
 <p>Why: Discovery's vanish-detection works by deleting child CRs when
 the upstream source (Bedrock, OpenAI, ToolHive, ...) no longer
-reports the entry. If a child were <code>Delete</code>-policy and LiteLLM
-became unreachable, the child's finalizer would never drain,
-vanish-detection would deadlock, and Discovery itself would get
-stuck.</p>
+reports the entry. A <code>Delete</code>-policy child would wedge forever on a
+deterministic rejection or a deleted connection. Under Orphan a child
+vanish-deleted during a LiteLLM outage stays <code>Terminating</code> until
+LiteLLM recovers, then its LiteLLM row is deleted.</p>
 <p>If you want strict deletion of Discovery-managed entries, delete the
 <strong>parent</strong> Discovery CR (which has its own deletion policy logic) —
 not the child.</p>
@@ -1801,13 +1821,18 @@ not the child.</p>
 </thead>
 <tbody>
 <tr>
-<td>Finalizer drains when LiteLLM is unavailable</td>
+<td>Finalizer drains when LiteLLM is transiently unavailable</td>
+<td>No (retries)</td>
+<td>No</td>
+</tr>
+<tr>
+<td>Finalizer drains when the connection is deleted / 4xx</td>
 <td>Yes</td>
 <td>No</td>
 </tr>
 <tr>
 <td>LiteLLM may end up with orphan entries</td>
-<td>Yes</td>
+<td>Only on a permanent cause</td>
 <td>No</td>
 </tr>
 <tr>
@@ -1836,25 +1861,32 @@ not the child.</p>
 <li>Returns an error from the reconcile so controller-runtime requeues
    with exponential backoff.</li>
 </ol>
-<p>When an Orphan-policy CR drops a finalizer without ack:</p>
+<p>When an Orphan-policy CR defers its delete on a transient cause:</p>
+<ol>
+<li>Sets the same <code>alitellm_operator_deletion_blocked</code> gauge.</li>
+<li>Emits a <code>LiteLLMDeleteDeferred</code> Normal Event on the CR.</li>
+<li>Returns an error so controller-runtime retries with backoff.</li>
+</ol>
+<p>When an Orphan-policy CR drops a finalizer without ack (permanent cause):</p>
 <ol>
 <li>Increments the <code>alitellm_operator_deletion_orphaned_total{kind}</code> counter.</li>
 <li>Emits a <code>LiteLLMDeleteOrphaned</code> Normal Event on the CR.</li>
 <li>Returns nil from the reconcile so the CR is garbage-collected.</li>
 </ol>
 <p>Both events name the underlying reason (e.g. <code>401 on DeleteModel</code>,
-<code>LiteLLM unavailable</code>) so you can correlate with operator logs.</p>
+<code>LiteLLM unavailable (reason "Unreachable")</code>) so you can correlate with
+operator logs.</p>
 <h2 id="recovery-procedures">Recovery procedures<a class="headerlink" href="#recovery-procedures" title="Permanent link">&para;</a></h2>
 <p><strong>A CR is stuck in <code>Terminating</code> under <code>Delete</code> and LiteLLM is permanently unreachable.</strong></p>
 <ol>
 <li>Check the events: <code>kubectl describe litellmmodel my-model | grep -A 2 LiteLLMDeleteBlocked</code></li>
 <li>Confirm LiteLLM unavailability is intentional/permanent (not a transient blip).</li>
-<li>Apply the annotation override:
-   <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>kubectl<span class="w"> </span>annotate<span class="w"> </span>litellmmodel<span class="w"> </span>my-model<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span>litellm.ackstorm.ai/deletion-policy-override<span class="o">=</span>Orphan
-</code></pre></div></li>
-<li>The finalizer drains on the next reconcile (within seconds).</li>
-<li>Remove the annotation if/when LiteLLM comes back, so future deletions honor <code>Delete</code> again.</li>
+<li>Remove the finalizer (the LiteLLM entry may persist; clean it up
+   later through LiteLLM's admin API or UI):
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>kubectl<span class="w"> </span>patch<span class="w"> </span>litellmmodel<span class="w"> </span>my-model<span class="w"> </span>--type<span class="o">=</span>merge<span class="w"> </span>-p<span class="w"> </span><span class="s1">'{"metadata":{"finalizers":[]}}'</span>
+</code></pre></div>
+   The <code>deletion-policy-override=Orphan</code> annotation is not enough here:
+   Orphan also waits out an unreachable LiteLLM.</li>
 </ol>
 <p><strong>A LiteLLM entry was orphaned and you need to clean it up.</strong></p>
 <p>The operator does NOT re-discover orphans automatically (Discovery

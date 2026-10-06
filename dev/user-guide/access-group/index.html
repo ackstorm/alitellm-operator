@@ -2191,9 +2191,10 @@ holding its id keep a valid reference.</p>
 <h2 id="deletion">Deletion<a class="headerlink" href="#deletion" title="Permanent link">&para;</a></h2>
 <p><code>spec.deletionPolicy</code> behaves as it does on the other kinds:</p>
 <ul>
-<li><code>Orphan</code> (default) — if the LiteLLM-side <code>DELETE</code> cannot be confirmed
-  (LiteLLM unreachable, <code>401</code>, deterministic <code>4xx</code>), the finalizer still drains
-  and a Warning Event records the un-confirmed delete. The CR never wedges.</li>
+<li><code>Orphan</code> (default) — a transient failure (LiteLLM unreachable, <code>401</code>) keeps
+  the finalizer and retries until LiteLLM is back; a permanent one (connection
+  deleted, deterministic <code>4xx</code>) drains the finalizer and a Normal
+  <code>LiteLLMDeleteOrphaned</code> Event records the un-confirmed delete.</li>
 <li><code>Delete</code> — the finalizer is held until the delete is confirmed.</li>
 </ul>
 <p><code>DELETE /v1/access_group/&lt;id&gt;</code> answers a clean <code>404</code> when the row is already
