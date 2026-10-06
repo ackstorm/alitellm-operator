@@ -200,7 +200,7 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			// owned children always resolve to Orphan (resolver-enforced) so
 			// vanish-detection cannot be deadlocked by a stuck child.
 			policy := deletionpolicy.Resolve(&model, model.Spec.DeletionPolicy)
-			// onAckMissing returns nil on the Orphan branch (caller falls
+			// onAckMissing returns nil on Orphan + permanent cause (caller falls
 			// through to RemoveFinalizer) and a non-nil error on the Delete
 			// branch (caller returns the error for controller-runtime
 			// backoff). The error message is the user-visible reason.
@@ -231,9 +231,8 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 						var auth401 *litellm.Auth401Error
 						switch {
 						case errors.As(err, &auth401):
-							r.Cache.InvalidateOn401()
-							logger.Info("deletion: 401 fast-path; cache invalidated", "path", auth401.Path)
-							if err := onAckMissing("401 on DeleteModel"); err != nil {
+							logger.Info("deletion: 401; delete deferred (no cache invalidation: the probe owns key health)", "path", auth401.Path)
+							if err := onAckMissing("401 on DeleteModel", false); err != nil {
 								return ctrl.Result{}, err
 							}
 						case litellm.IsNotFound(err):
@@ -248,7 +247,7 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 							// so route through onAckMissing — policy-aware (Delete: block +
 							// Event + metric; Orphan: drain). Mirrors the 401 fast-path.
 							logger.Info("deletion: deterministic 4xx on DeleteModel; ack-missing", "error", err.Error())
-							if aerr := onAckMissing("4xx on DeleteModel: " + err.Error()); aerr != nil {
+							if aerr := onAckMissing("4xx on DeleteModel: "+err.Error(), true); aerr != nil {
 								return ctrl.Result{}, aerr
 							}
 						default:
@@ -285,9 +284,8 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 					case err != nil:
 						var auth401 *litellm.Auth401Error
 						if errors.As(err, &auth401) {
-							r.Cache.InvalidateOn401()
-							logger.Info("deletion name-resolve: 401 fast-path; cache invalidated", "path", auth401.Path)
-							if err := onAckMissing("401 on GetModelInfoByName"); err != nil {
+							logger.Info("deletion name-resolve: 401; delete deferred (no cache invalidation: the probe owns key health)", "path", auth401.Path)
+							if err := onAckMissing("401 on GetModelInfoByName", false); err != nil {
 								return ctrl.Result{}, err
 							}
 							break
@@ -299,9 +297,8 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 							var auth401 *litellm.Auth401Error
 							switch {
 							case errors.As(err, &auth401):
-								r.Cache.InvalidateOn401()
-								logger.Info("deletion: 401 fast-path after name-resolve; cache invalidated", "path", auth401.Path)
-								if err := onAckMissing("401 on DeleteModel post-name-resolve"); err != nil {
+								logger.Info("deletion: 401 after name-resolve; delete deferred (no cache invalidation: the probe owns key health)", "path", auth401.Path)
+								if err := onAckMissing("401 on DeleteModel post-name-resolve", false); err != nil {
 									return ctrl.Result{}, err
 								}
 							case litellm.IsNotFound(err):
@@ -310,7 +307,7 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 								onConfirmedAbsent("404 on DeleteModel post-name-resolve", resolved.ModelInfo.ID)
 							case is4xxStatus(err):
 								logger.Info("deletion: deterministic 4xx on DeleteModel post-name-resolve; ack-missing", "error", err.Error())
-								if aerr := onAckMissing("4xx on DeleteModel post-name-resolve: " + err.Error()); aerr != nil {
+								if aerr := onAckMissing("4xx on DeleteModel post-name-resolve: "+err.Error(), true); aerr != nil {
 									return ctrl.Result{}, aerr
 								}
 							default:
@@ -326,7 +323,7 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 				}
 			} else {
 				// LiteLLM unavailable on deletion — gate on policy (Issue #23).
-				if err := onAckMissing("LiteLLM unavailable"); err != nil {
+				if err := onAckMissing(ackUnavailable(snap)); err != nil {
 					return ctrl.Result{}, err
 				}
 			}

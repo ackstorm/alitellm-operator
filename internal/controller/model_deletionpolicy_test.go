@@ -24,9 +24,9 @@ import (
 //
 //  1. Refuse to remove the finalizer (CR stays in Terminating).
 //  2. Emit a LiteLLMDeleteBlocked Warning Event.
-//  3. Once the user flips the annotation override to Orphan, finalizer
-//     is removed and the CR is garbage-collected — even while LiteLLM
-//     is still unavailable.
+//  3. After the annotation override flips to Orphan, keep deferring while
+//     the outage is transient (Unreachable), and drain the finalizer once
+//     the cause is permanent (connection Absent).
 //
 // The shape of the test exercises the resolver precedence chain
 // (annotation > spec) end-to-end.
@@ -131,7 +131,8 @@ FINALIZED:
 		t.Fatalf("finalizer was removed despite deletionPolicy=Delete + cache NotReady (Issue #23 regression)")
 	}
 
-	// Phase 5: flip annotation override to Orphan — finalizer should drain.
+	// Phase 5: flip annotation override to Orphan. Unreachable is
+	// transient, so Orphan still defers: the finalizer stays.
 	if got.Annotations == nil {
 		got.Annotations = map[string]string{}
 	}
@@ -139,8 +140,13 @@ FINALIZED:
 	if err := k8sClient.Update(ctx, &got); err != nil {
 		t.Fatalf("annotate CR with override=Orphan: %v", err)
 	}
+	time.Sleep(2 * time.Second)
+	if err := k8sClient.Get(ctx, key, &got); err != nil {
+		t.Fatalf("CR vanished under override=Orphan while LiteLLM Unreachable (transient must defer): %v", err)
+	}
 
-	// Phase 6: poll until CR is gone (finalizer drained on Orphan path).
+	// Phase 6: connection Absent (permanent) — Orphan drains the finalizer.
+	connCache.Rebuild(connection.ConnectionSnapshot{Ready: false, Reason: reasonAbsent})
 	deadline = time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		if err := k8sClient.Get(ctx, key, &got); apierrors.IsNotFound(err) {
@@ -148,7 +154,7 @@ FINALIZED:
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	t.Fatalf("CR did not vanish within 10s after annotation override to Orphan")
+	t.Fatalf("CR did not vanish within 10s after override=Orphan + connection Absent")
 }
 
 // TestModel_DeletionPath_ConfirmedAbsent_DeletePolicyDrains is the
