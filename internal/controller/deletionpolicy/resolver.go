@@ -16,9 +16,13 @@ import "sigs.k8s.io/controller-runtime/pkg/client"
 type Policy string
 
 const (
-	// Orphan: remove the finalizer when the LiteLLM-side delete cannot
-	// be confirmed. Preserves REL-06 anti-storm at the cost of possibly
-	// orphaning the LiteLLM entry.
+	// Orphan: remove the finalizer without a confirmed LiteLLM-side
+	// delete only when the cause is PERMANENT — the LiteLLMConnection is
+	// Absent (being deleted) or LiteLLM answered a deterministic non-404
+	// 4xx. A TRANSIENT cause (LiteLLM unreachable/connecting, bad master
+	// key, any 401) keeps the finalizer and retries with backoff, so the
+	// delete lands once LiteLLM recovers. No HTTP call is made while the
+	// connection is not usable, which preserves REL-06 anti-storm.
 	Orphan Policy = "Orphan"
 
 	// Delete: block finalizer removal until the LiteLLM-side ack

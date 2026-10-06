@@ -22,6 +22,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
+	"github.com/ackstorm/alitellm-operator/internal/connection"
 	"github.com/ackstorm/alitellm-operator/internal/controller/deletionpolicy"
 	"github.com/ackstorm/alitellm-operator/internal/litellm"
 	"github.com/ackstorm/alitellm-operator/internal/metrics"
@@ -50,29 +51,53 @@ func is4xxStatus(err error) bool {
 }
 
 // newAckMissingFn builds the deletion-path "ack-missing" handler shared by all
-// controllers. Under deletionPolicy=Delete it records DeletionBlocked, emits a
-// Warning Event, and returns a non-nil error (finalizer retained); otherwise
-// (Orphan) it increments DeletionOrphanedTotal, emits a Normal Event, and
-// returns nil (caller drains the finalizer). Behavior-identical to the inline
-// closures it replaces — only kind/obj/namespace/name/policy are parameterized.
+// controllers. It is called when the LiteLLM-side delete cannot be confirmed;
+// permanent says whether retrying could ever succeed.
+//   - deletionPolicy=Delete: records DeletionBlocked, emits a Warning Event and
+//     returns an error (finalizer retained), whatever the cause.
+//   - Orphan + permanent (connection Absent, deterministic 4xx): increments
+//     DeletionOrphanedTotal, emits a Normal Event and returns nil (caller
+//     drains the finalizer; the entry may persist).
+//   - Orphan + transient (outage, 401): records DeletionBlocked, emits a Normal
+//     LiteLLMDeleteDeferred Event and returns an error, so controller-runtime
+//     backs off and the delete is issued once LiteLLM is reachable. Dropping
+//     the finalizer here leaked rows for the length of an outage.
+//
+// Deletion-path 401s must NOT call InvalidateOn401: the probe re-Syncs at
+// once and the rebuilt fan-in re-enqueues the CR without backoff — a tight
+// DELETE→401 loop. The probe alone owns key health.
 func newAckMissingFn(
 	rec record.EventRecorder,
 	obj client.Object,
 	kind, namespace, name string,
 	policy deletionpolicy.Policy,
-) func(reason string) error {
-	return func(reason string) error {
+) func(reason string, permanent bool) error {
+	return func(reason string, permanent bool) error {
 		if policy == deletionpolicy.Delete {
 			metrics.DeletionBlocked.Record(kind, namespace, name)
 			rec.Eventf(obj, corev1.EventTypeWarning, "LiteLLMDeleteBlocked",
 				"deletionPolicy=Delete and LiteLLM ack missing (%s); finalizer retained", reason)
 			return fmt.Errorf("delete blocked: %s", reason)
 		}
+		if !permanent {
+			metrics.DeletionBlocked.Record(kind, namespace, name)
+			rec.Eventf(obj, corev1.EventTypeNormal, "LiteLLMDeleteDeferred",
+				"LiteLLM delete deferred until LiteLLM is reachable (%s); finalizer retained", reason)
+			return fmt.Errorf("delete deferred: %s", reason)
+		}
 		metrics.DeletionOrphanedTotal.WithLabelValues(kind).Inc()
 		rec.Eventf(obj, corev1.EventTypeNormal, "LiteLLMDeleteOrphaned",
 			"deletionPolicy=Orphan and LiteLLM ack missing (%s); finalizer removed; entry may persist", reason)
 		return nil
 	}
+}
+
+// ackUnavailable maps a not-Usable connection snapshot to newAckMissingFn's
+// (reason, permanent) pair. Only Absent (the LiteLLMConnection is being
+// deleted, e.g. namespace teardown) is permanent; every other reason,
+// including the zero-value snapshot, is a state LiteLLM recovers from.
+func ackUnavailable(snap connection.ConnectionSnapshot) (string, bool) {
+	return fmt.Sprintf("LiteLLM unavailable (reason %q)", snap.Reason), snap.Reason == reasonAbsent
 }
 
 // classifyMutationError is the shared §7.7 LiteLLM-mutation error classifier

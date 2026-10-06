@@ -723,7 +723,7 @@ func (r *TeamReconciler) reconcileDeletion(ctx context.Context, team *litellmv1a
 	// `default`, so blocking it on ack-missing would deadlock cluster
 	// bootstrap.
 	policy := deletionpolicy.Resolve(team, team.Spec.DeletionPolicy)
-	// onAckMissing returns nil on the Orphan branch (caller falls through
+	// onAckMissing returns nil on Orphan + permanent cause (caller falls through
 	// to RemoveFinalizer) and a non-nil error on the Delete branch (caller
 	// returns the error for controller-runtime backoff).
 	onAckMissing := newAckMissingFn(r.Recorder, team, teamKind, team.Namespace, team.Name, policy)
@@ -830,11 +830,10 @@ func (r *TeamReconciler) reconcileDeletion(ctx context.Context, team *litellmv1a
 		// - 4xx non-401 → LiteLLMRejected status write; finalizer is
 		// NOT removed (CR stays in Terminating). Next
 		// CR event MAY retry. Deterministic per §7.7.
-		// - 401 → cache.InvalidateOn401; finalizer is removed
-		// anyway (anti-storm — the operator cannot
-		// block CR GC on an auth failure that may be
-		// permanent). Log warns "LiteLLM entry MAY
-		// persist".
+		// - 401 → transient: finalizer retained, error returned for
+		// rate-limited backoff. No InvalidateOn401 here: a healthy
+		// probe would re-Sync at once and the rebuilt fan-in would
+		// re-run this delete in a tight loop.
 		// - 5xx/network → return err for controller-runtime backoff;
 		// finalizer NOT removed.
 		//
@@ -843,33 +842,30 @@ func (r *TeamReconciler) reconcileDeletion(ctx context.Context, team *litellmv1a
 		// Ready=False, reason=LiteLLMRejected with message: 'LiteLLM API
 		// surface mismatch on <path>'") — NOT success. Finalizer stays.
 		//
-		// Connection-unavailable at deletion time: warn + remove finalizer
-		// anyway (anti-storm — cannot block CR GC on connection failure).
+		// Connection-unavailable at deletion time: Orphan drains only when
+		// the connection is Absent; a transient outage defers (no HTTP call).
 		snap := r.Cache.Snapshot()
 		if !snap.Usable() {
 			// Issue #23: gate on resolved policy.
-			if err := onAckMissing("LiteLLM unavailable"); err != nil {
+			if err := onAckMissing(ackUnavailable(snap)); err != nil {
 				return ctrl.Result{}, err
 			}
-			// Orphan branch — fall through to RemoveFinalizer below.
+			// Orphan + Absent — fall through to RemoveFinalizer below.
 		} else {
 			// Resolve team_id: prefer the status pin, then ListTeamsByAlias.
 			teamID := team.Status.LastRendered.TeamID
 			if teamID == "" {
 				entries, listErr := snap.Client.ListTeamsByAlias(ctx, team.Name)
 				if listErr != nil {
-					// 401 → fast-path anti-storm (cache invalidate +
-					// remove finalizer).
+					// 401 → deletion deferred (transient); no cache invalidation.
 					var auth401 *litellm.Auth401Error
 					if errors.As(listErr, &auth401) {
-						r.Cache.InvalidateOn401()
-						logger.Info("delete-resolve: 401 fast-path; cache invalidated",
+						logger.Info("delete-resolve: 401; delete deferred (no cache invalidation: the probe owns key health)",
 							"team", team.Name, "path", auth401.Path)
 						// Issue #23: gate on resolved policy.
-						if err := onAckMissing("401 on ListTeamsByAlias"); err != nil {
+						if err := onAckMissing("401 on ListTeamsByAlias", false); err != nil {
 							return ctrl.Result{}, err
 						}
-						// Orphan branch — fall through to RemoveFinalizer.
 					} else if is4xxNon401Status(listErr, 404) || errors.Is(listErr, litellm.ErrNotFound) {
 						// 404 on the LIST endpoint = permanent LiteLLMRejected
 						// per spec §7.7 line 1432. Finalizer NOT removed.
@@ -915,14 +911,12 @@ func (r *TeamReconciler) reconcileDeletion(ctx context.Context, team *litellmv1a
 				if delErr := snap.Client.DeleteTeam(ctx, []string{teamID}); delErr != nil {
 					var auth401 *litellm.Auth401Error
 					if errors.As(delErr, &auth401) {
-						r.Cache.InvalidateOn401()
-						logger.Info("delete: 401 fast-path; cache invalidated",
+						logger.Info("delete: 401; delete deferred (no cache invalidation: the probe owns key health)",
 							"team", team.Name, "teamID", teamID, "path", auth401.Path)
 						// Issue #23: gate on resolved policy.
-						if err := onAckMissing("401 on DeleteTeam"); err != nil {
+						if err := onAckMissing("401 on DeleteTeam", false); err != nil {
 							return ctrl.Result{}, err
 						}
-						// Orphan branch — fall through to RemoveFinalizer.
 					} else if is4xxNon401Status(delErr, 404) {
 						// 404 on POST /team/delete = success per spec
 						// §7.5 line 1332. Mirror the happy-path metric.

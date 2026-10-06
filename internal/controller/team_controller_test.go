@@ -2088,10 +2088,10 @@ func TestTeamReconciler_AC_T3_DeleteReturns404IsSuccess(t *testing.T) {
 
 // TestTeamReconciler_AC_T3_Delete401AntiStorm — behavior #5.
 // Apply Team/foo, wait Ready. SetMode("401-delete-team"). Delete the CR.
-// Within 30s: the operator issues POST /team/delete with the pinned
-// team_id, receives 401; the finalizer is removed anyway (REL-06
-// anti-storm); the CR is reaped; alitellm_operator_drift_corrected_total{delete_vanished}
-// is NOT incremented (the delete never confirmed).
+// The operator issues POST /team/delete with the pinned team_id and
+// receives 401. A 401 is transient, so the Orphan finalizer is RETAINED
+// (no leaked LiteLLM row) and alitellm_operator_drift_corrected_total{delete_vanished}
+// is NOT incremented. Once POST /team/delete succeeds again the CR is reaped.
 //
 // We deliberately do NOT assert on connCache.Snapshot Ready
 // transitioning to false. The LiteLLMConnectionReconciler probes
@@ -2150,8 +2150,20 @@ func TestTeamReconciler_AC_T3_Delete401AntiStorm(t *testing.T) {
 		t.Fatalf("delete Team: %v", err)
 	}
 
-	if !waitForTeamReaped(ctx, "team-act3-401", 30*time.Second) {
-		t.Fatalf("Team not reaped within 30s (401-on-DELETE should remove finalizer anyway per REL-06 anti-storm)")
+	// Wait until the 401'd delete was attempted, then confirm the CR is
+	// still held by its finalizer.
+	deadline := time.Now().Add(30 * time.Second)
+	for len(mockServer.DeleteTeamCalls()) == priorDeleteCalls && time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if waitForTeamReaped(ctx, "team-act3-401", 2*time.Second) {
+		t.Fatalf("Team reaped after 401 on DELETE — finalizer must be retained on a transient 401")
+	}
+	// Anti-storm: retries follow the per-item backoff (5ms doubling),
+	// so ~2s allows a dozen attempts at most. A DELETE→401 loop driven by
+	// cache invalidation + rebuilt fan-in ran hundreds per second.
+	if n := len(mockServer.DeleteTeamCalls()) - priorDeleteCalls; n > 20 {
+		t.Fatalf("POST /team/delete retried %d times in ~2s after 401 — request storm", n)
 	}
 
 	// Operator MUST have attempted POST /team/delete with the pinned
@@ -2177,13 +2189,20 @@ func TestTeamReconciler_AC_T3_Delete401AntiStorm(t *testing.T) {
 	if delta := after - before; delta != 0 {
 		t.Errorf("alitellm_operator_drift_corrected_total{delete_vanished}: want +0 (401 path does NOT count), got delta=%v", delta)
 	}
+
+	// Recovery: LiteLLM accepts the delete again → the deferred delete lands.
+	mockServer.SetMode(mock.ModeHappy)
+	if !waitForTeamReaped(ctx, "team-act3-401", 45*time.Second) {
+		t.Fatalf("Team not reaped within 45s after POST /team/delete recovered")
+	}
 }
 
 // TestTeamReconciler_AC_T3_DeleteConnectionUnavailable — // behavior #6. connCache forced to Ready=false BEFORE the CR is created.
 // Apply Team/foo (reaches Ready=False reason=LiteLLMUnavailable; no
-// LiteLLM mutations). Delete the CR. Within 30s the finalizer is
-// removed (anti-storm); CR is reaped; mock observes ZERO calls
-// against the foo alias.
+// LiteLLM mutations). Delete the CR. While the connection is
+// Unreachable (transient) the finalizer is retained; once it reads
+// Absent (permanent) the finalizer is removed and the CR reaped. The
+// mock observes ZERO calls against the foo alias throughout.
 //
 // NOTE: with connCache Ready=false, the CR cannot reach Ready=True
 // (the LiteLLM call is gated). In that case the Reconcile loop never
@@ -2251,8 +2270,16 @@ func TestTeamReconciler_AC_T3_DeleteConnectionUnavailable(t *testing.T) {
 		t.Fatalf("delete Team: %v", err)
 	}
 
+	// Unreachable is transient: the Orphan finalizer is retained so the
+	// LiteLLM row is not leaked for the length of the outage.
+	if waitForTeamReaped(ctx, "team-act3-conn-down", 3*time.Second) {
+		t.Fatalf("Team reaped while connection Unreachable — finalizer must be retained on a transient outage")
+	}
+
+	// Absent (LiteLLMConnection gone) is permanent: the finalizer drains.
+	connCache.Rebuild(connection.ConnectionSnapshot{Ready: false, Reason: reasonAbsent})
 	if !waitForTeamReaped(ctx, "team-act3-conn-down", 30*time.Second) {
-		t.Fatalf("Team not reaped within 30s with connection unavailable (anti-storm should remove finalizer)")
+		t.Fatalf("Team not reaped within 30s with connection Absent (Orphan should remove finalizer)")
 	}
 
 	// Mock observed ZERO new POST /team/delete calls + zero new

@@ -22,7 +22,7 @@ The operator does NOT manage team membership (delegated to external identity).
 | `spec.rateLimits.rpm`| no       | Requests/min → `rpm_limit` (int). Pointer: `0` projects, omit clears. `Minimum=0`.          |
 | `spec.rateLimits.tpm`| no       | Tokens/min → `tpm_limit`. Same pointer semantics as `rpm`.                                  |
 | `spec.accessGroups`  | no       | `LiteLLMAccessGroup` names, resolved to ids → `access_group_ids`. Empty → reaches nothing.  |
-| `spec.deletionPolicy`| no       | `Orphan` (default) keeps the LiteLLM team on CR delete; `Delete` removes it.                |
+| `spec.deletionPolicy`| no       | `Orphan` (default) or `Delete`; see [Deletion Semantics](../concepts/deletion-semantics.md).       |
 
 After `kubectl apply`, expect:
 

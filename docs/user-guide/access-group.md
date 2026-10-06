@@ -260,9 +260,10 @@ holding its id keep a valid reference.
 
 `spec.deletionPolicy` behaves as it does on the other kinds:
 
-- `Orphan` (default) — if the LiteLLM-side `DELETE` cannot be confirmed
-  (LiteLLM unreachable, `401`, deterministic `4xx`), the finalizer still drains
-  and a Warning Event records the un-confirmed delete. The CR never wedges.
+- `Orphan` (default) — a transient failure (LiteLLM unreachable, `401`) keeps
+  the finalizer and retries until LiteLLM is back; a permanent one (connection
+  deleted, deterministic `4xx`) drains the finalizer and a Normal
+  `LiteLLMDeleteOrphaned` Event records the un-confirmed delete.
 - `Delete` — the finalizer is held until the delete is confirmed.
 
 `DELETE /v1/access_group/<id>` answers a clean `404` when the row is already

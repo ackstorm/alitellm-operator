@@ -189,14 +189,13 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 						var auth401 *litellm.Auth401Error
 						switch {
 						case errors.As(err, &auth401):
-							r.Cache.InvalidateOn401()
-							logger.Info("deletion: 401 fast-path; cache invalidated", "path", auth401.Path)
-							if gerr := onAckMissing("401 on DeleteMCPServer"); gerr != nil {
+							logger.Info("deletion: 401; delete deferred (no cache invalidation: the probe owns key health)", "path", auth401.Path)
+							if gerr := onAckMissing("401 on DeleteMCPServer", false); gerr != nil {
 								return ctrl.Result{}, gerr
 							}
 						case is4xxStatus(err):
 							logger.Info("deletion: deterministic 4xx on DeleteMCPServer; ack-missing", "error", err.Error())
-							if gerr := onAckMissing("4xx on DeleteMCPServer: " + err.Error()); gerr != nil {
+							if gerr := onAckMissing("4xx on DeleteMCPServer: "+err.Error(), true); gerr != nil {
 								return ctrl.Result{}, gerr
 							}
 						default:
@@ -214,7 +213,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				}
 			} else {
 				// Issue #23: gate on resolved policy.
-				if err := onAckMissing("LiteLLM unavailable"); err != nil {
+				if err := onAckMissing(ackUnavailable(snap)); err != nil {
 					return ctrl.Result{}, err
 				}
 			}

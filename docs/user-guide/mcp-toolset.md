@@ -162,8 +162,9 @@ spec:
 The finalizer `mcptoolsets.litellm.ackstorm.ai/finalizer` issues
 `DELETE /v1/mcp/toolset/<toolsetID>` before the CR leaves etcd.
 `spec.deletionPolicy` controls what happens when that delete cannot be
-confirmed (LiteLLM unreachable, 401): `Orphan` (default) drains the finalizer
-anyway; `Delete` blocks until the removal is confirmed. See
+confirmed: `Orphan` (default) waits out a transient cause (LiteLLM unreachable,
+401) and drains only on a permanent one (connection deleted, deterministic 4xx);
+`Delete` blocks until the removal is confirmed. See
 [Deletion Semantics](../concepts/deletion-semantics.md).
 
 Deleting a toolset does **not** cascade to the keys that granted it — their

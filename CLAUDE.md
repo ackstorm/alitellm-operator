@@ -788,7 +788,39 @@ exists. A definitive 404 / empty `data[]` (or 404 on `POST /model/delete`,
 goal is already met. The sibling controllers (a2aagent/mcpserver) already
 drain unconditionally on name-resolve-empty; the model controller now
 matches. Break-glass for an already-stuck CR (no operator redeploy):
-annotate `litellm.ackstorm.ai/deletion-policy-override=Orphan`.
+`kubectl patch <kind> <name> --type=merge -p '{"metadata":{"finalizers":[]}}'`
+(the `deletion-policy-override=Orphan` annotation no longer drains while
+LiteLLM is unreachable — see the Orphan-outage entry below).
+
+### ❌ Orphan policy dropping the finalizer during a LiteLLM outage leaks the row
+```
+# 2026-08-19 UTC — LiteLLM hard down 13:10 → 20:45 (probe Unreachable)
+16:14:32 openrouter-discovery vanish-deletes openrouter.ai21-jamba-large-1.7
+event: deletionPolicy=Orphan and LiteLLM ack missing (LiteLLM unavailable);
+       finalizer removed; entry may persist
+# → LiteLLM row 8b7a8bd6-… lives on with no CR; nothing ever revisits it
+```
+Discovery-owned children are forced to Orphan, and Orphan used to drain on ANY
+missing ack, outages included.
+✅ `newAckMissingFn` (`shared_helpers.go`) takes `(reason, permanent)`. Orphan
+drains only on a PERMANENT cause: connection `Absent` (`ackUnavailable(snap)` —
+LiteLLMConnection being deleted, namespace teardown) or a deterministic non-404
+4xx. Every other not-usable reason (`Unreachable`, `Connecting`, `""`,
+`BadMasterKey`, `SecretNotFound`, `InvalidEndpoint`, `InsecureEndpoint`) and
+every 401 KEEPS the finalizer, records `deletion_blocked`, emits
+`LiteLLMDeleteDeferred`, and returns an error (backoff ≤30s; no HTTP call while
+not usable, so no storm). `connectionFanIn` / `ConnectionRebuiltSource` /
+`List<Kind>Requests` do not filter terminating CRs, so recovery re-drives the
+delete. Confirmed-absent and `Delete` policy are unchanged. TRADE-OFF: during an
+outage deleted CRs stay Terminating and a Discovery being deleted waits for its
+children; break-glass is the finalizer patch, NOT the override annotation. New
+call sites MUST pass `permanent` deliberately — a time-based grace period was
+rejected (the outage above lasted 7.5h). ALSO: deletion-path 401s do NOT call
+`InvalidateOn401`. With it, a key that passes `/key/health` but 401s on delete
+looped DELETE→401→invalidate→probe re-Sync→rebuilt fan-in (no backoff)→DELETE at
+~600/s (seen in envtest `TestTeamReconciler_AC_T3_Delete401AntiStorm`, which also
+polluted `TestWatchNamespaceEnforcement`'s read count). Plain error return =
+per-item backoff; the probe owns key health.
 
 ### ❌ Gating a LiteLLM mutation on `snap.Ready` alone
 ```go

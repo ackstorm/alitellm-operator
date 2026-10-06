@@ -165,10 +165,9 @@ func (r *GuardRailReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 					var auth401 *litellm.Auth401Error
 					switch {
 					case errors.As(err, &auth401):
-						r.Cache.InvalidateOn401()
-						logger.Info("deletion: 401 fast-path; cache invalidated", "path", auth401.Path)
+						logger.Info("deletion: 401; delete deferred (no cache invalidation: the probe owns key health)", "path", auth401.Path)
 						// Issue #23: gate on resolved policy.
-						if gerr := onAckMissing("401 on DeleteGuardrail"); gerr != nil {
+						if gerr := onAckMissing("401 on DeleteGuardrail", false); gerr != nil {
 							return ctrl.Result{}, gerr
 						}
 					case is4xxStatus(err):
@@ -191,7 +190,7 @@ func (r *GuardRailReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				}
 			} else if !snap.Usable() {
 				// LiteLLM unavailable — cannot confirm absence; gate on policy.
-				if err := onAckMissing("LiteLLM unavailable"); err != nil {
+				if err := onAckMissing(ackUnavailable(snap)); err != nil {
 					return ctrl.Result{}, err
 				}
 			} else {
