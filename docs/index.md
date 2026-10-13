@@ -58,7 +58,4 @@ and the [User Guide](user-guide/index.md) for per-resource usage.
 
 ## License
 
-Apache License 2.0 — see [LICENSE](https://github.com/ackstorm/alitellm-operator/blob/main/LICENSE).
-This project derives from the [bbdsoftware/litellm-operator](https://github.com/bbdsoftware/litellm-operator)
-project (Apache-2.0). See [NOTICE](https://github.com/ackstorm/alitellm-operator/blob/main/NOTICE)
-for attribution.
+MIT License — see [LICENSE](https://github.com/ackstorm/alitellm-operator/blob/main/LICENSE).

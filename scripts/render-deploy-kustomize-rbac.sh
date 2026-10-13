@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 #
 # Renders deploy/kustomize/manager-rbac.yaml — a snapshot of the
 # operator-runtime + metrics-auth subset of config/rbac/ assembled into
@@ -88,7 +88,7 @@ mkdir -p "$(dirname "${OUT_FILE}")"
 # document markers from the body.
 {
     cat <<HEADER
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 #
 # GENERATED FILE — do not edit by hand.
 # Source: scripts/render-deploy-kustomize-rbac.sh

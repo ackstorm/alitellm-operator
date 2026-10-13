@@ -327,7 +327,7 @@ rm -rf "$HELM_SNAP"
 
 # --- 15. license-header SPDX gate (HRD-10) ---
 hdr "15. license-header SPDX gate (HRD-10)"
-# Every in-scope *.go file MUST carry `// SPDX-License-Identifier: Apache-2.0`
+# Every in-scope *.go file MUST carry `// SPDX-License-Identifier: MIT`
 # in its first 5 lines. Exempt: vendor/, zz_generated*, mock_*, .claude/.
 # Build-tag-first files have SPDX on line 3 (after //go:build + blank line).
 MISSING_SPDX=""
@@ -337,7 +337,7 @@ while IFS= read -r f; do
   [[ "$(basename "$f")" == zz_generated* ]] && continue
   [[ "$(basename "$f")" == mock_* ]] && continue
   # Match SPDX in the first 5 lines of the file.
-  if ! head -5 "$f" 2>/dev/null | grep -qx "// SPDX-License-Identifier: Apache-2.0"; then
+  if ! head -5 "$f" 2>/dev/null | grep -qx "// SPDX-License-Identifier: MIT"; then
     MISSING_SPDX+="  $f"$'\n'
   fi
 done < <(git ls-files '*.go')

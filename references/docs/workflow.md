@@ -195,7 +195,7 @@ Categories covered:
   match the ack-list (`references/security/govulncheck-acknowledged.md`)
   1:1.
 - **Code provenance** — per-file SPDX license header
-  (`// SPDX-License-Identifier: Apache-2.0`).
+  (`// SPDX-License-Identifier: MIT`).
 - **Defense in depth** — full `make qa-lint` + `make test-unit` run
   inside the devtools container on every push.
 

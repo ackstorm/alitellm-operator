@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 #
 # setup-devtools — pull the pre-built devtools image from GHCR, restore Go
 # caches, and fall back to a local build if the registry image is missing.

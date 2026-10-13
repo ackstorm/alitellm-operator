@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 // Package v1alpha1 contains API Schema definitions for the litellm v1alpha1 API group.
 // +kubebuilder:object:generate=true

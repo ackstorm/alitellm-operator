@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 // Package deletionpolicy resolves the effective deletion policy for a
 // finalized CR, applying the precedence chain:

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 // Task 3 — schema unit tests for the regenerated ModelDiscovery
 // CRD types. These tests are STANDALONE (no envtest, no kubebuilder

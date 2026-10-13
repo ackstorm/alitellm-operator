@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 // mcpserverdiscovery_controller.go implements the Pipeline B reconciler for
 // `LiteLLMMCPServerDiscovery` CRs (spec §6.5). The reconciler reads cluster-scoped

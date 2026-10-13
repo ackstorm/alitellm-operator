@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 // bootsweep_test.go — FIX2.txt HIGH-2 regression guards on the
 // isStuckReadyFalse classifier. The full Start() flow is exercised by

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 // modeldiscovery_controller.go implements the Pipeline B reconciler for
 // `LiteLLMModelDiscovery` CRs (spec §6.3 / §7.1 / §7.5). The reconciler resolves

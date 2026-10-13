@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 // Package main is the Tier 2 mock provider (openai / kubeai compatible).
 //

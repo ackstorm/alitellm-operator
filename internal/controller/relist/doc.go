@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 // Package relist hosts the safety-relist drift-recovery envtest(s) that
 // depend on the background SafetyRelistRunnable actually firing.

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 // Isolated envtest proving the RequeueAfter → SafetyRelistRunnable
 // convergence actually recovers drift for a newly-converged kind, not just

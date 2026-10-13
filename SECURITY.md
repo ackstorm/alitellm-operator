@@ -2,66 +2,49 @@
 
 ## Supported Versions
 
-We release patches for security vulnerabilities. Which versions are eligible for receiving such patches depends on the CVSS v3.0 Rating:
+Only the latest minor release receives security fixes.
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 0.1.x   | :white_check_mark: |
+| Version        | Supported |
+| -------------- | --------- |
+| latest minor   | yes       |
+| older releases | no        |
 
 ## Reporting a Vulnerability
 
-The alitellm-operator team and community take security bugs seriously. We appreciate your efforts to responsibly disclose your findings, and will make every effort to acknowledge your contributions.
-
-### How to Report a Security Vulnerability
-
 **Please do not report security vulnerabilities through public GitHub issues.**
 
-Instead, please report them via one of the following methods:
+Use GitHub's [private vulnerability reporting](https://github.com/ackstorm/alitellm-operator/security/advisories/new)
+to open a draft security advisory. It reaches the maintainers privately and keeps the
+disclosure coordinated.
 
-1. **Email**: Send an email to [security@your-domain.com](mailto:security@your-domain.com)
-2. **Private GitHub Security Advisory**: Use GitHub's [private vulnerability reporting feature](https://github.com/ackstorm/alitellm-operator/security/advisories/new)
+### What to include
 
-### What to Include
+- Type of issue (e.g. credential exposure, privilege escalation, SSRF, injection)
+- Full paths of the source files involved
+- The affected revision (tag, branch or commit)
+- Any configuration required to reproduce
+- Step-by-step reproduction instructions
+- Proof-of-concept or exploit code, if you have it
+- Impact — how an attacker would use this
 
-Please include the following information in your report:
+### Response timeline
 
-- Type of issue (e.g. buffer overflow, SQL injection, cross-site scripting, etc.)
-- Full paths of source file(s) related to the manifestation of the issue
-- The location of the affected source code (tag/branch/commit or direct URL)
-- Any special configuration required to reproduce the issue
-- Step-by-step instructions to reproduce the issue
-- Proof-of-concept or exploit code (if possible)
-- Impact of the issue, including how an attacker might exploit the issue
+- **Initial response**: within 48 hours of the report
+- **Status updates**: at least every 7 days while the issue is open
+- **Resolution**: we aim to resolve critical vulnerabilities within 30 days
+- **Disclosure**: coordinated, 90 days from initial report by default
 
-### Response Timeline
+We will acknowledge your contribution in the advisory unless you prefer to remain
+anonymous.
 
-- **Initial Response**: We will acknowledge receipt of your vulnerability report within 48 hours
-- **Status Updates**: We will send you regular updates about our progress, at least every 7 days
-- **Resolution**: We aim to resolve critical vulnerabilities within 30 days of the initial report
+## Deployment recommendations
 
-### Security Response Process
-
-1. **Triage**: The security team will assess the severity and impact of the vulnerability
-2. **Investigation**: We will investigate and develop a fix
-3. **Disclosure**: We will coordinate the release of the fix and public disclosure
-4. **Recognition**: We will acknowledge your contribution (unless you prefer to remain anonymous)
-
-### Security Best Practices
-
-When deploying alitellm-operator, we recommend:
-
-- **Principle of Least Privilege**: Run the operator with minimal required permissions
-- **Network Security**: Use network policies to restrict operator network access
-- **Regular Updates**: Keep the operator and its dependencies up to date
-- **Monitoring**: Monitor operator logs for suspicious activity
-- **Secrets Management**: Use Kubernetes secrets or external secret management systems for sensitive data
-
-### Vulnerability Disclosure Policy
-
-- We will provide advance notification to users about security updates when possible
-- Security advisories will be published on GitHub Security Advisories
-- We follow a coordinated disclosure timeline of 90 days from initial report to public disclosure
-
-## Questions?
-
-If you have any questions about this security policy, please contact us at [security@your-domain.com](mailto:security@your-domain.com). 
+- **Least privilege**: run the operator with the namespaced RBAC it ships with; do not
+  grant cluster-admin.
+- **Network policy**: restrict operator egress to the LiteLLM proxy and the discovery
+  endpoints you configure.
+- **Transport**: reach a remote LiteLLM over `https://`; set
+  `LITELLM_OPERATOR_REQUIRE_HTTPS_REMOTE=true` to reject plaintext remotes.
+- **Secrets**: the LiteLLM master key and provider credentials belong in Kubernetes
+  Secrets or an external secret manager, never inline in a CR.
+- **Updates**: track releases; LiteLLM endpoint behaviour changes between versions.

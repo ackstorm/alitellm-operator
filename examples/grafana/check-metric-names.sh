@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 # Verify the dashboards track the operator's namespaced metric names and the
 # LiteLLM names our proxy version actually emits.
 set -euo pipefail

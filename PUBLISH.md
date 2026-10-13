@@ -53,7 +53,7 @@ make hooks              # symlinks .git/hooks/pre-push -> scripts/pre-push-check
 | 6  | `origin` remote matches        | Prevents pushing to the wrong remote.                         |
 | 13 | govulncheck ack-list 1:1       | Routes through `scripts/govulncheck-gate.sh` (devtools binary; pinned `v1.3.0`). The wrapper enforces an exact match between the reachable advisories and `docs/security/govulncheck-acknowledged.md`. Any NEW HIGH or ack-list drift blocks. |
 | 14 | `go mod tidy` drift            | Snapshots `go.mod`/`go.sum`, runs tidy, diffs; restores on drift so the working tree stays clean. |
-| 15 | Per-file SPDX license header   | Every tracked `*.go` outside `vendor/`, `zz_generated*.go`, `mock_*.go`, `.claude/` must carry `// SPDX-License-Identifier: Apache-2.0` within its first 5 lines. Build-tag-first files (`//go:build ...` line 1) satisfy on line 3. |
+| 15 | Per-file SPDX license header   | Every tracked `*.go` outside `vendor/`, `zz_generated*.go`, `mock_*.go`, `.claude/` must carry `// SPDX-License-Identifier: MIT` within its first 5 lines. Build-tag-first files (`//go:build ...` line 1) satisfy on line 3. |
 
 Soft checks (7-12): internal hostnames / private IPv4, `@ackstorm.com` /
 `@ackstorm.es` emails, `.gitignore` sanity, commit author audit,

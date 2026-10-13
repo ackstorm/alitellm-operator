@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 // Package identity provides the operator's audit identity for upstream
 // LiteLLM writes. The Version global is overridden at link time via

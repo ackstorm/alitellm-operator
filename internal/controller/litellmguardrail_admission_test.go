@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 // CRD-side admission tests for LiteLLMGuardRail. Exercises the
 // +kubebuilder:validation:* markers (MinLength, MinItems, MaxItems,

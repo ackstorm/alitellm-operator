@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 // Guardrail handlers + state for the in-memory MockServer. Kept in a
 // separate file from mock.go to keep that file's per-domain growth

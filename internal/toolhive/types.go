@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 // Package toolhive provides the ToolHive integration plumbing —
 // lazy dynamic informers for cluster-scoped reads against

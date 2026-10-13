@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 // Package connection owns the manager-level LiteLLMConnection cache. It
 // is the single, lock-free source of truth that every Phase 3+ domain

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 """
 Inject `helm.sh/resource-policy: keep` into each CRD's metadata.annotations.
 

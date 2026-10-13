@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 // Schema unit tests for LiteLLMGuardRail. Pure Go — no envtest, no
 // kubebuilder API server. CRD-side admission constraints (MinLength,

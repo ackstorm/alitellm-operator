@@ -1,39 +1,35 @@
 # Contributing to alitellm-operator
 
-Thank you for considering contributing!  
-See our [Code of Conduct](CODE_OF_CONDUCT.md).
+Thanks for considering a contribution. Please read the
+[Code of Conduct](CODE_OF_CONDUCT.md) first.
 
-## How to Contribute
+## Setting up
 
-1. Fork the repo and create your branch.
-2. Make your changes.
-3. Run tests and linters.
-4. Submit a pull request, referencing any relevant issues.
+Your host needs Docker and nothing else. Every toolchain `make` target re-invokes itself
+inside the devtools container (`scripts/dev.sh`). See
+[development.md](docs/developer-guide/development.md).
 
-See our [CONTRIBUTING.md](docs/contributing.md) for more details.
+## Before you open a pull request
 
-## Issue Reporting
+```sh
+make qa-lint       # golangci-lint
+make test-unit     # pure logic
+make test-envtest  # controllers against a real API server
+make e2e-full      # kind + Helm + Ginkgo
+make hooks         # once per clone: installs the pre-push gate
+```
 
-- For bugs, use the bug report template.
-- For features, use the feature request template.
+## House rules
 
-## Pull Requests
+- **Every `.go` file starts with** `// SPDX-License-Identifier: MIT`.
+- **Conventional commits**, imperative subject under 72 characters.
+- **No naked polling loops** — use the `wait-*` make targets.
+- Significant changes (new CRD, breaking change, controller behaviour) start as a design
+  doc under `docs/` in a pull request, before the code.
 
-- Please review the [PR process](.github/PULL_REQUEST_TEMPLATE.md).
-- All PRs require at least one review.
+See [contributions.md](docs/developer-guide/contributions.md) for the full workflow.
 
-## Development
+## Reporting
 
-See [development.md](docs/developer-guide/development.md).
-
-## Proposal Process
-Before we introduce significant changes to the project we want to gather feedback
-from the community to ensure that we progress in the right direction before we
-develop and release big changes. Significant changes include for example:
-
-* creating new custom resources
-* proposing breaking changes
-* changing the behavior of the controller significantly
-
-The document should be created in the [docs/proposals](docs/proposals) directory based on the [template](docs/proposals/template.md), prefixed by <YEAR><MONTH>- and submitted in the form of a GitHub Pull Request.
-
+- Bugs and features: GitHub issues.
+- Security vulnerabilities: **not** an issue — see [SECURITY.md](SECURITY.md).

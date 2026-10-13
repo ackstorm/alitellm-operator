@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 // Package conflict resolves cross-CR ownership of a single LiteLLM-side
 // natural key. The rule is fixed and applies to every controller that

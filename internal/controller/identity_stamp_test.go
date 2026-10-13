@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 // identity_stamp_test.go — FIX4.txt H-1 regression guards on the
 // stampMCPIdentity / stampA2AIdentity helpers. These run as pure-unit

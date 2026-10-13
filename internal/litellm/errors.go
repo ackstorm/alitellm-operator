@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 package litellm
 
@@ -137,8 +137,6 @@ const kindUnparsed = "unparsed"
 // failure it returns the raw body capped at 512 bytes and
 // kind=kindUnparsed so the caller still has something to log without
 // spraying possibly large response bodies into error strings.
-//
-// Derivative work from bbdsoftware/litellm-operator (Apache-2.0; NOTICE).
 func processLitellmError(body []byte) (kind, message, code string) {
 	var env litellmErrorEnvelope
 	if err := json.Unmarshal(body, &env); err != nil ||

@@ -165,7 +165,4 @@ The following are explicitly out of scope for v1alpha1:
 
 ## Attribution
 
-Copyright 2026 ACKstorm. Licensed under the Apache License, Version 2.0.
-Portions of the LiteLLM REST client are derived from the
-bbdsoftware/litellm-operator project (Apache-2.0). See [NOTICE](NOTICE) for
-full attribution details.
+Copyright (c) 2026 ACKstorm. Released under the [MIT License](LICENSE).

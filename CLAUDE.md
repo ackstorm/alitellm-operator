@@ -39,12 +39,8 @@ model-discovery, MCP servers, A2A agents — from declarative CRDs into
 LiteLLM HTTP API calls. Written in Go (controller-runtime v0.19.4,
 k8s.io/* v0.31.0). Ships as a container image + Helm chart.
 
-Selected release plumbing grafted from
-[bbdsoftware/litellm-operator](https://github.com/bbdsoftware/litellm-operator)
-(Apache-2.0). See `NOTICE` for attribution. The `bbd` graft is restricted
-to non-code surfaces: CI workflows, goreleaser configs, mkdocs site
-scaffold, community files. All Go code, CRDs, and config are original
-ackstorm material.
+Released under the MIT License (`LICENSE`). All code, CI, release tooling,
+CRDs, and config are original ACKstorm material.
 
 ## Architecture
 
@@ -76,14 +72,14 @@ Critical paths:
 - Secret rotation → reconciler re-reads → LiteLLM update with new auth
 - Operator restart → informer resync → drift reconciliation
 
-## Repository layout (post-graft)
+## Repository layout
 
 ```
 alitellm-operator/
-├── .github/                 ← bbd-derived; reconciled for ackstorm
+├── .github/                 ← CI workflows + community files
 │   ├── workflows/           CI / release / docs / govulncheck / labeler
 │   ├── CODEOWNERS, dependabot.yml, labeler.yml, ISSUE_TEMPLATE/, PR template
-├── .goreleaser.yml          ← bbd-derived; stable release config
+├── .goreleaser.yml          ← stable release config
 ├── .goreleaser.prerelease.yml   ← prerelease (alpha/beta/rc tags)
 ├── .goreleaser.snapshot.yml ← main-branch snapshot builds
 ├── .coderabbit.yaml         ← CodeRabbit PR auto-review config
@@ -413,7 +409,7 @@ Gate categories — any failure blocks push:
   match (`scripts/govulncheck-gate.sh` against
   `references/security/govulncheck-acknowledged.md`).
 - **Code provenance**: per-file SPDX header
-  (`// SPDX-License-Identifier: Apache-2.0`).
+  (`// SPDX-License-Identifier: MIT`).
 - **Defense in depth**: full `make qa-lint` + `make test-unit` run inside
   the devtools container on every push.
 - **Informational warns** (do not block): commit-author summary,
@@ -1554,7 +1550,7 @@ alitellm-auth it publishes a chart pinned to the previous image tag.
 
 - **SPDX-only license headers**: every `*.go` outside `vendor/`,
   `zz_generated*.go`, `mock_*.go` starts with
-  `// SPDX-License-Identifier: Apache-2.0`. Pre-push gate 15 enforces.
+  `// SPDX-License-Identifier: MIT`. Pre-push gate 15 enforces.
   `hack/boilerplate.go.txt` provides the header for controller-gen
   output; `make gen-code` wires it in via `object:headerFile=`.
 

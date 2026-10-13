@@ -40,7 +40,7 @@
 # carries a "DO NOT EDIT" banner to enforce this discipline.
 #
 # Copyright 2026 ACKstorm
-# Licensed under the Apache License, Version 2.0.
+# SPDX-License-Identifier: MIT
 
 set -euo pipefail
 

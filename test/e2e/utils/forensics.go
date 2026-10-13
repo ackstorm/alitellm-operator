@@ -1,6 +1,6 @@
 //go:build e2e
 
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 package utils
 

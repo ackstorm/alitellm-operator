@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: MIT
 
 // ratelimit_test.go — FIX2.txt M-10 regression guards on the
 // WithRateLimit ClientOption. Asserts:
