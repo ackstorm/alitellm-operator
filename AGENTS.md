@@ -1,0 +1,1622 @@
+# CLAUDE.md — alitellm-operator
+
+Surgical reference card for AI agents working in this repository. Read the
+sections relevant to your task. Reading MANDATORY Reading Table entries
+before touching the corresponding code is non-negotiable.
+
+## Documentation hygiene — keep this file and `docs/` in sync with the code
+
+Whenever a change alters behavior, contracts, or workflows that this
+`CLAUDE.md` or the user-facing docs describe, update the affected
+documentation in the SAME commit as the code change. No "docs follow-up
+PR later".
+
+Triggers requiring a docs/CLAUDE.md update:
+- New or changed CRD field, condition, or default value → update
+  `docs/api-reference/` (`make gen-crd-ref-docs`) and any CRD examples
+  under `examples/`.
+- New `make` target, renamed target, or changed default behavior →
+  update the relevant table in this file (Test phases, Waiting for
+  state, ...) and `docs/` if user-facing.
+- New `wait-*` target, blessed pattern, or polling rule → update the
+  "Waiting for state" table and the bash anti-patterns section.
+- New pre-push gate, govulncheck ack-list entry, or SPDX/license rule →
+  update the "Publication" section and `references/security/...`.
+- Release pipeline change (`release.yml`, goreleaser configs, bump
+  flow) → update the "Release pipeline" section.
+- New common failure mode encountered while debugging → add a
+  `### ❌ ... ✅ ...` entry under "Common failure modes".
+- New MANDATORY-read file for a workflow → add a row to the
+  "MANDATORY Reading Table".
+
+If a doc claim is found stale during work, fix it in the same change
+that revealed the staleness. Drift is a bug, not tech debt.
+
+## Quick context
+
+Kubernetes operator that reconciles LiteLLM proxy state — teams, models,
+model-discovery, MCP servers, A2A agents — from declarative CRDs into
+LiteLLM HTTP API calls. Written in Go (controller-runtime v0.19.4,
+k8s.io/* v0.31.0). Ships as a container image + Helm chart.
+
+Released under the MIT License (`LICENSE`). All code, CI, release tooling,
+CRDs, and config are original ACKstorm material.
+
+## Architecture
+
+```
+┌────────────┐ reconcile ┌────────────────┐  HTTP   ┌──────────────┐
+│   CRDs     │──────────▶│   Operator     │────────▶│ LiteLLM API  │
+│ (LiteLLM*) │           │ (controllers/) │         │ (in cluster) │
+└────────────┘           └───────┬────────┘         └──────────────┘
+                                 │
+                                 ▼
+                       ┌──────────────────┐
+                       │  Status updates  │
+                       │  + events        │
+                       └──────────────────┘
+```
+
+Owned CRDs (11 — the exhaustive set e2e `AC-N1` asserts in
+`test/e2e/scope_test.go`; adding a kind without updating that set fails e2e):
+`LiteLLMTeam`, `LiteLLMModel`, `LiteLLMModelDiscovery`, `LiteLLMModelAlias`,
+`LiteLLMMCPServer`, `LiteLLMMCPServerDiscovery`, `LiteLLMMCPToolset`,
+`LiteLLMA2AAgent`, `LiteLLMGuardRail`, `LiteLLMConnection`,
+`LiteLLMAccessGroup`. API group
+`litellm.ackstorm.ai`, version `v1alpha1`. `LiteLLMMCPToolset` requires
+LiteLLM **1.93.0+** (`/v1/mcp/toolset` does not exist before that); so does
+`LiteLLMAccessGroup` (`/v1/access_group`).
+
+Critical paths:
+- CRD apply → reconciler → LiteLLM HTTP call → status condition update
+- Secret rotation → reconciler re-reads → LiteLLM update with new auth
+- Operator restart → informer resync → drift reconciliation
+
+## Repository layout
+
+```
+alitellm-operator/
+├── .github/                 ← CI workflows + community files
+│   ├── workflows/           CI / release / docs / govulncheck / labeler
+│   ├── CODEOWNERS, dependabot.yml, labeler.yml, ISSUE_TEMPLATE/, PR template
+├── .goreleaser.yml          ← stable release config
+├── .goreleaser.prerelease.yml   ← prerelease (alpha/beta/rc tags)
+├── .goreleaser.snapshot.yml ← main-branch snapshot builds
+├── .coderabbit.yaml         ← CodeRabbit PR auto-review config
+├── Dockerfile               ← runtime image (golang:1.24 builder → distroless)
+├── Dockerfile.devtools      ← devtools container (scripts/dev.sh)
+├── Dockerfile.goreleaser    ← release image, consumed by goreleaser
+├── api/litellm/v1alpha1/    ← CRD Go types (litellm.ackstorm.ai)
+├── cmd/main.go              ← operator entrypoint
+├── internal/                ← all controller + LiteLLM + helper code
+├── config/                  ← kubebuilder kustomize overlays
+├── deploy/helm/alitellm-operator/   ← Helm chart shipped on release
+├── docs/                    ← mkdocs site (api-reference auto-gen)
+├── docs/Makefile            ← docs targets (gen-crd-ref-docs, docs-serve, ...)
+├── docs/.crd-ref-docs.yaml  ← crd-ref-docs config (litellm.ackstorm.ai)
+├── examples/                ← runnable CR samples
+├── hack/boilerplate.go.txt  ← SPDX one-liner, prepended to generated files
+├── references/              ← agent-facing internal docs (NOT on public site)
+│   └── security/govulncheck-acknowledged.md
+├── scripts/                 ← dev.sh, cluster.sh, pre-push-check.sh, ...
+├── spec/                    ← frozen LiteLLM OpenAPI + design spec
+├── test/                    ← e2e (Ginkgo) + utils
+│   ├── e2e/cluster/         standing-hydration kustomize phases (00-namespaces,
+│   │                        01-deps, 02-operator, 03-mocks, 04-hydration);
+│   │                        test CRs stay dynamic in test/e2e/*_test.go
+│   └── uat/                 post-release acceptance against a REAL cluster
+│                            (bash, by hand). NOT a test suite and NOT part of
+│                            `make e2e-*` — holds ONLY what kind cannot prove
+│                            (real provider creds, scale, elapsed time). See
+│                            "UAT vs e2e" below before adding anything here.
+├── ROADMAP.md, CHANGELOG.md, SECURITY.md, MAINTAINERS.md, CONTRIBUTING.md
+└── PROJECT, README.md, LICENSE, NOTICE, PUBLISH.md
+```
+
+## MANDATORY Reading Table
+
+| Working on...                          | MUST read first                          |
+|----------------------------------------|------------------------------------------|
+| `make` interface / target routing / contexts | `references/makefile.md` (command list + 3-context model + `container_target`) |
+| E2E tests (kind cluster + Helm)        | `test/e2e/README.md`                     |
+| CI workflows (ci, docs, release, ...)  | `references/docs/workflow.md` (matrix + rationale); `.github/workflows/*.yml` is authoritative |
+| Release tooling (goreleaser, signing)  | `.goreleaser.yml` + `release.yml` workflow |
+| Pre-push gate logic                    | `scripts/pre-push-check.sh` (gate list)  |
+| Publication / first-push procedure     | `PUBLISH.md`                             |
+| Helm chart values + defaults           | `deploy/helm/alitellm-operator/values.yaml` |
+| API reference rendering                | `docs/Makefile` (`gen-crd-ref-docs`) + `docs/.crd-ref-docs.yaml` |
+| Docs site, mkdocs, mike, gh-pages flow | `references/docs/documentation.md`       |
+| CI / PR / release lifecycle (push/PR matrix) | `references/docs/workflow.md`        |
+| Access groups / team attachment         | `docs/user-guide/access-group.md` (two disjoint namespaces + the only-ADD bypass); team = closed container, `closedTeamGrant` in `internal/controller/team_permission.go` |
+| Model aliases                          | `docs/user-guide/model-alias.md` (aggregate map) |
+| OLM packaging                          | NOT supported — explicit scope decision (no OperatorHub) |
+
+## CI gating — one-line summary
+
+| Event                                 | lint | unit | envtest | security | e2e |
+|---------------------------------------|------|------|---------|----------|-----|
+| push: feature branch (no PR)          |  -   |  -   |   -     |    -     |  -  |
+| pull_request → main                   |  ✓   |  ✓   |   ✓     |    ✓     |  ✓  |
+| pull_request → main (draft)           |  ✓   |  ✓   |   ✓     |    ✓     |  -  |
+| push: main (post-merge)               |  -   |  -   |   -     |    -     |  -  |
+| push: main `chore(release): v*`       |  -   |  -   |   -     |    -     |  -  (release.yml owns it) |
+
+**PR-only invariant**: `ci.yml` triggers exclusively on `pull_request`.
+Branch protection on `main` enforces PR workflow (required checks:
+Lint / Unit / Envtest / Security / E2E (kind + helm + ginkgo); linear
+history required; no force-push; no deletions). Post-merge SHA on main
+has identical content to the PR head SHA, so re-running CI on push
+main would be dup. Release commits are handled by `release.yml`.
+
+Docs-only PRs (paths-ignore: `**/*.md`, `docs/**`, `.planning/**`,
+`references/**`, `FIX*.txt`, `LICENSE`, `NOTICE`, `CODEOWNERS`,
+`.gitignore`) skip `ci.yml` entirely — required status checks therefore
+will not report on docs-only PRs, so an admin merge or status check
+override is needed to land them.
+
+Detail and tradeoffs: `references/docs/workflow.md`.
+
+## Toolchain — host has NO Go (always Docker)
+
+The host has no `go`, `kubebuilder`, `controller-gen`, `kustomize`,
+`setup-envtest`, or `golangci-lint` binary on PATH. **Every toolchain
+target self-routes — the host needs only docker.** Run a bare
+`make <target>` on the host; if the target needs the Go/helm toolchain it
+re-invokes itself inside the devtools container via the `container_target`
+macro (`LITELLM_IN_DEVTOOLS=1` short-circuits the nesting). See
+`references/makefile.md` for the 3-context model.
+
+```bash
+make build-operator              # auto-routes into devtools
+make gen-manifests               # auto-routes into devtools
+make shell                       # interactive shell in the devtools container
+./scripts/dev.sh go build ./...  # raw go, when no make target fits
+```
+
+- Wrapper mounts repo at `/workspace`, mounts `/var/run/docker.sock`,
+  preserves host UID:GID, persists Go module + build caches under
+  `.gocache/`, resolves `KUBEBUILDER_ASSETS`.
+- Image: `litellm-devtools:latest` (built from `Dockerfile.devtools` on
+  first use locally; force rebuild with `LITELLM_DEVTOOLS_REBUILD=1`).
+- CI consumes a pre-baked image from GHCR
+  (`ghcr.io/<owner>/litellm-devtools:<hash>`, where hash =
+  `sha256(Dockerfile.devtools)[:12]`). `.github/workflows/devtools-image.yml`
+  builds + pushes when `Dockerfile.devtools` changes;
+  `.github/actions/setup-devtools` pulls in each CI job (~30s warm /
+  2-3min cold saved per job × 5 jobs = ~10min/PR). On miss (first push,
+  PR that changes Dockerfile.devtools racing the image workflow, GHCR
+  unavailable), the composite action falls back to a local build — slower
+  but always correct.
+- Pinned: Go 1.26.6 (Dockerfile.devtools `golang:1.26.6-bookworm`,
+  Dockerfile `golang:1.26.6`, release.yml `GO_VERSION: '1.26.6'`; go.mod
+  `go 1.26.0` / `toolchain go1.26.6`), kubebuilder v4.4.0,
+  controller-runtime v0.19.4, k8s.io/* v0.31.0, govulncheck v1.3.0. PR
+  CI and release run the same toolchain (issue #43 close); any future
+  bump MUST update all four surfaces in the same change.
+
+Every toolchain target self-routes via the `container_target` macro — run
+bare `make <target>` on the host; it re-invokes itself inside the devtools
+container, and `LITELLM_IN_DEVTOOLS=1` short-circuits the nesting (so
+`./scripts/dev.sh make <target>` from the host still runs ONE container,
+not two). Never prefix a routed target with `./scripts/dev.sh` out of
+habit — the prefix is redundant.
+
+Only context-B/C targets run directly on the host: `docker-*` (host
+docker), the gate orchestrators (`pre-push`, `verify`), `release-*`, and
+`ensure-inotify`. `operator-redeploy` builds + `kind load`s on the host but
+runs its `kubectl rollout restart/status` THROUGH the devtools container
+(`$(E2E_KUBECTL)`) — host kubectl has no context for the kind
+cluster (kubeconfig lives at `/workspace/.gocache/kube/config`). The `cluster-*` targets are NO LONGER host-direct: they
+now route THROUGH the devtools container (they drive kind/helm via the
+mounted docker socket), so run them bare too (`make cluster-up`).
+
+**`wait-*` / `logs-*` / `watch-crs` / `pf-*` / `mock-mode` are NO LONGER
+host-direct either.** They all route their kubectl through the devtools
+container via the `E2E_KUBECTL` variable (default
+`./scripts/dev.sh kubectl`). They used to call bare `kubectl`, which
+resolves the HOST kubeconfig — routinely a real production cluster on a
+developer machine. `make mock-mode` was the sharp edge: it shells into
+`scripts/mock-set-mode.sh`, which runs `kubectl -n mocks run ...`, a
+MUTATION against whatever context happened to be current. Routing through
+`dev.sh` makes the wrong cluster structurally unreachable (that kubeconfig
+only knows kind), so a misfire fails closed instead of addressing prod.
+`pf-*` still binds on the host's localhost as advertised because
+`scripts/dev.sh` runs with `--network=host`. Any NEW target that talks to
+the e2e cluster MUST use `$(E2E_KUBECTL)`, never bare `kubectl`.
+
+## Test phases
+
+| Phase              | Command                                | When                                  |
+|--------------------|----------------------------------------|---------------------------------------|
+| `make test-unit`        | pure-logic, ~5s warm                   | every iteration                       |
+| `make qa-lint-changed`| golangci-lint scoped to touched pkgs   | every iteration                       |
+| `make qa-lint`        | golangci-lint full sweep               | before commit; re-run in pre-push gate |
+| `make test-envtest` | controller-runtime envtest (race), ~7m | before commit on controller changes   |
+| `make test-envtest-fast`| envtest without -race, ~3m            | dev inner loop                        |
+| `make e2e-full`    | kind + Helm + Ginkgo, ~6m             | final gate before commit              |
+| `make qa-security`    | gosec + govulncheck + fuzz-short, ≤6m | in-container; before push             |
+| `make pre-push`    | full publication gate (secrets, filesystem, build hygiene, SPDX, lint + unit, ...) | host-only; runs on every `git push` once `make hooks` installed — manual invocation is a dry-run / verification only |
+
+Umbrella targets:
+- `make test-full` = `test-unit` + `test-envtest`
+- `make verify` = `make qa-lint` + `make test-unit` + `make qa-security` + `make pre-push` (each self-routes; the gates stay host-only)
+
+### UAT vs e2e — where a check belongs
+
+`test/uat/uat-runbook.sh` is a hand-run **acceptance pass against a real
+cluster**, not a test suite, and it is NOT wired into any `make` target.
+
+Default: **a new check goes in `test/e2e/` (Ginkgo)**, where it runs on every
+PR. Put it in `test/uat/` ONLY if a kind cluster structurally cannot produce
+the condition. There are three such cases, and they are the whole justification
+for the runbook's existence:
+
+| Only-prod case | Why e2e cannot cover it |
+|---|---|
+| Real provider credentials + endpoints | The e2e mock accepts ANY `api_key`/`api_base`, so a misrouted model looks identical to a correct one. This is the OpenRouter bug class: children `Ready=Synced`, inference 401s. |
+| Scale + elapsed time | Duplicate-row amplification needs hundreds of models over days (1718 rows in 9 days; 7186 in 5h). A 3-model cluster cannot generate it. |
+| Real LiteLLM build + Postgres | e2e pins a chart version; prod drifts, and endpoint behaviour drifts with it (toolset DELETE returning 500-not-404). |
+
+Anything else — CRUD, drift correction, status conditions, metrics, projection,
+authorization — is deterministic and mockable, so it belongs in e2e. These were
+ported OUT of the runbook and must not be re-added to it:
+`invariants_test.go` (`UAT-S1` status-truth, `UAT-D1` discovery
+`generatedCount`, `UAT-R1` restart idempotency) and `team_test.go`
+(`TEAM-07` grant-allows-inference, the positive half of `TEAM-05`).
+
+`TEAM-07` is why the mock serves `/v1/chat/completions`: without a positive
+inference path, `TEAM-05`'s denial alone cannot distinguish "deny-by-default
+works" from "all team keys are broken".
+- `make hooks` installs `.git/hooks/pre-push -> scripts/pre-push-check.sh`
+  (and removes any stale pre-commit hook from a prior install)
+
+`make pre-push` is host-only — it spawns gitleaks/trufflehog containers
+on host docker. Do NOT call it via `./scripts/dev.sh` (would nest docker
+mounts that don't resolve).
+
+Inner-loop iteration helpers:
+- `make test-unit-pkg PKG=./internal/litellm/...`
+- `make test-envtest-pkg PKG=./internal/controller/... [FOCUS=TestX] [TIMEOUT=10m]`
+- `make qa-lint-changed [BASE_REF=...]` (lints only packages touched vs `origin/main`)
+
+## Documentation site (mkdocs)
+
+The public docs site at `docs/` is mkdocs-material based.
+
+```bash
+make gen-crd-ref-docs   # regenerate docs/api-reference/ from CRDs (auto-routes into devtools)
+make docs-build         # build site/ via docker (host)
+make docs-serve         # local preview at :8000
+```
+
+`docs/.crd-ref-docs.yaml` is the config for the `crd-ref-docs` tool
+(installed via `make crd-ref-docs`); it targets the single API group
+`litellm.ackstorm.ai`.
+
+`docs/index.yaml` is the Helm chart index served by GitHub Pages; the
+release workflow uses it as the chart catalogue at
+`https://ackstorm.github.io/alitellm-operator/`.
+
+`docs/.github/workflows/docs.yml` deploys the site to `gh-pages` on
+pushes to `main` and on `v*` tags. PRs build the site (no deploy) to
+catch broken links and missing pages.
+
+## Release pipeline
+
+Release artifacts are produced by **goreleaser** orchestrated by
+`.github/workflows/release.yml`. The flow is **commit-message-driven
+with tag-last**: a push to `main` whose head commit message starts with
+`chore(release): v<MAJOR>.<MINOR>.<PATCH>` fires the pipeline. The
+workflow then runs the tests, bumps manifests itself, builds + signs
+artifacts, and creates the git tag as the final step — so a failure
+anywhere upstream leaves origin with no orphan tag.
+
+Cutting a release (stable example, `v0.1.0`):
+
+```bash
+# Most common — empty release commit (no manifest pre-bump).
+# `make release-cut` runs preconditions (on main, clean tree, in-sync
+# with origin/main), creates `chore(release): v0.1.0` as an empty
+# commit, runs the pre-push gate, and pushes to main.
+make release-cut VERSION=0.1.0
+
+# Bundle the release intent with a real change:
+# (edit, then commit the change yourself, then:)
+git commit -am 'chore(release): v0.1.0'
+git push origin main   # installed pre-push hook runs the gate automatically
+```
+
+There is no need to `make release-bump` locally or to create the tag yourself.
+`make release-bump VERSION=X.Y.Z` is still available as the internal target
+release.yml invokes; it can also be run by hand if you want to pre-bump
+manifests in the same commit (the workflow detects the clean tree and
+skips its own bump step), but it is not the expected workflow.
+
+Per-release flow (after the `chore(release): v0.1.0` push):
+
+1. **parse** job (job-level `if` skips non-release pushes): pulls
+   `X.Y.Z` from the head commit message via regex.
+2. **run-tests** job: `make test-full` (`test-unit` + `test-envtest` = race-enabled).
+   Failures stop the pipeline here — no manifest mutation, no tag.
+3. **build-and-release** job:
+   - Configures the github-actions[bot] identity.
+   - Runs `make release-bump VERSION=X.Y.Z`, commits the four bumped manifests
+     to `main` with a `[skip ci]` marker, and pushes the bot commit.
+     If the tree is already clean (user pre-bumped), this is a no-op.
+   - Picks the goreleaser config:
+     - `vX.Y.Z`                  → `.goreleaser.yml`            (stable)
+     - `vX.Y.Z-{alpha,beta,rc}*` → `.goreleaser.prerelease.yml`
+   - `make gen-code gen-manifests` regenerates CRDs (sanity).
+   - cosign + cyclonedx-gomod installed on PATH (HRD-09).
+   - goreleaser runs with `GORELEASER_CURRENT_TAG=v<X.Y.Z>` (no git
+     tag at HEAD yet). The GitHub release-create API call auto-creates
+     the tag at default-branch HEAD, which is the bot-bump commit.
+     - cross-builds amd64 + arm64 (CGO_ENABLED=0, distroless runtime).
+     - builds multi-arch manifest list at
+       `ghcr.io/ackstorm/alitellm-operator:vX.Y.Z` (+ `:latest` on
+       stable).
+     - `sboms:` block generates the CycloneDX SBOM via cyclonedx-gomod.
+     - `signs:` block signs the checksums file with cosign keyless OIDC.
+     - `docker_signs:` block signs all image artifacts (per-arch +
+       manifest list) with cosign keyless OIDC.
+   - Pushes the chart to
+     `oci://ghcr.io/ackstorm/charts/alitellm-operator:<X.Y.Z>`.
+   - **LAST**: idempotently creates and pushes the annotated git tag
+     `v<X.Y.Z>`. If goreleaser's release API call already implicitly
+     created the tag, this is a no-op.
+
+Orphan-tag posture: tag-creation is the LAST step. A failure in tests
+or bump or goreleaser leaves no tag on origin and no GH release
+attached to one. The bot bump commit may be on `main` if the failure
+happened in goreleaser — that is reversible by reverting the bot
+commit or by simply running the next release attempt, since `make release-bump`
+inside the workflow is idempotent.
+
+Snapshot builds (`.goreleaser.snapshot.yml`) are intentionally NOT
+signed and do NOT generate SBOMs — they are ephemeral dev artifacts
+pushed as `ghcr.io/ackstorm/alitellm-operator:main` +
+`:main-<shortcommit>`.
+
+`docker_signs:` and `signs:` blocks require:
+- `id-token: write` in the workflow (already set).
+- cosign on PATH (release.yml installs via `sigstore/cosign-installer`).
+
+## Publication — the pre-push gate is non-negotiable
+
+Public remote: `git@github.com:ackstorm/alitellm-operator.git`. A single
+local hook stage pays the cost of "oops, CI failed lint" before the push
+leaves the host (the former fast `pre-commit` gate has been retired —
+lint + unit now run only in the pre-push gate and in CI):
+
+- `pre-push` (`make pre-push`) — full publication check. Runs on
+  every `git push` once `make hooks` is installed; do NOT invoke
+  `make pre-push` manually before `git push` as a "belt and braces"
+  step — the hook will fire it automatically and a manual call just
+  double-spends the ~6 min gate. Manual invocation is reserved for
+  dry-runs (verifying a WIP branch is push-ready without actually
+  pushing). The authoritative gate list lives in
+  `scripts/pre-push-check.sh`; the categories below are intent, not
+  inventory, so the script can evolve without doc drift.
+
+Gate categories — any failure blocks push:
+- **Secret scanners**: gitleaks + trufflehog over `origin/main..HEAD`
+  (full history on first push). Allowlist: `.gitleaks.toml`.
+- **Filesystem hygiene**: large-file caps, sensitive patterns
+  (`.env`, `*.pem`, `*.key`, kubeconfig, ...), required top-level files
+  (LICENSE, README), `.gitignore` coverage.
+- **Repo identity**: origin remote matches expected, branch up to date.
+- **Build hygiene**: `go mod tidy` drift, govulncheck ack-list 1:1
+  match (`scripts/govulncheck-gate.sh` against
+  `references/security/govulncheck-acknowledged.md`).
+- **Code provenance**: per-file SPDX header
+  (`// SPDX-License-Identifier: MIT`).
+- **Defense in depth**: full `make qa-lint` + `make test-unit` run inside
+  the devtools container on every push.
+- **Informational warns** (do not block): commit-author summary,
+  urgent TODO / DO-NOT-COMMIT markers, working-tree status.
+
+If a gate fails, fix the root cause — never `--no-verify` or otherwise
+bypass. Note: `--no-verify` skips ONLY the local hook; it does not
+exempt CI, which reruns the same gates.
+
+## Waiting for state — use blessed make targets
+
+Naked polling loops (`until ...; do sleep N; done`) are banned: a
+disappearing target makes the predicate unreachable, hanging the agent.
+Use these Makefile targets instead:
+
+| Need                                    | Target                                              |
+|-----------------------------------------|-----------------------------------------------------|
+| CR condition Ready                      | `make wait-cr-ready KIND=... NAME=... NS=...`       |
+| Operator Deployment Ready               | `make wait-operator`                                |
+| LiteLLM Deployment Ready                | `make wait-litellm`                                 |
+| Mock pods Ready                         | `make wait-mocks`                                   |
+| Container exit + PASS/FAIL marker       | `make wait-container NAME=<container>`              |
+| Full cluster hydration                  | `make cluster-up` (synchronous; do not poll after)  |
+| Re-apply phases in place (kept cluster) | `make cluster-sync` (re-applies all phases + `verify`) |
+| Health-gate standing state (no mutation)| `make cluster-verify`                               |
+| Operator hot-reload + Ready             | `make operator-redeploy` (bounded `rollout status`) |
+
+Default `WAIT_TIMEOUT=300s` (override per call). `wait-container` takes
+`TIMEOUT=<seconds>` (default 600).
+
+Blessed wait patterns (every `wait-*` uses one):
+1. `kubectl wait --timeout=...`
+2. `kubectl rollout status --timeout=...`
+3. `timeout N docker logs -f <cid> | grep -m1 ...`
+4. `docker wait <cid>`
+
+If a needed wait isn't covered, **add a new `wait-*` target** — targets
+are the contract; ad-hoc loops aren't.
+
+## Common failure modes
+
+### ❌ Prefixing a `make` target with `./scripts/dev.sh` out of habit
+```bash
+./scripts/dev.sh make test-unit
+```
+✅ Run the target bare — it auto-routes:
+```bash
+make test-unit          # routes itself into devtools via container_target
+```
+The prefix is redundant: every toolchain target wraps itself with the
+`container_target` macro, and the `LITELLM_IN_DEVTOOLS=1` guard in
+`scripts/dev.sh` prevents a nested container, so the prefixed form still
+runs ONE container and succeeds — it just adds noise. If docker is down
+you get a clear preflight error from `scripts/dev.sh`, not a cryptic
+missing-`go`-binary failure.
+
+### ❌ Naked polling loop
+```bash
+until docker logs $(docker ps -q -f ancestor=mock) | grep -q PASS; do
+  sleep 10
+done
+```
+✅ Bounded wait via blessed pattern:
+```bash
+timeout 600 docker logs -f $cid 2>&1 | grep -m1 -E "PASS|FAIL" || {
+  echo "FAIL: marker not seen within 600s" >&2; exit 1;
+}
+```
+WHY IT FAILS: When the container exits and is removed, `docker ps -q`
+returns empty; `docker logs` errors forever; the loop never exits.
+
+### ❌ `kubectl wait pod --all` right after `kubectl apply`
+```bash
+kubectl apply -k test/e2e/cluster/03-mocks
+kubectl -n mocks wait --for=condition=Ready pod --all --timeout=60s
+# error: no matching resources found      ← exit 1 in 0.6s, no waiting
+```
+✅ `rollout status` on each Deployment FIRST (blessed pattern 2), then the
+pod wait — `make wait-mocks` and `scripts/cluster.sh wait_mocks` both do this:
+```bash
+kubectl -n mocks rollout status deploy/openai-mock --timeout=60s
+kubectl -n mocks rollout status deploy/kubeai-mock --timeout=60s
+kubectl -n mocks wait --for=condition=Ready pod --all --timeout=60s
+```
+WHY IT FAILS: `wait --all` with ZERO matching objects does not wait — it
+fails instantly. Right after `apply` the ReplicaSet may not have created a
+pod yet, so the race is real (flaked PR #127's E2E; green on rerun).
+`rollout status` targets the Deployment, which exists from the apply.
+
+### ❌ Enterprise-only LiteLLM fields on OSS image
+```yaml
+spec:
+  tags: [team-alpha, prod]   # rejected — HTTP 403 "Enterprise users only"
+```
+✅ Use `metadata` for free-form pass-through:
+```yaml
+spec:
+  metadata:
+    team: alpha
+    env: prod
+```
+WHY IT FAILS: LiteLLM 1.83.10 OSS rejects `tags:` on `POST /team/new`.
+Same for any `*-enterprise-*` Helm value.
+
+### ❌ Re-running the full E2E suite from scratch for every code change
+```bash
+make e2e-full       # full cluster-up + suite each time
+```
+✅ Use the dev loop against the kept cluster:
+```bash
+make cluster-up                # once (cluster KEPT)
+make e2e-focus FOCUS="rateLimits"   # ~30s-2min per iter
+make operator-redeploy         # hot-reload after a code edit
+```
+WHY: `e2e-full` runs `cluster-up` (slow) before the suite. After the
+first run the cluster is KEPT (no teardown), so re-run only the focused
+test or hot-reload the operator instead of paying cluster-up again.
+Teardown is explicit: `make cluster-down`.
+
+### ❌ Pushing without the pre-push hook installed
+```bash
+git push origin main --no-verify
+```
+✅ Install the hook once per clone; never use `--no-verify`:
+```bash
+make hooks          # idempotent; symlinks .git/hooks/pre-push -> scripts/pre-push-check.sh
+git push origin main   # the hook runs make pre-push automatically before the push leaves the host
+```
+Manual `make pre-push` is a dry-run / sanity-check only — `git push`
+already invokes the gate via the installed hook, so running it
+explicitly before pushing is redundant.
+WHY IT FAILS: Pushed secrets, license-header drift, govulncheck advisory
+regressions cannot be untrue-d from public history. The pre-push gate
+script is the contract; the git hook makes it unmissable.
+
+### ❌ Committing an unexplained `+78 /go.mod` batch in `go.sum`
+```
+ M go.sum      # 78 insertions, all `<module> <version>/go.mod h1:...`
+```
+Appears after a generator or test run, unrelated to any dependency change.
+`db87b4d` reverted one such batch that rode in on `3da34bc`; a second
+appeared during the v0.8.2 work.
+✅ Discard it — `git restore go.sum` — and check the pre-push gate's
+"go mod tidy drift" line, which reports go.sum tidy when it is genuinely
+clean. `go mod tidy` also removes these, which is what makes them spurious:
+nothing in the build needs them.
+WHY IT WAS POSSIBLE: `Dockerfile.devtools` used to set `GOFLAGS=-mod=mod`,
+which licenses an ordinary `go build` / `go test` to SILENTLY write missing
+module-graph hashes into `go.sum`. That ENV is now unset, so the container
+uses Go's `-mod=readonly` default and a genuine go.mod/go.sum need fails
+loudly instead. `go mod tidy` / `go get` ignore the setting and still work.
+NOT fully root-caused: the exact trigger stopped reproducing after the
+go1.26.4 → go1.26.6 bump + image rebuild, so treat a recurrence as new
+information rather than the same bug.
+
+### ❌ Every envtest reconcile times out at 30s — even on clean `main`
+```
+--- FAIL: TestModelDiscovery_ElevenLabs_GeneratesChildren (30.08s)
+    child Model "..." not created within 30s; Ready=nil
+# log: "Starting metrics server" → immediately "Stopping and waiting for ... runnables"
+```
+✅ Check `ss -ltn | grep 18080`. The suite manager binds metrics on the
+hardcoded `127.0.0.1:18080` (`MetricsAddr`, `suite_test.go`), and
+`scripts/dev.sh` runs with `--network=host`, so ANY foreign listener on that
+host port (another project's envtest, a port-forward) kills the manager at
+startup; tests then run against a dead manager. Run envtest in a container
+WITHOUT host networking (same mounts/env as `dev.sh`, drop `--network=host`)
+and invoke the underscore target directly, e.g.
+`docker run ... litellm-devtools:latest make _test-envtest-pkg PKG=./internal/controller/ FOCUS=...`.
+Seen 2026-10-05 on the shared dev host.
+
+### ❌ Kubectl from host against the kind cluster
+```bash
+kubectl get pods -n default
+# context not found  — or WORSE: silently answers from your PRODUCTION cluster
+```
+✅ Go through the devtools container:
+```bash
+./scripts/dev.sh kubectl get pods -n default
+```
+WHY IT FAILS: The kind kubeconfig lives at
+`/workspace/.gocache/kube/config` — inside the container. Host kubectl
+has no context for the kind cluster.
+
+The failure is NOT always a clean "context not found". If the host
+kubeconfig has a current-context (an EKS/GKE cluster, say), the command
+SUCCEEDS against that cluster instead. Observed live: `make wait-litellm`
+answered `NotFound` from a production EKS cluster, not from kind — a
+read-only call, but `make mock-mode` on the same path would have created a
+Pod there. In-repo targets are all fixed (they use `$(E2E_KUBECTL)`), but
+ad-hoc `kubectl` you type yourself still carries this risk: check
+`kubectl config current-context` before any manual cluster command, or just
+prefix `./scripts/dev.sh`.
+
+### ❌ Editing files via relative paths when cwd is the wrong repo
+```bash
+cat > internal/controller/scope_ac_n4_test.go <<EOF ...
+# silently writes to a sibling repo if that is cwd
+```
+✅ Always use absolute paths for Edit/Write, and `cd /home/jcm/Projects/alitellm-operator`
+before bash operations. Verify with `pwd && git log --oneline | head -3`.
+WHY IT FAILS: Sibling repos with similar layouts live next to this one.
+Relative-path edits to the wrong tree leave this repo unchanged while
+appearing to "succeed."
+
+### ❌ `spec.params` top-level keys silently dropped on MCPServer
+```yaml
+spec:
+  params:
+    auth_type: api_key       # forwarded since v0.3.1
+    access_groups: [team-a]  # accepted alias of mcp_access_groups
+    server_name: hijack      # IGNORED (reserved structural key)
+```
+✅ As of v0.3.1, every key modeled in `litellm.MCPServerRequest` is
+forwarded. Reserved structural keys (`server_id, server_name, alias, url,
+transport, spec_path`) are dropped at extraction. Pre-v0.3.1 the
+controller forwarded only `mcp_info`, `extra_headers` (map form),
+`static_headers`, `description`.
+WHY IT FAILED PRE-v0.3.1: `mcpserver_controller.go` extracted only four
+typed fields and dropped everything else, even though the request struct
+already modeled the full set.
+
+### ❌ Assuming `ModelDiscovery.spec.baseUrl` is fully SSRF-guarded
+```yaml
+spec:
+  type: kubeai
+  baseUrl: http://169.254.169.254/   # DENIED (cloud metadata) → Ready=False InvalidConfig
+  # baseUrl: http://10.0.0.5:8000/v1 # ALLOWED by design (private RFC1918)
+  # baseUrl: http://svc.ns.svc/v1    # ALLOWED by design (in-cluster)
+```
+✅ `providers.ValidateBaseURL` (M-SEC1) is a **denylist**, not full SSRF
+prevention. It rejects only cloud-metadata (`169.254.169.254`,
+`fd00:ec2::254`), loopback, and link-local hosts plus structural problems
+(non-http(s) scheme, userinfo, query, fragment). Private RFC1918 and `*.svc`
+hosts remain reachable BY DESIGN — KubeAI points `baseUrl` at in-cluster
+service DNS, so a blanket internal-deny would break the supported use case.
+RESIDUAL RISK: a namespaced user can still aim the operator's HTTP client at
+other internal/private services. A host-allowlist is intentionally deferred.
+
+### ❌ `type: openai` Discovery with a custom `baseUrl` routes inference to OpenAI
+```yaml
+spec:
+  type: openai
+  baseUrl: https://openrouter.ai/api/v1   # discovery LISTs models fine (347 found)
+  params:
+    api_key: "{{OPENROUTER_API_KEY}}"     # sk-or-v1***
+```
+Symptom: children go `Ready=Synced` but inference 401s —
+`OpenAIException - Incorrect API key provided: sk-or-v1*** . You can find
+your API key at https://platform.openai.com/...`. LiteLLM routed to
+`api.openai.com` with the OpenRouter key.
+✅ Fixed v0.7.19: `buildChildModel` overlays `api_base: <spec.baseUrl>` onto
+EVERY child when `spec.baseUrl` is non-empty (was kubeai-only). Empty baseUrl
+(plain OpenAI/Anthropic/Gemini) injects nothing → LiteLLM default endpoint.
+User-supplied `params.api_base` still wins. Pre-fix workaround (no new image):
+add `api_base: <baseUrl>` to `spec.params` by hand.
+WHY IT FAILED: baseUrl reached the LIST path (`baseURLFor`) but the child's
+`litellm_params` carried only `model: openai/<id>` + `api_key`, no `api_base`,
+so LiteLLM's openai provider fell back to `api.openai.com`.
+
+### ❌ Matching ModelDiscovery `filters` against the raw upstream ID only
+```yaml
+spec:
+  filters:
+    exclude: ["anthropic-.*"]   # ≤v0.8.1: did NOT drop ~anthropic/claude-sonnet-latest
+```
+Symptom: children keep reappearing for a vendor you excluded, and the offending
+entry in `status.generatedChildren`
+(`openrouter.anthropic-claude-sonnet-latest`) looks exactly like one the
+pattern already covers — the status offers NO string the filter would match.
+✅ `filters.ApplyWithAliases` matches each candidate against three forms — raw
+provider ID (`data[].id`), `normalize.Normalize(rawID)`, and the full child
+name (`<prefix>.<normalized>`) — and any hit counts. The reconciler resolves
+`prefix` + `childNameOf` in **Step 7** (before filtering) for this reason; Step
+8 only applies them. The kept set is still raw IDs, so rendering is unchanged
+and pre-existing raw-form patterns keep working.
+WHY: normalization is lossy (lowercase, `[/:_ ]` + every non-`[a-z0-9.-]` char →
+`-`, collapse runs, TRIM leading/trailing non-alnum), so OpenRouter's rolling
+aliases `~anthropic/claude-sonnet-latest` and the real `anthropic/claude-sonnet-5`
+normalize to indistinguishable child names — a user could not write a working
+pattern from anything the CR showed them. `MCPServerDiscovery` already filtered
+on the post-derivation child name (v0.3.0); this closes the same gap for models
+without breaking raw-ID patterns.
+ALSO: patterns are RE2, not glob — `openai-*` means "openai" + zero-or-more `-`,
+i.e. `^openai`. Glob-shaped patterns mostly work by accident; `.*` is the wildcard.
+
+### ❌ Master key over plaintext `http://` to a remote LiteLLM (M-SEC2)
+`spec.endpoint: http://api.example.com` sends the master key
+(`Authorization: Bearer`) in cleartext. By default the connection reconciler
+only WARNS (log marker `MasterKeyOverPlaintextHTTP`) — it does NOT flip
+Ready to False, because in-cluster `http://litellm.<ns>.svc` is the common,
+acceptable deployment and is classified secure-enough (loopback + `*.svc` +
+bare service names are exempt). To hard-reject plaintext-http remotes:
+```bash
+kubectl set env -n litellm-system deploy/alitellm-operator \
+  LITELLM_OPERATOR_REQUIRE_HTTPS_REMOTE=true
+```
+With the flag set, a remote `http://` endpoint yields
+`Ready=False, reason=InsecureEndpoint` (terminal; edit spec.endpoint to
+retrigger). Classification logic: `litellm.ClassifyEndpointTransport`.
+
+### ❌ Expecting LiteLLM error detail in CR condition.Message
+```yaml
+status:
+  conditions:
+  - type: Ready
+    status: "False"
+    reason: LiteLLMRejected
+    message: 'LiteLLM rejected model create: 400 (code=400)'   # generic
+```
+✅ Opt in if your environment is non-secret-bearing:
+```bash
+kubectl set env -n litellm-system deploy/alitellm-operator \
+  LITELLM_OPERATOR_DANGEROUSLY_INCLUDE_REJECTED_BODY=true
+```
+Note: `LITELLM_OPERATOR_DANGEROUSLY_INCLUDE_REJECTED_BODY` (controls CR
+`status.conditions[].message` content) is distinct from
+`LITELLM_OPERATOR_DANGEROUSLY_LOG_BODIES` (controls transport-layer log
+redaction) — they govern different surfaces and must be flipped
+independently.
+WHY IT IS GENERIC BY DEFAULT: LiteLLM error envelopes can echo inbound
+payload fields (param echo, JSON-decode error citing a value). Operator
+cannot know in general which fields carry provider secrets, so the
+envelope body never lands in CR status. The actionable detail is in
+operator logs (transport-layer-redacted).
+
+### ❌ E2E cross-check via a one-shot `kubectl run --rm -i` curl pod
+```go
+out, err := exec.Command("kubectl", "-n", ns, "run", podName,
+    "--rm", "-i", "--restart=Never", "--quiet",
+    "--image=curlimages/curl:8.10.1", "--", "curl", "-sS", url,
+).CombinedOutput()
+Expect(err).NotTo(HaveOccurred())      // passes — exit 0
+idx := bytes.IndexByte(out, '{')       // -1: body is empty
+```
+✅ Probe through the retrying helpers in `test/e2e/curl_helpers_test.go`:
+```go
+body := curlPodJSON(ns, "probe", '{', "curl", "-sS", url)   // retries until marker
+// non-JSON payloads (Prometheus text): curlPodBody(ns, "probe", accept, ...)
+```
+WHY IT FAILS: `kubectl run --rm -i` attaches via an HTTP connection upgrade
+that can lose the short-lived curl container — `unable to upgrade
+connection: container <p> not found in pod <p>` — and the log-streaming
+fallback then captures nothing, yielding EMPTY stdout with exit code 0. The
+curl process still ran (POST side effects land), but a body the spec needs
+to PARSE is gone. Different specs flake each run under cluster load.
+`curlPodJSON` / `curlPodBody` retry until the expected payload appears.
+POST-only sites (no body parse) don't need the helper — the side effect
+lands regardless of attach.
+
+### ❌ Routing a *confirmed-absent* LiteLLM delete through `onAckMissing`
+```go
+// deletion path, status.lastRendered.modelID == ""
+case err == nil && resolved == nil:   // name-resolve: 404 / empty data[]
+    onAckMissing("name-resolve returned not-found")  // under Delete → blocks
+```
+A CR rejected on create (HTTP 422, e.g. missing `model`) never gets a
+`modelID`, so the finalizer-time delete falls to name-resolve, which
+returns empty → the entry is **confirmed absent**. Routing that through
+`onAckMissing` strands the CR in `Terminating` forever under
+`deletionPolicy: Delete` (`error="delete blocked: name-resolve returned
+not-found; entry already absent"`, controller-runtime backoff loop).
+✅ Confirmed-absent drains the finalizer regardless of policy:
+```go
+case err == nil && resolved == nil:
+    onConfirmedAbsent("name-resolve returned not-found", model.Name)  // falls through to RemoveFinalizer
+```
+WHY: `onAckMissing` exists to gate `Delete` on *cannot-confirm* states
+(LiteLLM unavailable, 401) — we genuinely don't know if the entry still
+exists. A definitive 404 / empty `data[]` (or 404 on `POST /model/delete`,
+`litellm.IsNotFound`) is positive proof the entry is gone, so the Delete
+goal is already met. The sibling controllers (a2aagent/mcpserver) already
+drain unconditionally on name-resolve-empty; the model controller now
+matches. Break-glass for an already-stuck CR (no operator redeploy):
+`kubectl patch <kind> <name> --type=merge -p '{"metadata":{"finalizers":[]}}'`
+(the `deletion-policy-override=Orphan` annotation no longer drains while
+LiteLLM is unreachable — see the Orphan-outage entry below).
+
+### ❌ Orphan policy dropping the finalizer during a LiteLLM outage leaks the row
+```
+# 2026-08-19 UTC — LiteLLM hard down 13:10 → 20:45 (probe Unreachable)
+16:14:32 openrouter-discovery vanish-deletes openrouter.ai21-jamba-large-1.7
+event: deletionPolicy=Orphan and LiteLLM ack missing (LiteLLM unavailable);
+       finalizer removed; entry may persist
+# → LiteLLM row 8b7a8bd6-… lives on with no CR; nothing ever revisits it
+```
+Discovery-owned children are forced to Orphan, and Orphan used to drain on ANY
+missing ack, outages included.
+✅ `newAckMissingFn` (`shared_helpers.go`) takes `(reason, permanent)`. Orphan
+drains only on a PERMANENT cause: connection `Absent` (`ackUnavailable(snap)` —
+LiteLLMConnection being deleted, namespace teardown) or a deterministic non-404
+4xx. Every other not-usable reason (`Unreachable`, `Connecting`, `""`,
+`BadMasterKey`, `SecretNotFound`, `InvalidEndpoint`, `InsecureEndpoint`) and
+every 401 KEEPS the finalizer, records `deletion_blocked`, emits
+`LiteLLMDeleteDeferred`, and returns an error (backoff ≤30s; no HTTP call while
+not usable, so no storm). `connectionFanIn` / `ConnectionRebuiltSource` /
+`List<Kind>Requests` do not filter terminating CRs, so recovery re-drives the
+delete. Confirmed-absent and `Delete` policy are unchanged. TRADE-OFF: during an
+outage deleted CRs stay Terminating and a Discovery being deleted waits for its
+children; break-glass is the finalizer patch, NOT the override annotation. New
+call sites MUST pass `permanent` deliberately — a time-based grace period was
+rejected (the outage above lasted 7.5h). ALSO: deletion-path 401s do NOT call
+`InvalidateOn401`. With it, a key that passes `/key/health` but 401s on delete
+looped DELETE→401→invalidate→probe re-Sync→rebuilt fan-in (no backoff)→DELETE at
+~600/s (seen in envtest `TestTeamReconciler_AC_T3_Delete401AntiStorm`, which also
+polluted `TestWatchNamespaceEnforcement`'s read count). Plain error return =
+per-item backoff; the probe owns key health.
+
+### ❌ Gating a LiteLLM mutation on `snap.Ready` alone
+```go
+snap := r.Cache.Snapshot()
+if !snap.Ready {              // passes a Ready+nil-Client snapshot through
+    return notReady(...)
+}
+snap.Client.GetRouterSettings(ctx)   // nil deref → recovered panic, poisoned reconcile
+```
+✅ Gate on `ConnectionSnapshot.Usable()` (Ready AND Client != nil):
+```go
+if !snap.Usable() {          // Ready+nil-Client takes the not-Ready path
+    return notReady(...)
+}
+snap.Client.GetRouterSettings(ctx)   // Client guaranteed non-nil here
+```
+WHY IT FAILS (#74): `Cache.Rebuild` does NOT enforce the
+`Ready=true ⇒ Client!=nil` invariant — it stores whatever snapshot it is
+handed. Production always pairs Ready with a fresh client, but envtest
+cleanup that rebuilt the shared singleton with
+`ConnectionSnapshot{Ready: true, Reason: "Synced"}` (no Client) poisoned
+the manager-level cache; the next reconcile of an always-on singleton
+(`modelalias`) dereferenced the nil `snap.Client` and panicked
+(controller-runtime recovers it, so it surfaced as a shuffle-dependent
+flake, not a crash). All six dependent reconcilers now gate on
+`snap.Usable()`; tests restore Ready state via `setConnCacheReady()`
+(suite-mock-backed client), never a bare `Ready:true` literal. NOTE: a
+SEPARATE class of `-shuffle` flakes (tracked under #74) lives in the
+controller suite — it surfaces on the release gate (`make test-full`,
+`-race -shuffle=on` over the WHOLE controller package at once, heavier
+than the per-package PR Envtest job), not on PR CI.
+- **mockServer POST-count bleed → at-least-once over-count.** The
+  reconcile loop is at-least-once: the 100ms safety-relist runnables can
+  fire a redundant idempotent mutation off cache-stale status before the
+  prior write propagates. Tests that asserted an EXACT mutation count
+  (`POST /model/update == 1`, `PUT .../mcp|agents == 1`, post-CREATE
+  `MutationsBy*Name == 1`) flaked to 2. FIX (2026-06-11): assert the
+  drift-correction SHAPE — `>=1` of the expected verb, with `delete`/`new`
+  kept exact-zero — never an exact mutation count. A redundant idempotent
+  write is harmless in production (relist is 30m there).
+- **Relist-recovery deadline too tight under release load.**
+  `TestGuardRail_SafetyRelist_CreateMissing` waited 15s for safety-relist
+  recovery; the full-suite gate's workqueue contention slipped past it.
+  Bumped to 30s (loop still breaks on first success).
+- **connection-reason `Absent` vs `Unreachable`** ordering flake — still
+  open under #74, not yet addressed.
+- **Suite-global relist gated OFF by default (2026-06-14, #74 systemic
+  fix).** The model + guardrail `SafetyRelistRunnable`s ticked at 100ms for
+  the whole package run (~30 enqueues/s into the shared workqueue) — the
+  contention floor behind the timing flakes. They now carry a nil-safe
+  `Gate func() bool` (production leaves it nil → identical behavior) and the
+  envtest suite defaults them OFF via `suiteRelistEnabled`; only the ~2
+  drift-recovery tests opt in with `enableSuiteRelist(t)`. The
+  `TeamDefaultRunnable` is NOT gated (it enqueues one deduped `Team/default`
+  request per tick — implicit-default/bootstrap tests depend on it). This
+  fix alone removed the two headline #74 flakes
+  (`TestModel_SpecParamsKeyRemoval_DeleteAndRecreate` at-least-once
+  over-count; `TestConnectionProbeLoop_BadMasterKey` anti-storm) on a fixed
+  `-race -shuffle` seed (7→5 failures, 0 regressions). New controller tests
+  must NOT assume background relist fires unless they call
+  `enableSuiteRelist(t)`. The remaining 5 `-race -shuffle` failures are
+  PRE-EXISTING test-design/contamination races (MCPServer
+  `CreateOnFirstReconcile` / `OwnerRefTolerance` /
+  `DriftSuppressedOnFirstCreate`, Team `DriftSuppressedOnFirstCreate`,
+  MCPServer `UpdateForwardsAllParams`) — tracked for a dedicated debug pass,
+  NOT caused by the gating change.
+NOTE: local envtest on a resource-starved host can fail at suite SETUP
+(`WaitForCacheSync: did not sync within 30s`) or mass ~30s poll-timeouts
+— that is environmental host starvation, NOT a code regression; verify on
+CI's Envtest job, which is the reliable signal.
+- **Widening the shared `suiteRelistEnabled` gate to more kinds widens this
+  same contamination surface.** The relist-runnable-convergence work (2026-07-16,
+  issue #102 follow-up) added Team/MCPServer/A2AAgent `SafetyRelistRunnable`s to
+  the suite, gated by the SAME `suiteRelistEnabled` atomic as Model/GuardRail
+  (Task 5 instruction: "carry the same Gate or they reintroduce the flake").
+  Consequence: the 4 existing `enableSuiteRelist(t)` call sites in
+  `model_controller_test.go` now ALSO activate Team/MCPServer/A2AAgent relist
+  ticks for their duration, not just Model/GuardRail — any CR left standing at
+  that moment (notably the near-permanent `Team/default`) gets re-listed and
+  re-enqueued too. Confirmed via a direct baseline diff (same `make test-full`
+  invocation on the commit immediately before this work): `TestConnectionFinalizerAddRemove_CONN_09`
+  (exact-match `mockServer.Mutations()` assertion) fails on UNMODIFIED code
+  too — this class of exact-count/anti-storm assertion against ~300 sequential
+  tests sharing one apiserver + one mock was already fragile before this
+  change. `TestConnectionProbeLoop_BadMasterKey` (previously in the "removed
+  by the #74 gating fix" pair above) was also observed failing post-change —
+  plausible mechanism: a backlogged Team/MCP/A2A relist reconcile still
+  draining from an earlier `enableSuiteRelist(t)` window hits a 401 during a
+  LATER test's `Mode401` window and calls `Cache.InvalidateOn401`, triggering
+  an extra `/key/health` probe. Not chased further — this is the SAME accepted
+  trade-off as the Non-Goals "tick spread" note in the relist-convergence plan
+  (per-kind gates were explicitly out of scope); `make e2e-full` against a
+  real cluster is the decisive gate, not a local `-race` full-package run.
+
+### ❌ `kustomize edit set image` in a build recipe — it WRITES a tracked file
+```make
+_build-installer: gen-manifests gen-code kustomize
+	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+	$(KUSTOMIZE) build config/default > dist/install.yaml
+```
+`kustomize edit` is a write, not a read: a plain `make build-installer` flipped
+the committed `newTag: v0.8.0` pin to `controller:latest` and left
+`config/manager/kustomization.yaml` dirty (also via `helm-sync`, which depends on
+it). Three snapshot/restore workarounds had grown around it (`ci.yml`,
+`release.yml`, `pre-push-check.sh`), and `release-bump` could not repair the
+damage — its `newTag: v.*` sed does not match `newTag: latest`, so a
+`controller:latest` landing on `main` would be shipped silently.
+✅ Route every kustomize image pin through `kustomize_pin_image` (Makefile):
+```make
+_build-installer: gen-manifests gen-code kustomize
+	mkdir -p dist
+	$(call kustomize_pin_image,$(KUSTOMIZE) build config/default > dist/install.yaml)
+```
+It snapshots the file, restores it via a `trap … EXIT INT TERM` (so failure and
+Ctrl-C are covered too), and skips the edit entirely when `IMG` is unset — the
+committed release pin is then what `dist/install.yaml` carries, NOT
+`controller:latest`. `_deploy` shares the macro. Any NEW target that needs an
+image override MUST use it rather than editing `config/manager/` in place.
+WHY IT MATTERS: `dist/` is gitignored and the Helm chart re-templates the image,
+so the visible damage is a dirty tree plus the raw `kustomize build config/default`
+install path pointing at a tag that exists in no registry.
+
+### ❌ Admin-merging a PR over a red required check
+```
+PR #112 merged with Envtest: FAILURE (metric rename half-applied to
+metrics_scrape_test.go). Post-merge CI never runs on main (PR-only
+invariant), so main stayed silently broken — EVERY subsequent PR failed
+Envtest with TestMetricsExposeS10Set, and a release cut would have died
+at run-tests.
+```
+✅ Fix the check before merging, or land a follow-up IMMEDIATELY. When two
+unrelated PRs fail the SAME test, suspect main, not the PRs — check
+`gh pr view <merged-pr> --json statusCheckRollup` for a red check that was
+merged over.
+WHY IT FAILS: branch protection's required checks only gate the PR; an
+admin merge bypasses them, and the PR-only CI matrix means nothing
+re-validates main after the merge. The breakage surfaces one PR later,
+attributed to the wrong author.
+
+### ❌ Steady-state early-return that skips the Ready-condition heal
+```go
+// Step 9 (guardrail, pre-fix):
+if persistedID != "" && lastRendered.Hash == currentHash &&
+    status.ObservedGeneration == gr.Generation {
+    return ctrl.Result{}, nil   // never rewrites a stale Ready=False
+}
+```
+Symptom (#102): a CR sits `Ready=False, reason=LiteLLMUnavailable`,
+`message: LiteLLMConnection/default not Ready (reason: Connecting)` with a
+frozen `lastTransitionTime` for weeks, while the entry is live and healthy in
+LiteLLM. Reconciles fire on every event (`result="success"`, no requeue) and
+change nothing. Looks like the connection cache is not-Usable for this one
+kind — it is not; the reconcile passes the connection gate and returns from
+the steady-state block.
+✅ Heal the condition inside the steady-state block before returning:
+```go
+if ready := apimeta.FindStatusCondition(gr.Status.Conditions, conditionTypeReady); ready == nil ||
+    ready.Status != metav1.ConditionTrue || ready.Reason != reasonSynced {
+    if err := r.writeStatus(ctx, &gr, metav1.ConditionTrue, reasonSynced, "guardrail registered"); err != nil {
+        if apierrors.IsConflict(err) { return ctrl.Result{}, nil }
+        return ctrl.Result{}, err
+    }
+}
+```
+WHY IT FAILS: the Step 4 connection-gate `writeStatus` stamps
+`observedGeneration = generation` along with `Ready=False`, and leaves
+`lastRendered` (hash + id) intact. Once the connection recovers, all three
+steady-state predicates hold, so the reconciler short-circuits and never
+re-enters the CREATE/UPDATE branch where the terminal `Ready=True` write
+lives. Self-perpetuating: nothing but a spec edit or delete+recreate clears
+it, and operator restarts do not. All five domain reconcilers (model,
+mcpserver, team, a2aagent, guardrail) now carry this heal — **any new
+steady-state short-circuit MUST include it.**
+
+### ❌ LiteLLM proxy without `STORE_MODEL_IN_DB` → every Model 500s
+```yaml
+status:
+  conditions:
+  - type: Ready
+    status: "False"
+    reason: LiteLLMRejected   # POST /model/new returned 500
+```
+LiteLLM logs:
+```
+model_management_endpoints.py:957 - add_new_model(): Exception occured - 500: {'error': "Set `'STORE_MODEL_IN_DB='True'` in your env to enable this feature."}
+```
+✅ The proxy must persist models in its DB before it will accept
+`POST /model/{new,update}`. Set ONE of these on the LiteLLM deployment
+(not the operator):
+```yaml
+# env var
+env:
+  STORE_MODEL_IN_DB: "True"
+# OR general_settings (proxy config.yaml / Helm values)
+general_settings:
+  store_model_in_db: true
+```
+WHY IT FAILS: with `STORE_MODEL_IN_DB` unset, LiteLLM's
+`add_new_model` rejects all model-create/update calls before touching
+the body — so EVERY `LiteLLMModel` (and Discovery-generated model) goes
+`Ready=False`. Operator-side config is correct; the gap is upstream
+LiteLLM. The e2e cluster already sets this
+(`test/e2e/cluster/01-deps/litellm.values.yaml`). Teams/MCP/A2A CRs are
+unaffected — only model endpoints gate on the flag.
+
+### ❌ Expecting LiteLLM to fill model `created_at` → UI shows "Unknown date"
+```
+Models UI row:  alitellm-operator/0.7.8   Unknown date
+```
+✅ The operator must stamp `model_info.created_at` / `model_info.updated_at`
+itself on CREATE — same mechanism as the `created_by` stamp (FIX2 M-8).
+`model_controller.go` sets all four on the `POST /model/new` body
+(RFC3339 UTC). Adopted/out-of-band rows cannot be back-stamped.
+WHY IT FAILS: in OSS (non-premium) LiteLLM, `proxy_server.get_model_info_with_id`
+copies the DB `created_at`/`updated_at` columns into `model_info` ONLY when
+`premium_user is True` (Enterprise). Non-premium UIs read the date straight
+from the `model_info` JSON blob, so a blob without `created_at` renders
+"Unknown date". `POST /model/new` (`_add_model_to_db`) is the ONLY endpoint
+that persists the `model_info` blob — `POST /model/update` (`update_model`)
+rewrites `litellm_params` + the `updated_by` DB column ONLY and never touches
+the blob, so the timestamp cannot be added/refreshed on the UPDATE path.
+Stamp it on CREATE or it never appears.
+
+### ❌ `model_info` changes (e.g. `access_groups`) silently dropped on UPDATE
+```yaml
+# Adding a model_info value/key to an existing model:
+spec:
+  info:
+    access_groups: ["anthropic"]   # added after the model was first created
+```
+Symptom: the CR reports `Ready=Synced`, but LiteLLM's DB `model_info` blob
+still lacks the new value — because a non-shrinking `model_info` change used
+to take the plain `POST /model/update` path, which never rewrites the blob
+(same root cause as the `created_at` entry above — only `POST /model/new`
+persists `model_info`).
+✅ The operator now tracks `status.lastRendered.infoHash` (SHA-256 of the
+rendered `model_info`, excluding the `id` overlay) and forces a
+delete+recreate (`POST /model/delete` + `POST /model/new`) on ANY `model_info`
+change, so the blob lands in LiteLLM. The `currentRenderedHash` already covered
+`model_info` values, but it only short-circuits the steady state; the UPDATE
+branch needs `infoHash` to distinguish a blob change from a params-only change.
+MIGRATION: an empty stored `infoHash` (pre-upgrade status) is backfilled
+silently (treated as unchanged) to avoid a mass recreate of every model on
+operator upgrade. CONSEQUENCE: models whose blob is ALREADY stale in LiteLLM
+(e.g. `access_groups` added before this fix shipped) are NOT auto-healed —
+delete the entry in LiteLLM once and the operator recreates it fresh via
+`POST /model/new`. Forward changes are handled correctly.
+
+### ❌ Model created with no access group → unreachable by group-scoped keys
+Symptom: a `LiteLLMModel` (or Discovery-generated child) with no
+`spec.info.access_groups` lands in LiteLLM belonging to NO access group, so
+virtual keys scoped by access group can't see it.
+✅ The operator injects a default access group into the rendered `model_info`
+when the model declares none (absent OR empty list). The group name is set by
+`DEFAULT_ACCESS_GROUP` (default **`default`**); empty disables injection. The
+injection happens at a single point in `model_controller.go` BEFORE the
+`infoHash`/`renderedHash` are computed, so it covers both standalone
+`LiteLLMModel` CRs AND Discovery-generated children (children are
+`LiteLLMModel`s reconciled by the same controller), is persisted on the
+create/update body, and survives the steady-state hash compare. An explicit
+non-empty `spec.info.access_groups` is never overridden.
+```bash
+kubectl set env -n litellm-system deploy/alitellm-operator \
+  DEFAULT_ACCESS_GROUP=default   # or "" to disable injection
+```
+
+### ❌ Router model (`auto_router/…`) recreates forever, new modelID every reconcile
+```yaml
+spec:
+  params:
+    model: auto_router/complexity_router   # or any auto_router/* pseudo-model
+    complexity_router_config: { tiers: { SIMPLE: ackstorm.fast, ... } }
+    complexity_router_default_model: ackstorm.lite
+```
+Symptom: CR flips a fresh `status.lastRendered.modelID` every ~second,
+never visible in the LiteLLM UI / `GET /model/info`, operator log spams
+`safety re-list detected out-of-band delete; clearing ID` then
+`model created in LiteLLM`. **The model actually works for inference** —
+it is only invisible to the operator.
+✅ Handled since the router-aware reconcile: `isRouterModel` (litellm_params
+`model` prefix `auto_router/`) skips the Step 7b existence probe, so the CR
+reaches a stable `Ready=Synced` with the first-create id retained.
+WHY IT FAILED: LiteLLM stores router/auto-router/complexity-router
+deployments in its in-memory router, NOT the DB model table, so
+`GET /model/info?model_name=` (and `?litellm_model_id=`) never returns
+them. The existence probe read empty → cleared the ModelID → re-POSTed
+`/model/new` (LiteLLM answers *"already exists, ignoring"*, 200 + a fresh
+id) → infinite churn. Routers are the canonical *created-but-not-listed*
+class.
+
+### ❌ A non-router model storms LiteLLM with `/model/new` (created-but-not-listed)
+Same churn shape as the router case but for a model that genuinely never
+persists — e.g. `use_in_pass_through: true` on a LiteLLM build that 200s
+the create but discards it. These DON'T work for inference and can't be
+made to via the operator.
+✅ The recreate circuit breaker caps recreates at
+`LITELLM_OPERATOR_RECREATE_LIMIT_PER_MIN` (default **10**) per CR per 60s
+sliding window; on trip the CR is parked `Ready=False`,
+`reason=RecreateThrottled` and requeued after 5m (self-heals if LiteLLM
+behavior changes). Tune / inspect:
+```bash
+kubectl set env -n litellm-system deploy/alitellm-operator \
+  LITELLM_OPERATOR_RECREATE_LIMIT_PER_MIN=10
+kubectl get litellmmodel <name> -o jsonpath='{.status.conditions[?(@.type=="Ready")]}'
+```
+Router models never reach the breaker — they bypass the probe (above) and
+sit Ready. NOTE: the breaker is wired on the **Model, MCPServer, Team, and
+A2AAgent** controllers (the four that share the `probeVanishedResourceID`
+vanish path + a CREATE-after-clear recreate site). Each parks its CR
+`Ready=False/RecreateThrottled` and backs off `recreateThrottleBackoff` on
+trip; `LITELLM_OPERATOR_RECREATE_LIMIT_PER_MIN` tunes all four. The Guardrail
+controller does not have a vanish-recreate site and is unaffected.
+
+### ❌ Resolving the Model safety-relist by the FIRST `/model/info` row
+```go
+// Step 7b probe closure (pre-fix):
+entry, _ := GetModelInfoByName(ctx, model.Name)
+return entry.ModelInfo.ID   // first row only
+```
+✅ Resolve by PRESENCE of the tracked id in the full set, and prune extras:
+```go
+ids, _ := GetModelIDsByName(ctx, model.Name)
+for _, id := range ids { if id == lastID { return lastID } } // present → no drift
+if len(ids) > 0 { return ids[0] }                            // gone → adopt one
+// Step 7c: delete every id != lastID → converge to one row.
+```
+WHY IT FAILS (id-drift duplicate-amplifier churn): LiteLLM allows multiple
+deployment rows per `model_name` (POST `/model/new` is NOT idempotent). The
+first-row read often returns a duplicate whose id != the tracked id → the
+vanish-probe reads "id drift" → clears the tracked id → CREATE branch → another
+`POST /model/new` → another duplicate row → the next probe is even more likely
+to mismatch → self-perpetuating. Prod saw `claude-opus-4-7` accumulate **1718
+rows over 9 days** and `ackstorm.default` **7186 rows in 5h** (the latter was a
+*router*-model storm, separately fixed in v0.7.10 by skipping router models in
+Step 7b). The fix is order-independent set-membership (Fix A) plus a best-effort
+prune of the extras keeping the tracked id (Fix B, metric
+`alitellm_operator_drift_corrected_total{domain=model,action=duplicate_pruned}`). Router models
+(`litellm_params.model` starts `auto_router/`) remain skipped — never pruned or
+probed. Operational check (should stay empty):
+```sql
+SELECT model_name, count(*) FROM "LiteLLM_ProxyModelTable"
+GROUP BY 1 HAVING count(*) > 1;
+```
+
+### ❌ Granting on a LiteLLMTeam directly (removed v0.9.0)
+```yaml
+kind: LiteLLMTeam
+spec:
+  permission: { modelGroups: [openai] }   # field no longer exists
+```
+✅ Teams only attach groups; grants live in `LiteLLMAccessGroup`:
+```yaml
+kind: LiteLLMTeam
+spec:
+  accessGroups: [dream]
+```
+The operator always sends a CLOSED team (`closedTeamGrant`,
+`team_permission.go`): `models: ["no-default-models"]`, agents = null UUID,
+`[]` for mcp_servers / mcp_access_groups / agent_access_groups / mcp_toolsets,
+plus `access_group_ids` — every field on every write, the implicit
+`Team/default` included. WHY each piece:
+- `models` / `agents` fail OPEN on `[]` in LiteLLM (a team with `models=[]`
+  saw all 427 models / 7 agents), so they carry a value nothing matches.
+  `no-default-models` is LiteLLM's own `SpecialModelNames.no_default_models`:
+  catalogs drop it, so a closed team lists zero models (the old
+  `__deny_all__` showed up as a phantom model in LibreChat). Same value
+  alitellm-auth uses.
+- `POST /team/update` MERGES per field and keeps an OMITTED field's stale
+  value (the v0.7.25 revocation leak), so nothing is ever omitted or `null`.
+- The four MCP/agent-group fields fail CLOSED on `[]` — do NOT add a sentinel
+  there "for consistency".
+- Toolsets are ungrantable through the operator: LiteLLM access groups have no
+  toolset field (1.102.0: `access_mcp_toolset_ids` is silently dropped).
+Implicit defaults: with no CRs the operator keeps team `default` (closed, no
+groups) and access group `default` (EMPTY, `ensureEmptyDefault` in
+`accessgroup_controller.go`), NOT linked. Deleting either CR falls back to
+empty and KEEPS the LiteLLM row (team delete suppressed; group emptied, not
+deleted) so ids stay valid.
+
+### ❌ Persisting a vanish-probe's in-memory ID clear on an error path
+```yaml
+status:
+  lastRendered:
+    at:   "2026-07-20T11:40:00Z"   # present
+    hash: "9f2c..."                # present
+    # agentID: GONE — and nothing puts it back
+  conditions:
+  - type: Ready
+    status: "False"
+    reason: LiteLLMRejected
+    message: 'LiteLLM rejected POST /v1/agents: 400 (code=400)'
+```
+Step 7b/8b clears the tracked id IN MEMORY when the probe says the entry
+vanished, then falls through to the CREATE arm. If that create is rejected
+deterministically, the error path calls `writeStatus` — which persists whatever
+`LastRendered` currently holds, i.e. the cleared id. The CR now has no id, so
+the vanish probe (which needs one) is skipped and every later reconcile re-runs
+the same doomed CREATE. Self-perpetuating; only a hand-edit of the status
+subresource clears it. Hit in prod on v0.8.3 / LiteLLM 1.99.1: 4 of 5
+`LiteLLMA2AAgent` CRs bricked at once (#131), because `POST /v1/agents` answers
+`400 Agent with name X already exists` while `GET /v1/agents` had just omitted
+the same agent — both read LiteLLM's in-memory `AGENT_REGISTRY`, and they
+disagreed.
+✅ All seven reconcilers route `LastRendered.<Kind>ID` through
+`keepPersistedID(want, got)` inside their `writeStatus` closure — a blank never
+overwrites a populated id. Only a successful create/adopt learns a new id, and
+that is never empty, so a blank overwriting a value is always the bug. ALSO:
+the A2A CREATE arm now adopts by name on a 4xx (`resolveAgentIDByName` → `PUT`,
+metric `action=adopted_by_name`), mirroring the MCPToolset 409-adoption arm, so
+a CR already in the bricked state heals itself without a status hand-edit.
+WHY IT MATTERS BEYOND A2A: the clear-then-CREATE shape is in model, mcpserver,
+team, guardrail, mcptoolset and accessgroup too — the guard is in each
+`writeStatus`, not just the one kind that was reported. Any NEW status write
+between a probe clear and the create must not re-introduce it.
+
+### ❌ Expecting the operator to validate `LiteLLMMCPToolset` server/tool names
+```yaml
+spec:
+  from:
+  - server: hindsigt          # typo — accepted, CR goes Ready=Synced
+    tools: [web_serch]        # typo — accepted, CR goes Ready=Synced
+```
+✅ Neither the operator nor LiteLLM validates these. Verified on LiteLLM 1.93.0:
+a bogus `server_id` or `tool_name` is accepted with 201, and the toolset simply
+grants nothing (`200 {"tools":[]}` at `/toolset/<name>/mcp`, no exception in the
+proxy logs). Deleting a referenced MCP server leaves a dangling ref with no
+cascade. This is DELIBERATE — glob/name validation would require the operator
+to enumerate tools via `GET /v1/mcp/tools`, which needs the MCP server live,
+reachable, and readable by the operator key. Diagnose an empty toolset with:
+```bash
+curl -H "Authorization: Bearer $KEY" $LITELLM/v1/mcp/toolset
+```
+WHY IT IS SILENT: LiteLLM's toolset resolution wraps the whole lookup in
+`try/except → return {}`, and an unknown `server_id` simply never matches a
+real server in the fail-CLOSED server-access check.
+
+### ❌ Trusting `DELETE /v1/mcp/toolset/<id>` to 404 on an absent entry
+```
+error="litellm: 500 on DELETE /v1/mcp/toolset/<uuid> (code=500, transient)"
+```
+repeating forever, CR stuck `Terminating` with its finalizer intact.
+✅ LiteLLM 1.93.0 raises `AttributeError` — **HTTP 500, not 404** — when the
+toolset is already gone:
+```python
+# toolset_db.py:110  delete_mcp_toolset
+row = await ...delete(...)      # None when the row is absent
+return _toolset_from_row(row)
+# toolset_db.py:16   _toolset_from_row
+AttributeError: 'NoneType' object has no attribute 'model_dump'
+```
+A reconciler that classifies 500 as transient retries the finalizer forever and
+strands the CR PERMANENTLY (nothing but a manual `kubectl patch` clears it).
+`mcptoolset_controller.go` therefore re-resolves by name in the 5xx branch: an
+empty name-resolve is positive proof the entry is absent, so the Delete goal is
+met and the finalizer drains regardless of `deletionPolicy` — the same
+confirmed-absent rule the model controller follows. A still-listed entry keeps
+the transient backoff. Break-glass for an already-stuck CR:
+```bash
+kubectl patch litellmmcptoolset <name> --type=merge -p '{"metadata":{"finalizers":[]}}'
+```
+WHY IT MATTERS BEYOND TOOLSETS: `litellm.IsNotFound` covers 404/ErrNotFound, but
+an endpoint that 500s on a missing row defeats it. Any NEW delete path should
+confirm absence before treating a 5xx as retry-forever.
+
+### ❌ Asserting `object_permission` from `/v2/team/list`
+```go
+matches := litellmTeamsByAlias(alias)
+op, _ := matches[0]["object_permission"].(map[string]interface{})  // ALWAYS nil
+```
+✅ `/v2/team/list` reports only `object_permission_id` and leaves
+`object_permission: null` even when the row exists and is populated. Read the
+expanded object from `GET /team/info?team_id=<id>` (under `team_info`) — see
+`litellmTeamObjectPermission` in `test/e2e/team_test.go`. Verified on LiteLLM
+1.93.0. Top-level `models` IS present on the list endpoint, which is why the
+TEAM-05 sentinel assertion works there and a `mcp_toolsets` one cannot.
+
+### ❌ Conflating the two "access group" namespaces
+```yaml
+# LEGACY per-model TAG namespace — /access_group/{list,new}
+kind: LiteLLMModel
+spec:
+  info:
+    access_groups: ["anthropic"]      # also what DEFAULT_ACCESS_GROUP writes
+---
+# UNIFIED object namespace — /v1/access_group
+kind: LiteLLMAccessGroup
+metadata:
+  name: anthropic                     # UNRELATED to the tag above
+```
+Symptom: a `LiteLLMAccessGroup` is `Ready=Synced` but never shows up in
+`GET /access_group/list`, and attaching it grants nothing from the same-named
+tag.
+✅ They are DISJOINT families. `LiteLLMTeam.spec.accessGroups` → unified group
+NAMES → resolved ids → team top-level `access_group_ids`.
+`LiteLLMAccessGroup.spec.modelGroups` → legacy TAG names → `access_model_names`
+(LiteLLM expands). The implicit group `default` and the `default` tag are
+likewise unrelated. Full table:
+`docs/user-guide/access-group.md` § "Two access-group namespaces".
+WHY: `/v1/access_group` (alias `/v1/unified_access_group`) is a first-class row
+holding models + MCP servers + agents; `/access_group/list` just enumerates the
+free-text tags stamped on `model_info.access_groups`. Nothing bridges them.
+
+### ❌ Expecting an access group to RESTRICT anything
+```yaml
+kind: LiteLLMTeam
+spec:
+  accessGroups: [shared-tooling]      # grants gpt-4o; team.models stays the sentinel
+```
+The team is NOT denied `gpt-4o`. Verified live 2026-08-06 on LiteLLM 1.93.0
+(e2e `AG-04`): the same team's key answers `team_model_access_denied` before the
+attachment, and after it the response carries NEITHER that marker nor the
+sentinel echo — while `team.models` is still the deny-all sentinel
+(`__deny_all__` then, `no-default-models` since v0.9.0). Assert
+the markers' ABSENCE, never `status == 200`: on the e2e mock a correctly
+authorized call never returns 200, so a `== 200` assertion inverts the verdict.
+✅ Groups compose ADDITIVELY and OVERRIDE the deny-by-default sentinel. Treat
+every attachment as a widening of the team's ceiling; there is no way to use one
+to narrow access. DOCUMENTED, not fixed — suppressing it would mean the operator
+second-guessing an explicit grant the user wrote.
+
+### ❌ Asserting a team attachment from the GROUP side
+```go
+grp, _ := litellmAccessGroupByName(name)
+Expect(grp.AssignedTeamIDs).To(ConsistOf(teamID))   // ALWAYS []
+```
+✅ Read the team mirror: `GET /team/info?team_id=<id>` →
+`team_info.access_group_ids` (helper `litellmTeamAccessGroupIDs` in
+`test/e2e/accessgroup_test.go`). `/v2/team/list` does not carry it either.
+WHY IT FAILS: a team-side write to `team.access_group_ids` does NOT propagate to
+`access_group.assigned_team_ids` — measured on 1.93.0, the group keeps reading
+`[]`. The team field is the one LiteLLM enforces on.
+
+### ❌ `omitempty` on an operator-MANAGED access-group list
+```go
+AccessModelNames []string `json:"access_model_names,omitempty"`   // WRONG
+```
+✅ No `omitempty` on `AccessModelNames` / `AccessMCPServerIDs` /
+`AccessAgentIDs` in `AccessGroupCreateRequest` / `AccessGroupUpdateRequest`, and
+`nonNilAccessGroupLists` coerces nil → `[]` before every call.
+WHY IT FAILS: `PUT /v1/access_group/{id}` merges per field — OMITTED = KEEP,
+non-empty = REPLACE, `[]` (and `null`) = CLEAR. With `omitempty` a shrink-to-
+empty serializes away, so the stale grant survives and the revocation silently
+fails. Same trap as the v0.7.25 `object_permission` leak. Guarded by e2e `AG-02`.
+
+### ❌ Writing `assigned_team_ids` from the operator
+```go
+req.AssignedTeamIDs = []string{teamID}   // do NOT model this field
+```
+✅ `AssignedTeamIDs` / `AssignedKeyIDs` are DELIBERATELY absent from both request
+structs. Attachment is written from the team side only.
+WHY: it would make the operator a second writer of one relation, and LiteLLM
+rewrites the team mirror only on an ENTER/LEAVE delta — an idempotent re-PUT
+cannot repair a mirror that is already broken, so convergence would be
+unreachable. Omitting the fields means KEEP, so a human-managed assignment
+survives our updates untouched. `assigned_key_ids` is additionally out of scope:
+an agent-permission collapse was measured on the ACH platform in production (NOT
+re-verified here) when a KEY carries both a team and a group with differing agent
+lists — the effective set becomes every agent on the proxy.
+
+### ❌ Writing a ConfigMap outside `WATCH_NAMESPACE` with the manager client
+```go
+// e.g. a ConfigMap in another (serving) namespace
+controllerutil.CreateOrUpdate(ctx, r.Client, cm, mutate)
+// Error: unable to get: <ns>/<name> because of
+// unknown namespace for the cache
+```
+✅ Use a non-caching client for that object:
+```go
+// cmd/main.go
+writer, _ := client.New(mgr.GetConfig(), client.Options{Scheme: mgr.GetScheme()})
+// reconciler
+controllerutil.CreateOrUpdate(ctx, r.Writer, cm, mutate)
+```
+Hit by the OpenCode catalog ConfigMap writer (removed in v0.9.1 — nothing
+in the operator writes outside `WATCH_NAMESPACE` today).
+WHY IT FAILS: `cache.Options.DefaultNamespaces` scopes the manager cache to the
+single `WATCH_NAMESPACE` (SCOPE-04). `CreateOrUpdate` issues a **Get** first,
+which goes through that cache, so an object in any other namespace fails
+**client-side** — it is not a 403, and no RBAC grant fixes it. Writes always go
+straight to the apiserver; only the read is cached. Any NEW cross-namespace
+object the operator touches needs the same treatment.
+
+### ❌ Cutting an alitellm-auth release with `make release-cut` alone
+```bash
+make release-cut VERSION=0.7.2   # empty commit + push
+# chart 0.7.2 ships with image.tag "v0.7.1"
+```
+Symptom: the release tags and publishes fine, chart `version` and `appVersion`
+are correct, but the Deployment keeps running the PREVIOUS image. Code that
+landed in the new image is simply absent in the cluster with no error anywhere
+— observed as `/public/opencode/api.json` returning 404 while its volume was
+correctly mounted.
+✅ Bump the manifests first, and make that the release commit:
+```bash
+make release-bump VERSION=0.7.3
+git commit -am 'chore(release): v0.7.3'
+git push origin main
+```
+WHY: the two repos have DIFFERENT release flows behind the same target names.
+THIS repo's `release.yml` runs `make release-bump` itself and commits the
+result, so an empty release commit is correct here. `alitellm-auth`'s
+`release.yml` does NOT — it expects the release commit to already carry the
+bumped `Chart.yaml`, `values.yaml` (`image.tag`), `pyproject.toml` and
+`main.py`. `make release-cut` creates an *empty* commit in both repos, so in
+alitellm-auth it publishes a chart pinned to the previous image tag.
+
+## Repository-specific patterns
+
+- **`mcp_toolsets` is always `[]` on a team, and toolsets are not grantable
+  through the operator.** LiteLLM's toolset check is fail-CLOSED ("granted is
+  None or id not in granted → deny"), so `[]` grants nothing and takes NO
+  sentinel — do not add one for consistency. LiteLLM access groups have no
+  toolset field (verified 1.102.0), so v0.9.0 dropped the team-side toolset
+  grant along with `spec.permission`; a toolset is granted only on a key's
+  `object_permission.mcp_toolsets`, outside the operator.
+
+- **`LiteLLMMCPToolset` ids are SERVER-MINTED; adoption is by name.** LiteLLM
+  1.93.0 IGNORES a caller-supplied `toolset_id` (same as A2A `agent_id`, unlike
+  `team_id` / MCP `server_id`, which the operator pins to `metadata.name`), so
+  the reconciler reads the id from the POST response. `toolset_name` IS unique
+  server-side: a duplicate create returns **409**, and the CREATE arm adopts the
+  existing toolset by name (`resolveToolsetIDByName` → `PUT`) rather than
+  parking — that is how an operator restart re-attaches. NOTE the update verb
+  is `PUT /v1/mcp/toolset` with the `toolset_id` in the **BODY**, not the path;
+  a path-style `PUT /v1/mcp/toolset/<id>` is a 405. This endpoint diverges from
+  every other LiteLLM update the operator calls.
+
+- **Agents as models = `LiteLLMModelDiscovery type: a2a`** (the per-agent
+  `spec.exposeAsModel` was removed in v0.8.13). The provider lists
+  `LiteLLMA2AAgent` CRs (registered, not deleting), never LiteLLM; a watch on
+  agents re-drives it. The child's provider prefix is `A2A_MODEL_PROVIDER`
+  (default `a2a1`, `modeldiscovery_controller.go`), deliberately NOT hardcoded:
+  LiteLLM's built-in `a2a/` route drops per-agent auth headers and pins A2A
+  0.3. A candidate whose name is held by a DELETING model returns
+  `errChildDeleting` from `classifyAlreadyExists` → requeue 5s: that model's
+  removal fires no event on the Discovery, so without it the takeover waited a
+  full refresh interval (seen migrating prod off exposeAsModel).
+
+- **Periodic drift detection = `SafetyRelistRunnable`, never `RequeueAfter`.**
+  Each of the six domain reconcilers (Model, Team, MCPServer, A2AAgent,
+  GuardRail, MCPToolset) has exactly one `SafetyRelistRunnable` in `cmd/main.go`, ticking
+  at `LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL` (default 10m). Reconcilers
+  return bare `ctrl.Result{}, nil` — there are no `RequeueAfter` safety-relist
+  paths and no `withJitter`. WHY: a `RequeueAfter` only fires from the return
+  site that carries it, so any early return silently loses the CR's periodic
+  tick (the #102 failure family). The Runnable ticks from outside `Reconcile`
+  and cannot be defeated by a branch nobody anticipated. Adding a new domain
+  reconciler? Add its `List<Kind>Requests` + a Runnable in `cmd/main.go` + a
+  **gated** one in `suite_test.go` (`Gate: suiteRelistEnabled.Load` — ungated
+  suite runnables are the #74 contention flake). Do NOT reach for
+  `RequeueAfter`.
+
+- **E2E standing hydration = numbered kustomize phases**: the e2e cluster's
+  *standing* state (namespaces, helm values, mock backends, master-key Secret,
+  LiteLLMConnection seam) lives under `test/e2e/cluster/` as numbered phase
+  dirs (`00-namespaces`, `01-deps`, `02-operator`, `03-mocks`, `04-hydration`),
+  applied by `scripts/cluster.sh` via `kubectl apply -k`. Each phase labels its
+  objects `e2e: "true"` (kustomize `labels` with `includeSelectors: false`, so
+  pod/Service selectors stay clean) for `kubectl delete -l e2e=true` cleanup on
+  the KEPT cluster. **Adding standing state = drop a manifest + wire one
+  `kustomization.yaml` line.** Test CRs are NOT here — they stay dynamic in
+  `test/e2e/*_test.go` (created/patched/deleted at runtime by the specs). WHY
+  hybrid: manifests give declarative standing state + label-scoped cleanup; Go
+  keeps the create→patch→delete lifecycle test CRs need.
+
+- **Reconciler shape**: each controller in `internal/controller/<kind>_controller.go`
+  follows `Reconcile(ctx, req) (Result, error)`, calls `internal/litellm/<kind>_request.go`
+  for HTTP construction, applies status conditions via `meta.SetStatusCondition`.
+  WHY: separates k8s reconcile loop from LiteLLM HTTP surface for unit
+  testability — the request constructor is pure data; the reconciler
+  owns side effects.
+
+- **Cross-controller shared helpers** live ONCE in
+  `internal/controller/shared_helpers.go` — behavior shared by the
+  Model/MCPServer/Team/A2AAgent/GuardRail reconcilers is NOT copy-pasted per
+  controller (finding #14 consolidation): typed 4xx classification
+  (`is4xxStatus` / `rejectedStatus`, `errors.As` on
+  `litellm.RejectedError.Status` — survives error wrapping, unlike the retired
+  error-string prefix scan), the deletion-path ack-missing factory
+  (`newAckMissingFn`), the LiteLLM-mutation error classifier
+  (`classifyMutationError` — each reconciler keeps a thin method that binds its
+  CR via a `writeStatus` closure and delegates; team's closure no-ops on a nil
+  CR for the synthetic implicit-default reconcile), the SEC-03 duplicate-`as`
+  check (`checkDuplicateSecretAs`, taking the kind-specific message phrase
+  verbatim), the secret-ref indexer extraction (`secretRefNames`), the
+  optimistic-locked status-write core (`writeStatusWithRetry[T]` — all five
+  `writeStatus` methods delegate; mcp/team standardized onto conflict-retry),
+  and the safety-relist runnable (`SafetyRelistRunnable` + per-kind
+  `ListModelRequests` / `ListGuardRailRequests`). Touching this behavior? Edit
+  the shared helper, not five copies. The per-kind field-selector index
+  CONSTANTS and `Index*SecretRefs` funcs stay per-controller (concrete
+  `client.Object` required); only their extraction loop is shared.
+
+- **Field-selector index constants**: `internal/controller/<kind>_controller.go`
+  declares e.g. `const teamNameIndexerKey = "spec.params.team_alias"`
+  for indexer registration. `// #nosec G101` comments justify each
+  (gosec misidentifies them as credentials).
+
+- **Team `team_id` = `metadata.name` on CREATE only**
+  (`team_controller.go` Step 10 CREATE arm): new LiteLLM teams get
+  `team_id == metadata.name` (human-readable, collision-free); the body
+  pins it and `status.lastRendered.teamID` is set from `team.Name`, not
+  the create response. EXISTING teams (found by `ListTeamsByAlias` →
+  UPDATE arm) keep their original server-assigned UUID — this is a
+  CREATE-arm-only change, never touch the UPDATE arm's `team_id` pin.
+  Post-restart re-adoption works because `team_alias == metadata.name`,
+  so the alias lookup matches the name-id team (UPDATE arm, no duplicate
+  `/team/new`). Caveats: no auto-migration of existing UUID teams
+  (manual delete+recreate orphans their virtual keys, which FK on
+  `team_id`); `team_id` is `metadata.name` verbatim (no namespace
+  prefix), so two Team CRs sharing a name across namespaces collide —
+  unhandled by design (single-namespace assumption). User-facing docs:
+  `docs/user-guide/team.md` § "team_id assignment".
+
+- **MCPServer `server_id` = sanitized `metadata.name` on CREATE only**
+  (`mcpserver_controller.go` CREATE arm): new LiteLLM MCP servers get
+  `server_id == server_name` (the sanitized name; `SanitizeMCPServerName`),
+  pinned in the `POST /v1/mcp/server` body and in
+  `status.lastRendered.ServerID` from the name, not the create response.
+  EXISTING servers (adopted via `resolveServerIDByName` → UPDATE arm) keep
+  their server-assigned UUID — CREATE-arm-only, never touch the UPDATE arm's
+  id. Verified live: LiteLLM 1.83.10 honors a caller-supplied `server_id`.
+  A2A `agent_id` is NOT pinnable — LiteLLM 1.83.10 ignores a supplied
+  `agent_id` on `POST /v1/agents` (`add_agent_to_db` never reads it; Prisma
+  mints the UUID), so `a2aagent_controller.go` keeps the server-minted id.
+  User-facing docs: `docs/user-guide/mcp-server.md` § "server_id assignment".
+
+- **Fuzz seed corpus** at `internal/<pkg>/testdata/fuzz/<TargetName>/`
+  carries one entry per SEC regression test. Adding a new regression
+  test? Add a matching corpus entry.
+
+- **SPDX-only license headers**: every `*.go` outside `vendor/`,
+  `zz_generated*.go`, `mock_*.go` starts with
+  `// SPDX-License-Identifier: MIT`. Pre-push gate 15 enforces.
+  `hack/boilerplate.go.txt` provides the header for controller-gen
+  output; `make gen-code` wires it in via `object:headerFile=`.
+
+- **govulncheck ack-list**: stdlib HIGH advisories awaiting Go 1.25.x
+  fixes live in `references/security/govulncheck-acknowledged.md` (note:
+  `references/`, not `docs/`, since the ack-list is agent-facing internal
+  documentation that is not published on the mkdocs site). The gate
+  script enforces the reachable set matches this list exactly — drift
+  in either direction blocks push.
+
+- **AC-N4 (SCOPE-04) envtest fixture**: `internal/controller/scope_ac_n4_test.go`
+  creates a Model CR in `outOfWatchNamespace = "ac-n4-out-of-watch"`
+  (NOT `WatchNamespace`) and asserts no reconcile fires. The namespace
+  is provisioned on demand because envtest's apiserver does not
+  pre-create custom namespaces. Do not collapse the namespace to
+  `WatchNamespace` — the test becomes vacuous.
+
+## E2E debug loop
+
+`make e2e-full` is the final gate (~10 min). It runs `cluster-up` then
+the suite and KEEPS the cluster (teardown is explicit `make cluster-down`),
+so the same command doubles as the entry point to the kept-cluster loop:
+
+```bash
+# 1. Bring cluster up + run the suite once; cluster is KEPT after the run.
+make e2e-full
+# = cluster-up (with ensure-inotify) + e2e-run (NO teardown after)
+
+# 2. Diagnose live (cluster is up)
+make logs-operator                       # tail operator logs (host kubectl)
+make wait-cr-ready KIND=team NAME=<name> NS=default
+
+# 3. Iterate with focused tests
+make e2e-focus FOCUS="rateLimits composite"
+make test-envtest-pkg PKG=./internal/controller/... FOCUS=TestTeamReconciler_AC_T4
+
+# 4. Code change → hot-reload → re-test (~30s)
+make operator-redeploy
+make e2e-focus FOCUS="..."
+
+# 4b. Standing-state change (values/manifests under test/e2e/cluster/) →
+#     re-apply phases in place (no node recreate) then re-gate health
+make cluster-sync        # re-applies all phases + verify
+make cluster-verify      # standalone health gate (no mutation)
+
+# 5. Final gate before commit (full suite from a fresh cluster)
+make cluster-reset       # down + up
+make e2e-full
+```
+
+Never push a change touching `internal/controller/`, `internal/litellm/`,
+`api/litellm/v1alpha1/`, `deploy/helm/alitellm-operator/`, or `test/e2e/`
+without confirming E2E green.
+
+## External references
+
+For up-to-date API info beyond this project's docs:
+- **controller-runtime / kubebuilder**: Context7 or DeepWiki for v0.19.x
+  APIs (reconciler patterns, manager setup, indexer builders).
+- **client-go / k8s.io/* @ v0.31.0**: Context7 for typed-client method
+  signatures.
+- **LiteLLM HTTP API**: WebFetch against the upstream OpenAPI at
+  `https://docs.litellm.ai/` — the bundled spec in this repo is a
+  frozen snapshot.
+- **Ginkgo v2**: Context7 for current `Describe/Context/It` patterns and
+  the `--label-filter` syntax.
+- **goreleaser v2**: https://goreleaser.com — pay attention to the
+  `dockers` → `dockers_v2` migration warning (currently deferred; both
+  configs validate today).
