@@ -174,7 +174,7 @@ var _ = Describe("LiteLLMModelGroupBudget", Ordered, ContinueOnFailure, func() {
 		}, 60*time.Second, 3*time.Second).Should(BeNil(), "budget must be removed from LiteLLM")
 	})
 
-	It("BUDGET-02 + TEAM-MIRROR-01: team traffic is charged; revoking the group drops the tag", func() {
+	It("BUDGET-02 team traffic is charged against the tag budget", func() {
 		create(modelGVR, budgetModel(true))
 		waitModelRegistered()
 		create(accessGroupGVR, newAccessGroupCR(agName, ns, map[string]interface{}{
@@ -220,9 +220,33 @@ var _ = Describe("LiteLLMModelGroupBudget", Ordered, ContinueOnFailure, func() {
 		Eventually(complete, 90*time.Second, 5*time.Second).Should(
 			ContainSubstring("Model access group="+tag),
 			"budget never tripped for tag %s", tag)
+	})
 
-		// TEAM-MIRROR-01: shrinking the group revokes the mirrored tag.
-		obj, err := dyn.Resource(accessGroupGVR).Namespace(ns).Get(ctx, agName, metav1.GetOptions{})
+	// TEAM-MIRROR-01 is independent of spend: no model, key or budget needed.
+	It("TEAM-MIRROR-01 revocation: emptying the group's modelGroups drops the mirrored tag", func() {
+		const (
+			mTag  = "e2e-mirror-tag"
+			mAG   = "e2e-mirror-group"
+			mTeam = "e2e-mirror-team"
+		)
+		create(accessGroupGVR, newAccessGroupCR(mAG, ns, map[string]interface{}{
+			"modelGroups": []interface{}{mTag},
+		}))
+		cr := newTeamCR(mTeam, ns)
+		cr.Object["spec"].(map[string]interface{})["accessGroups"] = []interface{}{mAG}
+		create(teamGVR, cr)
+
+		var tid string
+		Eventually(func(g Gomega) {
+			obj, err := dyn.Resource(teamGVR).Namespace(ns).Get(ctx, mTeam, metav1.GetOptions{})
+			g.Expect(err).NotTo(HaveOccurred())
+			tid = teamID(obj)
+			g.Expect(tid).NotTo(BeEmpty(), "teamID not yet populated")
+		}, 60*time.Second, 2*time.Second).Should(Succeed())
+		Eventually(func() []string { return litellmTeamModels(tid) },
+			60*time.Second, 3*time.Second).Should(Equal([]string{"no-default-models", mTag}))
+
+		obj, err := dyn.Resource(accessGroupGVR).Namespace(ns).Get(ctx, mAG, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(unstructured.SetNestedSlice(obj.Object, []interface{}{}, "spec", "modelGroups")).To(Succeed())
 		_, err = dyn.Resource(accessGroupGVR).Namespace(ns).Update(ctx, obj, metav1.UpdateOptions{})
