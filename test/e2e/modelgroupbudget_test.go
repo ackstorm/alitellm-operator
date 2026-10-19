@@ -7,6 +7,7 @@ package e2e_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"time"
 
@@ -83,8 +84,11 @@ func litellmTeamModels(teamID string) []string {
 var _ = Describe("LiteLLMModelGroupBudget", Ordered, ContinueOnFailure, func() {
 	dyn := dynClient()
 	const ns = "default"
+	// tag is unique per run: LiteLLM keeps a tag's spend across budget
+	// DELETE/re-PUT, so on the KEPT cluster a fixed tag starts the next run
+	// already over budget and BUDGET-02's first call is refused.
+	tag := fmt.Sprintf("e2e-budget-tag-%d", time.Now().Unix())
 	const (
-		tag       = "e2e-budget-tag"
 		modelName = "e2e-budget-model"
 		agName    = "e2e-budget-group"
 		teamName  = "e2e-budget-team"

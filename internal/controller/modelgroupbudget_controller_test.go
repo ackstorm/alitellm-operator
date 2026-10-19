@@ -4,6 +4,7 @@ package controller
 
 import (
 	"context"
+	"net/http"
 	"testing"
 	"time"
 
@@ -160,15 +161,23 @@ func TestModelGroupBudget_DuplicateParksAndDeleteSendsNothing(t *testing.T) {
 	}
 	key := client.ObjectKeyFromObject(dup)
 	deadline := time.Now().Add(budgetPollTimeout)
-	for time.Now().Before(deadline) {
+	for {
 		var check litellmv1alpha1.LiteLLMModelGroupBudget
 		if err := k8sClient.Get(ctx, key, &check); apierrors.IsNotFound(err) {
 			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("duplicate CR still present %s after delete", budgetPollTimeout)
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
 	if _, ok := mockServer.ModelGroupBudget("tag-dup"); !ok {
 		t.Fatal("deleting the duplicate removed the owner's budget")
+	}
+	for _, c := range mockServer.Recorded() {
+		if c.Method == http.MethodDelete && c.Path == "/access_group/tag-dup/budget" {
+			t.Fatalf("deleting the duplicate sent %s %s", c.Method, c.Path)
+		}
 	}
 }
 
