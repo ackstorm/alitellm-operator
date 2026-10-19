@@ -129,6 +129,7 @@ alitellm-operator/
 | Docs site, mkdocs, mike, gh-pages flow | `references/docs/documentation.md`       |
 | CI / PR / release lifecycle (push/PR matrix) | `references/docs/workflow.md`        |
 | Access groups / team attachment         | `docs/user-guide/access-group.md` (two disjoint namespaces + the only-ADD bypass); team = closed container, `closedTeamGrant` in `internal/controller/team_permission.go` |
+| Model-group budgets                    | `docs/user-guide/model-group-budget.md` (attribution rule; `team.models` mirror) |
 | Model aliases                          | `docs/user-guide/model-alias.md` (aggregate map) |
 | OLM packaging                          | NOT supported — explicit scope decision (no OperatorHub) |
 
@@ -1338,6 +1339,23 @@ authorized call never returns 200, so a `== 200` assertion inverts the verdict.
 every attachment as a widening of the team's ceiling; there is no way to use one
 to narrow access. DOCUMENTED, not fixed — suppressing it would mean the operator
 second-guessing an explicit grant the user wrote.
+
+### ❌ Expecting a model-group budget to charge `access_group_ids` traffic
+```yaml
+kind: LiteLLMTeam
+spec: { accessGroups: [dream] }   # dream grants tag "anthropic" via modelGroups
+# team.models = ["no-default-models"]  → calls reach the model, budget stays at $0
+```
+✅ The operator mirrors the attached groups' `access_model_names` (minus
+wildcards) into `team.models` after the sentinel (`["no-default-models",
+"anthropic"]`) and a `LiteLLMAccessGroup` watch re-drives attached teams.
+WHY: LiteLLM charges `/access_group/<tag>/budget` only when the tag literally
+appears in the key's or team's `models`; a grant via `access_group_ids` is
+never charged. The mirror grants nothing new. Hand-managed groups (no CR) are
+picked up only at the next relist; a vanished group row parks the team
+`AccessGroupNotFound` with its previous `models` kept. Denial text is
+`Budget has been exceeded! Model access group=<tag>` (assert that marker, not a
+status). Budgets: `docs/user-guide/model-group-budget.md`.
 
 ### ❌ Asserting a team attachment from the GROUP side
 ```go

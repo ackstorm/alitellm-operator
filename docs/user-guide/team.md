@@ -151,13 +151,16 @@ model catalog, so a closed team lists zero models instead of a phantom row.
 Every field is sent every time (never omitted) because `POST /team/update`
 keeps an omitted field's old value.
 
-After the sentinel, `models` mirrors the `modelGroups` of the attached
-groups (sorted, de-duplicated, wildcards such as `*` / `all-proxy-models`
+After the sentinel, `models` mirrors the `access_model_names` of the attached
+groups (`models` ∪ `modelGroups`; sorted, de-duplicated, wildcards such as `*` / `all-proxy-models`
 skipped). This grants nothing new — the groups already grant them through
 `access_group_ids` — but LiteLLM charges a model access-group (tag) budget
 only when the tag literally appears in `team.models`. Editing or removing a
 `LiteLLMAccessGroup` CR re-drives the attached teams immediately; a group
-managed by hand in LiteLLM (no CR) is picked up at the next safety relist.
+managed by hand in LiteLLM (no CR) is picked up at the next safety relist. If an
+attached group's row disappears from LiteLLM the team parks
+`AccessGroupNotFound` and keeps its previous `models` until resolved. See
+[model-group budgets](model-group-budget.md).
 
 Access groups only **add**: an attached group overrides the sentinels for
 what it grants. A team without `accessGroups` reaches nothing.

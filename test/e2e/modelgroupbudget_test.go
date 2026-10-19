@@ -1,0 +1,233 @@
+//go:build e2e
+
+// SPDX-License-Identifier: Apache-2.0
+
+package e2e_test
+
+import (
+	"context"
+	"encoding/json"
+	"net/url"
+	"time"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+)
+
+var modelGroupBudgetGVR = schema.GroupVersionResource{
+	Group:    "litellm.ackstorm.ai",
+	Version:  "v1alpha1",
+	Resource: "litellmmodelgroupbudgets",
+}
+
+func newModelGroupBudgetCR(name, ns string, spec map[string]interface{}) *unstructured.Unstructured {
+	return &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "litellm.ackstorm.ai/v1alpha1",
+			"kind":       "LiteLLMModelGroupBudget",
+			"metadata":   map[string]interface{}{"name": name, "namespace": ns},
+			"spec":       spec,
+		},
+	}
+}
+
+// litellmModelGroupBudget reads GET /access_group/<tag>/budget. budget is nil
+// when LiteLLM holds none (200 budget:null).
+func litellmModelGroupBudget(tag string) (budget *struct {
+	MaxBudget      *float64 `json:"max_budget"`
+	BudgetDuration string   `json:"budget_duration"`
+}) {
+	GinkgoHelper()
+	body := curlPodJSON("litellm-system", "mgb-poke", '{',
+		"curl", "-sS", "--max-time", "10",
+		"-H", "Authorization: Bearer sk-test-master-key",
+		litellmBase+"/access_group/"+url.PathEscape(tag)+"/budget",
+	)
+	var resp struct {
+		Budget *struct {
+			MaxBudget      *float64 `json:"max_budget"`
+			BudgetDuration string   `json:"budget_duration"`
+		} `json:"budget"`
+	}
+	Expect(json.Unmarshal(body, &resp)).To(Succeed(), "raw=%s", string(body))
+	return resp.Budget
+}
+
+// litellmTeamModels reads team_info.models from GET /team/info.
+func litellmTeamModels(teamID string) []string {
+	GinkgoHelper()
+	body := curlPodJSON("litellm-system", "team-models-poke", '{',
+		"curl", "-sS", "--max-time", "10",
+		"-H", "Authorization: Bearer sk-test-master-key",
+		litellmBase+"/team/info?team_id="+url.QueryEscape(teamID),
+	)
+	var resp struct {
+		TeamInfo struct {
+			Models []string `json:"models"`
+		} `json:"team_info"`
+	}
+	Expect(json.Unmarshal(body, &resp)).To(Succeed(), "raw=%s", string(body))
+	return resp.TeamInfo.Models
+}
+
+// envtest counterpart: internal/controller/modelgroupbudget_controller_test.go
+// covers the reconcile state machine against an in-process mock. This suite
+// proves the real LiteLLM stores the budget, CHARGES team traffic to it, and
+// that team.models mirrors the attached group's tags (the attribution rule:
+// LiteLLM charges a tag budget only when the tag is literally in the key's or
+// team's models).
+var _ = Describe("LiteLLMModelGroupBudget", Ordered, ContinueOnFailure, func() {
+	dyn := dynClient()
+	const ns = "default"
+	const (
+		tag       = "e2e-budget-tag"
+		modelName = "e2e-budget-model"
+		agName    = "e2e-budget-group"
+		teamName  = "e2e-budget-team"
+		budgetCR  = "e2e-budget"
+	)
+	fg := metav1.DeletePropagationForeground
+
+	deleteAndWait := func(gvr schema.GroupVersionResource, name string) {
+		_ = dyn.Resource(gvr).Namespace(ns).
+			Delete(context.Background(), name, metav1.DeleteOptions{PropagationPolicy: &fg})
+		Eventually(func() bool {
+			_, err := dyn.Resource(gvr).Namespace(ns).Get(context.Background(), name, metav1.GetOptions{})
+			return apierrors.IsNotFound(err)
+		}, 60*time.Second, 2*time.Second).Should(BeTrue(),
+			"%s/%s never finished deleting", gvr.Resource, name)
+	}
+	create := func(gvr schema.GroupVersionResource, obj *unstructured.Unstructured) {
+		GinkgoHelper()
+		name := obj.GetName()
+		deleteAndWait(gvr, name)
+		_, err := dyn.Resource(gvr).Namespace(ns).Create(ctx, obj, metav1.CreateOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() { deleteAndWait(gvr, name) })
+	}
+	// budgetModel is the mock-backed model carrying the tag. Per-token prices
+	// make each call cost $2 (the mock reports 1 prompt + 1 completion token).
+	budgetModel := func(priced bool) *unstructured.Unstructured {
+		m := newOpenAIMockModel(modelName, ns)
+		spec := m.Object["spec"].(map[string]interface{})
+		spec["info"] = map[string]interface{}{"access_groups": []interface{}{tag}}
+		if priced {
+			p := spec["params"].(map[string]interface{})
+			p["input_cost_per_token"] = 1.0
+			p["output_cost_per_token"] = 1.0
+		}
+		return m
+	}
+	waitModelRegistered := func() {
+		GinkgoHelper()
+		Eventually(func(g Gomega) {
+			obj, err := dyn.Resource(modelGVR).Namespace(ns).Get(ctx, modelName, metav1.GetOptions{})
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(modelID(obj)).NotTo(BeEmpty(), "model not registered yet")
+		}, 90*time.Second, 3*time.Second).Should(Succeed())
+	}
+	waitBudgetSynced := func() {
+		GinkgoHelper()
+		Eventually(func(g Gomega) {
+			obj, err := dyn.Resource(modelGroupBudgetGVR).Namespace(ns).Get(ctx, budgetCR, metav1.GetOptions{})
+			g.Expect(err).NotTo(HaveOccurred())
+			conds, _, _ := unstructured.NestedSlice(obj.Object, "status", "conditions")
+			var reason, status string
+			for _, c := range conds {
+				if cm, ok := c.(map[string]interface{}); ok && cm["type"] == "Ready" {
+					reason, _ = cm["reason"].(string)
+					status, _ = cm["status"].(string)
+				}
+			}
+			g.Expect(status).To(Equal("True"), "Ready reason=%s", reason)
+			g.Expect(reason).To(Equal("Synced"))
+		}, 90*time.Second, 3*time.Second).Should(Succeed())
+	}
+	budgetSpec := func() map[string]interface{} {
+		return map[string]interface{}{"modelGroup": tag, "limit": 1.0, "period": "30d"}
+	}
+
+	It("BUDGET-01 CR lifecycle: projects the budget and clears it on delete", func() {
+		create(modelGVR, budgetModel(false))
+		waitModelRegistered()
+		create(modelGroupBudgetGVR, newModelGroupBudgetCR(budgetCR, ns, budgetSpec()))
+		waitBudgetSynced()
+
+		Eventually(func(g Gomega) {
+			b := litellmModelGroupBudget(tag)
+			g.Expect(b).NotTo(BeNil(), "budget not stored")
+			g.Expect(b.MaxBudget).NotTo(BeNil())
+			g.Expect(*b.MaxBudget).To(BeNumerically("==", 1))
+			g.Expect(b.BudgetDuration).To(Equal("30d"))
+		}, 60*time.Second, 3*time.Second).Should(Succeed())
+
+		deleteAndWait(modelGroupBudgetGVR, budgetCR)
+		Eventually(func() *struct {
+			MaxBudget      *float64 `json:"max_budget"`
+			BudgetDuration string   `json:"budget_duration"`
+		} {
+			return litellmModelGroupBudget(tag)
+		}, 60*time.Second, 3*time.Second).Should(BeNil(), "budget must be removed from LiteLLM")
+	})
+
+	It("BUDGET-02 + TEAM-MIRROR-01: team traffic is charged; revoking the group drops the tag", func() {
+		create(modelGVR, budgetModel(true))
+		waitModelRegistered()
+		create(accessGroupGVR, newAccessGroupCR(agName, ns, map[string]interface{}{
+			"modelGroups": []interface{}{tag},
+		}))
+		create(modelGroupBudgetGVR, newModelGroupBudgetCR(budgetCR, ns, budgetSpec()))
+		waitBudgetSynced()
+
+		cr := newTeamCR(teamName, ns)
+		cr.Object["spec"].(map[string]interface{})["accessGroups"] = []interface{}{agName}
+		create(teamGVR, cr)
+
+		var tid string
+		Eventually(func(g Gomega) {
+			obj, err := dyn.Resource(teamGVR).Namespace(ns).Get(ctx, teamName, metav1.GetOptions{})
+			g.Expect(err).NotTo(HaveOccurred())
+			tid = teamID(obj)
+			g.Expect(tid).NotTo(BeEmpty(), "teamID not yet populated")
+		}, 60*time.Second, 2*time.Second).Should(Succeed())
+
+		// The mirror is what makes LiteLLM charge the tag budget.
+		Eventually(func() []string { return litellmTeamModels(tid) },
+			60*time.Second, 3*time.Second).Should(Equal([]string{"no-default-models", tag}))
+
+		key := generateTeamKey(tid)
+		DeferCleanup(func() { deleteLiteLLMKey(key) })
+
+		complete := func() string {
+			return string(curlPodJSON("litellm-system", "budget-complete", '{',
+				"curl", "-sS", "--max-time", "20",
+				"-w", "\nHTTP_STATUS:%{http_code}",
+				"-X", "POST",
+				"-H", "Authorization: Bearer "+key,
+				"-H", "Content-Type: application/json",
+				"-d", `{"model":"`+modelName+`","messages":[{"role":"user","content":"hi"}]}`,
+				litellmBase+"/v1/chat/completions",
+			))
+		}
+		// First call is under budget (LiteLLM may briefly 401 a fresh key).
+		Eventually(complete, 90*time.Second, 5*time.Second).Should(
+			ContainSubstring("E2E-MOCK-COMPLETION-OK"))
+		// Spend is recorded asynchronously; the cap trips on a later call.
+		Eventually(complete, 90*time.Second, 5*time.Second).Should(
+			ContainSubstring("Model access group="+tag),
+			"budget never tripped for tag %s", tag)
+
+		// TEAM-MIRROR-01: shrinking the group revokes the mirrored tag.
+		obj, err := dyn.Resource(accessGroupGVR).Namespace(ns).Get(ctx, agName, metav1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(unstructured.SetNestedSlice(obj.Object, []interface{}{}, "spec", "modelGroups")).To(Succeed())
+		_, err = dyn.Resource(accessGroupGVR).Namespace(ns).Update(ctx, obj, metav1.UpdateOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		Eventually(func() []string { return litellmTeamModels(tid) },
+			30*time.Second, 2*time.Second).Should(Equal([]string{"no-default-models"}))
+	})
+})

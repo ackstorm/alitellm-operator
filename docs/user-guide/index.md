@@ -16,6 +16,7 @@ intent against an upstream LiteLLM proxy.
 | [LiteLLMModelDiscovery](model-discovery.md)    | Auto-discover available models from a provider.                        |
 | [LiteLLMGuardRail](guardrail.md)               | Content filter / DLP guardrail (BLOCK / MASK, pre_call or post_call).  |
 | [LiteLLMAccessGroup](access-group.md)          | Reusable bundle of models / MCP servers / agents, attached to teams.   |
+| [LiteLLMModelGroupBudget](model-group-budget.md) | USD spend cap on a model access-group tag.                          |
 
 See [API Reference](../api-reference/litellm.ackstorm.ai.md) for the full schema of each
 resource (generated from the CRD bases).
