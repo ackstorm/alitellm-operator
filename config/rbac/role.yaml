@@ -32,6 +32,7 @@ rules:
   - litellmmcptoolsets
   - litellmmodelaliases
   - litellmmodeldiscoveries
+  - litellmmodelgroupbudgets
   - litellmmodels
   - litellmteams
   verbs:
@@ -54,6 +55,7 @@ rules:
   - litellmmcptoolsets/finalizers
   - litellmmodelaliases/finalizers
   - litellmmodeldiscoveries/finalizers
+  - litellmmodelgroupbudgets/finalizers
   - litellmmodels/finalizers
   - litellmteams/finalizers
   verbs:
@@ -70,6 +72,7 @@ rules:
   - litellmmcptoolsets/status
   - litellmmodelaliases/status
   - litellmmodeldiscoveries/status
+  - litellmmodelgroupbudgets/status
   - litellmmodels/status
   - litellmteams/status
   verbs:

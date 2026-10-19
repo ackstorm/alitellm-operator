@@ -12,6 +12,7 @@ resources:
 - bases/litellm.ackstorm.ai_litellmteams.yaml
 - bases/litellm.ackstorm.ai_litellmguardrails.yaml
 - bases/litellm.ackstorm.ai_litellmaccessgroups.yaml
+- bases/litellm.ackstorm.ai_litellmmodelgroupbudgets.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

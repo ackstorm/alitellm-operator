@@ -478,6 +478,39 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(),
+		&litellmv1alpha1.LiteLLMModelGroupBudget{},
+		controller.ModelGroupBudgetGroupIndexField,
+		controller.IndexModelGroupBudgetGroup,
+	); err != nil {
+		setupLog.Error(err, "unable to register ModelGroupBudget modelGroup field indexer")
+		os.Exit(1)
+	}
+	modelGroupBudgetSafetyRelistCh := make(chan reconcile.Request, 256)
+	if err := mgr.Add(&controller.SafetyRelistRunnable{
+		Client:       mgr.GetClient(),
+		Namespace:    watchNS,
+		Interval:     relistInterval,
+		Log:          ctrl.Log.WithName("modelgroupbudget-safety-relist"),
+		RequeueCh:    modelGroupBudgetSafetyRelistCh,
+		ListRequests: controller.ListModelGroupBudgetRequests,
+		LogLabel:     "modelgroupbudgets",
+	}); err != nil {
+		setupLog.Error(err, "unable to add modelgroupbudget SafetyRelistRunnable")
+		os.Exit(1)
+	}
+	if err := (&controller.ModelGroupBudgetReconciler{
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		Cache:             connCache,
+		Recorder:          mgr.GetEventRecorderFor("modelgroupbudget-controller"),
+		Namespace:         watchNS,
+		ConnectionRebuilt: connCache.Subscribe(),
+	}).SetupWithManager(mgr, modelGroupBudgetSafetyRelistCh); err != nil {
+		setupLog.Error(err, "unable to set up ModelGroupBudget reconciler")
+		os.Exit(1)
+	}
+
 	// Phase 6 — TeamReconciler (Pipeline A): per-CR
 	// resolve/diff/apply against /team/new + /team/update via the alias-
 	// list resolution from spec §7.4 + the smallest-team_id duplicate

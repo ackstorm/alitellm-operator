@@ -165,6 +165,8 @@ var (
 	accessGroupReconciler     *AccessGroupReconciler
 	accessGroupSafetyRelistCh chan reconcile.Request
 
+	modelGroupBudgetSafetyRelistCh chan reconcile.Request
+
 	// Phase 6 — TeamReconciler. Shares connCache with the
 	// Phase 2/3/5 reconcilers. Tests exercise TEAM-01.06 + AC-T1
 	// (budget projection), AC-T6 (params pass-through + ProjectionOverride
@@ -623,6 +625,41 @@ func setupAndRun(m *testing.M) int {
 	}
 	if err := accessGroupReconciler.SetupWithManager(mgr, accessGroupSafetyRelistCh, accessGroupDefaultCh); err != nil {
 		fmt.Fprintf(os.Stderr, "SetupWithManager(AccessGroup): %v\n", err)
+		return 1
+	}
+
+	// ModelGroupBudgetReconciler: tag-uniqueness index + gated relist (#74).
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(),
+		&litellmv1alpha1.LiteLLMModelGroupBudget{},
+		ModelGroupBudgetGroupIndexField,
+		IndexModelGroupBudgetGroup,
+	); err != nil {
+		fmt.Fprintf(os.Stderr, "IndexField(ModelGroupBudget modelGroup): %v\n", err)
+		return 1
+	}
+	modelGroupBudgetSafetyRelistCh = make(chan reconcile.Request, 256)
+	if err := mgr.Add(&SafetyRelistRunnable{
+		Client:       mgr.GetClient(),
+		Namespace:    WatchNamespace,
+		Interval:     100 * time.Millisecond,
+		Log:          logr.Discard(),
+		RequeueCh:    modelGroupBudgetSafetyRelistCh,
+		ListRequests: ListModelGroupBudgetRequests,
+		LogLabel:     "modelgroupbudgets",
+		Gate:         suiteRelistEnabled.Load,
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "mgr.Add(modelgroupbudget SafetyRelistRunnable): %v\n", err)
+		return 1
+	}
+	if err := (&ModelGroupBudgetReconciler{
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		Cache:             connCache,
+		Recorder:          mgr.GetEventRecorderFor("modelgroupbudget-controller"),
+		Namespace:         WatchNamespace,
+		ConnectionRebuilt: connCache.Subscribe(),
+	}).SetupWithManager(mgr, modelGroupBudgetSafetyRelistCh); err != nil {
+		fmt.Fprintf(os.Stderr, "SetupWithManager(ModelGroupBudget): %v\n", err)
 		return 1
 	}
 

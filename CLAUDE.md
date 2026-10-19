@@ -57,15 +57,16 @@ CRDs, and config are original ACKstorm material.
                        └──────────────────┘
 ```
 
-Owned CRDs (11 — the exhaustive set e2e `AC-N1` asserts in
+Owned CRDs (12 — the exhaustive set e2e `AC-N1` asserts in
 `test/e2e/scope_test.go`; adding a kind without updating that set fails e2e):
 `LiteLLMTeam`, `LiteLLMModel`, `LiteLLMModelDiscovery`, `LiteLLMModelAlias`,
 `LiteLLMMCPServer`, `LiteLLMMCPServerDiscovery`, `LiteLLMMCPToolset`,
 `LiteLLMA2AAgent`, `LiteLLMGuardRail`, `LiteLLMConnection`,
-`LiteLLMAccessGroup`. API group
+`LiteLLMAccessGroup`, `LiteLLMModelGroupBudget`. API group
 `litellm.ackstorm.ai`, version `v1alpha1`. `LiteLLMMCPToolset` requires
 LiteLLM **1.93.0+** (`/v1/mcp/toolset` does not exist before that); so does
-`LiteLLMAccessGroup` (`/v1/access_group`).
+`LiteLLMAccessGroup` (`/v1/access_group`). `LiteLLMModelGroupBudget` requires LiteLLM **1.100.0+**
+(`/access_group/{tag}/budget`).
 
 Critical paths:
 - CRD apply → reconciler → LiteLLM HTTP call → status condition update
@@ -1457,8 +1458,8 @@ alitellm-auth it publishes a chart pinned to the previous image tag.
   full refresh interval (seen migrating prod off exposeAsModel).
 
 - **Periodic drift detection = `SafetyRelistRunnable`, never `RequeueAfter`.**
-  Each of the six domain reconcilers (Model, Team, MCPServer, A2AAgent,
-  GuardRail, MCPToolset) has exactly one `SafetyRelistRunnable` in `cmd/main.go`, ticking
+  Each of the domain reconcilers (Model, Team, MCPServer, A2AAgent,
+  GuardRail, MCPToolset, AccessGroup, ModelGroupBudget) has exactly one `SafetyRelistRunnable` in `cmd/main.go`, ticking
   at `LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL` (default 10m). Reconcilers
   return bare `ctrl.Result{}, nil` — there are no `RequeueAfter` safety-relist
   paths and no `withJitter`. WHY: a `RequeueAfter` only fires from the return

@@ -37,3 +37,4 @@ resources:
   - 12-modeldiscovery-elevenlabs.yaml
   - 13-mcptoolset.yaml
   - 14-accessgroup.yaml
+  - 15-modelgroupbudget.yaml

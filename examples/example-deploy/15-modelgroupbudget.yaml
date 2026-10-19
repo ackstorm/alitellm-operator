@@ -1,0 +1,9 @@
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMModelGroupBudget
+metadata:
+  name: openai-monthly
+spec:
+  modelGroup: openai   # a model_info.access_groups tag, see 14-accessgroup.yaml modelGroups
+  limit: 500
+  softLimit: 400
+  period: 30d
