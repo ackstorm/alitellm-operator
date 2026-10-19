@@ -1501,7 +1501,7 @@ the next Discovery reconcile (`kubectl get <kind> <child> -o
 jsonpath='{.metadata.ownerReferences}'` empty, child listed under
 `skippedCandidates`). The envtests do the same through `stripOwnerRefs` in
 `poll_until_test.go`. NOT fixed in production. Tracked in GitHub issue
-ISSUE_LINK_PLACEHOLDER.
+https://github.com/ackstorm/alitellm-operator/issues/141.
 WHY: a Discovery reconcile already running when the strip lands still holds
 the pre-strip cache view. It SSA-applies the child with `ForceOwnership`, and
 that apply re-adds the controller ownerRef. The window is narrow (one reconcile),
