@@ -65,5 +65,8 @@ When the cap is hit LiteLLM answers 422
 - If an attached `LiteLLMAccessGroup` row disappears from LiteLLM, the team is
   narrowed to the groups that still resolve (the vanished group's names leave
   `team.models`), then parks `AccessGroupNotFound` until the group exists again.
-- LiteLLM cannot clear a single budget field via `PUT`; removing a field from
-  the spec does not unset it. Deleting the CR removes the whole budget.
+- LiteLLM cannot clear a single budget field via `PUT`, so removing a field from
+  the spec **recreates** the budget (`DELETE` then `PUT`): it gets a new
+  `budget_id`, its reset timer likely restarts, and the tag is briefly uncapped
+  between the two calls. If the `PUT` is rejected the tag stays uncapped and the
+  CR reports `LiteLLMRejected`. Deleting the CR removes the whole budget.

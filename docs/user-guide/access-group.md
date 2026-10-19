@@ -191,8 +191,9 @@ is already broken.
 
 !!! danger "A group grant overrides the team's deny-by-default sentinel"
 
-    Every team is projected with the `["no-default-models"]` sentinel, which
-    denies every model ([closed baseline](team.md#access-a-closed-team-opened-by-access-groups)).
+    Every team's `models` starts with the `no-default-models` sentinel (which
+    on its own denies every model), followed by the attached groups' mirrored
+    model names ([closed baseline](team.md#access-a-closed-team-opened-by-access-groups)).
     An attached access group **overrides** that: LiteLLM composes group grants
     additively, so a group granting `gpt-4o` makes `gpt-4o` reachable by that
     team's keys even though `team.models` still starts with `"no-default-models"` (followed by the
