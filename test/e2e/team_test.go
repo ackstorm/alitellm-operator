@@ -528,8 +528,7 @@ var _ = Describe("LiteLLMTeam", Ordered, ContinueOnFailure, func() {
 			"team-scoped completion must be denied 401/403, got: %s", out)
 		Expect(out).To(ContainSubstring("team_model_access_denied"),
 			"denial must cite team_model_access_denied, got: %s", out)
-		Expect(out).To(ContainSubstring("no-default-models"),
-			"denial must reference the deny-all sentinel, got: %s", out)
+		// LiteLLM >=1.106 no longer echoes the team's models in the denial message.
 	})
 
 

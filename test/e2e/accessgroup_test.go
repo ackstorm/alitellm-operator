@@ -353,10 +353,9 @@ var _ = Describe("LiteLLMAccessGroup", Ordered, ContinueOnFailure, func() {
 				"-d", `{"model":"`+modelName+`","messages":[{"role":"user","content":"hi"}]}`,
 				litellmBase+"/v1/chat/completions",
 			))
+			// LiteLLM >=1.106 no longer echoes the team's models in the denial message.
 			g.Expect(out).To(ContainSubstring("team_model_access_denied"),
 				"baseline denial must cite team_model_access_denied, got: %s", out)
-			g.Expect(out).To(ContainSubstring("no-default-models"),
-				"baseline denial must echo the deny-all sentinel, got: %s", out)
 		}, 90*time.Second, 5*time.Second).Should(Succeed())
 
 		By("attaching a group that grants the model")
@@ -393,8 +392,6 @@ var _ = Describe("LiteLLMAccessGroup", Ordered, ContinueOnFailure, func() {
 				litellmBase+"/v1/chat/completions",
 			))
 			g.Expect(out).NotTo(ContainSubstring("team_model_access_denied"),
-				"group grant did not override the deny-all sentinel, got: %s", out)
-			g.Expect(out).NotTo(ContainSubstring("no-default-models"),
 				"group grant did not override the deny-all sentinel, got: %s", out)
 		}, 120*time.Second, 5*time.Second).Should(Succeed())
 

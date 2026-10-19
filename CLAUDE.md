@@ -1327,8 +1327,9 @@ spec:
 ```
 The team is NOT denied `gpt-4o`. Verified live 2026-08-06 on LiteLLM 1.93.0
 (e2e `AG-04`): the same team's key answers `team_model_access_denied` before the
-attachment, and after it the response carries NEITHER that marker nor the
-sentinel echo — while `team.models` is still the deny-all sentinel
+attachment, and after it the response no longer carries that marker (the
+denial body used to also echo the sentinel; that echo disappeared in LiteLLM
+1.106.0, so only `team_model_access_denied` is asserted) — while `team.models` is still the deny-all sentinel
 (`__deny_all__` then, `no-default-models` since v0.9.0). Assert
 the markers' ABSENCE, never `status == 200`: on the e2e mock a correctly
 authorized call never returns 200, so a `== 200` assertion inverts the verdict.
