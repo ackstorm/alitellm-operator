@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -114,4 +115,41 @@ func mockReadsSince(from int) int {
 		}
 	}
 	return n
+}
+
+// stripOwnerRefs performs the user's adoption gesture (drop the child's
+// ownerReferences) and repeats it until the refs stay gone for `settle`.
+// A Discovery reconcile already in flight when the strip lands still holds
+// the pre-strip cache view and SSA-applies with ForceOwnership, which puts
+// the controller ownerRef straight back; a single strip then silently
+// un-adopts the child and the test waits for a skip that never comes.
+func stripOwnerRefs[T any, PT interface {
+	*T
+	client.Object
+}](t *testing.T, key client.ObjectKey, settle, timeout time.Duration) {
+	t.Helper()
+	ctx := context.Background()
+	deadline := time.Now().Add(timeout)
+	var clearSince time.Time
+	for time.Now().Before(deadline) {
+		var obj T
+		pt := PT(&obj)
+		if err := k8sClient.Get(ctx, key, pt); err != nil {
+			t.Fatalf("get %s: %v", key, err)
+		}
+		switch {
+		case len(pt.GetOwnerReferences()) > 0:
+			clearSince = time.Time{}
+			pt.SetOwnerReferences(nil)
+			if err := k8sClient.Update(ctx, pt); err != nil && !apierrors.IsConflict(err) {
+				t.Fatalf("strip ownerReferences on %s: %v", key, err)
+			}
+		case clearSince.IsZero():
+			clearSince = time.Now()
+		case time.Since(clearSince) >= settle:
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("ownerReferences on %s kept coming back for %s", key, timeout)
 }

@@ -934,29 +934,9 @@ func TestMCPServerDiscoveryReconciler_Adoption(t *testing.T) {
 	}
 
 	// Adopt: strip the controller ownerRef. The label stays — this is
-	// the spec-defined adoption mechanism. Retry on conflict because
-	// the MCPServer reconciler may be concurrently updating the child's
-	// status from an in-flight reconcile.
-	stripErr := error(nil)
-	for attempt := 0; attempt < 10; attempt++ {
-		var child litellmv1alpha1.LiteLLMMCPServer
-		if err := k8sClient.Get(ctx, client.ObjectKey{Name: dotted, Namespace: WatchNamespace}, &child); err != nil {
-			stripErr = err
-			time.Sleep(25 * time.Millisecond)
-			continue
-		}
-		child.OwnerReferences = nil
-		if err := k8sClient.Update(ctx, &child); err == nil {
-			stripErr = nil
-			break
-		} else {
-			stripErr = err
-			time.Sleep(25 * time.Millisecond)
-		}
-	}
-	if stripErr != nil {
-		t.Fatalf("strip ownerRef (adoption): %v", stripErr)
-	}
+	// the spec-defined adoption mechanism.
+	stripOwnerRefs[litellmv1alpha1.LiteLLMMCPServer](t,
+		client.ObjectKey{Name: dotted, Namespace: WatchNamespace}, time.Second, 30*time.Second)
 
 	// Trigger reconcile via parent annotation update. Repeat the touch
 	// every 5s while polling because envtest's Owns(&MCPServer{}) event
