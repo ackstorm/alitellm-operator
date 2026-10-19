@@ -1,3 +1,10 @@
+---
+# Copyright 2026 ACKstorm.
+# SPDX-License-Identifier: MIT
+#
+# LiteLLMModelGroupBudget — a LiteLLM budget on a model access-group TAG.
+# Requires LiteLLM 1.100.0+ (/access_group/{tag}/budget).
+#
 apiVersion: litellm.ackstorm.ai/v1alpha1
 kind: LiteLLMModelGroupBudget
 metadata:
