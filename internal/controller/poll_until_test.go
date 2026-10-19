@@ -4,6 +4,7 @@ package controller
 
 import (
 	"context"
+	"net/http"
 	"testing"
 	"time"
 
@@ -74,4 +75,43 @@ func pollCR[T any, PT interface {
 		time.Sleep(50 * time.Millisecond)
 	}
 	return PT(&last)
+}
+
+// waitQuiet blocks until read() holds one value for `quiet`, then returns
+// it; fails the test if that never happens within `timeout`. Use it to open
+// a "nothing more may happen" window only after the reconcile burst that
+// precedes it has drained: a fixed settle sleep is too short once the
+// shared apiserver is under load, and the burst's tail then lands inside
+// the window and reads as a storm/loop.
+func waitQuiet(t *testing.T, read func() int64, quiet, timeout time.Duration) int64 {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	last, since := read(), time.Now()
+	for time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+		if v := read(); v != last {
+			last, since = v, time.Now()
+		} else if time.Since(since) >= quiet {
+			return last
+		}
+	}
+	t.Fatalf("counter not quiet for %s within %s (last=%d)", quiet, timeout, last)
+	return last
+}
+
+// mockReadsSince counts mock reads recorded at or after index `from`
+// (a prior len(mockServer.Recorded())), skipping GET /v2/team/list: the
+// suite's ungated TeamDefaultRunnable re-lists the implicit Team/default
+// every 100ms whenever the connection cache is Ready, so that path is
+// background noise for any read-count window.
+func mockReadsSince(from int) int {
+	n := 0
+	for _, c := range mockServer.Recorded()[from:] {
+		isRead := c.Method == http.MethodGet || c.Method == http.MethodHead ||
+			(c.Method == http.MethodPost && c.Path == "/key/health")
+		if isRead && c.Path != "/v2/team/list" {
+			n++
+		}
+	}
+	return n
 }

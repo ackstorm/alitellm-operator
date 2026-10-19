@@ -912,6 +912,14 @@ CI's Envtest job, which is the reliable signal.
   trade-off as the Non-Goals "tick spread" note in the relist-convergence plan
   (per-kind gates were explicitly out of scope); `make e2e-full` against a
   real cluster is the decisive gate, not a local `-race` full-package run.
+  **Superseded 2026-10-19:** both were windows opened before the create burst
+  drained. BadMasterKey's extra probe was the connection reconciler's OWN third
+  probe (all three `probe: BadMasterKey` log lines precede the window; nothing
+  else logged a probe), and CONN_09's baseline raced the async Team/default
+  bootstrap write. Negative windows now open via `waitQuiet` (counter held
+  still ≥1s, `poll_until_test.go`) and read counts skip the ungated
+  Team/default `GET /v2/team/list` (`mockReadsSince`). New "nothing may happen
+  in this window" assertions MUST start with `waitQuiet`, never a fixed sleep.
 
 ### ❌ `kustomize edit set image` in a build recipe — it WRITES a tracked file
 ```make

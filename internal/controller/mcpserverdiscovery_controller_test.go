@@ -1535,9 +1535,11 @@ func TestMCPServerDiscoveryReconciler_NoEventLoop_OnOwnStatusWrite(t *testing.T)
 		t.Fatalf("initial child count: got %d, want 1", len(children))
 	}
 
-	// Let the reconcile sequence quiesce.
-	time.Sleep(1250 * time.Millisecond)
-	baseline := counter()
+	// Let the reconcile sequence quiesce. The counter is suite-global, so
+	// wait for it to hold still rather than sleeping a fixed 1.25s: under
+	// load the tail of this create burst (child status churn re-enqueues the
+	// parent via Owns) and the previous test's teardown land in the window.
+	baseline := waitQuiet(t, counter, time.Second, 15*time.Second)
 
 	// Patch the Discovery status directly — simulates the reconciler's
 	// own writeback path. Without GenerationChangedPredicate on For,
