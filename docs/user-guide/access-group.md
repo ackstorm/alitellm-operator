@@ -198,7 +198,8 @@ is already broken.
     team's keys even though `team.models` still starts with `"no-default-models"` (followed by the
     group's mirrored model names, see [team](team.md)).
 
-    Measured on stock LiteLLM 1.93.0 and covered by the `AG-04` e2e spec: the
+    Measured on stock LiteLLM 1.93.0 (the e2e suite now runs on 1.106.0 with
+    unchanged behaviour) and covered by the `AG-04` e2e spec: the
     same team is denied `team_model_access_denied` before the attachment and
     succeeds after it.
 

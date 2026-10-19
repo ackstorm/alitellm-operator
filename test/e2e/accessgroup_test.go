@@ -305,8 +305,8 @@ var _ = Describe("LiteLLMAccessGroup", Ordered, ContinueOnFailure, func() {
 	//
 	// ASSERT BY ERROR TYPE, NEVER BY STATUS CODE. LiteLLM drifted the denial
 	// status 401→403 across 1.83.10→1.93.0 for the identical condition; the
-	// stable contract is `team_model_access_denied` + the sentinel echo. The
-	// "allowed" half therefore asserts the ABSENCE of those markers rather than
+	// stable contract is `team_model_access_denied`. The
+	// "allowed" half therefore asserts the ABSENCE of that marker rather than
 	// a success code, so it stays honest whatever the upstream provider does.
 	It("AG-04 bypass is real: an attached group overrides the deny-all sentinel", func() {
 		const agName = "e2e-ag-bypass-group"

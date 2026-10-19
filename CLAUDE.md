@@ -1331,7 +1331,7 @@ attachment, and after it the response no longer carries that marker (the
 denial body used to also echo the sentinel; that echo disappeared in LiteLLM
 1.106.0, so only `team_model_access_denied` is asserted) — while `team.models` is still the deny-all sentinel
 (`__deny_all__` then, `no-default-models` since v0.9.0). Assert
-the markers' ABSENCE, never `status == 200`: on the e2e mock a correctly
+the marker's ABSENCE, never `status == 200`: on the e2e mock a correctly
 authorized call never returns 200, so a `== 200` assertion inverts the verdict.
 ✅ Groups compose ADDITIVELY and OVERRIDE the deny-by-default sentinel. Treat
 every attachment as a widening of the team's ceiling; there is no way to use one

@@ -471,7 +471,7 @@ var _ = Describe("LiteLLMTeam", Ordered, ContinueOnFailure, func() {
 	//
 	// Status code is asserted as 401-or-403: LiteLLM 1.83.10 returned 401,
 	// 1.93.0 returns 403 for the same team_model_access_denied condition.
-	// The stable contract is the error type + the sentinel echo, not the code.
+	// The stable contract is the error type, not the code.
 	It("deny-by-default: a team with no accessGroups denies inference — TEAM-05", func() {
 		const teamName = "team-deny-default"
 		fg := metav1.DeletePropagationForeground
