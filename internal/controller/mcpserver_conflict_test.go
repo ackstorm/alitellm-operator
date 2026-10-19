@@ -68,9 +68,6 @@ func TestMCPServer_ConflictResolution_SanitizationCollapse_Loser(t *testing.T) {
 			},
 		},
 	}
-	if err := k8sClient.Create(ctx, loserCR); err != nil {
-		t.Fatalf("create loser MCPServer %q: %v", loserName, err)
-	}
 	winnerCR := &litellmv1alpha1.LiteLLMMCPServer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      winnerName,
@@ -84,8 +81,16 @@ func TestMCPServer_ConflictResolution_SanitizationCollapse_Loser(t *testing.T) {
 			},
 		},
 	}
+	// Create the winner FIRST. The informer delivers events in order, so
+	// the loser's first reconcile is guaranteed to see the winner. Created
+	// the other way round, the loser can reconcile alone, create foo-bar in
+	// LiteLLM and keep lastRendered.serverID after it turns Conflict, which
+	// is not the short-circuit this test asserts.
 	if err := k8sClient.Create(ctx, winnerCR); err != nil {
 		t.Fatalf("create winner MCPServer %q: %v", winnerName, err)
+	}
+	if err := k8sClient.Create(ctx, loserCR); err != nil {
+		t.Fatalf("create loser MCPServer %q: %v", loserName, err)
 	}
 
 	// Winner reaches Ready/Synced.
