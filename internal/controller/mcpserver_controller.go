@@ -149,6 +149,29 @@ type MCPServerReconciler struct {
 	RecreateLimit int
 }
 
+// conflictWinner returns the alpha-last-wins winner (conflict.ResolveWinner)
+// among the live (non-deleting) LiteLLMMCPServer CRs in ns whose name
+// sanitizes to sanitizedName, or nil when there are none. Shared by the
+// reconcile-time loser short-circuit and the deletion path's ownership check
+// so both apply the same rule.
+func (r *MCPServerReconciler) conflictWinner(ctx context.Context, ns, sanitizedName, sep string) (client.Object, error) {
+	var siblings litellmv1alpha1.LiteLLMMCPServerList
+	if err := r.List(ctx, &siblings, client.InNamespace(ns)); err != nil {
+		return nil, fmt.Errorf("list mcpservers for conflict resolution: %w", err)
+	}
+	candidates := make([]client.Object, 0, len(siblings.Items))
+	for i := range siblings.Items {
+		s := &siblings.Items[i]
+		if !s.DeletionTimestamp.IsZero() {
+			continue
+		}
+		if litellm.SanitizeMCPServerName(s.Name, sep) == sanitizedName {
+			candidates = append(candidates, s)
+		}
+	}
+	return conflict.ResolveWinner(candidates), nil
+}
+
 // Reconcile implements the LiteLLMMCPServer state machine.
 //
 //nolint:gocyclo // Linear state machine; splitting obscures the §7.3 mapping.
@@ -172,14 +195,36 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			onAckMissing := newAckMissingFn(r.Recorder, &mcp, mcpServerKind, mcp.Namespace, mcp.Name, policy)
 
 			snap := r.Cache.Snapshot()
+			sanitized := litellm.SanitizeMCPServerName(mcp.Name, snap.MCPToolPrefixSeparator)
+			// Ownership check, only once Usable (an unusable snapshot carries a
+			// zero separator, see #61 below). A live sibling sharing this sanitized server_name owns the
+			// LiteLLM entry (conflict winner, or a loser about to be promoted
+			// to one). This CR's own lastRendered.serverID may still point at
+			// it — a loser that created the entry before the winner existed
+			// keeps that id (keepPersistedID) — so never DELETE it here; the
+			// last owning CR to go away does. Self is deleting, hence never a
+			// candidate.
+			var owner client.Object
 			if snap.Usable() {
+				var err error
+				if owner, err = r.conflictWinner(ctx, mcp.Namespace, sanitized, snap.MCPToolPrefixSeparator); err != nil {
+					return ctrl.Result{}, err
+				}
+			}
+			if owner != nil {
+				logger.Info("finalizer removed; LiteLLM delete skipped: server_name owned by a live sibling",
+					"owner", conflict.Key(owner), "serverName", sanitized)
+				if r.Recorder != nil {
+					r.Recorder.Eventf(&mcp, corev1.EventTypeNormal, "LiteLLMDeleteSkipped",
+						"LiteLLM entry for server_name %q kept: owned by %s", sanitized, conflict.Key(owner))
+				}
+			} else if snap.Usable() {
 				serverID := mcp.Status.LastRendered.ServerID
 				if serverID == "" {
 					// Phase 5 D-02 stale-status fallback: re-resolve by name
 					// via ListMCPServers + in-memory filter on metadata.name.
 					// FIX2.txt H-9: probe sanitized first, then original
 					// metadata.name (orphan-adoption fallback).
-					sanitized := litellm.SanitizeMCPServerName(mcp.Name, snap.MCPToolPrefixSeparator)
 					if resolved := r.resolveServerIDByName(ctx, snap.Client, sanitized, mcp.Name, logger); resolved != "" {
 						serverID = resolved
 					}
@@ -298,25 +343,14 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		sep = litellm.MCPToolPrefixSeparatorDefault
 	}
 	sanitizedName := litellm.SanitizeMCPServerName(mcp.Name, sep)
-	var siblings litellmv1alpha1.LiteLLMMCPServerList
-	if err := r.List(ctx, &siblings, client.InNamespace(mcp.Namespace)); err != nil {
-		return ctrl.Result{}, fmt.Errorf("list mcpservers for conflict resolution: %w", err)
-	}
-	candidates := make([]client.Object, 0, len(siblings.Items))
-	for i := range siblings.Items {
-		s := &siblings.Items[i]
-		if !s.DeletionTimestamp.IsZero() {
-			continue
-		}
-		if litellm.SanitizeMCPServerName(s.Name, sep) == sanitizedName {
-			candidates = append(candidates, s)
-		}
+	winner, err := r.conflictWinner(ctx, mcp.Namespace, sanitizedName, sep)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 	priorReason := ""
 	if c := apimeta.FindStatusCondition(mcp.Status.Conditions, conditionTypeReady); c != nil {
 		priorReason = c.Reason
 	}
-	winner := conflict.ResolveWinner(candidates)
 	if conflict.IsLoser(&mcp, winner) {
 		conflict.ApplyLoserCondition(&mcp.Status.Conditions, mcp.Generation, conflict.Key(winner))
 		if r.Recorder != nil {

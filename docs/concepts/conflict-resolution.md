@@ -72,6 +72,12 @@ collides), the operator re-evaluates the candidate set. The next CR in
 sort order is promoted, its `Conflict` condition is cleared, and a
 normal reconcile drives the LiteLLM entity to its spec.
 
+For `LiteLLMMCPServer`, deleting a CR never deletes the LiteLLM entry
+while another live CR in the namespace still sanitizes to the same
+`server_name` — that CR owns it (or is promoted to own it). The entry is
+deleted only when the last such CR goes away, under its own
+`deletionPolicy`. The skipped CR emits a `LiteLLMDeleteSkipped` Event.
+
 ## Observability
 
 - Loser CRs emit a `ConflictDetected` Kubernetes Event with the winner key.

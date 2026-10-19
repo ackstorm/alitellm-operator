@@ -1291,6 +1291,36 @@ WHY IT MATTERS BEYOND TOOLSETS: `litellm.IsNotFound` covers 404/ErrNotFound, but
 an endpoint that 500s on a missing row defeats it. Any NEW delete path should
 confirm absence before treating a 5xx as retry-forever.
 
+### ❌ Deleting an MCPServer conflict loser DELETEs the winner's entry
+```
+# foo-bar reconciled before foo.bar existed (both sanitize to foo-bar under ".")
+foo-bar: "mcp server created in LiteLLM" serverID=foo-bar
+foo.bar: adopts foo-bar → Ready=Synced; foo-bar → Ready=False Conflict,
+         status.lastRendered.serverID STILL "foo-bar" (keepPersistedID)
+kubectl delete litellmmcpserver foo-bar
+# ≤v0.10.2: DELETE /v1/mcp/server/foo-bar — the WINNER's live entry
+```
+Same hit with the winner created first: the loser has no serverID, so the
+deletion path's name-resolve fallback found the winner's entry by sanitized
+name and deleted that. Deleting the WINNER also deleted the entry the promoted
+loser was about to take over (it recreated it). Safety-relist hid the damage
+~10m later.
+✅ Before any resolve/DELETE, the deletion path asks `conflictWinner`
+(`mcpserver_controller.go`, the SAME `conflict.ResolveWinner` call the
+reconcile-time loser short-circuit uses) whether a live, non-deleting sibling
+shares the sanitized `server_name`. If so it skips the LiteLLM call, emits
+`LiteLLMDeleteSkipped`, and drains the finalizer. The entry is deleted exactly
+when the LAST owning CR goes away, under that CR's `deletionPolicy`. The check
+runs only on a Usable snapshot (zero separator otherwise, #61). The loser
+branch still keeps a stale `serverID` ON PURPOSE: it is harmless now, and on
+promotion the loser UPDATEs that id instead of re-creating. Do NOT weaken
+`keepPersistedID` to clear it. Guarded by
+`TestMCPServer_ConflictLoserDelete_LateWinner_KeepsWinnerEntry` and
+`TestMCPServer_ConflictWinnerDelete_LoserInherits_LastOwnerDeletes`.
+WHY: the deletion path trusted `status.lastRendered.serverID` (and the name
+fallback) as proof of ownership. For a sanitization collision, ownership is a
+property of the live CR set, not of one CR's status.
+
 ### ❌ Asserting `object_permission` from `/v2/team/list`
 ```go
 matches := litellmTeamsByAlias(alias)
