@@ -915,8 +915,9 @@ CI's Envtest job, which is the reliable signal.
   **Superseded 2026-10-19:** both were windows opened before the create burst
   drained. BadMasterKey's extra probe was the connection reconciler's OWN third
   probe (all three `probe: BadMasterKey` log lines precede the window; nothing
-  else logged a probe), and CONN_09's baseline raced the async Team/default
-  bootstrap write. Negative windows now open via `waitQuiet` (counter held
+  else logged a probe). CONN_09's baseline likely raced the async Team/default
+  bootstrap write (inferred: no failing log survived; passing runs show 1 or 2
+  delete-time mutations depending on whether that write had landed). Negative windows now open via `waitQuiet` (counter held
   still ≥1s, `poll_until_test.go`) and read counts skip the ungated
   Team/default `GET /v2/team/list` (`mockReadsSince`). New "nothing may happen
   in this window" assertions MUST start with `waitQuiet`, never a fixed sleep.
@@ -1483,6 +1484,28 @@ result, so an empty release commit is correct here. `alitellm-auth`'s
 bumped `Chart.yaml`, `values.yaml` (`image.tag`), `pyproject.toml` and
 `main.py`. `make release-cut` creates an *empty* commit in both repos, so in
 alitellm-auth it publishes a chart pinned to the previous image tag.
+
+### ❌ Adopting a Discovery child while a Discovery reconcile is in flight
+```bash
+kubectl patch litellmmodel <child> --type=json \
+  -p '[{"op":"remove","path":"/metadata/ownerReferences"}]'
+# moments later the controller ownerRef is back; status keeps reporting the
+# child under generatedChildren, skippedCandidates stays empty
+```
+Symptom: the adoption (strip ownerRefs so the Discovery stops managing the
+child) is silently lost. No error, no event. The child is still owned and
+still overwritten from the Discovery template. Affects
+`LiteLLMModelDiscovery` and `LiteLLMMCPServerDiscovery`.
+✅ Workaround: strip the ownerRefs again and confirm they are still absent after
+the next Discovery reconcile (`kubectl get <kind> <child> -o
+jsonpath='{.metadata.ownerReferences}'` empty, child listed under
+`skippedCandidates`). The envtests do the same through `stripOwnerRefs` in
+`poll_until_test.go`. NOT fixed in production. Tracked in GitHub issue
+ISSUE_LINK_PLACEHOLDER.
+WHY: a Discovery reconcile already running when the strip lands still holds
+the pre-strip cache view. It SSA-applies the child with `ForceOwnership`, and
+that apply re-adds the controller ownerRef. The window is narrow (one reconcile),
+but nothing re-checks it, so the loss is permanent until the user notices.
 
 ## Repository-specific patterns
 

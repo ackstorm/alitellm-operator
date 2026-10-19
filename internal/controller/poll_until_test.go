@@ -123,6 +123,10 @@ func mockReadsSince(from int) int {
 // the pre-strip cache view and SSA-applies with ForceOwnership, which puts
 // the controller ownerRef straight back; a single strip then silently
 // un-adopts the child and the test waits for a skip that never comes.
+// This works around a known PRODUCTION race (a real user's adoption is lost
+// the same way), not a test artifact: tracked in GitHub issue
+// ISSUE_LINK_PLACEHOLDER. See CLAUDE.md "Adopting a Discovery child while a
+// Discovery reconcile is in flight".
 func stripOwnerRefs[T any, PT interface {
 	*T
 	client.Object
