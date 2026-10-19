@@ -1,7 +1,7 @@
 # Acknowledged govulncheck residuals
 
-**Date:** 2026-08-14
-**Toolchain at acknowledgement:** Go 1.26.6 (`Dockerfile.devtools` + `go.mod` `toolchain` directive), `golang.org/x/net@v0.53.0`
+**Date:** 2026-10-19
+**Toolchain at acknowledgement:** Go 1.26.9 (`Dockerfile.devtools` + `go.mod` `toolchain` directive), `golang.org/x/net@v0.60.0`
 **Scanner:** `govulncheck@v1.3.0` (pinned in `Dockerfile.devtools::GOVULNCHECK_VERSION`)
 **Invocation:** `./scripts/dev.sh govulncheck ./...`
 
@@ -30,6 +30,13 @@ new reachable advisory must be:
 
 ## History
 
+- 2026-10-19: Bumped the Go toolchain 1.26.6 -> 1.26.9 across all four
+  pinned surfaces and `golang.org/x/net` v0.56.0 -> v0.60.0. Cleared NINE
+  reachable advisories published after v0.10.1: stdlib `GO-2026-6603`,
+  `GO-2026-6605`, `GO-2026-6608`, `GO-2026-6611`, `GO-2026-6612`,
+  `GO-2026-6613`, `GO-2026-6617` (net/http, net/textproto, mime/multipart),
+  `GO-2026-6607` (crypto/tls), and x/net `GO-2026-6610` (HTTP/2 transport).
+  The list stays EMPTY.
 - 2026-08-14: Bumped the Go toolchain 1.26.4 -> 1.26.6 across all four
   pinned surfaces. Cleared SEVEN reachable stdlib advisories at once —
   `GO-2026-5026` + `GO-2026-6089` (net/http), `GO-2026-5972`
