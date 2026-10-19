@@ -1174,7 +1174,7 @@ spec:
   accessGroups: [dream]
 ```
 The operator always sends a CLOSED team (`closedTeamGrant`,
-`team_permission.go`): `models: ["no-default-models"]`, agents = null UUID,
+`team_permission.go`): `models: ["no-default-models", <attached groups' access_model_names, sorted, wildcards skipped>]` (LiteLLM charges a tag budget only when the tag literally is in `team.models`; `attachedGroupModels`; an AccessGroup watch re-drives teams), agents = null UUID,
 `[]` for mcp_servers / mcp_access_groups / agent_access_groups / mcp_toolsets,
 plus `access_group_ids` — every field on every write, the implicit
 `Team/default` included. WHY each piece:

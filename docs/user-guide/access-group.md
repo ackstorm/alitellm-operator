@@ -195,11 +195,12 @@ is already broken.
     denies every model ([closed baseline](team.md#access-a-closed-team-opened-by-access-groups)).
     An attached access group **overrides** that: LiteLLM composes group grants
     additively, so a group granting `gpt-4o` makes `gpt-4o` reachable by that
-    team's keys even though `team.models` is still `["no-default-models"]`.
+    team's keys even though `team.models` still starts with `"no-default-models"` (followed by the
+    group's mirrored model names, see [team](team.md)).
 
     Measured on stock LiteLLM 1.93.0 and covered by the `AG-04` e2e spec: the
     same team is denied `team_model_access_denied` before the attachment and
-    succeeds after it, with its own `models` list unchanged.
+    succeeds after it.
 
 Consequences to plan around:
 

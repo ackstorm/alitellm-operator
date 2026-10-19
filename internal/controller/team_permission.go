@@ -2,6 +2,11 @@
 
 package controller
 
+import (
+	"sort"
+	"strings"
+)
+
 // Deny-by-default sentinels. LiteLLM reads an EMPTY `models` or
 // object_permission.agents list as "no filter" (fail-OPEN → master-key
 // ceiling: a team with models=[] saw all 427 models), so a closed team must
@@ -25,9 +30,15 @@ const (
 // key is sent on every write, as `[]` when empty — never omitted, never null.
 // mcp_servers, mcp_access_groups, agent_access_groups and mcp_toolsets fail
 // CLOSED on `[]` and take no sentinel.
-func closedTeamGrant(accessGroupIDs []string) map[string]any {
+//
+// models = sentinel + the attached groups' access_model_names. LiteLLM
+// charges a model access-group (tag) budget ONLY when the tag literally
+// appears in team.models / key.models; it never reads access_group_ids for
+// attribution. Mirroring grants nothing new: the groups already grant every
+// entry through access_group_ids.
+func closedTeamGrant(accessGroupIDs, groupModels []string) map[string]any {
 	return map[string]any{
-		"models": []string{modelDenyAllSentinel},
+		"models": append([]string{modelDenyAllSentinel}, groupModels...),
 		"object_permission": map[string]any{
 			"mcp_servers":         []string{},
 			"mcp_access_groups":   []string{},
@@ -46,4 +57,26 @@ func emptyIfNil(s []string) []string {
 		return []string{}
 	}
 	return s
+}
+
+// attachedGroupModels returns the sorted, de-duplicated union of
+// access_model_names over the named groups. Wildcards (`*` anywhere,
+// `all-proxy-models`) are skipped: LiteLLM never charges budgets for them,
+// and a wildcard in team.models is not proven equivalent to the same entry
+// inside a group, so copying it could widen access.
+func attachedGroupModels(names []string, byName map[string][]string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, n := range names {
+		for _, m := range byName[n] {
+			if m == "" || m == modelDenyAllSentinel || m == "all-proxy-models" ||
+				strings.Contains(m, "*") || seen[m] {
+				continue
+			}
+			seen[m] = true
+			out = append(out, m)
+		}
+	}
+	sort.Strings(out)
+	return out
 }

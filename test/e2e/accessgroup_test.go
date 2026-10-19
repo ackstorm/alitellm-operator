@@ -379,8 +379,8 @@ var _ = Describe("LiteLLMAccessGroup", Ordered, ContinueOnFailure, func() {
 
 		By("the SAME team's key is no longer denied — the sentinel is bypassed")
 		// A fresh key removes LiteLLM's key-object cache from the equation; the
-		// principal under test is the TEAM, whose models list is unchanged and
-		// still `["no-default-models"]`.
+		// principal under test is the TEAM, whose models list is the sentinel
+		// plus the attached group's mirrored entries (never a wildcard).
 		allowKey := generateTeamKey(tid)
 		DeferCleanup(func() { deleteLiteLLMKey(allowKey) })
 		Eventually(func(g Gomega) {
@@ -395,13 +395,13 @@ var _ = Describe("LiteLLMAccessGroup", Ordered, ContinueOnFailure, func() {
 				"group grant did not override the deny-all sentinel, got: %s", out)
 		}, 120*time.Second, 5*time.Second).Should(Succeed())
 
-		// Sanity on the OTHER direction: the team's own models list was never
-		// widened. The bypass is LiteLLM's additive group semantics, not the
-		// operator quietly dropping the sentinel.
+		// Sanity on the OTHER direction: the team's models list is exactly the
+		// sentinel plus the group's mirrored entry. The bypass is LiteLLM's
+		// additive group semantics, not the operator quietly dropping the sentinel.
 		matches := litellmTeamsByAlias(teamName)
 		Expect(matches).NotTo(BeEmpty())
-		Expect(matches[0]["models"]).To(ConsistOf("no-default-models"),
-			"team.models must still carry the sentinel — the widening comes from the group, got %v",
+		Expect(matches[0]["models"]).To(ConsistOf("no-default-models", modelName),
+			"team.models must be the sentinel + the group's mirrored entries, got %v",
 			matches[0]["models"])
 	})
 

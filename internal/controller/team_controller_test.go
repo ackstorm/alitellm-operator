@@ -4,6 +4,7 @@ package controller
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -2433,4 +2434,69 @@ func TestTeam_ClosedBaselineWithoutGroups(t *testing.T) {
 	if ids, ok := body["access_group_ids"].([]any); !ok || len(ids) != 0 {
 		t.Errorf("access_group_ids: want [], got %v", body["access_group_ids"])
 	}
+}
+
+// TestTeam_MirrorsGroupModelsAndFollowsGroupEdits — team.models carries the
+// attached group's access_model_names after the sentinel, and editing the
+// group CR re-drives the team without safety relist.
+func TestTeam_MirrorsGroupModelsAndFollowsGroupEdits(t *testing.T) {
+	ctx := context.Background()
+	const team, group = "team-mirror", "ag-mirror"
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetTeams()
+	mockServer.ResetAccessGroups()
+	teamReconciler.ResetImplicitDefaultCache()
+	ensureNoTeam(t, ctx, team)
+	ensureNoAccessGroup(t, ctx, group)
+	resetConnCacheSnapshot()
+
+	cleanupConn := setupReadyConnectionTeam(t, ctx)
+	t.Cleanup(func() {
+		cleanupConn()
+		ensureNoTeam(t, context.Background(), team)
+		ensureNoAccessGroup(t, context.Background(), group)
+		mockServer.ResetAccessGroups()
+	})
+
+	ag := accessGroupSampleCR(group, litellmv1alpha1.AccessGroupSpec{ModelGroups: []string{"tag-a"}})
+	if err := k8sClient.Create(ctx, ag); err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	pollAccessGroupCondition(t, ctx, group, reasonSynced)
+
+	cr := teamSampleCR(team)
+	cr.Spec.AccessGroups = []string{group}
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create team: %v", err)
+	}
+	pollTeamCondition(t, ctx, team, reasonSynced, 30*time.Second)
+	waitTeamModels(t, team, []any{"no-default-models", "tag-a"})
+
+	var cur litellmv1alpha1.LiteLLMAccessGroup
+	if err := k8sClient.Get(ctx, client.ObjectKey{Name: group, Namespace: WatchNamespace}, &cur); err != nil {
+		t.Fatal(err)
+	}
+	cur.Spec.ModelGroups = []string{"tag-b"}
+	if err := k8sClient.Update(ctx, &cur); err != nil {
+		t.Fatalf("update group: %v", err)
+	}
+	waitTeamModels(t, team, []any{"no-default-models", "tag-b"})
+}
+
+func waitTeamModels(t *testing.T, alias string, want []any) {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	var got any
+	for time.Now().Before(deadline) {
+		if body := mockServer.LastTeamBody(alias); body != nil {
+			got = body["models"]
+			if m, ok := got.([]any); ok && slices.Equal(m, want) {
+				return
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("team %s models: got %v want %v", alias, got, want)
 }
