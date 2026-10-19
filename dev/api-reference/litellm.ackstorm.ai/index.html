@@ -965,6 +965,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/model-group-budget/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMModelGroupBudget
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1828,6 +1856,28 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#litellmmodelgroupbudget" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMModelGroupBudget
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmmodelgroupbudgetlist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMModelGroupBudgetList
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#litellmmodellist" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2074,6 +2124,28 @@
     <span class="md-ellipsis">
       
         ModelDiscoveryStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#modelgroupbudgetspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ModelGroupBudgetSpec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#modelgroupbudgetstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ModelGroupBudgetStatus
       
     </span>
   </a>
@@ -2829,6 +2901,28 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#litellmmodelgroupbudget" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMModelGroupBudget
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmmodelgroupbudgetlist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMModelGroupBudgetList
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#litellmmodellist" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3082,6 +3176,28 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#modelgroupbudgetspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ModelGroupBudgetSpec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#modelgroupbudgetstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ModelGroupBudgetStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#modelspec" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3249,6 +3365,8 @@
 <li><a href="#litellmmodelaliaslist">LiteLLMModelAliasList</a></li>
 <li><a href="#litellmmodeldiscovery">LiteLLMModelDiscovery</a></li>
 <li><a href="#litellmmodeldiscoverylist">LiteLLMModelDiscoveryList</a></li>
+<li><a href="#litellmmodelgroupbudget">LiteLLMModelGroupBudget</a></li>
+<li><a href="#litellmmodelgroupbudgetlist">LiteLLMModelGroupBudgetList</a></li>
 <li><a href="#litellmmodellist">LiteLLMModelList</a></li>
 <li><a href="#litellmteam">LiteLLMTeam</a></li>
 <li><a href="#litellmteamlist">LiteLLMTeamList</a></li>
@@ -5225,6 +5343,114 @@ the LiteLLM side (Phase 3 model_controller.go).</p>
 </tr>
 </tbody>
 </table>
+<h4 id="litellmmodelgroupbudget">LiteLLMModelGroupBudget<a class="headerlink" href="#litellmmodelgroupbudget" title="Permanent link">&para;</a></h4>
+<p>LiteLLMModelGroupBudget is the Schema for the litellmmodelgroupbudgets API.</p>
+<p><em>Appears in:</em>
+- <a href="#litellmmodelgroupbudgetlist">LiteLLMModelGroupBudgetList</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td><code>litellm.ackstorm.ai/v1alpha1</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td><code>LiteLLMModelGroupBudget</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td>Kind is a string value representing the REST resource this object represents.<br />Servers may infer this from the endpoint the client submits requests to.<br />Cannot be updated.<br />In CamelCase.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td>APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>metadata</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta">ObjectMeta</a></em></td>
+<td>Refer to Kubernetes API documentation for fields of <code>metadata</code>.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>spec</code> <em><a href="#modelgroupbudgetspec">ModelGroupBudgetSpec</a></em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>status</code> <em><a href="#modelgroupbudgetstatus">ModelGroupBudgetStatus</a></em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="litellmmodelgroupbudgetlist">LiteLLMModelGroupBudgetList<a class="headerlink" href="#litellmmodelgroupbudgetlist" title="Permanent link">&para;</a></h4>
+<p>LiteLLMModelGroupBudgetList contains a list of LiteLLMModelGroupBudget.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td><code>litellm.ackstorm.ai/v1alpha1</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td><code>LiteLLMModelGroupBudgetList</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td>Kind is a string value representing the REST resource this object represents.<br />Servers may infer this from the endpoint the client submits requests to.<br />Cannot be updated.<br />In CamelCase.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td>APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>metadata</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#listmeta-v1-meta">ListMeta</a></em></td>
+<td>Refer to Kubernetes API documentation for fields of <code>metadata</code>.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>items</code> <em><a href="#litellmmodelgroupbudget">LiteLLMModelGroupBudget</a> array</em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
 <h4 id="litellmmodellist">LiteLLMModelList<a class="headerlink" href="#litellmmodellist" title="Permanent link">&para;</a></h4>
 <p>LiteLLMModelList contains a list of LiteLLMModel.</p>
 <table>
@@ -6405,6 +6631,85 @@ SourceReachable — provider-list reachability with reasons:
 <tr>
 <td><code>lastRefreshAt</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#time-v1-meta">Time</a></em></td>
 <td>LastRefreshAt is the timestamp of the most recent SUCCESSFUL<br />provider-list reconcile (NOT every reconcile attempt — transient<br />failures do not update this field). Mirrors Phase 3's<br />LastRendered.At pattern (model_types.go:237-243).</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="modelgroupbudgetspec">ModelGroupBudgetSpec<a class="headerlink" href="#modelgroupbudgetspec" title="Permanent link">&para;</a></h4>
+<p>ModelGroupBudgetSpec declares a LiteLLM budget on a model access-group TAG
+(model_info.access_groups — NOT a LiteLLMAccessGroup). Requires LiteLLM
+1.100.0+. LiteLLM charges a request against it only when the tag appears
+by name in the caller's key/team models; operator teams get it there via
+LiteLLMAccessGroup.spec.modelGroups (mirrored into team.models).</p>
+<p><em>Appears in:</em>
+- <a href="#litellmmodelgroupbudget">LiteLLMModelGroupBudget</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>modelGroup</code> <em>string</em></td>
+<td>ModelGroup is the model access-group tag the budget applies to.<br />Immutable: a rename would orphan the old tag's budget.</td>
+<td></td>
+<td>MinLength: 1 <br /></td>
+</tr>
+<tr>
+<td><code>limit</code> <em>float</em></td>
+<td>Limit is the USD hard cap shared by every caller granted the tag,<br />projected onto max_budget. 0 means NO cap in LiteLLM (check skipped).</td>
+<td></td>
+<td>Minimum: 0 <br /></td>
+</tr>
+<tr>
+<td><code>softLimit</code> <em>float</em></td>
+<td>SoftLimit is the USD alert threshold (soft_budget). Requests still succeed.</td>
+<td></td>
+<td>Minimum: 0 <br /></td>
+</tr>
+<tr>
+<td><code>period</code> <em>string</em></td>
+<td>Period is the reset interval (budget_duration), e.g. <code>30d</code>.</td>
+<td></td>
+<td>Pattern: <code>^[0-9]+[smhd]$</code> <br /></td>
+</tr>
+<tr>
+<td><code>deletionPolicy</code> <em>string</em></td>
+<td>DeletionPolicy controls finalizer behavior when the LiteLLM-side DELETE<br />cannot be confirmed. Defaults to "Orphan" per REL-06 anti-storm.</td>
+<td>Orphan</td>
+<td>Enum: [Orphan Delete] <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="modelgroupbudgetstatus">ModelGroupBudgetStatus<a class="headerlink" href="#modelgroupbudgetstatus" title="Permanent link">&para;</a></h4>
+<p>ModelGroupBudgetStatus is deliberately minimal: the operator declares the
+budget; spend and reset time are LiteLLM's to report.</p>
+<p><em>Appears in:</em>
+- <a href="#litellmmodelgroupbudget">LiteLLMModelGroupBudget</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>observedGeneration</code> <em>integer</em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>conditions</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#condition-v1-meta">Condition</a> array</em></td>
+<td>Conditions: single type <code>Ready</code>, reasons Synced, LiteLLMUnavailable,<br />LiteLLMRejected, ModelGroupNotFound, DuplicateModelGroup.</td>
 <td></td>
 <td></td>
 </tr>

@@ -16,7 +16,7 @@
         <link rel="prev" href="../guardrail/">
       
       
-        <link rel="next" href="../../concepts/conflict-resolution/">
+        <link rel="next" href="../model-group-budget/">
       
       
         
@@ -1147,6 +1147,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../model-group-budget/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMModelGroupBudget
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2102,14 +2130,17 @@ is already broken.</p>
 <h2 id="access-groups-only-add">Access groups only ADD<a class="headerlink" href="#access-groups-only-add" title="Permanent link">&para;</a></h2>
 <div class="admonition danger">
 <p class="admonition-title">A group grant overrides the team's deny-by-default sentinel</p>
-<p>Every team is projected with the <code>["no-default-models"]</code> sentinel, which
-denies every model (<a href="../team/#access-a-closed-team-opened-by-access-groups">closed baseline</a>).
+<p>Every team's <code>models</code> starts with the <code>no-default-models</code> sentinel (which
+on its own denies every model), followed by the attached groups' mirrored
+model names (<a href="../team/#access-a-closed-team-opened-by-access-groups">closed baseline</a>).
 An attached access group <strong>overrides</strong> that: LiteLLM composes group grants
 additively, so a group granting <code>gpt-4o</code> makes <code>gpt-4o</code> reachable by that
-team's keys even though <code>team.models</code> is still <code>["no-default-models"]</code>.</p>
-<p>Measured on stock LiteLLM 1.93.0 and covered by the <code>AG-04</code> e2e spec: the
+team's keys even though <code>team.models</code> still starts with <code>"no-default-models"</code> (followed by the
+group's mirrored model names, see <a href="../team/">team</a>).</p>
+<p>Measured on stock LiteLLM 1.93.0 (the e2e suite now runs on 1.106.0 with
+unchanged behaviour) and covered by the <code>AG-04</code> e2e spec: the
 same team is denied <code>team_model_access_denied</code> before the attachment and
-succeeds after it, with its own <code>models</code> list unchanged.</p>
+succeeds after it.</p>
 </div>
 <p>Consequences to plan around:</p>
 <ul>

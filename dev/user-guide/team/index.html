@@ -1131,6 +1131,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../model-group-budget/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMModelGroupBudget
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1979,7 +2007,7 @@ update, whatever the spec says:</p>
 <tbody>
 <tr>
 <td><code>models</code></td>
-<td><code>["no-default-models"]</code></td>
+<td><code>["no-default-models", …]</code> + attached groups' model names</td>
 </tr>
 <tr>
 <td><code>object_permission.agents</code></td>
@@ -2013,6 +2041,19 @@ update, whatever the spec says:</p>
 model catalog, so a closed team lists zero models instead of a phantom row.
 Every field is sent every time (never omitted) because <code>POST /team/update</code>
 keeps an omitted field's old value.</p>
+<p>After the sentinel, <code>models</code> mirrors the <code>access_model_names</code> of the attached
+groups (<code>models</code> ∪ <code>modelGroups</code>; sorted, de-duplicated, wildcards such as <code>*</code> / <code>all-proxy-models</code>
+skipped). This grants nothing new — the groups already grant them through
+<code>access_group_ids</code> — but LiteLLM charges a model access-group (tag) budget
+only when the tag literally appears in <code>team.models</code>. Editing or removing a
+<code>LiteLLMAccessGroup</code> CR re-drives the attached teams immediately; a group
+managed by hand in LiteLLM (no CR) is picked up at the next safety relist. If an
+attached group's row disappears from LiteLLM (its CR deleted under
+<code>deletionPolicy: Delete</code>, or the row removed in the UI), the team is first
+narrowed to the groups that still resolve — their ids in <code>access_group_ids</code>,
+their names in <code>models</code> — so the vanished group's access is revoked; then it
+parks <code>AccessGroupNotFound</code> until the group exists again. See
+<a href="../model-group-budget/">model-group budgets</a>.</p>
 <p>Access groups only <strong>add</strong>: an attached group overrides the sentinels for
 what it grants. A team without <code>accessGroups</code> reaches nothing.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">litellm.ackstorm.ai/v1alpha1</span>
