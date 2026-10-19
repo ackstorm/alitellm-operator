@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`LiteLLMModelGroupBudget` CRD** — declares a LiteLLM budget on a model
+  access-group TAG (`/access_group/{tag}/budget`, LiteLLM 1.100.0+): `limit`,
+  `softLimit`, `period`, `deletionPolicy`. One owner per tag (oldest CR wins,
+  duplicates park `DuplicateModelGroup`); status is conditions only. See
+  `docs/user-guide/model-group-budget.md`.
+
+### Changed
+- **`team.models` mirrors the attached access groups.** LiteLLM charges a tag
+  budget only when the tag appears by name in `models`, never via
+  `access_group_ids`, so every team now sends
+  `["no-default-models", <groups' access_model_names>...]` (wildcards never
+  mirrored). Expect one `/team/update` per team after upgrade. Editing a
+  `LiteLLMAccessGroup` re-drives its teams immediately.
+- **Missing access group narrows before parking.** When an attached group's
+  LiteLLM row is gone, the team is first rewritten with only the groups that
+  still resolve, then parks `AccessGroupNotFound` — a vanished group no longer
+  leaves its models granted.
+- **e2e runs LiteLLM 1.106.0** (was 1.93.0). Its 403 denial message no longer
+  echoes the team's models.
+
 ### Removed
 - **`configmaps` grant on the leader-election Role.** Kubebuilder scaffold
   leftover: controller-runtime elects over `coordination.k8s.io/leases` only
