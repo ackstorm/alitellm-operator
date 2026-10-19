@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sort"
 	"strings"
 	"sync"
@@ -85,6 +86,12 @@ const pathMCPToolset = "/v1/mcp/toolset"
 // (PUT/DELETE) append /{access_group_id}. LiteLLM answers POST with 201 and
 // GET with a BARE array.
 const pathAccessGroup = "/v1/access_group"
+
+// Model access-group (TAG) budget route: /access_group/{tag}/budget.
+const (
+	pathModelGroupBudgetPrefix = "/access_group/"
+	pathModelGroupBudgetSuffix = "/budget"
+)
 
 // modelEntry is a stateful in-memory record of a model created via
 // POST /model/new. The mock tracks these to serve realistic GET /model/info
@@ -280,6 +287,10 @@ type MockServer struct {
 	accessGroupByName map[string]string            // AccessGroupName → AccessGroupID
 	accessGroupSeq    atomic.Int64
 
+	// Model access-group (TAG) budget state: /access_group/{tag}/budget.
+	modelGroups       map[string]bool           // tags that "exist" (carried by some model)
+	modelGroupBudgets map[string]map[string]any // tag → stored budget fields
+
 	// Team state. Two indices for O(1) lookups:
 	// teams — keyed by TeamID (the LiteLLM-assigned UUID,
 	// surfaced in POST/UPDATE response bodies + DELETE
@@ -362,6 +373,9 @@ func NewServer(t *testing.T) *MockServer {
 
 		accessGroups:      make(map[string]*accessGroupEntry),
 		accessGroupByName: make(map[string]string),
+
+		modelGroups:       make(map[string]bool),
+		modelGroupBudgets: make(map[string]map[string]any),
 
 		teams:            make(map[string]*teamEntry),
 		teamByAlias:      make(map[string]string),
@@ -706,6 +720,54 @@ func (m *MockServer) ResetAccessGroups() {
 	m.mu.Lock()
 	m.accessGroups = make(map[string]*accessGroupEntry)
 	m.accessGroupByName = make(map[string]string)
+	m.mu.Unlock()
+}
+
+// ResetModelGroupBudgets clears the model-group tags and their budgets.
+func (m *MockServer) ResetModelGroupBudgets() {
+	m.mu.Lock()
+	m.modelGroups = make(map[string]bool)
+	m.modelGroupBudgets = make(map[string]map[string]any)
+	m.mu.Unlock()
+}
+
+// SeedModelGroup makes a tag "exist" (as if some model carried it), so
+// /access_group/{tag}/budget stops answering 404.
+func (m *MockServer) SeedModelGroup(tag string) {
+	m.mu.Lock()
+	m.modelGroups[tag] = true
+	m.mu.Unlock()
+}
+
+// ModelGroupBudget returns a copy of the stored budget body for a tag.
+func (m *MockServer) ModelGroupBudget(tag string) (map[string]any, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	b, ok := m.modelGroupBudgets[tag]
+	if !ok {
+		return nil, false
+	}
+	out := make(map[string]any, len(b))
+	for k, v := range b {
+		out[k] = v
+	}
+	return out, true
+}
+
+// SetModelGroupBudgetOutOfBand stores a budget for a tag as if set by a
+// human in LiteLLM (drift injection). Also makes the tag exist; a budget_id
+// is minted when the caller omits one.
+func (m *MockServer) SetModelGroupBudgetOutOfBand(tag string, budget map[string]any) {
+	cp := make(map[string]any, len(budget)+1)
+	for k, v := range budget {
+		cp[k] = v
+	}
+	if _, ok := cp["budget_id"]; !ok {
+		cp["budget_id"] = "mock-budget-" + tag
+	}
+	m.mu.Lock()
+	m.modelGroups[tag] = true
+	m.modelGroupBudgets[tag] = cp
 	m.mu.Unlock()
 }
 
@@ -1292,6 +1354,56 @@ func (m *MockServer) writeAccessGroupResponse(w http.ResponseWriter, r *http.Req
 	return m.writeAccessGroupDelete404(w, r, mode)
 }
 
+// writeModelGroupBudget serves /access_group/{tag}/budget (LiteLLM 1.100+).
+// Semantics follow references/litellm-model-group-budget-api.md: unknown tag
+// -> 404 on GET/PUT/DELETE; PUT merges the sent fields over the stored ones
+// and a sent null does NOT clear a field; DELETE of an existing tag is 200
+// either way.
+func (m *MockServer) writeModelGroupBudget(w http.ResponseWriter, r *http.Request, mode string) bool {
+	p := r.URL.EscapedPath()
+	if mode != ModeHappy || !strings.HasPrefix(p, pathModelGroupBudgetPrefix) || !strings.HasSuffix(p, pathModelGroupBudgetSuffix) {
+		return false
+	}
+	tag, err := url.PathUnescape(strings.TrimSuffix(strings.TrimPrefix(p, pathModelGroupBudgetPrefix), pathModelGroupBudgetSuffix))
+	if err != nil {
+		return false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	w.Header().Set("Content-Type", "application/json")
+	if !m.modelGroups[tag] {
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]any{"detail": map[string]any{"error": fmt.Sprintf("Access group '%s' not found", tag)}})
+		return true
+	}
+	switch r.Method {
+	case http.MethodPut:
+		var in map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&in)
+		cur := m.modelGroupBudgets[tag]
+		if cur == nil {
+			cur = map[string]any{"budget_id": "mock-budget-" + tag}
+		}
+		for k, v := range in {
+			if v != nil { // null is ignored by LiteLLM, not a clear
+				cur[k] = v
+			}
+		}
+		m.modelGroupBudgets[tag] = cur
+	case http.MethodDelete:
+		_, had := m.modelGroupBudgets[tag]
+		delete(m.modelGroupBudgets, tag)
+		_ = json.NewEncoder(w).Encode(map[string]any{"access_group": tag, "budget_deleted": had})
+		return true
+	}
+	resp := map[string]any{"access_group": tag, "spend": 0.0, "budget": nil}
+	if b, ok := m.modelGroupBudgets[tag]; ok {
+		resp["budget"] = b
+	}
+	_ = json.NewEncoder(w).Encode(resp)
+	return true
+}
+
 // nonNilStrings coerces a nil slice to empty so the mock's JSON renders [],
 // never null — matching what LiteLLM returns for these fields.
 func nonNilStrings(s []string) []string {
@@ -1403,6 +1515,7 @@ func (m *MockServer) handle(w http.ResponseWriter, r *http.Request) {
 		m.writeDuplicateToolsetConflict,
 		m.writeAbsentToolsetDelete500,
 		m.writeAccessGroupResponse,
+		m.writeModelGroupBudget,
 	} {
 		if write(w, r, mode) {
 			return
