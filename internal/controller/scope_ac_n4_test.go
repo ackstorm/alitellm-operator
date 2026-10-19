@@ -4,6 +4,7 @@ package controller
 
 import (
 	"context"
+	"net/http"
 	"testing"
 	"time"
 
@@ -64,7 +65,7 @@ func TestWatchNamespaceEnforcement(t *testing.T) {
 	// Snapshot pre-state.
 	beforeCalls := reconcileCalls.Load()
 	beforeMutations := mockServer.Mutations()
-	beforeReads := mockServer.Reads()
+	beforeRecorded := len(mockServer.Recorded())
 
 	// Create a Model CR in the wrong namespace.
 	model := &litellmv1alpha1.LiteLLMModel{
@@ -97,7 +98,18 @@ func TestWatchNamespaceEnforcement(t *testing.T) {
 		t.Errorf("AC-N4 FAIL: noop reconciler was called %d times for a CR in non-watched namespace (cache filter did not enforce SCOPE-04)", gotCalls)
 	}
 	gotMutations := mockServer.Mutations() - beforeMutations
-	gotReads := mockServer.Reads() - beforeReads
+	// Ignore GET /v2/team/list: the suite's ungated TeamDefaultRunnable
+	// re-lists the implicit Team/default every 100ms whenever an earlier test
+	// left the connection cache Ready. Any leaked Model reconcile still shows
+	// up as a /model/* read.
+	gotReads := 0
+	for _, c := range mockServer.Recorded()[beforeRecorded:] {
+		isRead := c.Method == http.MethodGet || c.Method == http.MethodHead ||
+			(c.Method == http.MethodPost && c.Path == "/key/health")
+		if isRead && c.Path != "/v2/team/list" {
+			gotReads++
+		}
+	}
 	if gotMutations != 0 || gotReads != 0 {
 		t.Errorf("AC-N4 defense-in-depth: mock saw %d mutations and %d reads for an out-of-namespace CR (expected zero of each)", gotMutations, gotReads)
 	}
