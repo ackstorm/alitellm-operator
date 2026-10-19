@@ -1304,20 +1304,29 @@ kubectl delete litellmmcpserver foo-bar
 Same hit with the winner created first: the loser has no serverID, so the
 deletion path's name-resolve fallback found the winner's entry by sanitized
 name and deleted that. Deleting the WINNER also deleted the entry the promoted
-loser was about to take over (it recreated it). Safety-relist hid the damage
-~10m later.
+loser was about to take over. Not a 10m hole: the sibling self-watch fans the
+Delete event out at once, and the survivor's Step 7b probe (MCP list cache
+invalidated by the DELETE) missed the entry and re-created it. Result: a brief
+outage and a re-created row.
 ✅ Before any resolve/DELETE, the deletion path asks `conflictWinner`
 (`mcpserver_controller.go`, the SAME `conflict.ResolveWinner` call the
 reconcile-time loser short-circuit uses) whether a live, non-deleting sibling
 shares the sanitized `server_name`. If so it skips the LiteLLM call, emits
 `LiteLLMDeleteSkipped`, and drains the finalizer. The entry is deleted exactly
 when the LAST owning CR goes away, under that CR's `deletionPolicy`. The check
-runs only on a Usable snapshot (zero separator otherwise, #61). The loser
-branch still keeps a stale `serverID` ON PURPOSE: it is harmless now, and on
-promotion the loser UPDATEs that id instead of re-creating. Do NOT weaken
-`keepPersistedID` to clear it. Guarded by
-`TestMCPServer_ConflictLoserDelete_LateWinner_KeepsWinnerEntry` and
-`TestMCPServer_ConflictWinnerDelete_LoserInherits_LastOwnerDeletes`.
+runs only on a Usable snapshot (zero separator otherwise, #61).
+Because the entry now survives, the promoted loser MUST rewrite it. The loser
+branch therefore blanks `status.lastRendered.hash` (its hash describes a body the
+winner has since overwritten) but keeps `serverID`. On promotion, Step 8 cannot
+short-circuit (hash mismatch) and Step 7b is skipped (empty hash). Step 9 takes
+the UPDATE arm on the kept id (or adopts by name when none), so the loser's spec
+replaces the deleted winner's. Do NOT weaken `keepPersistedID` to clear the id.
+CAVEAT: a promoted loser that stops before Step 9 (duplicate `secrets[].as`,
+SecretNotFound, missing placeholder) leaves the deleted winner's endpoint and
+credentials live until it can reconcile. Guarded by
+`TestMCPServer_ConflictLoserDelete_LateWinner_KeepsWinnerEntry`,
+`TestMCPServer_ConflictWinnerDelete_LoserInherits_LastOwnerDeletes` and
+`TestMCPServer_ConflictWinnerDelete_LateWinner_LoserRewritesEntry`.
 WHY: the deletion path trusted `status.lastRendered.serverID` (and the name
 fallback) as proof of ownership. For a sanitization collision, ownership is a
 property of the live CR set, not of one CR's status.

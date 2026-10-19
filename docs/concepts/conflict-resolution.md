@@ -77,6 +77,11 @@ while another live CR in the namespace still sanitizes to the same
 `server_name` — that CR owns it (or is promoted to own it). The entry is
 deleted only when the last such CR goes away, under its own
 `deletionPolicy`. The skipped CR emits a `LiteLLMDeleteSkipped` Event.
+The promoted CR then overwrites the entry with its own spec. Until that
+reconcile succeeds, the entry still serves the deleted CR's endpoint and
+credentials. This lasts longer if the promoted CR is blocked before it
+writes to LiteLLM (duplicate `secrets[].as`, a missing Secret or
+placeholder). Fix the promoted CR, or delete it too.
 
 ## Observability
 

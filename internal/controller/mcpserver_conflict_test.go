@@ -364,3 +364,63 @@ func TestMCPServer_ConflictWinnerDelete_LoserInherits_LastOwnerDeletes(t *testin
 		t.Errorf("entry %q still present after its last owning CR was deleted", serverID)
 	}
 }
+
+// TestMCPServer_ConflictWinnerDelete_LateWinner_LoserRewritesEntry: the loser
+// created foo-bar before the winner existed, then the winner PUT its own body
+// onto it. Deleting the winner keeps the entry (a live loser owns the name),
+// so the promoted loser must PUT ITS spec over the deleted winner's — not
+// short-circuit on its stale pre-conflict hash and leave the winner's
+// endpoint/credentials live under its name.
+func TestMCPServer_ConflictWinnerDelete_LateWinner_LoserRewritesEntry(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetMCPServers()
+
+	const loserName, winnerName, serverID = "foo-bar", "foo.bar", "foo-bar"
+	ensureNoMCPServer(t, ctx, loserName)
+	ensureNoMCPServer(t, ctx, winnerName)
+	resetConnCacheSnapshot()
+	cleanupConn := setupReadyConnectionMCPWithSeparator(t, ctx, ".")
+	t.Cleanup(func() {
+		cleanupConn()
+		ensureNoMCPServer(t, context.Background(), loserName)
+		ensureNoMCPServer(t, context.Background(), winnerName)
+	})
+
+	description := func() any {
+		info, _ := mockServer.LastMCPBody(serverID)["mcp_info"].(map[string]any)
+		return info["description"]
+	}
+
+	if err := k8sClient.Create(ctx, newCollapseMCPServer(loserName)); err != nil {
+		t.Fatalf("create loser: %v", err)
+	}
+	if l := pollMCPServerCondition(t, ctx, loserName, reasonSynced, 30*time.Second); l.Status.LastRendered.ServerID != serverID {
+		t.Fatalf("loser did not create %q first; status=%+v", serverID, l.Status)
+	}
+	if err := k8sClient.Create(ctx, newCollapseMCPServer(winnerName)); err != nil {
+		t.Fatalf("create winner: %v", err)
+	}
+	pollMCPServerCondition(t, ctx, loserName, conflict.ConditionReasonConflict, 30*time.Second)
+	pollMCPServerCondition(t, ctx, winnerName, reasonSynced, 30*time.Second)
+	if got := description(); got != winnerName {
+		t.Fatalf("precondition: entry should carry the winner's body; mcp_info.description=%v", got)
+	}
+
+	deleteMCPServerAndWaitGone(t, ctx, winnerName)
+
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) && description() != loserName {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if got := description(); got != loserName {
+		t.Errorf("promoted loser never rewrote %q: mcp_info.description=%v, want %q (deleted winner's config still live)",
+			serverID, got, loserName)
+	}
+	l := pollMCPServerCondition(t, ctx, loserName, reasonSynced, 5*time.Second)
+	if c := apimeta.FindStatusCondition(l.Status.Conditions, conditionTypeReady); c == nil || c.Reason != reasonSynced {
+		t.Errorf("promoted loser not Ready/Synced; condition=%+v", c)
+	}
+}

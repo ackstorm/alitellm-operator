@@ -361,6 +361,12 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			metrics.ConflictsTotal.WithLabelValues("MCPServer", "loser").Inc()
 		}
 		mcp.Status.ObservedGeneration = mcp.Generation
+		// The shared entry now carries the winner's body, so this CR's
+		// rendered hash no longer describes it. Blank it (ServerID stays):
+		// on promotion Step 8 can then not short-circuit, and Step 9 PUTs
+		// this spec over the deleted winner's instead of leaving its
+		// endpoint and credentials live.
+		mcp.Status.LastRendered.Hash = ""
 		// #62: this loser write deliberately bypasses r.writeStatus because
 		// writeStatus builds a Ready condition, whereas the loser needs the
 		// Conflict condition set by ApplyLoserCondition above. But it must
