@@ -62,8 +62,8 @@ When the cap is hit LiteLLM answers 422
   takes over at the next safety-relist tick after the owner is deleted.
 - A hand-managed LiteLLM access group (no `LiteLLMAccessGroup` CR) is picked up
   by attached teams only at the next safety relist.
-- If an attached `LiteLLMAccessGroup` row disappears from LiteLLM, the team
-  parks `AccessGroupNotFound` and keeps its previous `team.models` until
-  resolved.
+- If an attached `LiteLLMAccessGroup` row disappears from LiteLLM, the team is
+  narrowed to the groups that still resolve (the vanished group's names leave
+  `team.models`), then parks `AccessGroupNotFound` until the group exists again.
 - LiteLLM cannot clear a single budget field via `PUT`; removing a field from
   the spec does not unset it. Deleting the CR removes the whole budget.

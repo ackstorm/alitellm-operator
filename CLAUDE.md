@@ -1352,8 +1352,10 @@ wildcards) into `team.models` after the sentinel (`["no-default-models",
 WHY: LiteLLM charges `/access_group/<tag>/budget` only when the tag literally
 appears in the key's or team's `models`; a grant via `access_group_ids` is
 never charged. The mirror grants nothing new. Hand-managed groups (no CR) are
-picked up only at the next relist; a vanished group row parks the team
-`AccessGroupNotFound` with its previous `models` kept. Denial text is
+picked up only at the next relist; a vanished group row first NARROWS the team
+to the groups that still resolve (`narrowAndPark`, `team_controller.go` — the
+write only ever narrows, else the mirror would keep granting), then parks it
+`AccessGroupNotFound`. Denial text is
 `Budget has been exceeded! Model access group=<tag>` (assert that marker, not a
 status). Budgets: `docs/user-guide/model-group-budget.md`.
 

@@ -2485,6 +2485,75 @@ func TestTeam_MirrorsGroupModelsAndFollowsGroupEdits(t *testing.T) {
 	waitTeamModels(t, team, []any{"no-default-models", "tag-b"})
 }
 
+// TestTeam_NarrowsGrantWhenAttachedGroupVanishes — an attached group whose
+// LiteLLM row disappears (here: its CR deleted under deletionPolicy Delete)
+// must not leave its mirrored names in team.models. The team is narrowed to
+// the groups that still resolve (none) and THEN parks AccessGroupNotFound.
+func TestTeam_NarrowsGrantWhenAttachedGroupVanishes(t *testing.T) {
+	ctx := context.Background()
+	const team, group = "team-narrow", "ag-narrow"
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetTeams()
+	mockServer.ResetAccessGroups()
+	teamReconciler.ResetImplicitDefaultCache()
+	ensureNoTeam(t, ctx, team)
+	ensureNoAccessGroup(t, ctx, group)
+	resetConnCacheSnapshot()
+
+	cleanupConn := setupReadyConnectionTeam(t, ctx)
+	t.Cleanup(func() {
+		cleanupConn()
+		ensureNoTeam(t, context.Background(), team)
+		ensureNoAccessGroup(t, context.Background(), group)
+		mockServer.ResetAccessGroups()
+	})
+
+	ag := accessGroupSampleCR(group, litellmv1alpha1.AccessGroupSpec{
+		ModelGroups:    []string{"tag-a"},
+		DeletionPolicy: "Delete",
+	})
+	if err := k8sClient.Create(ctx, ag); err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	pollAccessGroupCondition(t, ctx, group, reasonSynced)
+
+	cr := teamSampleCR(team)
+	cr.Spec.AccessGroups = []string{group}
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create team: %v", err)
+	}
+	pollTeamCondition(t, ctx, team, reasonSynced, 30*time.Second)
+	waitTeamModels(t, team, []any{"no-default-models", "tag-a"})
+
+	// Delete the group CR: the group controller DELETEs the LiteLLM row, and
+	// the CR's removal re-drives the team via accessGroupToTeams (no relist).
+	if err := k8sClient.Delete(ctx, ag); err != nil {
+		t.Fatalf("delete group: %v", err)
+	}
+	waitTeamModels(t, team, []any{"no-default-models"})
+	body := mockServer.LastTeamBody(team)
+	if ids, ok := body["access_group_ids"].([]any); !ok || len(ids) != 0 {
+		t.Errorf("access_group_ids: want [], got %v", body["access_group_ids"])
+	}
+	tm := pollTeamCondition(t, ctx, team, reasonAccessGroupNotFound, 30*time.Second)
+	if c := apimeta.FindStatusCondition(tm.Status.Conditions, conditionTypeReady); c == nil ||
+		c.Status != metav1.ConditionFalse || c.Reason != reasonAccessGroupNotFound {
+		t.Fatalf("Ready condition: want False/AccessGroupNotFound, got %+v", c)
+	}
+
+	// The group coming back must re-widen the team: the narrowed hash recorded
+	// while parked must not short-circuit the full render at Step 9.
+	ensureNoAccessGroup(t, ctx, group)
+	ag = accessGroupSampleCR(group, litellmv1alpha1.AccessGroupSpec{ModelGroups: []string{"tag-a"}})
+	if err := k8sClient.Create(ctx, ag); err != nil {
+		t.Fatalf("re-create group: %v", err)
+	}
+	waitTeamModels(t, team, []any{"no-default-models", "tag-a"})
+	pollTeamCondition(t, ctx, team, reasonSynced, 30*time.Second)
+}
+
 func waitTeamModels(t *testing.T, alias string, want []any) {
 	t.Helper()
 	deadline := time.Now().Add(30 * time.Second)

@@ -158,8 +158,11 @@ skipped). This grants nothing new — the groups already grant them through
 only when the tag literally appears in `team.models`. Editing or removing a
 `LiteLLMAccessGroup` CR re-drives the attached teams immediately; a group
 managed by hand in LiteLLM (no CR) is picked up at the next safety relist. If an
-attached group's row disappears from LiteLLM the team parks
-`AccessGroupNotFound` and keeps its previous `models` until resolved. See
+attached group's row disappears from LiteLLM (its CR deleted under
+`deletionPolicy: Delete`, or the row removed in the UI), the team is first
+narrowed to the groups that still resolve — their ids in `access_group_ids`,
+their names in `models` — so the vanished group's access is revoked; then it
+parks `AccessGroupNotFound` until the group exists again. See
 [model-group budgets](model-group-budget.md).
 
 Access groups only **add**: an attached group overrides the sentinels for
