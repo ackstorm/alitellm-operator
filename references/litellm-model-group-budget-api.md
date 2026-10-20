@@ -8,6 +8,7 @@ Tag `probe-tag` came from a model created with `model_info.access_groups: ["prob
 - PUT is a MERGE per field: omitted fields KEEP their value (same `budget_id`, update in place).
 - `null` does NOT clear a field (`soft_budget:null` left soft_budget=4.0). Clearing a single field is not possible via PUT; only DELETE removes the budget.
 - DELETE on an absent budget is 200 with `budget_deleted:false` (not 404). DELETE on a known tag with a budget: 200 `budget_deleted:true`.
+- PUT body validation (measured 2026-10-20, same image, tag `default`): missing body 422 `missing`; malformed JSON 422 `json_invalid`; `{}` 400 `One of max_budget, soft_budget, budget_duration or budget_id is required`; an unknown key 422 `extra_forbidden`; an unknown `budget_id` 500. None of these changed the stored budget. The CRD's CEL rule (at least one of limit/softLimit/period) keeps the operator from ever sending `{}`.
 - GET response shape: `{"access_group":<tag>,"spend":<float>,"budget":null|{"budget_id":<uuid>,"max_budget":<float|null>,"soft_budget":<float|null>,"budget_duration":<string|null>,"budget_reset_at":<string|null>}}`. PUT returns the same shape.
 
 ## Raw results

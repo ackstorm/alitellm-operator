@@ -1409,8 +1409,30 @@ func (m *MockServer) writeModelGroupBudget(w http.ResponseWriter, r *http.Reques
 	}
 	switch r.Method {
 	case http.MethodPut:
+		// Body validation as measured on 1.106.0: missing or malformed
+		// body 422, an unknown key 422 (extra_forbidden), no budget key 400.
 		var in map[string]any
-		_ = json.NewDecoder(r.Body).Decode(&in)
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_ = json.NewEncoder(w).Encode(map[string]any{"detail": []any{map[string]any{"type": "json_invalid", "msg": err.Error()}}})
+			return true
+		}
+		known := 0
+		for k := range in {
+			switch k {
+			case "max_budget", "soft_budget", "budget_duration", "budget_id":
+				known++
+			default:
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				_ = json.NewEncoder(w).Encode(map[string]any{"detail": []any{map[string]any{"type": "extra_forbidden", "loc": []any{"body", k}}}})
+				return true
+			}
+		}
+		if known == 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]any{"detail": map[string]any{"error": "One of max_budget, soft_budget, budget_duration or budget_id is required"}})
+			return true
+		}
 		cur := m.modelGroupBudgets[tag]
 		if cur == nil {
 			cur = map[string]any{"budget_id": "mock-budget-" + tag}

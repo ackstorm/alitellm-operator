@@ -102,14 +102,27 @@ func TestModelGroupBudget_AgainstMock(t *testing.T) {
 	if err := c.PutModelGroupBudget(ctx, "g", &ModelGroupBudgetRequest{MaxBudget: &max, SoftBudget: &soft, BudgetDuration: "30d"}); err != nil {
 		t.Fatal(err)
 	}
-	first, _ := c.GetModelGroupBudget(ctx, "g")
+	first, err := c.GetModelGroupBudget(ctx, "g")
+	if err != nil || first == nil {
+		t.Fatalf("GET after PUT: %+v, %v", first, err)
+	}
 	max = 6
 	if err := c.PutModelGroupBudget(ctx, "g", &ModelGroupBudgetRequest{MaxBudget: &max}); err != nil {
 		t.Fatal(err)
 	}
-	got, _ := c.GetModelGroupBudget(ctx, "g")
+	got, err := c.GetModelGroupBudget(ctx, "g")
+	if err != nil || got == nil {
+		t.Fatalf("GET after merge PUT: %+v, %v", got, err)
+	}
 	if got.BudgetID != first.BudgetID || *got.MaxBudget != 6 || *got.SoftBudget != 4 || *got.BudgetDuration != "30d" {
 		t.Fatalf("merge broken: first %+v got %+v", first, got)
+	}
+	// An empty PUT is rejected (400 on 1.106.0) and leaves the budget as is.
+	if err := c.PutModelGroupBudget(ctx, "g", &ModelGroupBudgetRequest{}); err == nil {
+		t.Fatal("empty PUT accepted; LiteLLM answers 400")
+	}
+	if b, _ := ms.ModelGroupBudget("g"); b["max_budget"] != 6.0 {
+		t.Fatalf("rejected PUT changed the budget: %v", b)
 	}
 	if err := c.DeleteModelGroupBudget(ctx, "g"); err != nil {
 		t.Fatal(err)

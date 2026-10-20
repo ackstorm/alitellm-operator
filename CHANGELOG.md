@@ -29,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   echoes the team's models.
 
 ### Fixed
+- **Model-group budgets react without waiting for the relist.** A budget
+  parked `ModelGroupNotFound` retries when a `LiteLLMModel` changes; a
+  duplicate takes over the moment the owner is deleted; and of two budgets
+  created in the same second, the one that reconciled first no longer keeps
+  reporting `Synced` after losing the tie.
 - **Deleting an MCPServer conflict CR no longer deletes the shared entry.**
   When two `LiteLLMMCPServer` CRs sanitize to the same `server_name`, deleting
   either one keeps the LiteLLM entry while the other is live (event

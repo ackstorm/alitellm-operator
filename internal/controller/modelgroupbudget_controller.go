@@ -21,6 +21,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
@@ -106,7 +107,8 @@ func (r *ModelGroupBudgetReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 	}
 	if litellm.IsNotFound(err) {
-		// Re-driven by the safety relist once a model carries the tag.
+		// Re-driven by modelToWaitingBudgets once a model reaches LiteLLM
+		// (and by the safety relist for models with no CR).
 		return ctrl.Result{}, r.setReady(ctx, &b, metav1.ConditionFalse, reasonModelGroupNotFound,
 			fmt.Sprintf("no LiteLLM model carries access group %q", group))
 	}
@@ -122,7 +124,7 @@ func (r *ModelGroupBudgetReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 // isOwner: oldest creationTimestamp wins, ties broken by name. Deleting CRs
 // still count, so the owner keeps ownership while it DELETEs the budget; a
-// waiting duplicate takes over at the next relist tick.
+// waiting duplicate takes over once the owner is gone (budgetToPeers).
 func (r *ModelGroupBudgetReconciler) isOwner(ctx context.Context, b *litellmv1alpha1.LiteLLMModelGroupBudget) (bool, error) {
 	var peers litellmv1alpha1.LiteLLMModelGroupBudgetList
 	if err := r.List(ctx, &peers, client.InNamespace(b.Namespace),
@@ -242,6 +244,50 @@ func (r *ModelGroupBudgetReconciler) connectionToModelGroupBudgets(ctx context.C
 	return connectionFanIn(ctx, r.Client, obj, &litellmv1alpha1.LiteLLMModelGroupBudgetList{}, r.Namespace, modelGroupBudgetKind)
 }
 
+// budgetToPeers re-drives the other budgets on the same tag when one is
+// created or deleted, so ownership moves at once: a CR created in the same
+// second as an older-sorting peer stops reporting Synced, and a duplicate
+// takes over as soon as the owner is gone.
+func (r *ModelGroupBudgetReconciler) budgetToPeers(ctx context.Context, obj client.Object) []reconcile.Request {
+	b, ok := obj.(*litellmv1alpha1.LiteLLMModelGroupBudget)
+	if !ok {
+		return nil
+	}
+	var peers litellmv1alpha1.LiteLLMModelGroupBudgetList
+	if err := r.List(ctx, &peers, client.InNamespace(b.Namespace),
+		client.MatchingFields{ModelGroupBudgetGroupIndexField: b.Spec.ModelGroup}); err != nil {
+		log.FromContext(ctx).Error(err, "list modelgroupbudget peers", "modelGroup", b.Spec.ModelGroup)
+		return nil
+	}
+	reqs := make([]reconcile.Request, 0, len(peers.Items))
+	for i := range peers.Items {
+		if p := &peers.Items[i]; p.Name != b.Name {
+			reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(p)})
+		}
+	}
+	return reqs
+}
+
+// modelToWaitingBudgets re-drives budgets parked ModelGroupNotFound when a
+// model changes (status included: the tag exists in LiteLLM only once the
+// model is written there). Matching on the park reason rather than the tag
+// also covers models whose tag is the injected DEFAULT_ACCESS_GROUP.
+func (r *ModelGroupBudgetReconciler) modelToWaitingBudgets(ctx context.Context, obj client.Object) []reconcile.Request {
+	var budgets litellmv1alpha1.LiteLLMModelGroupBudgetList
+	if err := r.List(ctx, &budgets, client.InNamespace(obj.GetNamespace())); err != nil {
+		log.FromContext(ctx).Error(err, "list modelgroupbudgets for model fan-in")
+		return nil
+	}
+	var reqs []reconcile.Request
+	for i := range budgets.Items {
+		b := &budgets.Items[i]
+		if c := apimeta.FindStatusCondition(b.Status.Conditions, conditionTypeReady); c != nil && c.Reason == reasonModelGroupNotFound {
+			reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(b)})
+		}
+	}
+	return reqs
+}
+
 func (r *ModelGroupBudgetReconciler) SetupWithManager(mgr ctrl.Manager, safetyRelistCh chan reconcile.Request) error {
 	b := ctrl.NewControllerManagedBy(mgr).
 		For(&litellmv1alpha1.LiteLLMModelGroupBudget{}).
@@ -249,6 +295,18 @@ func (r *ModelGroupBudgetReconciler) SetupWithManager(mgr ctrl.Manager, safetyRe
 			&litellmv1alpha1.LiteLLMConnection{},
 			handler.EnqueueRequestsFromMapFunc(r.connectionToModelGroupBudgets),
 			builder.WithPredicates(connectionReadyTransition()),
+		).
+		Watches(
+			&litellmv1alpha1.LiteLLMModelGroupBudget{},
+			handler.EnqueueRequestsFromMapFunc(r.budgetToPeers),
+			builder.WithPredicates(predicate.Funcs{
+				UpdateFunc:  func(event.UpdateEvent) bool { return false },
+				GenericFunc: func(event.GenericEvent) bool { return false },
+			}),
+		).
+		Watches(
+			&litellmv1alpha1.LiteLLMModel{},
+			handler.EnqueueRequestsFromMapFunc(r.modelToWaitingBudgets),
 		).
 		WithOptions(transientBackoffOptions()).
 		Named("modelgroupbudget")
