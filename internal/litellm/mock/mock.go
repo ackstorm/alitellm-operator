@@ -347,7 +347,11 @@ type MockServer struct {
 type RecordedCall struct {
 	Method string
 	Path   string
-	When   time.Time
+	// Query and Body are the raw query string and request body, so a test
+	// can find calls made on behalf of one CR by name.
+	Query string
+	Body  []byte
+	When  time.Time
 }
 
 // NewServer constructs a MockServer in ModeHappy and starts the underlying
@@ -1493,10 +1497,14 @@ func (m *MockServer) handle(w http.ResponseWriter, r *http.Request) {
 		m.mutations.Add(1)
 	}
 
+	body, _ := io.ReadAll(r.Body)
+	r.Body = io.NopCloser(bytes.NewReader(body))
 	m.mu.Lock()
 	m.recorded = append(m.recorded, RecordedCall{
 		Method: r.Method,
 		Path:   r.URL.Path,
+		Query:  r.URL.RawQuery,
+		Body:   body,
 		When:   time.Now(),
 	})
 	// pathCalls: increment under the same mutex so PathCallCount sees a

@@ -3,6 +3,7 @@
 package controller
 
 import (
+	"bytes"
 	"context"
 	"strings"
 	"testing"
@@ -38,7 +39,7 @@ const outOfWatchNamespace = "ac-n4-out-of-watch"
 //  4. Create a Model CR in outOfWatchNamespace.
 //  5. Wait 10s (we are asserting NO reconcile — sleep is intentional).
 //  6. Assert no reconcile fired for a request outside WatchNamespace.
-//  7. Assert the mock saw no /model/ call (defense-in-depth).
+//  7. Assert the mock saw no call naming the CR (defense-in-depth).
 //
 // This is the AC-N4 dry-run. The kind-e2e equivalent
 // (TestNamespaceScopeAC_N4_E2E in test/e2e/) verifies the same property
@@ -100,19 +101,21 @@ func TestWatchNamespaceEnforcement(t *testing.T) {
 	if gotCalls != 0 {
 		t.Errorf("AC-N4 FAIL: noop reconciler was called %d times for a CR in non-watched namespace (cache filter did not enforce SCOPE-04)", gotCalls)
 	}
-	// Defense-in-depth: a leaked Model reconcile reaches LiteLLM under
-	// /model/. Other paths are logged only, to diagnose background noise.
-	modelCalls := 0
+	// Defense-in-depth: a leaked reconcile of this CR — by any controller,
+	// on any route — names it in the path, query or body of its LiteLLM
+	// call. Matching the name keeps background traffic from WatchNamespace
+	// out of the count.
+	leaked := 0
 	other := map[string]int{}
 	for _, c := range mockServer.Recorded()[beforeRecorded:] {
-		if strings.HasPrefix(c.Path, "/model/") {
-			modelCalls++
+		if strings.Contains(c.Path, model.Name) || strings.Contains(c.Query, model.Name) || bytes.Contains(c.Body, []byte(model.Name)) {
+			leaked++
 		} else {
 			other[c.Method+" "+c.Path]++
 		}
 	}
-	if modelCalls != 0 {
-		t.Errorf("AC-N4 defense-in-depth: mock saw %d /model/ calls for an out-of-namespace CR (expected zero)", modelCalls)
+	if leaked != 0 {
+		t.Errorf("AC-N4 defense-in-depth: mock saw %d calls naming the out-of-namespace CR %q (expected zero)", leaked, model.Name)
 	}
 	if len(other) > 0 {
 		t.Logf("AC-N4: unrelated mock traffic in window: %v", other)
