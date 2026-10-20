@@ -1573,32 +1573,8 @@ func TestModelDiscovery_AC_CF2b_AdoptionRecognition(t *testing.T) {
 	// Strip the ownerReferences entry (the adoption mechanism).
 	// kubectl JSON-patch equivalent:
 	// [{"op":"remove","path":"/metadata/ownerReferences"}]
-	//
-	// The Discovery reconciler may be re-reconciling concurrently (e.g.
-	// updating status as we Get), so retry on optimistic-concurrency
-	// conflicts up to 5 times — mirrors `kubectl apply --force`'s
-	// resourceVersion-retry loop.
 	adoptedKey := client.ObjectKey{Name: childName, Namespace: WatchNamespace}
-	var stripErr error
-	for attempt := 0; attempt < 5; attempt++ {
-		var adopted litellmv1alpha1.LiteLLMModel
-		if err := k8sClient.Get(ctx, adoptedKey, &adopted); err != nil {
-			stripErr = err
-			break
-		}
-		adopted.OwnerReferences = nil
-		stripErr = k8sClient.Update(ctx, &adopted)
-		if stripErr == nil {
-			break
-		}
-		if !apierrors.IsConflict(stripErr) {
-			break
-		}
-		time.Sleep(25 * time.Millisecond)
-	}
-	if stripErr != nil {
-		t.Fatalf("strip ownerReferences (adoption) after retries: %v", stripErr)
-	}
+	stripOwnerRefs[litellmv1alpha1.LiteLLMModel](t, adoptedKey, time.Second, 30*time.Second)
 
 	// Trigger a Discovery reconcile via annotation flip. Retry on
 	// optimistic-concurrency conflicts (the reconciler is actively

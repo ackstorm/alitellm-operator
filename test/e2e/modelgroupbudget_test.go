@@ -36,12 +36,15 @@ func newModelGroupBudgetCR(name, ns string, spec map[string]interface{}) *unstru
 	}
 }
 
-// litellmModelGroupBudget reads GET /access_group/<tag>/budget. budget is nil
-// when LiteLLM holds none (200 budget:null).
-func litellmModelGroupBudget(tag string) (budget *struct {
+// mgbBudget is the part of a stored tag budget the specs assert on.
+type mgbBudget struct {
 	MaxBudget      *float64 `json:"max_budget"`
 	BudgetDuration string   `json:"budget_duration"`
-}) {
+}
+
+// litellmModelGroupBudget reads GET /access_group/<tag>/budget. budget is nil
+// when LiteLLM holds none (200 budget:null).
+func litellmModelGroupBudget(tag string) *mgbBudget {
 	GinkgoHelper()
 	body := curlPodJSON("litellm-system", "mgb-poke", '{',
 		"curl", "-sS", "--max-time", "10",
@@ -49,10 +52,7 @@ func litellmModelGroupBudget(tag string) (budget *struct {
 		litellmBase+"/access_group/"+url.PathEscape(tag)+"/budget",
 	)
 	var resp struct {
-		Budget *struct {
-			MaxBudget      *float64 `json:"max_budget"`
-			BudgetDuration string   `json:"budget_duration"`
-		} `json:"budget"`
+		Budget *mgbBudget `json:"budget"`
 	}
 	Expect(json.Unmarshal(body, &resp)).To(Succeed(), "raw=%s", string(body))
 	return resp.Budget
@@ -73,6 +73,27 @@ func litellmTeamModels(teamID string) []string {
 	}
 	Expect(json.Unmarshal(body, &resp)).To(Succeed(), "raw=%s", string(body))
 	return resp.TeamInfo.Models
+}
+
+// litellmModelsForKey lists GET /v1/models ids as a virtual key sees them.
+func litellmModelsForKey(key string) []string {
+	GinkgoHelper()
+	body := curlPodJSON("litellm-system", "key-models-poke", '{',
+		"curl", "-sS", "--max-time", "10",
+		"-H", "Authorization: Bearer "+key,
+		litellmBase+"/v1/models",
+	)
+	var resp struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	Expect(json.Unmarshal(body, &resp)).To(Succeed(), "raw=%s", string(body))
+	ids := make([]string, 0, len(resp.Data))
+	for _, d := range resp.Data {
+		ids = append(ids, d.ID)
+	}
+	return ids
 }
 
 // envtest counterpart: internal/controller/modelgroupbudget_controller_test.go
@@ -170,10 +191,7 @@ var _ = Describe("LiteLLMModelGroupBudget", Ordered, ContinueOnFailure, func() {
 		}, 60*time.Second, 3*time.Second).Should(Succeed())
 
 		deleteAndWait(modelGroupBudgetGVR, budgetCR)
-		Eventually(func() *struct {
-			MaxBudget      *float64 `json:"max_budget"`
-			BudgetDuration string   `json:"budget_duration"`
-		} {
+		Eventually(func() *mgbBudget {
 			return litellmModelGroupBudget(tag)
 		}, 60*time.Second, 3*time.Second).Should(BeNil(), "budget must be removed from LiteLLM")
 	})
@@ -201,10 +219,17 @@ var _ = Describe("LiteLLMModelGroupBudget", Ordered, ContinueOnFailure, func() {
 
 		// The mirror is what makes LiteLLM charge the tag budget.
 		Eventually(func() []string { return litellmTeamModels(tid) },
-			60*time.Second, 3*time.Second).Should(Equal([]string{"no-default-models", tag}))
+			60*time.Second, 3*time.Second).Should(ConsistOf("no-default-models", tag))
 
 		key := generateTeamKey(tid)
 		DeferCleanup(func() { deleteLiteLLMKey(key) })
+
+		// The mirrored tag is also what puts the REAL model in the team's
+		// catalog: LiteLLM expands a tag in team.models into its models, but
+		// lists a tag reached through access_group_ids verbatim (measured on
+		// 1.106.0, so the tag itself still shows up as a phantom entry).
+		Eventually(func() []string { return litellmModelsForKey(key) },
+			90*time.Second, 5*time.Second).Should(ContainElement(modelName))
 
 		complete := func() string {
 			return string(curlPodJSON("litellm-system", "budget-complete", '{',
@@ -248,7 +273,7 @@ var _ = Describe("LiteLLMModelGroupBudget", Ordered, ContinueOnFailure, func() {
 			g.Expect(tid).NotTo(BeEmpty(), "teamID not yet populated")
 		}, 60*time.Second, 2*time.Second).Should(Succeed())
 		Eventually(func() []string { return litellmTeamModels(tid) },
-			60*time.Second, 3*time.Second).Should(Equal([]string{"no-default-models", mTag}))
+			60*time.Second, 3*time.Second).Should(ConsistOf("no-default-models", mTag))
 
 		obj, err := dyn.Resource(accessGroupGVR).Namespace(ns).Get(ctx, mAG, metav1.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
@@ -256,6 +281,6 @@ var _ = Describe("LiteLLMModelGroupBudget", Ordered, ContinueOnFailure, func() {
 		_, err = dyn.Resource(accessGroupGVR).Namespace(ns).Update(ctx, obj, metav1.UpdateOptions{})
 		Expect(err).NotTo(HaveOccurred())
 		Eventually(func() []string { return litellmTeamModels(tid) },
-			30*time.Second, 2*time.Second).Should(Equal([]string{"no-default-models"}))
+			30*time.Second, 2*time.Second).Should(ConsistOf("no-default-models"))
 	})
 })

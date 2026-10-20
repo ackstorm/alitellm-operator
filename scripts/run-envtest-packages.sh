@@ -173,7 +173,9 @@ finish_one() {
         fi
     else
         failed=1
-        printf 'FAIL %s (%ss)\n' "${pkg}" "${elapsed}" >&2
+        # exit >128 = killed by signal (128+N; 137 = SIGKILL, e.g. OOM): the
+        # log then just stops, with no `--- FAIL` line to explain it.
+        printf 'FAIL %s (%ss, exit %s)\n' "${pkg}" "${elapsed}" "${rc}" >&2
         # Print the full log on failure. Prior head-240 + tail-160 truncation
         # routinely hid the actual `--- FAIL:` marker in mid-run output,
         # forcing local reproduction to identify which test failed. CI log

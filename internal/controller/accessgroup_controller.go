@@ -33,6 +33,7 @@ import (
 
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 	"github.com/ackstorm/alitellm-operator/internal/connection"
+	"github.com/ackstorm/alitellm-operator/internal/controller/conflict"
 	"github.com/ackstorm/alitellm-operator/internal/controller/deletionpolicy"
 	"github.com/ackstorm/alitellm-operator/internal/litellm"
 	"github.com/ackstorm/alitellm-operator/internal/metrics"
@@ -165,11 +166,18 @@ func taggedAgentIDs(agents []litellmv1alpha1.LiteLLMA2AAgent, groups []string) [
 
 // taggedMCPServerIDs selects MCP servers by mcp_access_groups (or the
 // access_groups alias), the same precedence the MCP server reconciler sends.
+// A conflict loser is skipped like a deleting server: it keeps the shared
+// server_id (keepPersistedID) while the winner's body is live, so its tags
+// would grant the winner's entry to groups the winner never named.
 func taggedMCPServerIDs(servers []litellmv1alpha1.LiteLLMMCPServer, groups []string) []string {
 	items := make([]taggable, 0, len(servers))
 	for i := range servers {
 		s := &servers[i]
-		items = append(items, taggable{s.Status.LastRendered.ServerID, !s.DeletionTimestamp.IsZero(), extractMCPParams(paramsMap(s.Spec.Params.Raw)).MCPAccessGroups})
+		loser := false
+		if c := apimeta.FindStatusCondition(s.Status.Conditions, conditionTypeReady); c != nil {
+			loser = c.Reason == conflict.ConditionReasonConflict
+		}
+		items = append(items, taggable{s.Status.LastRendered.ServerID, !s.DeletionTimestamp.IsZero() || loser, extractMCPParams(paramsMap(s.Spec.Params.Raw)).MCPAccessGroups})
 	}
 	return taggedIDs(items, groups)
 }

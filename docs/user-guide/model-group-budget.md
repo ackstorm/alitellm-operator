@@ -53,13 +53,14 @@ When the cap is hit LiteLLM answers 422
 | `Synced`              | Budget stored in LiteLLM.                                            |
 | `LiteLLMUnavailable`  | Connection not usable; retried.                                      |
 | `LiteLLMRejected`     | LiteLLM refused the request (4xx).                                   |
-| `ModelGroupNotFound`  | No model carries the tag (LiteLLM 404). Heals when one does.         |
+| `ModelGroupNotFound`  | No model carries the tag (LiteLLM 404). Retried whenever a `LiteLLMModel` changes; a model added outside the operator is picked up at the next safety relist. |
 | `DuplicateModelGroup` | Another CR already owns this tag.                                    |
 
 ## Limits
 
-- **One owner per tag.** A duplicate CR parks `DuplicateModelGroup`; it only
-  takes over at the next safety-relist tick after the owner is deleted.
+- **One owner per tag.** The oldest CR owns it (name breaks a same-second
+  tie); a duplicate parks `DuplicateModelGroup` and takes over as soon as the
+  owner is deleted.
 - A hand-managed LiteLLM access group (no `LiteLLMAccessGroup` CR) is picked up
   by attached teams only at the next safety relist.
 - If an attached `LiteLLMAccessGroup` row disappears from LiteLLM, the team is

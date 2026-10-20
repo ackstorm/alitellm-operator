@@ -1019,7 +1019,9 @@ func isTransientLiteLLMError(err error) bool {
 // row removed in the UI). body is the normal render built from only the
 // groups that DO resolve. If the team already exists it is first narrowed to
 // that body — otherwise team.models would keep the vanished group's mirrored
-// names and the team its access indefinitely. The write only ever narrows.
+// names and the team its access indefinitely. The write never grants beyond
+// the resolvable part of the spec (a newly added group that resolves does
+// land while parked).
 // Then the CR parks Ready=False/AccessGroupNotFound and requeues.
 //
 // lastRendered.hash records the narrowed body (what LiteLLM now holds): the

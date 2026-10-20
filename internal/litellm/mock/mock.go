@@ -87,6 +87,10 @@ const pathMCPToolset = "/v1/mcp/toolset"
 // GET with a BARE array.
 const pathAccessGroup = "/v1/access_group"
 
+// pathMCPServer is the MCP server collection route (POST create, PUT update,
+// GET list).
+const pathMCPServer = "/v1/mcp/server"
+
 // Model access-group (TAG) budget route: /access_group/{tag}/budget.
 const (
 	pathModelGroupBudgetPrefix = "/access_group/"
@@ -343,7 +347,11 @@ type MockServer struct {
 type RecordedCall struct {
 	Method string
 	Path   string
-	When   time.Time
+	// Query and Body are the raw query string and request body, so a test
+	// can find calls made on behalf of one CR by name.
+	Query string
+	Body  []byte
+	When  time.Time
 }
 
 // NewServer constructs a MockServer in ModeHappy and starts the underlying
@@ -604,6 +612,33 @@ func (m *MockServer) writeDuplicateAgentConflict(w http.ResponseWriter, r *http.
 	w.WriteHeader(http.StatusBadRequest)
 	_, _ = w.Write([]byte(fmt.Sprintf(
 		`{"detail":"Agent with name %s already exists"}`, name)))
+	return true
+}
+
+// writeMCPServerUpdate404 answers PUT /v1/mcp/server for an unknown
+// server_id the way LiteLLM 1.106.0 does (measured): 404, never a silent
+// no-op 200 — a 200 would let a reconciler PUT onto a vanished id and report
+// Synced over an absent entry.
+func (m *MockServer) writeMCPServerUpdate404(w http.ResponseWriter, r *http.Request, mode string) bool {
+	if mode != ModeHappy || r.Method != http.MethodPut || r.URL.Path != pathMCPServer {
+		return false
+	}
+	body, _ := io.ReadAll(r.Body)
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	var reqBody struct {
+		ServerID string `json:"server_id"`
+	}
+	_ = json.Unmarshal(body, &reqBody)
+	m.mu.Lock()
+	_, present := m.mcpServers[reqBody.ServerID]
+	m.mu.Unlock()
+	if present {
+		return false
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNotFound)
+	_, _ = w.Write([]byte(fmt.Sprintf(
+		`{"detail":{"error":"MCP Server not found, passed server_id=%s"}}`, reqBody.ServerID)))
 	return true
 }
 
@@ -1378,8 +1413,30 @@ func (m *MockServer) writeModelGroupBudget(w http.ResponseWriter, r *http.Reques
 	}
 	switch r.Method {
 	case http.MethodPut:
+		// Body validation as measured on 1.106.0: missing or malformed
+		// body 422, an unknown key 422 (extra_forbidden), no budget key 400.
 		var in map[string]any
-		_ = json.NewDecoder(r.Body).Decode(&in)
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_ = json.NewEncoder(w).Encode(map[string]any{"detail": []any{map[string]any{"type": "json_invalid", "msg": err.Error()}}})
+			return true
+		}
+		known := 0
+		for k := range in {
+			switch k {
+			case "max_budget", "soft_budget", "budget_duration", "budget_id":
+				known++
+			default:
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				_ = json.NewEncoder(w).Encode(map[string]any{"detail": []any{map[string]any{"type": "extra_forbidden", "loc": []any{"body", k}}}})
+				return true
+			}
+		}
+		if known == 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]any{"detail": map[string]any{"error": "One of max_budget, soft_budget, budget_duration or budget_id is required"}})
+			return true
+		}
 		cur := m.modelGroupBudgets[tag]
 		if cur == nil {
 			cur = map[string]any{"budget_id": "mock-budget-" + tag}
@@ -1440,10 +1497,14 @@ func (m *MockServer) handle(w http.ResponseWriter, r *http.Request) {
 		m.mutations.Add(1)
 	}
 
+	body, _ := io.ReadAll(r.Body)
+	r.Body = io.NopCloser(bytes.NewReader(body))
 	m.mu.Lock()
 	m.recorded = append(m.recorded, RecordedCall{
 		Method: r.Method,
 		Path:   r.URL.Path,
+		Query:  r.URL.RawQuery,
+		Body:   body,
 		When:   time.Now(),
 	})
 	// pathCalls: increment under the same mutex so PathCallCount sees a
@@ -1512,6 +1573,7 @@ func (m *MockServer) handle(w http.ResponseWriter, r *http.Request) {
 	// answer here instead. First writer wins.
 	for _, write := range []func(http.ResponseWriter, *http.Request, string) bool{
 		m.writeDuplicateAgentConflict,
+		m.writeMCPServerUpdate404,
 		m.writeDuplicateToolsetConflict,
 		m.writeAbsentToolsetDelete500,
 		m.writeAccessGroupResponse,
@@ -1964,7 +2026,7 @@ func (m *MockServer) statefulBody(r *http.Request) []byte {
 		return []byte(`{}`)
 	}
 	// POST /v1/mcp/server — create, mint server_id, return body.
-	if method == http.MethodPost && path == "/v1/mcp/server" {
+	if method == http.MethodPost && path == pathMCPServer {
 		var reqBody map[string]any
 		if b, err := io.ReadAll(r.Body); err == nil {
 			_ = json.Unmarshal(b, &reqBody)
@@ -2002,7 +2064,7 @@ func (m *MockServer) statefulBody(r *http.Request) []byte {
 	// PUT /v1/mcp/server — wholesale-replace (Phase 5 D-01 ✓ branch /
 	// Probe 10c). The mock keeps the same server_id but overwrites all
 	// other fields with the PUT body's values.
-	if method == http.MethodPut && path == "/v1/mcp/server" {
+	if method == http.MethodPut && path == pathMCPServer {
 		var reqBody map[string]any
 		if b, err := io.ReadAll(r.Body); err == nil {
 			_ = json.Unmarshal(b, &reqBody)
@@ -2029,7 +2091,7 @@ func (m *MockServer) statefulBody(r *http.Request) []byte {
 		))
 	}
 	// GET /v1/mcp/server — bare-array list of all MCP servers.
-	if method == http.MethodGet && strings.HasPrefix(path, "/v1/mcp/server") {
+	if method == http.MethodGet && strings.HasPrefix(path, pathMCPServer) {
 		m.mu.Lock()
 		entries := make([]string, 0, len(m.mcpServers))
 		for _, e := range m.mcpServers {

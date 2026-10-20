@@ -4,9 +4,11 @@ package controller
 
 import (
 	"context"
+	"net/http"
 	"testing"
 	"time"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -74,4 +76,84 @@ func pollCR[T any, PT interface {
 		time.Sleep(50 * time.Millisecond)
 	}
 	return PT(&last)
+}
+
+// waitQuiet blocks until read() holds one value for `quiet`, then returns
+// it; fails the test if that never happens within `timeout`. Use it to open
+// a "nothing more may happen" window only after the reconcile burst that
+// precedes it has drained: a fixed settle sleep is too short once the
+// shared apiserver is under load, and the burst's tail then lands inside
+// the window and reads as a storm/loop.
+func waitQuiet(t *testing.T, read func() int64, quiet, timeout time.Duration) int64 {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	last, since := read(), time.Now()
+	for time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+		if v := read(); v != last {
+			last, since = v, time.Now()
+		} else if time.Since(since) >= quiet {
+			return last
+		}
+	}
+	t.Fatalf("counter not quiet for %s within %s (last=%d)", quiet, timeout, last)
+	return last
+}
+
+// mockReadsSince counts mock reads recorded at or after index `from`
+// (a prior len(mockServer.Recorded())), skipping GET /v2/team/list: the
+// suite's ungated TeamDefaultRunnable re-lists the implicit Team/default
+// every 100ms whenever the connection cache is Ready, so that path is
+// background noise for any read-count window.
+func mockReadsSince(from int) int {
+	n := 0
+	for _, c := range mockServer.Recorded()[from:] {
+		isRead := c.Method == http.MethodGet || c.Method == http.MethodHead ||
+			(c.Method == http.MethodPost && c.Path == "/key/health")
+		if isRead && c.Path != "/v2/team/list" {
+			n++
+		}
+	}
+	return n
+}
+
+// stripOwnerRefs performs the user's adoption gesture (drop the child's
+// ownerReferences) ONCE, retrying only its own write conflicts, then fails
+// if the refs come back within `settle`. A Discovery reconcile already in
+// flight when the strip lands used to SSA-apply over it with ForceOwnership
+// and put the controller ownerRef straight back (#141); the resourceVersion
+// precondition on the Discovery's apply now turns that into a 409 + requeue.
+// A ref reappearing here is that regression, not noise to retry around.
+func stripOwnerRefs[T any, PT interface {
+	*T
+	client.Object
+}](t *testing.T, key client.ObjectKey, settle, timeout time.Duration) {
+	t.Helper()
+	ctx := context.Background()
+	deadline := time.Now().Add(timeout)
+	for {
+		var obj T
+		pt := PT(&obj)
+		if err := k8sClient.Get(ctx, key, pt); err != nil {
+			t.Fatalf("get %s: %v", key, err)
+		}
+		pt.SetOwnerReferences(nil)
+		err := k8sClient.Update(ctx, pt)
+		if err == nil {
+			break
+		}
+		if !apierrors.IsConflict(err) || time.Now().After(deadline) {
+			t.Fatalf("strip ownerReferences on %s: %v", key, err)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	until := time.Now().Add(settle)
+	for time.Now().Before(until) {
+		var obj T
+		pt := PT(&obj)
+		if err := k8sClient.Get(ctx, key, pt); err == nil && len(pt.GetOwnerReferences()) > 0 {
+			t.Fatalf("ownerReferences on %s came back after the strip (#141 regression): %v", key, pt.GetOwnerReferences())
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }

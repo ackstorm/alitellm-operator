@@ -258,7 +258,12 @@ func TestConnectionProbeLoop_BadMasterKey(t *testing.T) {
 	// specifically check the probe path here instead of all Mutations
 	// because /key/health is the only mutation the connection reconciler
 	// emits — non-zero delta indicates a runaway reconcile.
-	probeBefore := mockServer.PathCallCount("/key/health")
+	// The window opens only once the create burst has drained: the first
+	// BadMasterKey snapshot lands while the reconciler is still re-probing
+	// off its own finalizer/status writes (3 probes total), and a fixed
+	// start let the last of those count as a storm.
+	keyHealth := func() int64 { return mockServer.PathCallCount("/key/health") }
+	probeBefore := waitQuiet(t, keyHealth, time.Second, 15*time.Second)
 	time.Sleep(2500 * time.Millisecond)
 	deltaProbes := mockServer.PathCallCount("/key/health") - probeBefore
 	if deltaProbes != 0 {

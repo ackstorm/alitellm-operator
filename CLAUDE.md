@@ -912,6 +912,21 @@ CI's Envtest job, which is the reliable signal.
   trade-off as the Non-Goals "tick spread" note in the relist-convergence plan
   (per-kind gates were explicitly out of scope); `make e2e-full` against a
   real cluster is the decisive gate, not a local `-race` full-package run.
+  **Superseded 2026-10-19:** both were windows opened before the create burst
+  drained. BadMasterKey's extra probe was the connection reconciler's OWN third
+  probe (all three `probe: BadMasterKey` log lines precede the window; nothing
+  else logged a probe). CONN_09's baseline likely raced the async Team/default
+  bootstrap write (inferred: no failing log survived; passing runs show 1 or 2
+  delete-time mutations depending on whether that write had landed). Negative windows now open via `waitQuiet` (counter held
+  still ≥1s, `poll_until_test.go`) and read counts skip the ungated
+  Team/default `GET /v2/team/list` (`mockReadsSince`). New "nothing may happen
+  in this window" assertions MUST start with `waitQuiet`, never a fixed sleep.
+  Gating the suite `TeamDefaultRunnable` at the source (so no exclusion list is
+  needed) was considered and REJECTED 2026-10-20: every implicit-default /
+  bootstrap test would need an opt-in, and that churn risks more flakes than
+  the exclusion costs. A count-based window should prefer scoping to its own CR
+  (AC-N4 matches the CR name in path/query/body; mock `RecordedCall` carries
+  `Query` + `Body`) over growing an exclusion list.
 
 ### ❌ `kustomize edit set image` in a build recipe — it WRITES a tracked file
 ```make
@@ -1283,6 +1298,58 @@ WHY IT MATTERS BEYOND TOOLSETS: `litellm.IsNotFound` covers 404/ErrNotFound, but
 an endpoint that 500s on a missing row defeats it. Any NEW delete path should
 confirm absence before treating a 5xx as retry-forever.
 
+### ❌ Deleting an MCPServer conflict loser DELETEs the winner's entry
+```
+# foo-bar reconciled before foo.bar existed (both sanitize to foo-bar under ".")
+foo-bar: "mcp server created in LiteLLM" serverID=foo-bar
+foo.bar: adopts foo-bar → Ready=Synced; foo-bar → Ready=False Conflict,
+         status.lastRendered.serverID STILL "foo-bar" (keepPersistedID)
+kubectl delete litellmmcpserver foo-bar
+# ≤v0.10.2: DELETE /v1/mcp/server/foo-bar — the WINNER's live entry
+```
+Same hit with the winner created first: the loser has no serverID, so the
+deletion path's name-resolve fallback found the winner's entry by sanitized
+name and deleted that. Deleting the WINNER also deleted the entry the promoted
+loser was about to take over. Not a 10m hole: the sibling self-watch fans the
+Delete event out at once, and the survivor's Step 7b probe (MCP list cache
+invalidated by the DELETE) missed the entry and re-created it. Result: a brief
+outage and a re-created row.
+✅ Before any resolve/DELETE, the deletion path asks `conflictWinner`
+(`mcpserver_controller.go`, the SAME `conflict.ResolveWinner` call the
+reconcile-time loser short-circuit uses) whether a live, non-deleting sibling
+shares the sanitized `server_name` (`sharedEntryOwner`). If so, and this CR's
+`serverID` is empty, the sanitized name, or the owner's id, it skips the
+LiteLLM call, emits `LiteLLMDeleteSkipped`, and drains the finalizer. A
+DISTINCT id is a row of this CR's own (created before the collision) and is
+deleted as usual. The entry is deleted exactly
+when the LAST owning CR goes away, under that CR's `deletionPolicy`. The check
+runs only on a Usable snapshot (zero separator otherwise, #61).
+Because the entry now survives, the promoted loser MUST rewrite it. The loser
+branch therefore sets `status.lastRendered.hash` to the sentinel `mcpLoserHash`
+(`"conflict-loser"`; its real hash describes a body the winner has since
+overwritten) but keeps `serverID`. On promotion, Step 8 cannot short-circuit
+(hash mismatch), Step 7b still probes the kept id (the entry may have vanished
+while the loser was parked), and Step 9 takes the UPDATE arm on the kept id (or
+adopts by name / re-creates), so the loser's spec replaces the deleted winner's
+as a counted drift correction behind the recreate breaker. Do NOT blank the
+hash instead: an empty hash reads as `firstReconcile`, skips Step 7b, and a PUT
+onto a vanished id 404s forever (LiteLLM 1.106.0: `MCP Server not found`; the
+mock now 404s it too). Do NOT weaken `keepPersistedID` to clear the id.
+Losers are also excluded from `taggedMCPServerIDs`
+(`accessgroup_controller.go`): their tags would otherwise grant the WINNER's
+entry to groups the winner never named.
+CAVEAT: a promoted loser that stops before Step 9 (duplicate `secrets[].as`,
+SecretNotFound, missing placeholder) leaves the deleted winner's endpoint and
+credentials live until it can reconcile. Guarded by
+`TestMCPServer_ConflictLoserDelete_LateWinner_KeepsWinnerEntry`,
+`TestMCPServer_ConflictWinnerDelete_LoserInherits_LastOwnerDeletes`,
+`TestMCPServer_ConflictWinnerDelete_LateWinner_LoserRewritesEntry`,
+`TestMCPServer_ConflictWinnerDelete_StaleKeptID_LoserRecreates` and
+`TestMCPServer_ConflictLoserDelete_DistinctRow_Deleted`.
+WHY: the deletion path trusted `status.lastRendered.serverID` (and the name
+fallback) as proof of ownership. For a sanitization collision, ownership is a
+property of the live CR set, not of one CR's status.
+
 ### ❌ Asserting `object_permission` from `/v2/team/list`
 ```go
 matches := litellmTeamsByAlias(alias)
@@ -1354,10 +1421,17 @@ appears in the key's or team's `models`; a grant via `access_group_ids` is
 never charged. The mirror grants nothing new. Hand-managed groups (no CR) are
 picked up only at the next relist; a vanished group row first NARROWS the team
 to the groups that still resolve (`narrowAndPark`, `team_controller.go` — the
-write only ever narrows, else the mirror would keep granting), then parks it
+write never grants beyond the resolvable spec; skipping it would let the mirror
+keep granting the vanished group), then parks it
 `AccessGroupNotFound`. Denial text is
 `Budget has been exceeded! Model access group=<tag>` (assert that marker, not a
 status). Budgets: `docs/user-guide/model-group-budget.md`.
+CATALOG SIDE EFFECT (measured 1.106.0, 2026-10-20): `GET /v1/models` for a team
+key lists a tag reached via `access_group_ids` VERBATIM (a phantom "model"),
+while a tag in `team.models` is EXPANDED to its real models. So the mirror is
+what makes the real models listable; the phantom tag comes from the group,
+predates the mirror, and mirroring fewer tags only removes real models from
+the catalog (tried and reverted). Granting by model name avoids the phantom.
 
 ### ❌ Asserting a team attachment from the GROUP side
 ```go
@@ -1444,6 +1518,36 @@ result, so an empty release commit is correct here. `alitellm-auth`'s
 bumped `Chart.yaml`, `values.yaml` (`image.tag`), `pyproject.toml` and
 `main.py`. `make release-cut` creates an *empty* commit in both repos, so in
 alitellm-auth it publishes a chart pinned to the previous image tag.
+
+### ❌ Adopting a Discovery child while a Discovery reconcile is in flight (fixed)
+```bash
+kubectl patch litellmmodel <child> --type=json \
+  -p '[{"op":"remove","path":"/metadata/ownerReferences"}]'
+# moments later the controller ownerRef is back; status keeps reporting the
+# child under generatedChildren, skippedCandidates stays empty
+```
+Symptom: the adoption (strip ownerRefs so the Discovery stops managing the
+child) is silently lost. No error, no event. The child is still owned and
+still overwritten from the Discovery template. Affects
+`LiteLLMModelDiscovery` and `LiteLLMMCPServerDiscovery`.
+✅ Fixed (issue https://github.com/ackstorm/alitellm-operator/issues/141): both
+Discovery reconcilers read the child UNCACHED (`APIReader`, wired from
+`mgr.GetAPIReader()`) in `classifyAlreadyExists`, then SSA-apply with
+`metadata.resourceVersion` set to that live value — an optimistic-lock
+precondition. A strip landing between read and write fails the apply with 409;
+the child joins `pendingRetries` (kept out of vanish-delete) and the Discovery
+requeues in `childDeletingRequeue` (5s). The vanish Delete carries
+`Preconditions{UID, ResourceVersion}` from the cached list for the same reason.
+The short requeue is required: the strip bumps no `generation`, so the Owns()
+`ownedChildSpecChanged` predicate never re-enqueues the Discovery for it.
+Guarded deterministically by `TestMCPServerDiscoveryReconciler_AdoptionDuringApply_Kept`
+(`patchInterceptor.strip` strips between read and apply); `stripOwnerRefs` in
+`poll_until_test.go` now strips ONCE and fails if the ref comes back.
+WHY IT HAPPENED: a Discovery reconcile already running when the strip landed
+still held the pre-strip cache view. It SSA-applied the child with
+`ForceOwnership`, and that apply re-added the controller ownerRef. The window
+was narrow (one reconcile), but nothing re-checked it, so the loss was
+permanent until the user noticed.
 
 ## Repository-specific patterns
 

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -18,6 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -934,29 +936,9 @@ func TestMCPServerDiscoveryReconciler_Adoption(t *testing.T) {
 	}
 
 	// Adopt: strip the controller ownerRef. The label stays — this is
-	// the spec-defined adoption mechanism. Retry on conflict because
-	// the MCPServer reconciler may be concurrently updating the child's
-	// status from an in-flight reconcile.
-	stripErr := error(nil)
-	for attempt := 0; attempt < 10; attempt++ {
-		var child litellmv1alpha1.LiteLLMMCPServer
-		if err := k8sClient.Get(ctx, client.ObjectKey{Name: dotted, Namespace: WatchNamespace}, &child); err != nil {
-			stripErr = err
-			time.Sleep(25 * time.Millisecond)
-			continue
-		}
-		child.OwnerReferences = nil
-		if err := k8sClient.Update(ctx, &child); err == nil {
-			stripErr = nil
-			break
-		} else {
-			stripErr = err
-			time.Sleep(25 * time.Millisecond)
-		}
-	}
-	if stripErr != nil {
-		t.Fatalf("strip ownerRef (adoption): %v", stripErr)
-	}
+	// the spec-defined adoption mechanism.
+	stripOwnerRefs[litellmv1alpha1.LiteLLMMCPServer](t,
+		client.ObjectKey{Name: dotted, Namespace: WatchNamespace}, time.Second, 30*time.Second)
 
 	// Trigger reconcile via parent annotation update. Repeat the touch
 	// every 5s while polling because envtest's Owns(&MCPServer{}) event
@@ -1009,11 +991,17 @@ func TestMCPServerDiscoveryReconciler_VanishDetection(t *testing.T) {
 	ensureNoToolhiveObject(t, ctx, toolhive.MCPServerGVK, thNamespace, thName)
 	ensureNoMCPServer(t, ctx, dotted)
 	fakeCache.Invalidated.Store(true)
+	// The vanished child's MCPServer finalizer drains only through a Usable
+	// connection; without one the test relied on an earlier test leaving
+	// the cache Ready and failed when run alone.
+	resetConnCacheSnapshot()
+	cleanupConn := setupReadyConnectionMCP(t, ctx)
 	t.Cleanup(func() {
 		fakeCache.Invalidated.Store(false)
 		ensureNoMCPServerDiscovery(t, context.Background(), mdName)
 		ensureNoToolhiveObject(t, context.Background(), toolhive.MCPServerGVK, thNamespace, thName)
 		ensureNoMCPServer(t, context.Background(), dotted)
+		cleanupConn()
 	})
 
 	createToolhiveMCPServer(t, ctx, thNamespace, thName, "https://vanish.example.com", "http")
@@ -1535,9 +1523,11 @@ func TestMCPServerDiscoveryReconciler_NoEventLoop_OnOwnStatusWrite(t *testing.T)
 		t.Fatalf("initial child count: got %d, want 1", len(children))
 	}
 
-	// Let the reconcile sequence quiesce.
-	time.Sleep(1250 * time.Millisecond)
-	baseline := counter()
+	// Let the reconcile sequence quiesce. The counter is suite-global, so
+	// wait for it to hold still rather than sleeping a fixed 1.25s: under
+	// load the tail of this create burst (child status churn re-enqueues the
+	// parent via Owns) and the previous test's teardown land in the window.
+	baseline := waitQuiet(t, counter, time.Second, 15*time.Second)
 
 	// Patch the Discovery status directly — simulates the reconciler's
 	// own writeback path. Without GenerationChangedPredicate on For,
@@ -1901,17 +1891,80 @@ type patchInterceptor struct {
 	mu      atomic.Pointer[client.ObjectKey] // when non-nil, the next Patch matching this key fails-once
 	gvr     schema.GroupResource
 	tripped atomic.Bool
+	// strip, when non-nil, makes the next Patch matching this key first
+	// remove the object's ownerReferences (the user's adoption gesture),
+	// then send the Patch as-is: the strip lands between the reconciler's
+	// ownership read and its write (#141).
+	strip    atomic.Pointer[client.ObjectKey]
+	stripped atomic.Bool
 }
 
 func (p *patchInterceptor) Patch(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
-	target := p.mu.Load()
-	if target != nil {
-		key := client.ObjectKeyFromObject(obj)
+	key := client.ObjectKeyFromObject(obj)
+	if target := p.mu.Load(); target != nil {
 		if key == *target && p.tripped.CompareAndSwap(false, true) {
 			return apierrors.NewAlreadyExists(p.gvr, key.Name)
 		}
 	}
+	if target := p.strip.Load(); target != nil && key == *target && p.stripped.CompareAndSwap(false, true) {
+		var live litellmv1alpha1.LiteLLMMCPServer
+		live.SetName(key.Name)
+		live.SetNamespace(key.Namespace)
+		rm := client.RawPatch(types.JSONPatchType, []byte(`[{"op":"remove","path":"/metadata/ownerReferences"}]`))
+		if err := p.Client.Patch(ctx, &live, rm); err != nil {
+			return fmt.Errorf("test strip of %s: %w", key, err)
+		}
+	}
 	return p.Client.Patch(ctx, obj, patch, opts...)
+}
+
+// TestMCPServerDiscoveryReconciler_AdoptionDuringApply_Kept (#141): the
+// user strips the child's ownerRef after the Discovery read the child as
+// its own but before its SSA apply. The apply must not put the ref back;
+// the child ends up adopted (skippedCandidates, ExplicitMCPServerExists).
+func TestMCPServerDiscoveryReconciler_AdoptionDuringApply_Kept(t *testing.T) {
+	ctx := context.Background()
+	const mdName = "adopt-race"
+	const thNamespace = "dev"
+	const thName = "tool-adopt-race"
+	dotted := mdName + "-" + thName
+
+	ensureNoMCPServerDiscovery(t, ctx, mdName)
+	ensureNoToolhiveObject(t, ctx, toolhive.MCPServerGVK, thNamespace, thName)
+	ensureNoMCPServer(t, ctx, dotted)
+	t.Cleanup(func() {
+		mcpServerDiscoveryClient.strip.Store(nil)
+		mcpServerDiscoveryClient.stripped.Store(false)
+		ensureNoMCPServerDiscovery(t, context.Background(), mdName)
+		ensureNoToolhiveObject(t, context.Background(), toolhive.MCPServerGVK, thNamespace, thName)
+		ensureNoMCPServer(t, context.Background(), dotted)
+	})
+
+	createToolhiveMCPServer(t, ctx, thNamespace, thName, "https://adopt-race.example.com", "http")
+	md := msDiscSampleCR(mdName, []string{thNamespace})
+	if err := k8sClient.Create(ctx, md); err != nil {
+		t.Fatalf("create MCPServerDiscovery: %v", err)
+	}
+	if children := pollMCPServerDiscoveryChildren(t, ctx, mdName, 1, 30*time.Second); len(children) != 1 {
+		t.Fatalf("pre-race child count: got %d, want 1", len(children))
+	}
+
+	key := client.ObjectKey{Namespace: WatchNamespace, Name: dotted}
+	mcpServerDiscoveryClient.stripped.Store(false)
+	mcpServerDiscoveryClient.strip.Store(&key)
+	touchMCPServerDiscovery(t, ctx, mdName)
+	waitFor(t, mcpServerDiscoveryClient.stripped.Load, "interceptor never stripped "+dotted+": no apply reached it")
+
+	if skip := pollMCPServerDiscoverySkipReason(t, ctx, mdName, "ExplicitMCPServerExists", 30*time.Second); skip == nil || skip.Name != dotted {
+		t.Fatalf("adopted child %s not reported in skippedCandidates (got %+v)", dotted, skip)
+	}
+	var child litellmv1alpha1.LiteLLMMCPServer
+	if err := k8sClient.Get(ctx, key, &child); err != nil {
+		t.Fatalf("adopted child %s gone: %v", dotted, err)
+	}
+	if refs := child.GetOwnerReferences(); len(refs) > 0 {
+		t.Fatalf("#141: in-flight apply re-added ownerReferences %v to the adopted child", refs)
+	}
 }
 
 func TestMCPServerDiscoveryReconciler_CR01_AlreadyExistsRetryPreservesChild(t *testing.T) {

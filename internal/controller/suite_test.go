@@ -462,6 +462,7 @@ func setupAndRun(m *testing.M) int {
 	}
 	mdReconciler = &ModelDiscoveryReconciler{
 		Client:     mgr.GetClient(),
+		APIReader:  mgr.GetAPIReader(),
 		Scheme:     mgr.GetScheme(),
 		HTTPClient: &http.Client{Timeout: 30 * time.Second},
 		Recorder:   mgr.GetEventRecorderFor("modeldiscovery-controller"),
@@ -735,6 +736,7 @@ func setupAndRun(m *testing.M) int {
 	mcpServerDiscoveryClient = &patchInterceptor{Client: mgr.GetClient()}
 	mcpServerDiscoveryReconciler = &MCPServerDiscoveryReconciler{
 		Client:           mcpServerDiscoveryClient,
+		APIReader:        mgr.GetAPIReader(),
 		Scheme:           mgr.GetScheme(),
 		ToolHiveInformer: toolhiveInformer,
 		Recorder:         mgr.GetEventRecorderFor("mcpserverdiscovery-controller"),

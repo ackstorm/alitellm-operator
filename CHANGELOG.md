@@ -28,6 +28,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **e2e runs LiteLLM 1.106.0** (was 1.93.0). Its 403 denial message no longer
   echoes the team's models.
 
+### Fixed
+- **Model-group budgets react without waiting for the relist.** A budget
+  parked `ModelGroupNotFound` retries when a `LiteLLMModel` changes; a
+  duplicate takes over the moment the owner is deleted; and of two budgets
+  created in the same second, the one that reconciled first no longer keeps
+  reporting `Synced` after losing the tie.
+- **Deleting an MCPServer conflict CR no longer deletes the shared entry.**
+  When two `LiteLLMMCPServer` CRs sanitize to the same `server_name`, deleting
+  either one keeps the LiteLLM entry while the other is live (event
+  `LiteLLMDeleteSkipped`); the survivor rewrites it with its own spec, and
+  re-creates it if it vanished meanwhile. A CR whose status points at a row of
+  its own still deletes that row.
+- **A conflict loser's `mcp_access_groups` no longer grant the winner's
+  entry.** Losers are left out of `LiteLLMAccessGroup` tag selection.
+- **Adopting a Discovery child no longer loses the race with an in-flight
+  reconcile (#141).** Stripping a generated `LiteLLMModel` /
+  `LiteLLMMCPServer`'s ownerReferences while its Discovery was mid-reconcile
+  could have the ref silently re-added. The Discovery now reads the child
+  uncached and applies it with a resourceVersion precondition, so the
+  adoption sticks.
+
 ### Removed
 - **`configmaps` grant on the leader-election Role.** Kubebuilder scaffold
   leftover: controller-runtime elects over `coordination.k8s.io/leases` only

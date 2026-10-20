@@ -48,6 +48,11 @@ const mcpServerFinalizer = "mcpservers.litellm.ackstorm.ai/finalizer"
 // mcpServerKind is the metric label for LiteLLMMCPServer CRs.
 const mcpServerKind = "LiteLLMMCPServer"
 
+// mcpLoserHash is the lastRendered.hash a conflict loser carries: never equal
+// to a rendered SHA-256 hex, and non-empty so a promoted loser is not taken
+// for a first reconcile.
+const mcpLoserHash = "conflict-loser"
+
 // MCPServerSecretRefIndexField is the field indexer path registered in
 // cmd/main.go for reverse-mapping Secret names back to MCPServers that
 // reference them (Phase 3 D-06 pattern carry-forward for SEC-09 rotation
@@ -149,6 +154,50 @@ type MCPServerReconciler struct {
 	RecreateLimit int
 }
 
+// conflictWinner returns the alpha-last-wins winner (conflict.ResolveWinner)
+// among the live (non-deleting) LiteLLMMCPServer CRs in ns whose name
+// sanitizes to sanitizedName, or nil when there are none. Shared by the
+// reconcile-time loser short-circuit and the deletion path's ownership check
+// so both apply the same rule.
+func (r *MCPServerReconciler) conflictWinner(ctx context.Context, ns, sanitizedName, sep string) (client.Object, error) {
+	var siblings litellmv1alpha1.LiteLLMMCPServerList
+	if err := r.List(ctx, &siblings, client.InNamespace(ns)); err != nil {
+		return nil, fmt.Errorf("list mcpservers for conflict resolution: %w", err)
+	}
+	candidates := make([]client.Object, 0, len(siblings.Items))
+	for i := range siblings.Items {
+		s := &siblings.Items[i]
+		if !s.DeletionTimestamp.IsZero() {
+			continue
+		}
+		if litellm.SanitizeMCPServerName(s.Name, sep) == sanitizedName {
+			candidates = append(candidates, s)
+		}
+	}
+	return conflict.ResolveWinner(candidates), nil
+}
+
+// sharedEntryOwner returns the live sibling that owns the LiteLLM entry a
+// deleting mcp would otherwise DELETE, or nil when the DELETE is this CR's to
+// make. A sibling sharing the sanitized server_name owns that entry (conflict
+// winner, or a loser about to be promoted to one); a loser that created it
+// before the winner existed still points at it (keepPersistedID), and a loser
+// with no id would name-resolve onto it. A DISTINCT id is a row this CR
+// created before the names collided (separator change, H-9 original-name
+// adoption): nobody else owns it, so it is deleted as usual. Self is
+// deleting, hence never a candidate.
+func (r *MCPServerReconciler) sharedEntryOwner(ctx context.Context, mcp *litellmv1alpha1.LiteLLMMCPServer, sanitized, sep string) (*litellmv1alpha1.LiteLLMMCPServer, error) {
+	o, err := r.conflictWinner(ctx, mcp.Namespace, sanitized, sep)
+	if err != nil || o == nil {
+		return nil, err
+	}
+	owner := o.(*litellmv1alpha1.LiteLLMMCPServer)
+	if id := mcp.Status.LastRendered.ServerID; id != "" && id != sanitized && id != owner.Status.LastRendered.ServerID {
+		return nil, nil
+	}
+	return owner, nil
+}
+
 // Reconcile implements the LiteLLMMCPServer state machine.
 //
 //nolint:gocyclo // Linear state machine; splitting obscures the §7.3 mapping.
@@ -172,14 +221,30 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			onAckMissing := newAckMissingFn(r.Recorder, &mcp, mcpServerKind, mcp.Namespace, mcp.Name, policy)
 
 			snap := r.Cache.Snapshot()
-			if snap.Usable() {
+			sanitized := litellm.SanitizeMCPServerName(mcp.Name, snap.MCPToolPrefixSeparator)
+			// Ownership check, only once Usable (an unusable snapshot carries a
+			// zero separator, see #61 below).
+			if !snap.Usable() {
+				// Issue #23: gate on resolved policy.
+				if err := onAckMissing(ackUnavailable(snap)); err != nil {
+					return ctrl.Result{}, err
+				}
+			} else if owner, err := r.sharedEntryOwner(ctx, &mcp, sanitized, snap.MCPToolPrefixSeparator); err != nil {
+				return ctrl.Result{}, err
+			} else if owner != nil {
+				logger.Info("finalizer removed; LiteLLM delete skipped: server_name owned by a live sibling",
+					"owner", conflict.Key(owner), "serverName", sanitized)
+				if r.Recorder != nil {
+					r.Recorder.Eventf(&mcp, corev1.EventTypeNormal, "LiteLLMDeleteSkipped",
+						"LiteLLM entry for server_name %q kept: owned by %s", sanitized, conflict.Key(owner))
+				}
+			} else {
 				serverID := mcp.Status.LastRendered.ServerID
 				if serverID == "" {
 					// Phase 5 D-02 stale-status fallback: re-resolve by name
 					// via ListMCPServers + in-memory filter on metadata.name.
 					// FIX2.txt H-9: probe sanitized first, then original
 					// metadata.name (orphan-adoption fallback).
-					sanitized := litellm.SanitizeMCPServerName(mcp.Name, snap.MCPToolPrefixSeparator)
 					if resolved := r.resolveServerIDByName(ctx, snap.Client, sanitized, mcp.Name, logger); resolved != "" {
 						serverID = resolved
 					}
@@ -210,11 +275,6 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				} else {
 					metrics.DeletionBlocked.Forget(mcpServerKind, mcp.Namespace, mcp.Name)
 					logger.Info("finalizer removed; LiteLLM entry already absent (no pinned ID, name-resolve returned empty)", "name", mcp.Name)
-				}
-			} else {
-				// Issue #23: gate on resolved policy.
-				if err := onAckMissing(ackUnavailable(snap)); err != nil {
-					return ctrl.Result{}, err
 				}
 			}
 
@@ -282,8 +342,8 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	//
 	// Runs only once the Connection cache is Ready (#61), so
 	// snap.MCPToolPrefixSeparator carries the Connection-configured value;
-	// the default-separator fallback below now applies only when the
-	// Connection genuinely configures no separator, never as an
+	// SanitizeMCPServerName's default-separator fallback applies only when
+	// the Connection genuinely configures no separator, never as an
 	// unknown-state placeholder.
 	//
 	// Because the operator caches ONE LiteLLMConnection at a time, every
@@ -294,29 +354,15 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// the loser→winner promotion and winner→loser appearance fire
 	// promptly.
 	sep := snap.MCPToolPrefixSeparator
-	if sep == "" {
-		sep = litellm.MCPToolPrefixSeparatorDefault
-	}
 	sanitizedName := litellm.SanitizeMCPServerName(mcp.Name, sep)
-	var siblings litellmv1alpha1.LiteLLMMCPServerList
-	if err := r.List(ctx, &siblings, client.InNamespace(mcp.Namespace)); err != nil {
-		return ctrl.Result{}, fmt.Errorf("list mcpservers for conflict resolution: %w", err)
-	}
-	candidates := make([]client.Object, 0, len(siblings.Items))
-	for i := range siblings.Items {
-		s := &siblings.Items[i]
-		if !s.DeletionTimestamp.IsZero() {
-			continue
-		}
-		if litellm.SanitizeMCPServerName(s.Name, sep) == sanitizedName {
-			candidates = append(candidates, s)
-		}
+	winner, err := r.conflictWinner(ctx, mcp.Namespace, sanitizedName, sep)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 	priorReason := ""
 	if c := apimeta.FindStatusCondition(mcp.Status.Conditions, conditionTypeReady); c != nil {
 		priorReason = c.Reason
 	}
-	winner := conflict.ResolveWinner(candidates)
 	if conflict.IsLoser(&mcp, winner) {
 		conflict.ApplyLoserCondition(&mcp.Status.Conditions, mcp.Generation, conflict.Key(winner))
 		if r.Recorder != nil {
@@ -327,6 +373,15 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			metrics.ConflictsTotal.WithLabelValues("MCPServer", "loser").Inc()
 		}
 		mcp.Status.ObservedGeneration = mcp.Generation
+		// The shared entry now carries the winner's body, so this CR's
+		// rendered hash no longer describes it. Replace it with a sentinel
+		// that matches no rendered hash (ServerID stays): on promotion Step 8
+		// cannot short-circuit, Step 7b still probes the kept id (it may have
+		// vanished meanwhile), and Step 9 PUTs this spec over the deleted
+		// winner's as a drift correction — counted, and behind the recreate
+		// breaker — instead of leaving its endpoint and credentials live.
+		// A blank hash would read as firstReconcile and skip all three.
+		mcp.Status.LastRendered.Hash = mcpLoserHash
 		// #62: this loser write deliberately bypasses r.writeStatus because
 		// writeStatus builds a Ready condition, whereas the loser needs the
 		// Conflict condition set by ApplyLoserCondition above. But it must
