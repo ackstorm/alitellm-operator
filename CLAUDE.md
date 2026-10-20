@@ -921,6 +921,12 @@ CI's Envtest job, which is the reliable signal.
   still ≥1s, `poll_until_test.go`) and read counts skip the ungated
   Team/default `GET /v2/team/list` (`mockReadsSince`). New "nothing may happen
   in this window" assertions MUST start with `waitQuiet`, never a fixed sleep.
+  Gating the suite `TeamDefaultRunnable` at the source (so no exclusion list is
+  needed) was considered and REJECTED 2026-10-20: every implicit-default /
+  bootstrap test would need an opt-in, and that churn risks more flakes than
+  the exclusion costs. A count-based window should prefer scoping to its own CR
+  (AC-N4 matches the CR name in path/query/body; mock `RecordedCall` carries
+  `Query` + `Body`) over growing an exclusion list.
 
 ### ❌ `kustomize edit set image` in a build recipe — it WRITES a tracked file
 ```make
