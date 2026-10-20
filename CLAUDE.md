@@ -1426,6 +1426,12 @@ keep granting the vanished group), then parks it
 `AccessGroupNotFound`. Denial text is
 `Budget has been exceeded! Model access group=<tag>` (assert that marker, not a
 status). Budgets: `docs/user-guide/model-group-budget.md`.
+CATALOG SIDE EFFECT (measured 1.106.0, 2026-10-20): `GET /v1/models` for a team
+key lists a tag reached via `access_group_ids` VERBATIM (a phantom "model"),
+while a tag in `team.models` is EXPANDED to its real models. So the mirror is
+what makes the real models listable; the phantom tag comes from the group,
+predates the mirror, and mirroring fewer tags only removes real models from
+the catalog (tried and reverted). Granting by model name avoids the phantom.
 
 ### ❌ Asserting a team attachment from the GROUP side
 ```go
