@@ -2264,6 +2264,10 @@ the now-dangling id from enforcement.</p>
 <td>Expected — the group side does not mirror a team-side write. Read <code>GET /team/info</code>.</td>
 </tr>
 <tr>
+<td>A team key's <code>GET /v1/models</code> lists a tag name (e.g. <code>anthropic</code>) as a model</td>
+<td>LiteLLM behavior (measured on 1.106.0): a tag reached through <code>access_group_ids</code> is listed verbatim, not expanded. The real models are listed because the operator mirrors the group's entries into <code>team.models</code>, where LiteLLM does expand tags. Calling the tag name fails; clients that show the catalog (LibreChat) show it as an extra entry. Granting by model name (<code>spec.models</code>) instead of tag avoids it.</td>
+</tr>
+<tr>
 <td>A team can reach a model none of its intended groups grant</td>
 <td>Another attached group grants it. Groups only ADD.</td>
 </tr>

@@ -1817,7 +1817,7 @@ wildcards never) into <code>team.models</code> after the <code>no-default-models
 </tr>
 <tr>
 <td><code>ModelGroupNotFound</code></td>
-<td>No model carries the tag (LiteLLM 404). Heals when one does.</td>
+<td>No model carries the tag (LiteLLM 404). Retried whenever a <code>LiteLLMModel</code> changes; a model added outside the operator is picked up at the next safety relist.</td>
 </tr>
 <tr>
 <td><code>DuplicateModelGroup</code></td>
@@ -1827,8 +1827,9 @@ wildcards never) into <code>team.models</code> after the <code>no-default-models
 </table>
 <h2 id="limits">Limits<a class="headerlink" href="#limits" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>One owner per tag.</strong> A duplicate CR parks <code>DuplicateModelGroup</code>; it only
-  takes over at the next safety-relist tick after the owner is deleted.</li>
+<li><strong>One owner per tag.</strong> The oldest CR owns it (name breaks a same-second
+  tie); a duplicate parks <code>DuplicateModelGroup</code> and takes over as soon as the
+  owner is deleted.</li>
 <li>A hand-managed LiteLLM access group (no <code>LiteLLMAccessGroup</code> CR) is picked up
   by attached teams only at the next safety relist.</li>
 <li>If an attached <code>LiteLLMAccessGroup</code> row disappears from LiteLLM, the team is
