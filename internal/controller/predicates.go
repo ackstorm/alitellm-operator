@@ -3,6 +3,9 @@
 package controller
 
 import (
+	"maps"
+
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
@@ -61,6 +64,28 @@ func mapsEqual(a, b map[string]string) bool {
 		}
 	}
 	return true
+}
+
+// secretDataChanged gates every dependent controller's Secret watch: an
+// Update fires only when the Secret's data changed. Create / Delete /
+// Generic always fire.
+//
+// Why: External Secrets Operator rewrites a Secret's metadata on every
+// sync even when the data is unchanged (observed in prod: one shared
+// token Secret rewritten every ~2 min, re-enqueuing all 62 Models that
+// reference it — ~1,500 needless GET /model/info per hour). Reconcilers
+// only read the data, so a metadata-only write cannot change their output.
+func secretDataChanged() predicate.Predicate {
+	return predicate.Funcs{
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldS, ok1 := e.ObjectOld.(*corev1.Secret)
+			newS, ok2 := e.ObjectNew.(*corev1.Secret)
+			if !ok1 || !ok2 {
+				return true
+			}
+			return !maps.EqualFunc(oldS.Data, newS.Data, func(a, b []byte) bool { return string(a) == string(b) })
+		},
+	}
 }
 
 // connectionReadyTransition fires on a LiteLLMConnection event for any

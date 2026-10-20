@@ -1662,6 +1662,16 @@ func (m *MockServer) statefulBody(r *http.Request) []byte {
 				e.ModelID, e.ModelName, infoJSON,
 			))
 		}
+		// Injected duplicate rows are real rows to LiteLLM, so the
+		// unfiltered list carries them too (GetModelIDsByName reads it).
+		for name, dups := range m.dupModelRows {
+			for _, dupID := range dups {
+				entries = append(entries, fmt.Sprintf(
+					`{"model_id":%q,"model_name":%q,"litellm_params":{},"model_info":{"id":%q}}`,
+					dupID, name, dupID,
+				))
+			}
+		}
 		return []byte(fmt.Sprintf(`{"data":[%s]}`, strings.Join(entries, ",")))
 	}
 

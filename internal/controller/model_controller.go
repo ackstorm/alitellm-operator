@@ -529,10 +529,10 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	// deletes — defeating the safety re-list.
 	//
 	// v0.4.6: migrated to the shared probeVanishedResourceID helper used
-	// by MCPServer / Team / A2AAgent. Implementation still hits
-	// GetModelInfoByName (single GET, 1-row response) because LiteLLM
-	// 1.83.10 rejects GET /model/info?litellm_model_id=<id> with HTTP 400;
-	// the by-name endpoint is the cheapest existence check available.
+	// by MCPServer / Team / A2AAgent. LiteLLM 1.83.10 rejects
+	// GET /model/info?litellm_model_id=<id> with HTTP 400, so the probe
+	// resolves by name via GetModelIDsByName, which filters the unfiltered
+	// GET /model/info served from the Client's read cache.
 	//
 	// 401 behavior changed by the migration: previously this path returned
 	// the 401 verbatim for controller-runtime backoff. Now the helper
@@ -541,8 +541,8 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	// recovery (Connection re-probe wakes the cache + transitionReady
 	// re-enqueues dependent models) without the per-CR backoff spike.
 	//
-	// Cost unchanged: 1 GET /model/info per LiteLLMModel per safety
-	// re-list tick. At the 30m production interval = 2 calls/hour/CR.
+	// Cost: one shared GET /model/info per read-cache window, not one per
+	// CR — a relist tick over every Model costs a handful of list reads.
 	// The id set fetched here (probedModelIDs) is reused by the Step 7c
 	// duplicate-prune block below, so both the vanish probe and the prune
 	// share that single GET — no second /model/info call per reconcile.
@@ -999,6 +999,7 @@ func (r *ModelReconciler) SetupWithManager(mgr ctrl.Manager, safetyRelistCh ...c
 		Watches(
 			&corev1.Secret{},
 			handler.EnqueueRequestsFromMapFunc(r.secretToModels),
+			builder.WithPredicates(secretDataChanged()),
 		).
 		Watches(
 			&litellmv1alpha1.LiteLLMConnection{},

@@ -29,6 +29,7 @@ import (
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 	"github.com/ackstorm/alitellm-operator/internal/connection"
 	"github.com/ackstorm/alitellm-operator/internal/controller/deletionpolicy"
+	"github.com/ackstorm/alitellm-operator/internal/litellm"
 	"github.com/ackstorm/alitellm-operator/internal/litellm/mock"
 	"github.com/ackstorm/alitellm-operator/internal/metrics"
 )
@@ -2015,7 +2016,7 @@ func TestModel_DriftCounter_CreateMissing_SafetyRelist(t *testing.T) {
 	// is empty → CREATE path → increment create_missing (firstReconcile=false because
 	// ObservedGeneration > 0 and hash is non-empty from the previous successful reconcile).
 	// Wait up to 5s for create_missing to increment.
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(5*time.Second + litellm.DefaultReadCacheTTL)
 	for time.Now().Before(deadline) {
 		after := testutil.ToFloat64(metrics.DriftCorrectedTotal.WithLabelValues("model", "create_missing"))
 		if after-beforeCreateMissing >= 1 {
@@ -2328,7 +2329,7 @@ func TestSafetyRelist_IdGenuinelyGone_Adopts(t *testing.T) {
 
 	// 3. Reconcile via safety relist; the probe must re-target to DUP-1.
 	//    Wait until the tracked modelID becomes DUP-1 (adopt), bounded.
-	deadline := time.Now().Add(8 * time.Second)
+	deadline := time.Now().Add(8*time.Second + litellm.DefaultReadCacheTTL)
 	key := client.ObjectKey{Name: "dup-adopt", Namespace: WatchNamespace}
 	var after litellmv1alpha1.LiteLLMModel
 	adopted := false
@@ -2412,11 +2413,13 @@ func TestSafetyRelist_PrunesDuplicates(t *testing.T) {
 
 	// 3. Reconcile via safety relist; the prune must converge to one row.
 	//    Wait until the by-name id set is exactly [ID1], bounded.
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(10*time.Second + litellm.DefaultReadCacheTTL)
 	var finalIDs []string
 	converged := false
 	for time.Now().Before(deadline) {
-		ids, err := connSnap.Client.GetModelIDsByName(ctx, "dup-prune")
+		// suiteLLMClient has no read cache: this reads mock ground truth,
+		// not the operator client's cached GET /model/info.
+		ids, err := suiteLLMClient.GetModelIDsByName(ctx, "dup-prune")
 		if err == nil {
 			finalIDs = ids
 			if len(ids) == 1 && ids[0] == id1 {

@@ -879,6 +879,7 @@ func (r *MCPServerReconciler) SetupWithManager(mgr ctrl.Manager, safetyRelistCh 
 		Watches(
 			&corev1.Secret{},
 			handler.EnqueueRequestsFromMapFunc(r.secretToMCPServers),
+			builder.WithPredicates(secretDataChanged()),
 		).
 		Watches(
 			&litellmv1alpha1.LiteLLMConnection{},

@@ -736,6 +736,7 @@ func (r *GuardRailReconciler) SetupWithManager(mgr ctrl.Manager, safetyRelistCh 
 		Watches(
 			&corev1.Secret{},
 			handler.EnqueueRequestsFromMapFunc(r.secretToGuardrails),
+			builder.WithPredicates(secretDataChanged()),
 		).
 		Watches(
 			&litellmv1alpha1.LiteLLMConnection{},

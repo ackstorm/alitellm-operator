@@ -911,6 +911,37 @@ CI's Envtest job, which is the reliable signal.
   (per-kind gates were explicitly out of scope); `make e2e-full` against a
   real cluster is the decisive gate, not a local `-race` full-package run.
 
+### ❌ Secret watch without a data predicate → mass re-reconcile on ESO syncs
+```go
+Watches(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(r.secretToModels))
+```
+Symptom: every ~2 min, every CR that references one Secret reconciles at once
+(prod: 62 Models → 62 `GET /model/info` per burst, ~1,500 req/h), though the
+key never changed.
+✅ Gate every Secret watch with `secretDataChanged()` (`predicates.go`):
+```go
+Watches(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(r.secretToModels),
+    builder.WithPredicates(secretDataChanged()))
+```
+WHY: External Secrets Operator rewrites the Secret's metadata on every sync
+(new `resourceVersion`, same `reconcile.external-secrets.io/data-hash`) even
+with `refreshInterval: 24h`. Reconcilers read only `.data`, so an Update with
+equal data cannot change their output. Create/Delete still fire. Any NEW
+Secret watch must carry the predicate.
+
+### ❌ Reading LiteLLM ground truth in a test through the operator's client
+```go
+ids, _ := connSnap.Client.GetModelIDsByName(ctx, name)   // may be up to 5s stale
+```
+✅ Read through `suiteLLMClient` (no read cache), or the mock directly.
+WHY: the Client built by the connection reconciler carries a 5s read cache
+(`WithReadCacheTTL`, `read_cache.go`) on `GET /model/info` and
+`GET /v2/guardrails/list`, dropped only by the operator's own writes. Mock
+mutations (`AddDuplicateModelRow`, `DeleteModelOutOfBand`) are not operator
+writes, so a test reading back through that client sees the pre-mutation list
+and "converges" before the reconcile ran. Relist-recovery deadlines in envtest
+add `litellm.DefaultReadCacheTTL` for the same reason.
+
 ### ❌ `kustomize edit set image` in a build recipe — it WRITES a tracked file
 ```make
 _build-installer: gen-manifests gen-code kustomize

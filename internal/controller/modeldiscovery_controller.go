@@ -1592,6 +1592,7 @@ func (r *ModelDiscoveryReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(
 			&corev1.Secret{},
 			handler.EnqueueRequestsFromMapFunc(r.secretToModelDiscoveries),
+			builder.WithPredicates(secretDataChanged()),
 		).
 		Watches(
 			&litellmv1alpha1.LiteLLMA2AAgent{},

@@ -421,6 +421,9 @@ func (r *LiteLLMConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		// LIST traffic. TTL well below the safety-relist cadence (5m)
 		// so vanish-detection latency is unchanged.
 		litellm.WithListCacheTTL(litellm.DefaultListCacheTTL),
+		// Collapses the per-CR GET /model/info and /v2/guardrails/list
+		// reads of a relist burst; dropped on every write.
+		litellm.WithReadCacheTTL(litellm.DefaultReadCacheTTL),
 	}
 	if conn.Spec.MaxRequestsPerSecond > 0 {
 		burst := int(conn.Spec.MaxBurst)
@@ -770,6 +773,7 @@ func (r *LiteLLMConnectionReconciler) SetupWithManager(mgr ctrl.Manager, ch <-ch
 		Watches(
 			&corev1.Secret{},
 			handler.EnqueueRequestsFromMapFunc(r.secretToConnection),
+			builder.WithPredicates(secretDataChanged()),
 		).
 		WatchesRawSource(source.Channel(ch, channelHandler)).
 		Named("litellmconnection").
