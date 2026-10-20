@@ -83,6 +83,14 @@ credentials. This lasts longer if the promoted CR is blocked before it
 writes to LiteLLM (duplicate `secrets[].as`, a missing Secret or
 placeholder). Fix the promoted CR, or delete it too.
 
+A CR whose status points at a LiteLLM entry of its own (a different
+`server_id` from the shared one, for example a row it created before
+the names collided) still deletes that entry when it goes away.
+
+While a `LiteLLMMCPServer` is a loser, its `mcp_access_groups` tags do
+not put the shared entry into any `LiteLLMAccessGroup`: the entry runs
+the winner's spec, so only the winner's tags count.
+
 ## Observability
 
 - Loser CRs emit a `ConflictDetected` Kubernetes Event with the winner key.

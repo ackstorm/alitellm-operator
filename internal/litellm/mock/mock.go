@@ -607,6 +607,33 @@ func (m *MockServer) writeDuplicateAgentConflict(w http.ResponseWriter, r *http.
 	return true
 }
 
+// writeMCPServerUpdate404 answers PUT /v1/mcp/server for an unknown
+// server_id the way LiteLLM 1.106.0 does (measured): 404, never a silent
+// no-op 200 — a 200 would let a reconciler PUT onto a vanished id and report
+// Synced over an absent entry.
+func (m *MockServer) writeMCPServerUpdate404(w http.ResponseWriter, r *http.Request, mode string) bool {
+	if mode != ModeHappy || r.Method != http.MethodPut || r.URL.Path != "/v1/mcp/server" {
+		return false
+	}
+	body, _ := io.ReadAll(r.Body)
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	var reqBody struct {
+		ServerID string `json:"server_id"`
+	}
+	_ = json.Unmarshal(body, &reqBody)
+	m.mu.Lock()
+	_, present := m.mcpServers[reqBody.ServerID]
+	m.mu.Unlock()
+	if present {
+		return false
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNotFound)
+	_, _ = w.Write([]byte(fmt.Sprintf(
+		`{"detail":{"error":"MCP Server not found, passed server_id=%s"}}`, reqBody.ServerID)))
+	return true
+}
+
 // ── MCP toolset helpers ──────────────────────────────
 
 // ResetToolsets clears the in-memory MCP toolset store. Call between tests
@@ -1512,6 +1539,7 @@ func (m *MockServer) handle(w http.ResponseWriter, r *http.Request) {
 	// answer here instead. First writer wins.
 	for _, write := range []func(http.ResponseWriter, *http.Request, string) bool{
 		m.writeDuplicateAgentConflict,
+		m.writeMCPServerUpdate404,
 		m.writeDuplicateToolsetConflict,
 		m.writeAbsentToolsetDelete500,
 		m.writeAccessGroupResponse,

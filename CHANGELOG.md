@@ -28,6 +28,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **e2e runs LiteLLM 1.106.0** (was 1.93.0). Its 403 denial message no longer
   echoes the team's models.
 
+### Fixed
+- **Deleting an MCPServer conflict CR no longer deletes the shared entry.**
+  When two `LiteLLMMCPServer` CRs sanitize to the same `server_name`, deleting
+  either one keeps the LiteLLM entry while the other is live (event
+  `LiteLLMDeleteSkipped`); the survivor rewrites it with its own spec, and
+  re-creates it if it vanished meanwhile. A CR whose status points at a row of
+  its own still deletes that row.
+- **A conflict loser's `mcp_access_groups` no longer grant the winner's
+  entry.** Losers are left out of `LiteLLMAccessGroup` tag selection.
+
 ### Removed
 - **`configmaps` grant on the leader-election Role.** Kubebuilder scaffold
   leftover: controller-runtime elects over `coordination.k8s.io/leases` only

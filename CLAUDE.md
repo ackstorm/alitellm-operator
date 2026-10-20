@@ -1311,22 +1311,35 @@ outage and a re-created row.
 ✅ Before any resolve/DELETE, the deletion path asks `conflictWinner`
 (`mcpserver_controller.go`, the SAME `conflict.ResolveWinner` call the
 reconcile-time loser short-circuit uses) whether a live, non-deleting sibling
-shares the sanitized `server_name`. If so it skips the LiteLLM call, emits
-`LiteLLMDeleteSkipped`, and drains the finalizer. The entry is deleted exactly
+shares the sanitized `server_name` (`sharedEntryOwner`). If so, and this CR's
+`serverID` is empty, the sanitized name, or the owner's id, it skips the
+LiteLLM call, emits `LiteLLMDeleteSkipped`, and drains the finalizer. A
+DISTINCT id is a row of this CR's own (created before the collision) and is
+deleted as usual. The entry is deleted exactly
 when the LAST owning CR goes away, under that CR's `deletionPolicy`. The check
 runs only on a Usable snapshot (zero separator otherwise, #61).
 Because the entry now survives, the promoted loser MUST rewrite it. The loser
-branch therefore blanks `status.lastRendered.hash` (its hash describes a body the
-winner has since overwritten) but keeps `serverID`. On promotion, Step 8 cannot
-short-circuit (hash mismatch) and Step 7b is skipped (empty hash). Step 9 takes
-the UPDATE arm on the kept id (or adopts by name when none), so the loser's spec
-replaces the deleted winner's. Do NOT weaken `keepPersistedID` to clear the id.
+branch therefore sets `status.lastRendered.hash` to the sentinel `mcpLoserHash`
+(`"conflict-loser"`; its real hash describes a body the winner has since
+overwritten) but keeps `serverID`. On promotion, Step 8 cannot short-circuit
+(hash mismatch), Step 7b still probes the kept id (the entry may have vanished
+while the loser was parked), and Step 9 takes the UPDATE arm on the kept id (or
+adopts by name / re-creates), so the loser's spec replaces the deleted winner's
+as a counted drift correction behind the recreate breaker. Do NOT blank the
+hash instead: an empty hash reads as `firstReconcile`, skips Step 7b, and a PUT
+onto a vanished id 404s forever (LiteLLM 1.106.0: `MCP Server not found`; the
+mock now 404s it too). Do NOT weaken `keepPersistedID` to clear the id.
+Losers are also excluded from `taggedMCPServerIDs`
+(`accessgroup_controller.go`): their tags would otherwise grant the WINNER's
+entry to groups the winner never named.
 CAVEAT: a promoted loser that stops before Step 9 (duplicate `secrets[].as`,
 SecretNotFound, missing placeholder) leaves the deleted winner's endpoint and
 credentials live until it can reconcile. Guarded by
 `TestMCPServer_ConflictLoserDelete_LateWinner_KeepsWinnerEntry`,
-`TestMCPServer_ConflictWinnerDelete_LoserInherits_LastOwnerDeletes` and
-`TestMCPServer_ConflictWinnerDelete_LateWinner_LoserRewritesEntry`.
+`TestMCPServer_ConflictWinnerDelete_LoserInherits_LastOwnerDeletes`,
+`TestMCPServer_ConflictWinnerDelete_LateWinner_LoserRewritesEntry`,
+`TestMCPServer_ConflictWinnerDelete_StaleKeptID_LoserRecreates` and
+`TestMCPServer_ConflictLoserDelete_DistinctRow_Deleted`.
 WHY: the deletion path trusted `status.lastRendered.serverID` (and the name
 fallback) as proof of ownership. For a sanitization collision, ownership is a
 property of the live CR set, not of one CR's status.

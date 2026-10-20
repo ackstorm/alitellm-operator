@@ -17,6 +17,7 @@ import (
 
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 	"github.com/ackstorm/alitellm-operator/internal/controller/conflict"
+	"github.com/ackstorm/alitellm-operator/internal/litellm"
 	"github.com/ackstorm/alitellm-operator/internal/litellm/mock"
 )
 
@@ -240,15 +241,9 @@ func deleteMCPServerAndWaitGone(t *testing.T, ctx context.Context, name string) 
 		t.Fatalf("delete MCPServer %q: %v", name, err)
 	}
 	key := client.ObjectKey{Name: name, Namespace: WatchNamespace}
-	deadline := time.Now().Add(30 * time.Second)
-	for time.Now().Before(deadline) {
-		var m litellmv1alpha1.LiteLLMMCPServer
-		if err := k8sClient.Get(ctx, key, &m); apierrors.IsNotFound(err) {
-			return
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	t.Fatalf("MCPServer %q not gone within 30s (finalizer never drained)", name)
+	waitFor(t, func() bool {
+		return apierrors.IsNotFound(k8sClient.Get(ctx, key, &litellmv1alpha1.LiteLLMMCPServer{}))
+	}, "MCPServer "+name+" not gone (finalizer never drained)")
 }
 
 // mcpDeletesOf counts DELETE /v1/mcp/server/<serverID> calls the mock saw.
@@ -411,16 +406,111 @@ func TestMCPServer_ConflictWinnerDelete_LateWinner_LoserRewritesEntry(t *testing
 
 	deleteMCPServerAndWaitGone(t, ctx, winnerName)
 
-	deadline := time.Now().Add(30 * time.Second)
-	for time.Now().Before(deadline) && description() != loserName {
-		time.Sleep(50 * time.Millisecond)
-	}
-	if got := description(); got != loserName {
-		t.Errorf("promoted loser never rewrote %q: mcp_info.description=%v, want %q (deleted winner's config still live)",
-			serverID, got, loserName)
-	}
+	waitFor(t, func() bool { return description() == loserName },
+		"promoted loser never rewrote "+serverID+" (deleted winner's config still live)")
 	l := pollMCPServerCondition(t, ctx, loserName, reasonSynced, 5*time.Second)
 	if c := apimeta.FindStatusCondition(l.Status.Conditions, conditionTypeReady); c == nil || c.Reason != reasonSynced {
 		t.Errorf("promoted loser not Ready/Synced; condition=%+v", c)
+	}
+}
+
+// TestMCPServer_ConflictWinnerDelete_StaleKeptID_LoserRecreates: the shared
+// entry vanished out of band while the loser was parked. On promotion the
+// loser's kept serverID points at nothing, so Step 7b must still probe it
+// (the loser hash is a non-empty sentinel) and fall through to CREATE —
+// not PUT onto the missing id and report Synced over an absent entry.
+func TestMCPServer_ConflictWinnerDelete_StaleKeptID_LoserRecreates(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetMCPServers()
+
+	const loserName, winnerName, serverID = "foo-bar", "foo.bar", "foo-bar"
+	ensureNoMCPServer(t, ctx, loserName)
+	ensureNoMCPServer(t, ctx, winnerName)
+	resetConnCacheSnapshot()
+	cleanupConn := setupReadyConnectionMCPWithSeparator(t, ctx, ".")
+	t.Cleanup(func() {
+		cleanupConn()
+		ensureNoMCPServer(t, context.Background(), loserName)
+		ensureNoMCPServer(t, context.Background(), winnerName)
+	})
+
+	if err := k8sClient.Create(ctx, newCollapseMCPServer(loserName)); err != nil {
+		t.Fatalf("create loser: %v", err)
+	}
+	if l := pollMCPServerCondition(t, ctx, loserName, reasonSynced, 30*time.Second); l.Status.LastRendered.ServerID != serverID {
+		t.Fatalf("loser did not create %q first; status=%+v", serverID, l.Status)
+	}
+	if err := k8sClient.Create(ctx, newCollapseMCPServer(winnerName)); err != nil {
+		t.Fatalf("create winner: %v", err)
+	}
+	pollMCPServerCondition(t, ctx, loserName, conflict.ConditionReasonConflict, 30*time.Second)
+	pollMCPServerCondition(t, ctx, winnerName, reasonSynced, 30*time.Second)
+
+	mockServer.DeleteMCPServerOutOfBand(serverID)
+	// Let the list cache expire so the promoted loser's probe reads the
+	// mock, not the pre-delete LIST (see the vanish test above).
+	time.Sleep(litellm.DefaultListCacheTTL + 2*time.Second)
+
+	deleteMCPServerAndWaitGone(t, ctx, winnerName)
+
+	waitFor(t, func() bool { return mockServer.HasMCPServer(serverID) },
+		"promoted loser never re-created "+serverID+" (stale kept id not probed)")
+	l := pollMCPServerCondition(t, ctx, loserName, reasonSynced, 30*time.Second)
+	if got, want := l.Status.LastRendered.ServerID, mockServer.GetMCPServerID(serverID); got != want {
+		t.Errorf("promoted loser tracks serverID %q, live entry is %q", got, want)
+	}
+}
+
+// TestMCPServer_ConflictLoserDelete_DistinctRow_Deleted: a loser whose
+// serverID is a row of its own (not the shared entry) must DELETE that row
+// when it goes away; the delete skip is only for the entry the winner owns.
+func TestMCPServer_ConflictLoserDelete_DistinctRow_Deleted(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetMCPServers()
+
+	const loserName, winnerName, serverID = "foo-bar", "foo.bar", "foo-bar"
+	ensureNoMCPServer(t, ctx, loserName)
+	ensureNoMCPServer(t, ctx, winnerName)
+	resetConnCacheSnapshot()
+	cleanupConn := setupReadyConnectionMCPWithSeparator(t, ctx, ".")
+	t.Cleanup(func() {
+		cleanupConn()
+		ensureNoMCPServer(t, context.Background(), loserName)
+		ensureNoMCPServer(t, context.Background(), winnerName)
+	})
+
+	if err := k8sClient.Create(ctx, newCollapseMCPServer(winnerName)); err != nil {
+		t.Fatalf("create winner: %v", err)
+	}
+	pollMCPServerCondition(t, ctx, winnerName, reasonSynced, 30*time.Second)
+	if err := k8sClient.Create(ctx, newCollapseMCPServer(loserName)); err != nil {
+		t.Fatalf("create loser: %v", err)
+	}
+	l := pollMCPServerCondition(t, ctx, loserName, conflict.ConditionReasonConflict, 30*time.Second)
+
+	// The loser's own row, e.g. one it created before the names collided.
+	ownID := mockServer.AddHandManagedMCPServer("legacy-foo-bar", "https://mcp.example.com", "http")
+	l.Status.LastRendered.ServerID = ownID
+	if err := k8sClient.Status().Update(ctx, l); err != nil {
+		t.Fatalf("pin loser serverID: %v", err)
+	}
+
+	mockServer.ResetRecorded()
+	deleteMCPServerAndWaitGone(t, ctx, loserName)
+
+	if n := mcpDeletesOf(ownID); n == 0 {
+		t.Errorf("deleting the loser left its own row %q in LiteLLM (no DELETE issued)", ownID)
+	}
+	if n := mcpDeletesOf(serverID); n != 0 {
+		t.Errorf("deleting the loser issued %d DELETE /v1/mcp/server/%s — the winner's entry", n, serverID)
+	}
+	if !mockServer.HasMCPServer(serverID) {
+		t.Errorf("winner's entry %q gone after deleting the loser", serverID)
 	}
 }
