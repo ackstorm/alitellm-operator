@@ -304,6 +304,7 @@ func main() {
 
 	if err := (&controller.ModelDiscoveryReconciler{
 		Client:     mgr.GetClient(),
+		APIReader:  mgr.GetAPIReader(),
 		Scheme:     mgr.GetScheme(),
 		HTTPClient: discoveryHTTPClient,
 		Recorder:   mgr.GetEventRecorderFor("modeldiscovery-controller"),
@@ -621,6 +622,7 @@ func main() {
 	// (Phase 3 D-06 pattern).
 	if err := (&controller.MCPServerDiscoveryReconciler{
 		Client:           mgr.GetClient(),
+		APIReader:        mgr.GetAPIReader(),
 		Scheme:           mgr.GetScheme(),
 		ToolHiveInformer: toolHiveInformer,
 		Recorder:         mgr.GetEventRecorderFor("mcpserverdiscovery-controller"),

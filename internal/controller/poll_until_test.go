@@ -118,15 +118,12 @@ func mockReadsSince(from int) int {
 }
 
 // stripOwnerRefs performs the user's adoption gesture (drop the child's
-// ownerReferences) and repeats it until the refs stay gone for `settle`.
-// A Discovery reconcile already in flight when the strip lands still holds
-// the pre-strip cache view and SSA-applies with ForceOwnership, which puts
-// the controller ownerRef straight back; a single strip then silently
-// un-adopts the child and the test waits for a skip that never comes.
-// This works around a known PRODUCTION race (a real user's adoption is lost
-// the same way), not a test artifact: tracked in GitHub issue
-// https://github.com/ackstorm/alitellm-operator/issues/141. See CLAUDE.md
-// "Adopting a Discovery child while a Discovery reconcile is in flight".
+// ownerReferences) ONCE, retrying only its own write conflicts, then fails
+// if the refs come back within `settle`. A Discovery reconcile already in
+// flight when the strip lands used to SSA-apply over it with ForceOwnership
+// and put the controller ownerRef straight back (#141); the resourceVersion
+// precondition on the Discovery's apply now turns that into a 409 + requeue.
+// A ref reappearing here is that regression, not noise to retry around.
 func stripOwnerRefs[T any, PT interface {
 	*T
 	client.Object
@@ -134,26 +131,29 @@ func stripOwnerRefs[T any, PT interface {
 	t.Helper()
 	ctx := context.Background()
 	deadline := time.Now().Add(timeout)
-	var clearSince time.Time
-	for time.Now().Before(deadline) {
+	for {
 		var obj T
 		pt := PT(&obj)
 		if err := k8sClient.Get(ctx, key, pt); err != nil {
 			t.Fatalf("get %s: %v", key, err)
 		}
-		switch {
-		case len(pt.GetOwnerReferences()) > 0:
-			clearSince = time.Time{}
-			pt.SetOwnerReferences(nil)
-			if err := k8sClient.Update(ctx, pt); err != nil && !apierrors.IsConflict(err) {
-				t.Fatalf("strip ownerReferences on %s: %v", key, err)
-			}
-		case clearSince.IsZero():
-			clearSince = time.Now()
-		case time.Since(clearSince) >= settle:
-			return
+		pt.SetOwnerReferences(nil)
+		err := k8sClient.Update(ctx, pt)
+		if err == nil {
+			break
+		}
+		if !apierrors.IsConflict(err) || time.Now().After(deadline) {
+			t.Fatalf("strip ownerReferences on %s: %v", key, err)
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf("ownerReferences on %s kept coming back for %s", key, timeout)
+	until := time.Now().Add(settle)
+	for time.Now().Before(until) {
+		var obj T
+		pt := PT(&obj)
+		if err := k8sClient.Get(ctx, key, pt); err == nil && len(pt.GetOwnerReferences()) > 0 {
+			t.Fatalf("ownerReferences on %s came back after the strip (#141 regression): %v", key, pt.GetOwnerReferences())
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }

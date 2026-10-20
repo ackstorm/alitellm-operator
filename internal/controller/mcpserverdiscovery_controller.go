@@ -165,6 +165,10 @@ type MCPServerDiscoveryReconciler struct {
 	Log       logr.Logger
 	// BootEvents (FIX2.txt H-2) — optional BootSweeper channel. nil-safe.
 	BootEvents <-chan event.GenericEvent
+	// APIReader reads children uncached (mgr.GetAPIReader()) for the
+	// pre-apply ownership check, so a just-stripped ownerRef is seen (#141).
+	// nil falls back to the cached client.
+	APIReader client.Reader
 
 	// ReconcileCount is a test-only seam: every Reconcile invocation
 	// increments it atomically at the entry point (before any
@@ -729,6 +733,12 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 	// same reconcile, which cascades through the child finalizer to a
 	// DELETE+CREATE round-trip against LiteLLM.
 	pendingRetries := make(map[string]struct{})
+	// childStale: a child changed between the ownership read and its write
+	// (resourceVersion precondition 409), e.g. the user stripped its
+	// ownerRef mid-reconcile (#141). Kept out of vanish-delete via
+	// pendingRetries and re-classified on a short requeue — the strip bumps
+	// no generation, so the Owns() predicate never re-enqueues us for it.
+	childStale := false
 	for _, c := range candidates {
 		// Adoption short-circuit: if this candidate's child name matches a
 		// child whose ownerRef the user already stripped, the candidate is
@@ -741,7 +751,7 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 		// would-be child BEFORE Patch so we can classify cross-Discovery
 		// or user-authored collisions deterministically. The Get is cheap
 		// (single named lookup, cache-served after first reconcile).
-		classifiedSkip, retryable, classifyErr := r.classifyAlreadyExists(ctx, c.childName, &md)
+		classifiedSkip, retryable, liveRV, classifyErr := r.classifyAlreadyExists(ctx, c.childName, &md)
 		if classifyErr != nil {
 			metrics.ChildCRWritesTotal.WithLabelValues(mcpServerDiscoveryKind, "create_or_update", "error").Inc()
 			failed = append(failed, litellmv1alpha1.MCPServerFailedCandidate{
@@ -761,16 +771,27 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 		_ = retryable // retryable==true means: NotFound (proceed to Patch) OR owned-by-this-Discovery (idempotent re-apply).
 
 		child := buildChildMCPServer(&md, c, r.Namespace)
+		// #141: apply only over the version the ownership check saw. A
+		// change since (the user stripping the ownerRef) fails the apply
+		// with 409 instead of ForceOwnership silently re-adding the ref.
+		child.ResourceVersion = liveRV
 		applyErr := r.Patch(ctx, child, client.Apply,
 			client.FieldOwner(msDiscFieldOwner),
 			client.ForceOwnership)
+		if apierrors.IsConflict(applyErr) {
+			metrics.ChildCRWritesTotal.WithLabelValues(mcpServerDiscoveryKind, "create_or_update", "conflict").Inc()
+			pendingRetries[c.childName] = struct{}{}
+			childStale = true
+			logger.V(1).Info("child changed since ownership check; re-classifying on requeue", "child", c.childName)
+			continue
+		}
 		if applyErr != nil {
 			// AlreadyExists fallback path — re-classify (Patch's
 			// AlreadyExists can fire when the existing child's controller
 			// ownerRef belongs to a DIFFERENT controller; SSA+ForceOwnership
 			// is non-overrideable across controllers).
 			if apierrors.IsAlreadyExists(applyErr) {
-				classifiedSkip2, retryable2, classifyErr2 := r.classifyAlreadyExists(ctx, c.childName, &md)
+				classifiedSkip2, retryable2, _, classifyErr2 := r.classifyAlreadyExists(ctx, c.childName, &md)
 				if classifyErr2 != nil {
 					metrics.ChildCRWritesTotal.WithLabelValues(mcpServerDiscoveryKind, "create_or_update", "error").Inc()
 					failed = append(failed, litellmv1alpha1.MCPServerFailedCandidate{
@@ -851,7 +872,13 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 				"child", child.Name)
 			continue
 		}
-		if err := r.Delete(ctx, child); err != nil && !apierrors.IsNotFound(err) {
+		// #141: the ownership above came from the cache; delete only that
+		// version, so a child adopted since is never removed.
+		if err := r.Delete(ctx, child, client.Preconditions{UID: &child.UID, ResourceVersion: &child.ResourceVersion}); apierrors.IsConflict(err) {
+			childStale = true
+			logger.V(1).Info("skipping vanish-delete: child changed since listed; re-checking on requeue", "child", child.Name)
+			continue
+		} else if err != nil && !apierrors.IsNotFound(err) {
 			metrics.ChildCRWritesTotal.WithLabelValues(mcpServerDiscoveryKind, "delete", "error").Inc()
 			logger.Error(err, "delete vanished child", "child", child.Name)
 			continue
@@ -905,6 +932,9 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 		"requeueAfter", md.Spec.Refresh.Interval.Duration)
 
 	// ─── Step 11: Return RequeueAfter (Phase 4 D-08 inherited) ─────────────
+	if childStale {
+		return ctrl.Result{RequeueAfter: childDeletingRequeue}, nil
+	}
 	return ctrl.Result{RequeueAfter: md.Spec.Refresh.Interval.Duration}, nil
 }
 
@@ -1020,10 +1050,11 @@ func buildChildMCPServer(
 //	 Kind, or another Discovery that wins alpha-last-wins). The
 //	 OwnedBy field names the winner.
 //
-//	(skip=nil, retryable=true, err=nil)
+//	(skip=nil, retryable=true, rv="" or <live rv>, err=nil)
 //	 Either NotFound (raced delete) OR ownerRef points at THIS
-//	 Discovery (transient apiserver/cache race — retry next
-//	 reconcile) OR another MCPServerDiscovery owns the child but this
+//	 Discovery (rv = its live resourceVersion, which the pre-Patch caller
+//	 applies over, #141; after an AlreadyExists a transient
+//	 apiserver/cache race — retry next reconcile) OR another MCPServerDiscovery owns the child but this
 //	 Discovery sorts alpha-last by <namespace>/<name> (ADR-0001 alpha-
 //	 last-wins between Discoveries — next SSA Patch with
 //	 ForceOwnership wins the child's controller ownerRef).
@@ -1034,15 +1065,19 @@ func buildChildMCPServer(
 // Mirrors Phase 4 modeldiscovery_controller.go:1090-1139.
 func (r *MCPServerDiscoveryReconciler) classifyAlreadyExists(
 	ctx context.Context, childName string, parent *litellmv1alpha1.LiteLLMMCPServerDiscovery,
-) (*litellmv1alpha1.MCPServerSkippedCandidate, bool, error) {
+) (*litellmv1alpha1.MCPServerSkippedCandidate, bool, string, error) {
+	reader := client.Reader(r.Client)
+	if r.APIReader != nil {
+		reader = r.APIReader
+	}
 	var existing litellmv1alpha1.LiteLLMMCPServer
-	if err := r.Get(ctx, client.ObjectKey{Name: childName, Namespace: r.Namespace}, &existing); err != nil {
+	if err := reader.Get(ctx, client.ObjectKey{Name: childName, Namespace: r.Namespace}, &existing); err != nil {
 		if apierrors.IsNotFound(err) {
 			// Either no collision yet (happy path will Patch as CREATE) OR
 			// the AlreadyExists raced with a Delete. Either way: retry.
-			return nil, true, nil
+			return nil, true, "", nil
 		}
-		return nil, false, err
+		return nil, false, "", err
 	}
 	var ctrlRef *metav1.OwnerReference
 	for i := range existing.OwnerReferences {
@@ -1058,12 +1093,14 @@ func (r *MCPServerDiscoveryReconciler) classifyAlreadyExists(
 			Name:    childName,
 			Reason:  "ExplicitMCPServerExists",
 			OwnedBy: existing.Name,
-		}, false, nil
+		}, false, "", nil
 	}
 	if ctrlRef.Kind == mcpServerDiscoveryKind && ctrlRef.UID == parent.UID {
-		// Should not happen — SSA+ForceOwnership should have won. Treat as
-		// transient.
-		return nil, true, nil
+		// Ours: the pre-Patch check's normal re-apply path; the caller
+		// applies over this resourceVersion (#141). After an AlreadyExists
+		// it should not happen (SSA+ForceOwnership should have won) — treat
+		// as transient.
+		return nil, true, existing.ResourceVersion, nil
 	}
 	// Different controller (different Discovery UID, or different Kind).
 	// Per ADR-0001 this is a `Conflict` skip. Alpha-last-wins ownership
@@ -1074,7 +1111,7 @@ func (r *MCPServerDiscoveryReconciler) classifyAlreadyExists(
 		Name:    childName,
 		Reason:  "Conflict",
 		OwnedBy: ctrlRef.Kind + "/" + ctrlRef.Name + "/" + string(ctrlRef.UID),
-	}, false, nil
+	}, false, "", nil
 }
 
 // mcpOwnedByThisDiscovery reports whether `child`'s controller ownerRef

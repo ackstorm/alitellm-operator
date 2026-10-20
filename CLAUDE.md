@@ -1507,7 +1507,7 @@ bumped `Chart.yaml`, `values.yaml` (`image.tag`), `pyproject.toml` and
 `main.py`. `make release-cut` creates an *empty* commit in both repos, so in
 alitellm-auth it publishes a chart pinned to the previous image tag.
 
-### ❌ Adopting a Discovery child while a Discovery reconcile is in flight
+### ❌ Adopting a Discovery child while a Discovery reconcile is in flight (fixed)
 ```bash
 kubectl patch litellmmodel <child> --type=json \
   -p '[{"op":"remove","path":"/metadata/ownerReferences"}]'
@@ -1518,16 +1518,24 @@ Symptom: the adoption (strip ownerRefs so the Discovery stops managing the
 child) is silently lost. No error, no event. The child is still owned and
 still overwritten from the Discovery template. Affects
 `LiteLLMModelDiscovery` and `LiteLLMMCPServerDiscovery`.
-✅ Workaround: strip the ownerRefs again and confirm they are still absent after
-the next Discovery reconcile (`kubectl get <kind> <child> -o
-jsonpath='{.metadata.ownerReferences}'` empty, child listed under
-`skippedCandidates`). The envtests do the same through `stripOwnerRefs` in
-`poll_until_test.go`. NOT fixed in production. Tracked in GitHub issue
-https://github.com/ackstorm/alitellm-operator/issues/141.
-WHY: a Discovery reconcile already running when the strip lands still holds
-the pre-strip cache view. It SSA-applies the child with `ForceOwnership`, and
-that apply re-adds the controller ownerRef. The window is narrow (one reconcile),
-but nothing re-checks it, so the loss is permanent until the user notices.
+✅ Fixed (issue https://github.com/ackstorm/alitellm-operator/issues/141): both
+Discovery reconcilers read the child UNCACHED (`APIReader`, wired from
+`mgr.GetAPIReader()`) in `classifyAlreadyExists`, then SSA-apply with
+`metadata.resourceVersion` set to that live value — an optimistic-lock
+precondition. A strip landing between read and write fails the apply with 409;
+the child joins `pendingRetries` (kept out of vanish-delete) and the Discovery
+requeues in `childDeletingRequeue` (5s). The vanish Delete carries
+`Preconditions{UID, ResourceVersion}` from the cached list for the same reason.
+The short requeue is required: the strip bumps no `generation`, so the Owns()
+`ownedChildSpecChanged` predicate never re-enqueues the Discovery for it.
+Guarded deterministically by `TestMCPServerDiscoveryReconciler_AdoptionDuringApply_Kept`
+(`patchInterceptor.strip` strips between read and apply); `stripOwnerRefs` in
+`poll_until_test.go` now strips ONCE and fails if the ref comes back.
+WHY IT HAPPENED: a Discovery reconcile already running when the strip landed
+still held the pre-strip cache view. It SSA-applied the child with
+`ForceOwnership`, and that apply re-added the controller ownerRef. The window
+was narrow (one reconcile), but nothing re-checked it, so the loss was
+permanent until the user noticed.
 
 ## Repository-specific patterns
 

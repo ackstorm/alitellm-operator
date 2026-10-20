@@ -37,6 +37,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its own still deletes that row.
 - **A conflict loser's `mcp_access_groups` no longer grant the winner's
   entry.** Losers are left out of `LiteLLMAccessGroup` tag selection.
+- **Adopting a Discovery child no longer loses the race with an in-flight
+  reconcile (#141).** Stripping a generated `LiteLLMModel` /
+  `LiteLLMMCPServer`'s ownerReferences while its Discovery was mid-reconcile
+  could have the ref silently re-added. The Discovery now reads the child
+  uncached and applies it with a resourceVersion precondition, so the
+  adoption sticks.
 
 ### Removed
 - **`configmaps` grant on the leader-election Role.** Kubebuilder scaffold

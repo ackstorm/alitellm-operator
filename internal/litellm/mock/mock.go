@@ -87,6 +87,10 @@ const pathMCPToolset = "/v1/mcp/toolset"
 // GET with a BARE array.
 const pathAccessGroup = "/v1/access_group"
 
+// pathMCPServer is the MCP server collection route (POST create, PUT update,
+// GET list).
+const pathMCPServer = "/v1/mcp/server"
+
 // Model access-group (TAG) budget route: /access_group/{tag}/budget.
 const (
 	pathModelGroupBudgetPrefix = "/access_group/"
@@ -612,7 +616,7 @@ func (m *MockServer) writeDuplicateAgentConflict(w http.ResponseWriter, r *http.
 // no-op 200 — a 200 would let a reconciler PUT onto a vanished id and report
 // Synced over an absent entry.
 func (m *MockServer) writeMCPServerUpdate404(w http.ResponseWriter, r *http.Request, mode string) bool {
-	if mode != ModeHappy || r.Method != http.MethodPut || r.URL.Path != "/v1/mcp/server" {
+	if mode != ModeHappy || r.Method != http.MethodPut || r.URL.Path != pathMCPServer {
 		return false
 	}
 	body, _ := io.ReadAll(r.Body)
@@ -1992,7 +1996,7 @@ func (m *MockServer) statefulBody(r *http.Request) []byte {
 		return []byte(`{}`)
 	}
 	// POST /v1/mcp/server — create, mint server_id, return body.
-	if method == http.MethodPost && path == "/v1/mcp/server" {
+	if method == http.MethodPost && path == pathMCPServer {
 		var reqBody map[string]any
 		if b, err := io.ReadAll(r.Body); err == nil {
 			_ = json.Unmarshal(b, &reqBody)
@@ -2030,7 +2034,7 @@ func (m *MockServer) statefulBody(r *http.Request) []byte {
 	// PUT /v1/mcp/server — wholesale-replace (Phase 5 D-01 ✓ branch /
 	// Probe 10c). The mock keeps the same server_id but overwrites all
 	// other fields with the PUT body's values.
-	if method == http.MethodPut && path == "/v1/mcp/server" {
+	if method == http.MethodPut && path == pathMCPServer {
 		var reqBody map[string]any
 		if b, err := io.ReadAll(r.Body); err == nil {
 			_ = json.Unmarshal(b, &reqBody)
@@ -2057,7 +2061,7 @@ func (m *MockServer) statefulBody(r *http.Request) []byte {
 		))
 	}
 	// GET /v1/mcp/server — bare-array list of all MCP servers.
-	if method == http.MethodGet && strings.HasPrefix(path, "/v1/mcp/server") {
+	if method == http.MethodGet && strings.HasPrefix(path, pathMCPServer) {
 		m.mu.Lock()
 		entries := make([]string, 0, len(m.mcpServers))
 		for _, e := range m.mcpServers {

@@ -223,6 +223,10 @@ type ModelDiscoveryReconciler struct {
 	Log        logr.Logger
 	// BootEvents (FIX2.txt H-2) — optional BootSweeper channel. nil-safe.
 	BootEvents <-chan event.GenericEvent
+	// APIReader reads children uncached (mgr.GetAPIReader()) for the
+	// pre-apply ownership check, so a just-stripped ownerRef is seen (#141).
+	// nil falls back to the cached client.
+	APIReader client.Reader
 
 	// cascadeDrainLog tracks per-CR drain progress so the
 	// "cascade-delete: waiting for children to drain" line is emitted
@@ -699,6 +703,13 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	// deleted (e.g. an agent's old exposeAsModel child). Its removal fires no
 	// event here, so requeue soon instead of waiting a whole refresh interval.
 	childDeleting := false
+	// childStale: a child changed between the ownership read and its
+	// write (resourceVersion precondition 409), e.g. the user stripped its
+	// ownerRef mid-reconcile (#141). It stays out of vanish-delete and is
+	// re-classified on a short requeue — the strip bumps no generation, so
+	// the Owns() predicate never re-enqueues us for it.
+	childStale := false
+	pendingRetries := make(map[string]struct{})
 
 	for i := range existingChildren.Items {
 		child := &existingChildren.Items[i]
@@ -790,7 +801,7 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		// only reliable way to detect cross-Discovery collisions when SSA
 		// is the write path. AlreadyExists from Patch is still handled
 		// below as a defensive backstop (race window between Get and Patch).
-		classifiedSkip, retryable, classifyErr := r.classifyAlreadyExists(ctx, childName, &md)
+		classifiedSkip, retryable, liveRV, classifyErr := r.classifyAlreadyExists(ctx, childName, &md)
 		if errors.Is(classifyErr, errChildDeleting) {
 			childDeleting = true
 			continue
@@ -820,9 +831,20 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 		_ = retryable // retryable here means "safe to Patch" — variable used for documentation.
 
+		// #141: apply only over the version the ownership check saw. A
+		// change since (the user stripping the ownerRef) fails the apply
+		// with 409 instead of ForceOwnership silently re-adding the ref.
+		child.ResourceVersion = liveRV
 		applyErr := r.Patch(ctx, child, client.Apply,
 			client.FieldOwner(fieldOwner),
 			client.ForceOwnership)
+		if apierrors.IsConflict(applyErr) {
+			metrics.ChildCRWritesTotal.WithLabelValues(modelDiscoveryKind, action, "conflict").Inc()
+			pendingRetries[childName] = struct{}{}
+			childStale = true
+			logger.V(1).Info("child changed since ownership check; re-classifying on requeue", "child", childName)
+			continue
+		}
 		if applyErr != nil {
 			// K8s-native conflict resolution (04-06): when SSA's CREATE
 			// returns AlreadyExists, we Get the colliding object and
@@ -846,7 +868,7 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			// DIFFERENT controller (T-04-04-S1: cross-controller field
 			// ownership is intentionally non-overrideable by ForceOwnership).
 			if apierrors.IsAlreadyExists(applyErr) {
-				classifiedSkip, retryable, classifyErr := r.classifyAlreadyExists(ctx, childName, &md)
+				classifiedSkip, retryable, _, classifyErr := r.classifyAlreadyExists(ctx, childName, &md)
 				if errors.Is(classifyErr, errChildDeleting) {
 					childDeleting = true
 					continue
@@ -938,12 +960,15 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	// touches that counter (PATTERNS.md line 1037 + the acceptance-grep
 	// fence — this file deliberately contains zero references to the
 	// §10 drift counter name).
-	desiredSet := make(map[string]struct{}, len(generated)+len(skipped))
+	desiredSet := make(map[string]struct{}, len(generated)+len(skipped)+len(pendingRetries))
 	for _, n := range generated {
 		desiredSet[n] = struct{}{}
 	}
 	for _, s := range skipped {
 		desiredSet[s.Name] = struct{}{}
+	}
+	for n := range pendingRetries {
+		desiredSet[n] = struct{}{}
 	}
 
 	// Reuse `existingChildren` listed in Step 8.5 above (single
@@ -972,7 +997,13 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				"child", child.Name)
 			continue
 		}
-		if err := r.Delete(ctx, child); err != nil && !apierrors.IsNotFound(err) {
+		// #141: the ownership above came from the cache; delete only that
+		// version, so a child adopted since is never removed.
+		if err := r.Delete(ctx, child, client.Preconditions{UID: &child.UID, ResourceVersion: &child.ResourceVersion}); apierrors.IsConflict(err) {
+			childStale = true
+			logger.V(1).Info("skipping vanish-delete: child changed since listed; re-checking on requeue", "child", child.Name)
+			continue
+		} else if err != nil && !apierrors.IsNotFound(err) {
 			metrics.ChildCRWritesTotal.WithLabelValues(modelDiscoveryKind, "delete", "error").Inc()
 			logger.Error(err, "delete vanished child", "child", child.Name)
 			continue
@@ -1053,7 +1084,7 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		"generated", md.Status.GeneratedCount,
 		"failed", len(failed),
 		"requeueAfter", md.Spec.Refresh.Interval.Duration)
-	if childDeleting {
+	if childDeleting || childStale {
 		return ctrl.Result{RequeueAfter: childDeletingRequeue}, nil
 	}
 	return ctrl.Result{RequeueAfter: md.Spec.Refresh.Interval.Duration}, nil
@@ -1065,7 +1096,7 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 var errChildDeleting = errors.New("colliding LiteLLMModel is being deleted")
 
 // childDeletingRequeue is how soon to retry a candidate blocked by a
-// deleting model.
+// deleting model, or one that changed under a write (childStale).
 const childDeletingRequeue = 5 * time.Second
 
 // buildChildModel constructs the desired child LiteLLMModel object that will be
@@ -1394,16 +1425,20 @@ func (r *ModelDiscoveryReconciler) writeBothConditionsObj(
 //	 skip with ownedBy=<Kind>/<Name>/<UID>. The winning Discovery's
 //	 reconcile is unaffected (its child is intact).
 //
-//	(skip=nil, retryable=true, err=nil)
+//	(skip=nil, retryable=true, rv="" or <live rv>, err=nil)
 //	 Either the Get returned NotFound (the AlreadyExists raced with a
 //	 Delete) OR the existing child's controller ownerRef points at
-//	 THIS Discovery (a transient apiserver/cache race; SSA's
-//	 ForceOwnership should have won). Caller continues to the next
-//	 candidate; the next reconcile retries.
+//	 THIS Discovery (rv = its live resourceVersion; the pre-Patch caller
+//	 applies over it, #141). After an AlreadyExists that second case is
+//	 a transient apiserver/cache race (SSA's ForceOwnership should have
+//	 won); the caller continues and the next reconcile retries.
 //
 //	(skip=nil, retryable=false, err=<get-err>)
 //	 The Get failed with a non-NotFound apiserver error. Caller
 //	 surfaces as ChildCRWriteFailed.
+//
+// The Get goes through APIReader (uncached) when set: a cache that has not
+// yet seen the user's ownerRef strip would classify the child as ours.
 //
 // Spec §6.3 line 799: "Discovery NEVER mutates a child whose controller
 // ownerRef points elsewhere — it can only OBSERVE the conflict and record
@@ -1418,23 +1453,27 @@ func (r *ModelDiscoveryReconciler) writeBothConditionsObj(
 // reconcile re-classifies from fresh state.
 func (r *ModelDiscoveryReconciler) classifyAlreadyExists(
 	ctx context.Context, childName string, parent *litellmv1alpha1.LiteLLMModelDiscovery,
-) (*litellmv1alpha1.SkippedCandidate, bool, error) {
+) (*litellmv1alpha1.SkippedCandidate, bool, string, error) {
+	reader := client.Reader(r.Client)
+	if r.APIReader != nil {
+		reader = r.APIReader
+	}
 	var existing litellmv1alpha1.LiteLLMModel
-	if err := r.Get(ctx, client.ObjectKey{Name: childName, Namespace: r.Namespace}, &existing); err != nil {
+	if err := reader.Get(ctx, client.ObjectKey{Name: childName, Namespace: r.Namespace}, &existing); err != nil {
 		if apierrors.IsNotFound(err) {
 			// AlreadyExists raced with a Delete (very rare; possible if
 			// a concurrent vanish on a sibling Discovery deleted the
 			// colliding child between Patch's pre-check and our Get).
 			// Retry on next reconcile.
-			return nil, true, nil
+			return nil, true, "", nil
 		}
-		return nil, false, err
+		return nil, false, "", err
 	}
 	// Only a FOREIGN deleting model needs the short requeue: our own child's
 	// removal re-enqueues us through Owns(), and requeueing on it would re-list
 	// the upstream every 5s while its finalizer is stuck.
 	if !existing.DeletionTimestamp.IsZero() && !ownedByThisDiscovery(&existing, parent) {
-		return nil, false, errChildDeleting
+		return nil, false, "", errChildDeleting
 	}
 	// Locate the controller ownerRef, if any.
 	var ctrlRef *metav1.OwnerReference
@@ -1452,13 +1491,15 @@ func (r *ModelDiscoveryReconciler) classifyAlreadyExists(
 			Name:    childName,
 			Reason:  "ExplicitModelExists",
 			OwnedBy: existing.Name,
-		}, false, nil
+		}, false, "", nil
 	}
 	if ctrlRef.Kind == modelDiscoveryKind && ctrlRef.UID == parent.UID {
-		// Should not happen — SSA with ForceOwnership should have won.
-		// Treat as transient and retry. (If this fires consistently, the
-		// SSA field-manager identity may have drifted — investigate.)
-		return nil, true, nil
+		// Ours: the pre-Patch check's normal re-apply path, and the caller
+		// applies over this resourceVersion (#141). After an AlreadyExists
+		// it should not happen — SSA with ForceOwnership should have won —
+		// so treat it as transient and retry. (If that fires consistently,
+		// the SSA field-manager identity may have drifted — investigate.)
+		return nil, true, existing.ResourceVersion, nil
 	}
 	// Different controller (different LiteLLMModelDiscovery UID, or
 	// different Kind entirely). MDISC-13: classify as `Conflict` per
@@ -1475,7 +1516,7 @@ func (r *ModelDiscoveryReconciler) classifyAlreadyExists(
 		Name:    childName,
 		Reason:  "Conflict",
 		OwnedBy: ctrlRef.Kind + "/" + ctrlRef.Name + "/" + string(ctrlRef.UID),
-	}, false, nil
+	}, false, "", nil
 }
 
 // ownedByThisDiscovery reports whether `child`'s controller ownerRef
