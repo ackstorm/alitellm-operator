@@ -1,7 +1,7 @@
 # Acknowledged govulncheck residuals
 
-**Date:** 2026-10-19
-**Toolchain at acknowledgement:** Go 1.26.9 (`Dockerfile.devtools` + `go.mod` `toolchain` directive), `golang.org/x/net@v0.60.0`
+**Date:** 2026-10-22
+**Toolchain at acknowledgement:** Go 1.26.10 (`Dockerfile.devtools` + `go.mod` `toolchain` directive), `golang.org/x/net@v0.60.0`
 **Scanner:** `govulncheck@v1.3.0` (pinned in `Dockerfile.devtools::GOVULNCHECK_VERSION`)
 **Invocation:** `./scripts/dev.sh govulncheck ./...`
 
@@ -30,6 +30,10 @@ new reachable advisory must be:
 
 ## History
 
+- 2026-10-22: Bumped the Go toolchain 1.26.9 -> 1.26.10 across all four
+  pinned surfaces. Cleared stdlib `GO-2026-6809` (crypto/x509: distrust
+  compromised intermediate certificates), published after v0.10.3.
+  The list stays EMPTY.
 - 2026-10-19: Bumped the Go toolchain 1.26.6 -> 1.26.9 across all four
   pinned surfaces and `golang.org/x/net` v0.56.0 -> v0.60.0. Cleared NINE
   reachable advisories published after v0.10.1: stdlib `GO-2026-6603`,
