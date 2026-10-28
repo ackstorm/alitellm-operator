@@ -257,7 +257,7 @@
       },
       "id": 69,
       "type": "stat",
-      "title": "Cooldown / no-healthy events (range)",
+      "title": "Cooldowns (range)",
       "gridPos": {
         "h": 5,
         "w": 6,
@@ -290,7 +290,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "sum(increase(litellm_deployment_total_requests_total{namespace=~\"$namespace\"}[$__range])) - sum(increase(litellm_deployment_success_responses_total{namespace=~\"$namespace\"}[$__range])) - sum(increase(litellm_deployment_failure_responses_total{namespace=~\"$namespace\"}[$__range]))",
+          "expr": "sum(increase(litellm_deployment_cooled_down_total{namespace=~\"$namespace\"}[$__range])) or vector(0)",
           "refId": "A"
         }
       ]

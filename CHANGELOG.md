@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   graphs under a *Budgets* row; Deployments' cache hit ratio reads
   `litellm_cache_{hits,misses}_metric_total`. The exporter's SpendLogs-derived
   numbers were wrong wherever spend logs are pruned.
+- **Deployments "Cooldowns (range)"** reads `litellm_deployment_cooled_down_total`
+  instead of deriving it from total − success − failure.
 - **`team.models` mirrors the attached access groups.** LiteLLM charges a tag
   budget only when the tag appears by name in `models`, never via
   `access_group_ids`, so every team now sends
