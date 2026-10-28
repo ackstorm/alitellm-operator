@@ -53,10 +53,7 @@ required=(
   litellm_request_total_latency_metric_bucket
   litellm_spend_metric_total
   litellm_deployment_state
-  # litellm-exporter (DB truth)
-  litellm_total_spend
-  litellm_team_spend
-  litellm_key_expiry
+  litellm_cache_hits_metric_total
 )
 for metric in "${required[@]}"; do
   rg -q --fixed-strings "$metric" "${dashboards[@]}" || {

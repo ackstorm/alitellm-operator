@@ -73,7 +73,7 @@ metrics:
   # dashboards/<group>/ dirs, mirrored from examples/grafana by `make helm-sync`.
   #
   # Groups: `operator` = metrics this operator emits; `litellm` = the LiteLLM
-  # proxy's own callback metrics plus the litellm-exporter's DB-derived ones.
+  # proxy's own callback metrics.
   # The LiteLLM dashboards render only where a LiteLLM proxy is scraped.
   dashboards:
     enabled: false
