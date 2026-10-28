@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docs/user-guide/model-group-budget.md`.
 
 ### Changed
+- **LiteLLM dashboards no longer need `litellm-exporter`.** FinOps drops the
+  *Inventory & budgets (DB truth)* stats and tables (lifetime spend, budget
+  utilization, key/team counts, key expiry) and keeps the remaining-budget
+  graphs under a *Budgets* row; Deployments' cache hit ratio reads
+  `litellm_cache_{hits,misses}_metric_total`. The exporter's SpendLogs-derived
+  numbers were wrong wherever spend logs are pruned.
 - **`team.models` mirrors the attached access groups.** LiteLLM charges a tag
   budget only when the tag appears by name in `models`, never via
   `access_group_ids`, so every team now sends
