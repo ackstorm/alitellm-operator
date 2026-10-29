@@ -37,6 +37,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   echoes the team's models.
 
 ### Fixed
+- **e2e preloads the LiteLLM image with `crictl pull` inside the kind node.**
+  `docker pull` + `kind load` failed with `content digest ... not found` on
+  runners using Docker's containerd image store.
 - **Model-group budgets react without waiting for the relist.** A budget
   parked `ModelGroupNotFound` retries when a `LiteLLMModel` changes; a
   duplicate takes over the moment the owner is deleted; and of two budgets
