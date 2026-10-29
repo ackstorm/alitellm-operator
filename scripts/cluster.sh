@@ -93,15 +93,19 @@ install_litellm() {
   image_tag="$(awk '/^[[:space:]]*tag:/ {print $2; exit}' "${DEPS_DIR}/litellm.values.yaml")"
   image="ghcr.io/berriai/litellm-database:${image_tag}"
 
-  # β: pre-pull + kind load the LiteLLM image so the migrations Job (and
+  # β: pre-pull the LiteLLM image into the node so the migrations Job (and
   # the runtime Deployment) hit a locally-resident image. Combined with
   # image.pullPolicy=IfNotPresent in litellm.values.yaml, this eliminates
   # the ghcr.io round-trip on cold-cache that previously left the PreSync
   # Job in ImagePullBackOff → DB unmigrated → 500s on /model/new + friends.
-  echo "[cluster.sh] pre-pulling ${image} on host..."
-  docker pull "${image}"
-  echo "[cluster.sh] kind-loading ${image} into ${CLUSTER_NAME}..."
-  kind load docker-image "${image}" --name "${CLUSTER_NAME}"
+  #
+  # The node pulls it itself rather than `docker pull` + `kind load`: with
+  # Docker's containerd image store (GitHub runners since 2026-10-26) the host
+  # holds only its own platform of this multi-arch image while `docker save`
+  # still exports the full index, and kind's `ctr import --all-platforms`
+  # fails with "content digest ... not found".
+  echo "[cluster.sh] pre-pulling ${image} into ${CLUSTER_NAME}..."
+  docker exec "${CLUSTER_NAME}-control-plane" crictl pull "${image}"
 
   local tmpdir; tmpdir="$(mktemp -d)"
   echo "[cluster.sh] pulling litellm-helm @ ${version} into ${tmpdir}..."
