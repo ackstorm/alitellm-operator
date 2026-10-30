@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **FinOps "Spend by model / by team" panels show spend in the last hour.**
+  They took `rate()` over `$__rate_interval`, so a burst of a few expensive
+  calls read as an hourly spend that never happened ($71/h shown where the
+  real peak hour was $24). Each point is now the spend of the preceding hour.
+
 ### Added
 - **`LiteLLMModelGroupBudget` CRD** — declares a LiteLLM budget on a model
   access-group TAG (`/access_group/{tag}/budget`, LiteLLM 1.100.0+): `limit`,

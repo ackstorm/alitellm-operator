@@ -294,7 +294,7 @@
       },
       "id": 47,
       "type": "timeseries",
-      "title": "Spend $/h by model (top 10)",
+      "title": "Spend in the last hour by model (top 10)",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -338,7 +338,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "topk(10, sum by (model) (rate(litellm_spend_metric_total{namespace=~\"$namespace\", model!~\"MCP:.*\"}[$__rate_interval])) * 3600)",
+          "expr": "topk(10, sum by (model) (rate(litellm_spend_metric_total{namespace=~\"$namespace\", model!~\"MCP:.*\"}[1h])) * 3600)",
           "refId": "A",
           "legendFormat": "{{model}}"
         }
@@ -351,7 +351,7 @@
       },
       "id": 48,
       "type": "timeseries",
-      "title": "Spend $/h by team (top 10)",
+      "title": "Spend in the last hour by team (top 10)",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -395,7 +395,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "topk(10, sum by (team_alias) (rate(litellm_spend_metric_total{namespace=~\"$namespace\"}[$__rate_interval])) * 3600)",
+          "expr": "topk(10, sum by (team_alias) (rate(litellm_spend_metric_total{namespace=~\"$namespace\"}[1h])) * 3600)",
           "refId": "A",
           "legendFormat": "{{team_alias}}"
         }
