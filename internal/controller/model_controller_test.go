@@ -1998,14 +1998,17 @@ func TestModel_DriftCounter_CreateMissing_SafetyRelist(t *testing.T) {
 
 	// Also clear the status.lastRendered.ModelID to simulate the
 	// operator seeing the model as "missing" on the CREATE branch.
-	// Re-get the latest CR.
+	// Re-get on conflict: the safety re-list may write status first.
 	key := client.ObjectKey{Name: "drift-create-missing", Namespace: WatchNamespace}
-	if err := k8sClient.Get(ctx, key, m); err != nil {
-		t.Fatalf("re-get model: %v", err)
-	}
-	savedHash := m.Status.LastRendered.Hash // non-empty = NOT first reconcile
-	m.Status.LastRendered.ModelID = ""
-	if err := k8sClient.Status().Update(ctx, m); err != nil {
+	var savedHash string
+	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := k8sClient.Get(ctx, key, m); err != nil {
+			return err
+		}
+		savedHash = m.Status.LastRendered.Hash // non-empty = NOT first reconcile
+		m.Status.LastRendered.ModelID = ""
+		return k8sClient.Status().Update(ctx, m)
+	}); err != nil {
 		t.Fatalf("clear ModelID: %v", err)
 	}
 	t.Logf("savedHash=%q (non-empty = past first reconcile)", savedHash)
