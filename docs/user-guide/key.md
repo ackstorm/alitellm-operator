@@ -3,7 +3,7 @@
 A `LiteLLMKey` creates a LiteLLM virtual key for one service and writes its
 value to a Secret in that service's namespace. The key has no user and no
 team: it can call the models you list, within the budget and rate limits you
-set, and nothing else.
+set. Verified on LiteLLM 1.106.0.
 
 Use it so a service does not need the LiteLLM master key.
 
@@ -56,9 +56,10 @@ Each listed namespace gets a RoleBinding that grants the operator `get`,
 `create` and `delete` on Secrets. A `LiteLLMKey` that targets a namespace not
 on the list reports `Ready=False`, reason `SecretAccessDenied`.
 
-!!! warning "The operator can read every Secret in a listed namespace"
-    Kubernetes cannot limit `get` to the Secrets the operator created. List
-    only namespaces whose services need a key.
+!!! warning "The operator can read and delete every Secret in a listed namespace"
+    Kubernetes cannot limit `get`, `create` or `delete` to the Secrets the
+    operator created, and `create` covers Secrets of any type. List only
+    namespaces whose services need a key.
 
 Without Helm, create the RoleBinding yourself in each target namespace,
 bound to a ClusterRole with `get`, `create`, `delete` on `secrets` and to the
@@ -108,9 +109,10 @@ Two debugging switches break that rule and must stay off wherever real keys exis
 | `SecretNotOwned` | The target Secret exists and was not created for this `LiteLLMKey`. |
 | `Conflict` | Another key, not created by the operator, holds the alias. |
 
-If `spec.secretRef.namespace` does not exist, the operator keeps retrying and the `Ready` condition stays unset until the namespace is created.
+A namespace that does not exist has no RoleBinding, so a `LiteLLMKey` that targets it reports `SecretAccessDenied`. `helm install` and `helm upgrade` fail when a namespace listed in `keySecretNamespaces` does not exist: create the namespace first.
 
 ## Limits
 
+- The key restricts models only. It carries no agent or MCP permissions of its own, so LiteLLM's defaults for a key without a team apply: A2A agents registered on the proxy are reachable with it unless `general_settings.agent_access_default_deny` is set on the proxy. What such a key can reach on MCP servers is not verified.
 - One operator per LiteLLM. Two operators that share a LiteLLM and each have a `LiteLLMKey` with the same name replace and delete each other's key: a key is matched by its alias and the `managed-by` mark, not by which operator created it.
 - No team attachment, expiry or automatic rotation.

@@ -155,7 +155,7 @@ build.
 
 The following are explicitly out of scope for v1alpha1:
 
-- `auth.litellm.ai/v1` group (User, VirtualKey, TeamMemberAssociation) —
+- `auth.litellm.ai/v1` group (User, user-bound VirtualKey, TeamMemberAssociation) —
   delegated to an external identity / user-management system
 - `LiteLLMInstance` — replaced by `LiteLLMConnection`
 - Multi-namespace and cluster-scoped deployments — deferred to v1beta1

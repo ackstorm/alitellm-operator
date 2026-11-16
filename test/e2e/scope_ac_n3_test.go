@@ -23,8 +23,8 @@ import (
 //	INFO: <ip>:<port> - "<METHOD> <PATH> HTTP/1.1" <STATUS> .
 //
 // Line-level matching: each log line is checked for a forbidden path
-// token. The /key/health probe is allow-listed by a separate match
-// because RE2 lacks lookahead.
+// token. The allowed /key/ paths are matched separately because
+// RE2 lacks lookahead.
 //
 // OPERATOR-SOURCE attribution: the invariant is about the OPERATOR, not the
 // whole cluster. The access log is shared — other suites legitimately drive

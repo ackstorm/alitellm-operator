@@ -144,9 +144,9 @@ safetyRelistInterval: ""
 extraEnv: []
 # keySecretNamespaces: the namespaces a LiteLLMKey may write its key Secret to
 # (spec.secretRef.namespace). Each one gets a RoleBinding granting the operator
-# get/create/delete on Secrets there. Kubernetes cannot limit `get` to the
-# Secrets the operator created, so the operator can read EVERY Secret in a
-# listed namespace. A LiteLLMKey that targets an unlisted namespace reports
+# get/create/delete on Secrets there. Kubernetes cannot limit these verbs to
+# the Secrets the operator created, so the operator can read and delete EVERY
+# Secret in a listed namespace. A LiteLLMKey that targets an unlisted namespace reports
 # Ready=False, reason SecretAccessDenied.
 keySecretNamespaces: []
 # resources: manager container resource requests and limits.

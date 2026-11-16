@@ -64,6 +64,7 @@ production-suitable for a small dogfood cluster.
 | `toolhive.enabled`             | `true`                                        | Enables the ClusterRole granting read on ToolHive `MCPServer` / `VirtualMCPServer` / `MCPRemoteProxy`. |
 | `metrics.serviceMonitor.enabled` | `false`                                     | Set `true` when prometheus-operator is installed; renders the ServiceMonitor stub.             |
 | `safetyRelistInterval`         | `""` (operator default `10m`)                 | Per-reconciler vanish-probe cadence. Maps to `LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL`. Floor 5s. |
+| `keySecretNamespaces`          | `[]`                                          | Namespaces a `LiteLLMKey` may write its key Secret to. Each gets a RoleBinding granting the operator `get`/`create`/`delete` on Secrets there. See [LiteLLMKey](../user-guide/key.md). |
 | `extraEnv`                     | `[]`                                          | Extra `{name, value}` env entries on the manager container.                                    |
 | `resources`                    | unset → kustomize defaults                    | Manager container CPU / memory.                                                                |
 
