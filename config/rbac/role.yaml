@@ -27,6 +27,7 @@ rules:
   - litellmaccessgroups
   - litellmconnections
   - litellmguardrails
+  - litellmkeys
   - litellmmcpserverdiscoveries
   - litellmmcpservers
   - litellmmcptoolsets
@@ -50,6 +51,7 @@ rules:
   - litellmaccessgroups/finalizers
   - litellmconnections/finalizers
   - litellmguardrails/finalizers
+  - litellmkeys/finalizers
   - litellmmcpserverdiscoveries/finalizers
   - litellmmcpservers/finalizers
   - litellmmcptoolsets/finalizers
@@ -67,6 +69,7 @@ rules:
   - litellmaccessgroups/status
   - litellmconnections/status
   - litellmguardrails/status
+  - litellmkeys/status
   - litellmmcpserverdiscoveries/status
   - litellmmcpservers/status
   - litellmmcptoolsets/status

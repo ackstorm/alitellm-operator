@@ -13,18 +13,18 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-// AC-N3: the operator never reaches LiteLLM's /user/* or /key/* paths
-// EXCEPT the auth-gated probe at POST /key/health (owned by the
-// LiteLLMConnection reconciler — see internal/litellm/keyinfo.go for
-// the rationale). Tail the full LiteLLM access log and assert no HTTP
+// AC-N3: the operator never reaches LiteLLM's /user/* paths, and reaches
+// /key/* only for the connection probe (POST /key/health, see
+// internal/litellm/keyinfo.go) and the LiteLLMKey reconciler's calls
+// (internal/litellm/key.go). Tail the full LiteLLM access log and assert no HTTP
 // request line references the forbidden subset. LiteLLM logs every
 // HTTP request as:
 //
 //	INFO: <ip>:<port> - "<METHOD> <PATH> HTTP/1.1" <STATUS> .
 //
 // Line-level matching: each log line is checked for a forbidden path
-// token. The /key/health probe is allow-listed by a separate match
-// because RE2 lacks lookahead.
+// token. The allowed /key/ paths are matched separately because
+// RE2 lacks lookahead.
 //
 // OPERATOR-SOURCE attribution: the invariant is about the OPERATOR, not the
 // whole cluster. The access log is shared — other suites legitimately drive
@@ -39,8 +39,8 @@ var (
 	forbiddenLiteLLMPathRE = regexp.MustCompile(
 		`"[A-Z]+\s+/(user|key)(/|\s|\?)`,
 	)
-	probePathAllowedRE = regexp.MustCompile(
-		`"[A-Z]+\s+/key/health(\s|/|\?)`,
+	keyPathAllowedRE = regexp.MustCompile(
+		`"[A-Z]+\s+/key/(health|generate|info|update|delete|list)(\s|/|\?)`,
 	)
 )
 
@@ -65,7 +65,7 @@ func operatorPodIP() string {
 
 var _ = Describe("Scope AC-N3", func() {
 
-	It("LiteLLM access log shows zero /user/ or /key/ calls across the suite", func() {
+	It("LiteLLM access log shows no /user/ call and no /key/ call outside the allowed set", func() {
 		operatorIP := operatorPodIP()
 		Expect(operatorIP).NotTo(BeEmpty(),
 			"could not resolve operator pod IP (control-plane=alitellm-operator) — AC-N3 needs it to attribute /key//user calls to the operator")
@@ -82,7 +82,7 @@ var _ = Describe("Scope AC-N3", func() {
 
 		// Line-level filter: a forbidden /user/* or /key/* match is
 		// downgraded to a violation only when the SAME line does not
-		// carry the allow-listed /key/health probe. This avoids the
+		// carry an allow-listed /key/ path. This avoids the
 		// captured-fragment pitfall where the forbidden regex returns
 		// just `"POST /key/` (no `health` suffix) and the allow-list
 		// regex can never match against the truncated fragment.
@@ -91,7 +91,7 @@ var _ = Describe("Scope AC-N3", func() {
 			if !forbiddenLiteLLMPathRE.MatchString(line) {
 				continue
 			}
-			if probePathAllowedRE.MatchString(line) {
+			if keyPathAllowedRE.MatchString(line) {
 				continue
 			}
 			// Only the operator's own requests count — test-driver /key/*
@@ -102,6 +102,6 @@ var _ = Describe("Scope AC-N3", func() {
 			violations = append(violations, line)
 		}
 		Expect(violations).To(BeEmpty(),
-			"AC-N3 violation: operator (%s) hit /user/ or /key/ paths (excluding /key/health probe): %v", operatorIP, violations)
+			"AC-N3 violation: operator (%s) hit /user/ or a /key/ path outside the allowed set: %v", operatorIP, violations)
 	})
 })

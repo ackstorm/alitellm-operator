@@ -4,6 +4,8 @@ package mock
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -295,6 +297,10 @@ type MockServer struct {
 	modelGroups       map[string]bool           // tags that "exist" (carried by some model)
 	modelGroupBudgets map[string]map[string]any // tag → stored budget fields
 
+	// Virtual keys: /key/{generate,info,update,delete,list}.
+	keys        map[string]map[string]any // key hash → stored fields
+	deletedKeys map[string]bool           // hashes served as status "deleted"
+
 	// Team state. Two indices for O(1) lookups:
 	// teams — keyed by TeamID (the LiteLLM-assigned UUID,
 	// surfaced in POST/UPDATE response bodies + DELETE
@@ -384,6 +390,9 @@ func NewServer(t *testing.T) *MockServer {
 
 		modelGroups:       make(map[string]bool),
 		modelGroupBudgets: make(map[string]map[string]any),
+
+		keys:        make(map[string]map[string]any),
+		deletedKeys: make(map[string]bool),
 
 		teams:            make(map[string]*teamEntry),
 		teamByAlias:      make(map[string]string),
@@ -1578,6 +1587,7 @@ func (m *MockServer) handle(w http.ResponseWriter, r *http.Request) {
 		m.writeAbsentToolsetDelete500,
 		m.writeAccessGroupResponse,
 		m.writeModelGroupBudget,
+		m.writeKey,
 	} {
 		if write(w, r, mode) {
 			return
@@ -2457,4 +2467,173 @@ func (m *MockServer) ModelGroupAlias() map[string]string {
 		}
 	}
 	return out
+}
+
+// mockKeyHash mirrors LiteLLM's hash_token_if_needed: a raw `sk-` value is
+// hashed, anything else is taken as the hash.
+func mockKeyHash(key string) string {
+	if !strings.HasPrefix(key, "sk-") {
+		return key
+	}
+	sum := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(sum[:])
+}
+
+func writeKeyError(w http.ResponseWriter, status int, typ, msg string) {
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{
+		"message": msg, "type": typ, "param": "key", "code": fmt.Sprintf("%d", status),
+	}})
+}
+
+// writeKey serves the /key/* routes the LiteLLMKey reconciler uses, following
+// references/litellm-key-api.md. /key/health is not handled here.
+func (m *MockServer) writeKey(w http.ResponseWriter, r *http.Request, mode string) bool {
+	if mode != ModeHappy {
+		return false
+	}
+	route := r.Method + " " + r.URL.Path
+	switch route {
+	case "POST /key/generate", "GET /key/info", "POST /key/update", "POST /key/delete", "GET /key/list":
+	default:
+		return false
+	}
+	var in map[string]any
+	if r.Method == http.MethodPost {
+		_ = json.NewDecoder(r.Body).Decode(&in)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	w.Header().Set("Content-Type", "application/json")
+
+	switch route {
+	case "POST /key/generate":
+		value, _ := in["key"].(string)
+		if !strings.HasPrefix(value, "sk-") || len(value) < 16 {
+			writeKeyError(w, http.StatusBadRequest, "bad_request_error", "Invalid key format")
+			return true
+		}
+		alias, _ := in["key_alias"].(string)
+		for _, row := range m.keys {
+			if alias != "" && row["key_alias"] == alias {
+				writeKeyError(w, http.StatusBadRequest, "bad_request_error",
+					fmt.Sprintf("Key with alias '%s' already exists. Unique key aliases across all keys are required.", alias))
+				return true
+			}
+		}
+		row := make(map[string]any, len(in))
+		for k, v := range in {
+			if k != "key" {
+				row[k] = v
+			}
+		}
+		hash := mockKeyHash(value)
+		m.keys[hash] = row
+		delete(m.deletedKeys, hash)
+		_ = json.NewEncoder(w).Encode(map[string]any{"key": value, "token": hash, "key_alias": alias})
+	case "GET /key/info":
+		q := r.URL.Query().Get("key")
+		hash := mockKeyHash(q)
+		row, ok := m.keys[hash]
+		switch {
+		case ok:
+			_ = json.NewEncoder(w).Encode(map[string]any{"key": q, "info": row})
+		case m.deletedKeys[hash]:
+			_ = json.NewEncoder(w).Encode(map[string]any{"key": q, "info": map[string]any{"status": "deleted"}})
+		default:
+			writeKeyError(w, http.StatusNotFound, "not_found_error", "Key not found in database")
+		}
+	case "POST /key/update":
+		key, _ := in["key"].(string)
+		row, ok := m.keys[mockKeyHash(key)]
+		if !ok {
+			writeKeyError(w, http.StatusNotFound, "not_found_error", "Key not found.")
+			return true
+		}
+		for k, v := range in {
+			if k != "key" {
+				row[k] = v // null clears
+			}
+		}
+		_ = json.NewEncoder(w).Encode(row)
+	case "POST /key/delete":
+		keys, _ := in["keys"].([]any)
+		deleted := 0
+		for _, k := range keys {
+			s, _ := k.(string)
+			hash := mockKeyHash(s)
+			if _, ok := m.keys[hash]; ok {
+				delete(m.keys, hash)
+				m.deletedKeys[hash] = true
+				deleted++
+			}
+		}
+		if deleted == 0 {
+			writeKeyError(w, http.StatusNotFound, "not_found_error", "Key not found.")
+			return true
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"deleted_keys": keys})
+	case "GET /key/list":
+		hashes := m.keyHashesByAliasLocked(r.URL.Query().Get("key_alias"))
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"keys": hashes, "total_count": len(hashes), "current_page": 1, "total_pages": 1,
+		})
+	}
+	return true
+}
+
+func (m *MockServer) keyHashesByAliasLocked(alias string) []string {
+	hashes := []string{}
+	for hash, row := range m.keys {
+		if row["key_alias"] == alias {
+			hashes = append(hashes, hash)
+		}
+	}
+	sort.Strings(hashes)
+	return hashes
+}
+
+// ResetKeys clears the virtual keys.
+func (m *MockServer) ResetKeys() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.keys = make(map[string]map[string]any)
+	m.deletedKeys = make(map[string]bool)
+}
+
+// Key returns a copy of a live key's stored fields.
+func (m *MockServer) Key(hash string) (map[string]any, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	row, ok := m.keys[hash]
+	if !ok {
+		return nil, false
+	}
+	cp := make(map[string]any, len(row))
+	for k, v := range row {
+		cp[k] = v
+	}
+	return cp, true
+}
+
+// KeyHashesByAlias returns the hashes of the live keys holding alias.
+func (m *MockServer) KeyHashesByAlias(alias string) []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.keyHashesByAliasLocked(alias)
+}
+
+// SeedKey stores a key as if created outside the operator.
+func (m *MockServer) SeedKey(hash string, row map[string]any) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.keys[hash] = row
+}
+
+// DeleteKeyOutOfBand removes a key as if deleted in the LiteLLM UI.
+func (m *MockServer) DeleteKeyOutOfBand(hash string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.keys, hash)
+	m.deletedKeys[hash] = true
 }

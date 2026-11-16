@@ -22,6 +22,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -509,6 +510,39 @@ func main() {
 		ConnectionRebuilt: connCache.Subscribe(),
 	}).SetupWithManager(mgr, modelGroupBudgetSafetyRelistCh); err != nil {
 		setupLog.Error(err, "unable to set up ModelGroupBudget reconciler")
+		os.Exit(1)
+	}
+
+	// Key Secrets live outside WATCH_NAMESPACE, which the manager cache does
+	// not cover, so they are read and written through a non-caching client.
+	keySecrets, err := client.New(mgr.GetConfig(), client.Options{Scheme: mgr.GetScheme()})
+	if err != nil {
+		setupLog.Error(err, "unable to build the key Secret client")
+		os.Exit(1)
+	}
+	keySafetyRelistCh := make(chan reconcile.Request, 256)
+	if err := mgr.Add(&controller.SafetyRelistRunnable{
+		Client:       mgr.GetClient(),
+		Namespace:    watchNS,
+		Interval:     relistInterval,
+		Log:          ctrl.Log.WithName("key-safety-relist"),
+		RequeueCh:    keySafetyRelistCh,
+		ListRequests: controller.ListKeyRequests,
+		LogLabel:     "keys",
+	}); err != nil {
+		setupLog.Error(err, "unable to add key SafetyRelistRunnable")
+		os.Exit(1)
+	}
+	if err := (&controller.KeyReconciler{
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		Cache:             connCache,
+		Recorder:          mgr.GetEventRecorderFor("key-controller"),
+		Namespace:         watchNS,
+		ConnectionRebuilt: connCache.Subscribe(),
+		Secrets:           keySecrets,
+	}).SetupWithManager(mgr, keySafetyRelistCh); err != nil {
+		setupLog.Error(err, "unable to set up Key reconciler")
 		os.Exit(1)
 	}
 

@@ -38,3 +38,4 @@ resources:
   - 13-mcptoolset.yaml
   - 14-accessgroup.yaml
   - 15-modelgroupbudget.yaml
+  - 16-key.yaml

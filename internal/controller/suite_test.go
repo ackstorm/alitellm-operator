@@ -664,6 +664,35 @@ func setupAndRun(m *testing.M) int {
 		return 1
 	}
 
+	// KeyReconciler: gated relist (#74). k8sClient is non-caching, as the
+	// key Secret client must be.
+	keySafetyRelistCh := make(chan reconcile.Request, 256)
+	if err := mgr.Add(&SafetyRelistRunnable{
+		Client:       mgr.GetClient(),
+		Namespace:    WatchNamespace,
+		Interval:     100 * time.Millisecond,
+		Log:          logr.Discard(),
+		RequeueCh:    keySafetyRelistCh,
+		ListRequests: ListKeyRequests,
+		LogLabel:     "keys",
+		Gate:         suiteRelistEnabled.Load,
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "mgr.Add(key SafetyRelistRunnable): %v\n", err)
+		return 1
+	}
+	if err := (&KeyReconciler{
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		Cache:             connCache,
+		Recorder:          mgr.GetEventRecorderFor("key-controller"),
+		Namespace:         WatchNamespace,
+		ConnectionRebuilt: connCache.Subscribe(),
+		Secrets:           k8sClient,
+	}).SetupWithManager(mgr, keySafetyRelistCh); err != nil {
+		fmt.Fprintf(os.Stderr, "SetupWithManager(Key): %v\n", err)
+		return 1
+	}
+
 	// Phase 6: register the Team field indexer +
 	// TeamReconciler. Mirrors the Phase 3 Model + Phase 5 	// MCPServer + A2AAgent wiring blocks.
 	teamReconciler = &TeamReconciler{

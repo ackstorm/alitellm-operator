@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   real peak hour was $24). Each point is now the spend of the preceding hour.
 
 ### Added
+- **`LiteLLMKey` CRD** — a LiteLLM virtual key for one service, with no user
+  and no team: `models` (required), `budget`, `rateLimits`, `secretRef`,
+  `deletionPolicy`. The operator mints the value and writes it to a Secret in
+  `secretRef.namespace`; a key LiteLLM lost is registered again with the same
+  value. New Helm value `keySecretNamespaces` grants the operator
+  `get`/`create`/`delete` on Secrets in each listed namespace only. See
+  `docs/user-guide/key.md`.
 - **`LiteLLMModelGroupBudget` CRD** — declares a LiteLLM budget on a model
   access-group TAG (`/access_group/{tag}/budget`, LiteLLM 1.100.0+): `limit`,
   `softLimit`, `period`, `deletionPolicy`. One owner per tag (oldest CR wins,
@@ -29,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   numbers were wrong wherever spend logs are pruned.
 - **Deployments "Cooldowns (range)"** reads `litellm_deployment_cooled_down_total`
   instead of deriving it from total − success − failure.
+- **The operator now calls `/key/*`** (`generate`, `info`, `update`, `delete`,
+  `list`) for `LiteLLMKey`. It still never calls `/user/*`.
 - **`team.models` mirrors the attached access groups.** LiteLLM charges a tag
   budget only when the tag appears by name in `models`, never via
   `access_group_ids`, so every team now sends
