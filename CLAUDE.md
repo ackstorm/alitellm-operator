@@ -57,12 +57,12 @@ CRDs, and config are original ACKstorm material.
                        └──────────────────┘
 ```
 
-Owned CRDs (12 — the exhaustive set e2e `AC-N1` asserts in
+Owned CRDs (13 — the exhaustive set e2e `AC-N1` asserts in
 `test/e2e/scope_test.go`; adding a kind without updating that set fails e2e):
 `LiteLLMTeam`, `LiteLLMModel`, `LiteLLMModelDiscovery`, `LiteLLMModelAlias`,
 `LiteLLMMCPServer`, `LiteLLMMCPServerDiscovery`, `LiteLLMMCPToolset`,
 `LiteLLMA2AAgent`, `LiteLLMGuardRail`, `LiteLLMConnection`,
-`LiteLLMAccessGroup`, `LiteLLMModelGroupBudget`. API group
+`LiteLLMAccessGroup`, `LiteLLMModelGroupBudget`, `LiteLLMKey`. API group
 `litellm.ackstorm.ai`, version `v1alpha1`. `LiteLLMMCPToolset` requires
 LiteLLM **1.93.0+** (`/v1/mcp/toolset` does not exist before that); so does
 `LiteLLMAccessGroup` (`/v1/access_group`). `LiteLLMModelGroupBudget` requires LiteLLM **1.100.0+**
@@ -132,6 +132,7 @@ alitellm-operator/
 | Model-group budgets                    | `docs/user-guide/model-group-budget.md` (attribution rule; `team.models` mirror) |
 | Model aliases                          | `docs/user-guide/model-alias.md` (aggregate map) |
 | LiteLLM virtual keys (`/key/*`)        | `references/litellm-key-api.md` (measured shapes; hash-only rule) |
+| Service keys (`LiteLLMKey`)            | `docs/user-guide/key.md` (Secret ownership, `keySecretNamespaces`, rotation) |
 | OLM packaging                          | NOT supported — explicit scope decision (no OperatorHub) |
 
 ## CI gating — one-line summary
@@ -1550,6 +1551,26 @@ still held the pre-strip cache view. It SSA-applied the child with
 was narrow (one reconcile), but nothing re-checked it, so the loss was
 permanent until the user noticed.
 
+### ❌ Reading a LiteLLMKey Secret through the manager client
+```go
+r.Get(ctx, client.ObjectKey{Namespace: ref.Namespace, Name: ref.Name}, &secret)
+// unknown namespace for the cache
+```
+✅ `KeyReconciler.Secrets` is a non-caching client (`cmd/main.go`). The key
+Secret lives in `spec.secretRef.namespace`, outside `WATCH_NAMESPACE`.
+WHY IT MATTERS BEYOND THE ERROR: a cached read that lags a create looks like
+a deleted Secret, and a deleted Secret means "rotate" — the operator would
+replace a live key. Any new code that decides something from a key Secret's
+absence must read it uncached.
+
+### ❌ Passing a raw key value to a `/key/*` call
+```go
+c.GetKeyInfo(ctx, value)        // sk-… in the query string → access logs
+```
+✅ `c.GetKeyInfo(ctx, litellm.HashKey(value))`. Only the `/key/generate` body
+carries the raw value. `TestKey_ValueNeverLeaks` checks every recorded URL
+and body. Shapes: `references/litellm-key-api.md`.
+
 ## Repository-specific patterns
 
 - **`mcp_toolsets` is always `[]` on a team, and toolsets are not grantable
@@ -1584,7 +1605,7 @@ permanent until the user noticed.
 
 - **Periodic drift detection = `SafetyRelistRunnable`, never `RequeueAfter`.**
   Each of the domain reconcilers (Model, Team, MCPServer, A2AAgent,
-  GuardRail, MCPToolset, AccessGroup, ModelGroupBudget) has exactly one `SafetyRelistRunnable` in `cmd/main.go`, ticking
+  GuardRail, MCPToolset, AccessGroup, ModelGroupBudget, Key) has exactly one `SafetyRelistRunnable` in `cmd/main.go`, ticking
   at `LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL` (default 10m). Reconcilers
   return bare `ctrl.Result{}, nil` — there are no `RequeueAfter` safety-relist
   paths and no `withJitter`. WHY: a `RequeueAfter` only fires from the return

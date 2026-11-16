@@ -154,7 +154,7 @@ func WarnIfDangerouslyLogBodies(log logr.Logger) bool {
 		"############################################################\n"+
 			"## DANGER: LITELLM_OPERATOR_DANGEROUSLY_LOG_BODIES=true   ##\n"+
 			"## Request/response bodies WILL be logged in full.        ##\n"+
-			"## Bodies contain substituted provider API keys.          ##\n"+
+			"## Bodies contain provider API keys and LiteLLMKey values.##\n"+
 			"## DISABLE THIS FOR PRODUCTION.                           ##\n"+
 			"############################################################",
 		"env", EnvDangerouslyLogBodies,
