@@ -993,6 +993,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/key/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMKey
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1777,9 +1805,10 @@ drains under either policy: the goal is already met.</p>
 (capped at 30s). It does not invalidate the connection: the connection
 probe alone decides whether the master key is bad, and once it does,
 deferred deletes make no LiteLLM calls at all.</p>
-<p>This is governed by <code>spec.deletionPolicy</code> on seven CRD kinds:
+<p>This is governed by <code>spec.deletionPolicy</code> on nine CRD kinds:
 <code>LiteLLMModel</code>, <code>LiteLLMTeam</code>, <code>LiteLLMMCPServer</code>, <code>LiteLLMA2AAgent</code>,
-<code>LiteLLMGuardRail</code>, <code>LiteLLMMCPToolset</code>, <code>LiteLLMAccessGroup</code>. <code>LiteLLMConnection</code> is excluded — its finalizer
+<code>LiteLLMGuardRail</code>, <code>LiteLLMMCPToolset</code>, <code>LiteLLMAccessGroup</code>,
+<code>LiteLLMModelGroupBudget</code>, <code>LiteLLMKey</code>. <code>LiteLLMConnection</code> is excluded — its finalizer
 runs no LiteLLM HTTP call.</p>
 <h2 id="why-two-modes">Why two modes<a class="headerlink" href="#why-two-modes" title="Permanent link">&para;</a></h2>
 <p>The operator's default behavior is <strong>Orphan</strong>: deleting the

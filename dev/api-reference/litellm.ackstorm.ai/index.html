@@ -993,6 +993,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/key/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMKey
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1592,6 +1620,50 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#keylastrenderedstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        KeyLastRenderedStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#keysecretref" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        KeySecretRef
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#keyspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        KeySpec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#keystatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        KeyStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#lastrenderedstatus" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1706,6 +1778,28 @@
     <span class="md-ellipsis">
       
         LiteLLMGuardRailList
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmkey" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMKey
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmkeylist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMKeyList
       
     </span>
   </a>
@@ -2637,6 +2731,50 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#keylastrenderedstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        KeyLastRenderedStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#keysecretref" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        KeySecretRef
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#keyspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        KeySpec
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#keystatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        KeyStatus
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#lastrenderedstatus" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2751,6 +2889,28 @@
     <span class="md-ellipsis">
       
         LiteLLMGuardRailList
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmkey" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMKey
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#litellmkeylist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LiteLLMKeyList
       
     </span>
   </a>
@@ -3354,6 +3514,8 @@
 <li><a href="#litellmconnectionlist">LiteLLMConnectionList</a></li>
 <li><a href="#litellmguardrail">LiteLLMGuardRail</a></li>
 <li><a href="#litellmguardraillist">LiteLLMGuardRailList</a></li>
+<li><a href="#litellmkey">LiteLLMKey</a></li>
+<li><a href="#litellmkeylist">LiteLLMKeyList</a></li>
 <li><a href="#litellmmcpserver">LiteLLMMCPServer</a></li>
 <li><a href="#litellmmcpserverdiscovery">LiteLLMMCPServerDiscovery</a></li>
 <li><a href="#litellmmcpserverdiscoverylist">LiteLLMMCPServerDiscoveryList</a></li>
@@ -3738,6 +3900,7 @@ signal.</p>
 resource.Quantity-style form is deferred unless penny-precision-at-scale
 becomes a concern.</p>
 <p><em>Appears in:</em>
+- <a href="#keyspec">KeySpec</a>
 - <a href="#teamspec">TeamSpec</a></p>
 <table>
 <thead>
@@ -3979,6 +4142,156 @@ client and never touches the LiteLLM Deployment).</p>
 <tr>
 <td><code>lastRendered</code> <em><a href="#guardraillastrenderedstatus">GuardRailLastRenderedStatus</a></em></td>
 <td>LastRendered is the operator-side drift source of truth (D-01,<br />D-07 — same pattern as LiteLLMModel). On each reconcile the<br />rendered post-substitution body is hashed and compared against<br />LastRendered.Hash; a mismatch triggers a PUT /guardrails/{id}<br />(drift correction) and increments<br />alitellm_operator_drift_corrected_total{domain=guardrail,action=update_drifted}.</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="keylastrenderedstatus">KeyLastRenderedStatus<a class="headerlink" href="#keylastrenderedstatus" title="Permanent link">&para;</a></h4>
+<p>KeyLastRenderedStatus records what was last applied to LiteLLM. It never
+holds the key value.</p>
+<p><em>Appears in:</em>
+- <a href="#keystatus">KeyStatus</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>hash</code> <em>string</em></td>
+<td>Hash is the SHA-256 of the rendered models, budget and limits.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>keyAlias</code> <em>string</em></td>
+<td>KeyAlias is the key's alias in LiteLLM (metadata.name).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>at</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#time-v1-meta">Time</a></em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="keysecretref">KeySecretRef<a class="headerlink" href="#keysecretref" title="Permanent link">&para;</a></h4>
+<p>KeySecretRef names the Secret entry the operator writes the key value to.
+Unlike SecretKeyRef it carries a namespace: the LiteLLMKey lives in the
+operator's namespace and the Secret in the consuming service's.</p>
+<p><em>Appears in:</em>
+- <a href="#keyspec">KeySpec</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>namespace</code> <em>string</em></td>
+<td>Namespace of the Secret. The operator needs get/create/delete on<br />Secrets there (Helm value keySecretNamespaces).</td>
+<td></td>
+<td>MinLength: 1 <br /></td>
+</tr>
+<tr>
+<td><code>name</code> <em>string</em></td>
+<td>Name of the Secret. The operator creates it and refuses one it did<br />not create.</td>
+<td></td>
+<td>MinLength: 1 <br /></td>
+</tr>
+<tr>
+<td><code>key</code> <em>string</em></td>
+<td>Key is the entry inside the Secret's data that holds the key value.</td>
+<td></td>
+<td>MinLength: 1 <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="keyspec">KeySpec<a class="headerlink" href="#keyspec" title="Permanent link">&para;</a></h4>
+<p>KeySpec declares a LiteLLM virtual key with no user and no team.</p>
+<p><em>Appears in:</em>
+- <a href="#litellmkey">LiteLLMKey</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>models</code> <em>string array</em></td>
+<td>Models the key may call, projected onto <code>models</code>. LiteLLM model names<br />or LiteLLMModelAlias names; not validated against LiteLLM. At least<br />one is required: a teamless key with no models can call every model.</td>
+<td></td>
+<td>MinItems: 1 <br />items:MinLength: 1 <br /></td>
+</tr>
+<tr>
+<td><code>budget</code> <em><a href="#budgetspec">BudgetSpec</a></em></td>
+<td>Budget caps the key's spend (max_budget, budget_duration).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>rateLimits</code> <em><a href="#ratelimitsspec">RateLimitsSpec</a></em></td>
+<td>RateLimits caps the key's request and token rate (rpm_limit, tpm_limit).</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>secretRef</code> <em><a href="#keysecretref">KeySecretRef</a></em></td>
+<td>SecretRef is where the key value is written. Immutable: to move the<br />Secret, delete and recreate the LiteLLMKey.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>deletionPolicy</code> <em>string</em></td>
+<td>DeletionPolicy controls finalizer behavior when the LiteLLM-side DELETE<br />cannot be confirmed. Defaults to "Orphan" per REL-06 anti-storm.</td>
+<td>Orphan</td>
+<td>Enum: [Orphan Delete] <br /></td>
+</tr>
+</tbody>
+</table>
+<h4 id="keystatus">KeyStatus<a class="headerlink" href="#keystatus" title="Permanent link">&para;</a></h4>
+<p><em>Appears in:</em>
+- <a href="#litellmkey">LiteLLMKey</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>observedGeneration</code> <em>integer</em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>conditions</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#condition-v1-meta">Condition</a> array</em></td>
+<td>Conditions: single type <code>Ready</code>, reasons Synced, LiteLLMUnavailable,<br />LiteLLMRejected, SecretAccessDenied, SecretNotOwned, Conflict.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>lastRendered</code> <em><a href="#keylastrenderedstatus">KeyLastRenderedStatus</a></em></td>
+<td></td>
 <td></td>
 <td></td>
 </tr>
@@ -4580,6 +4893,114 @@ sharing spec.guardrailName form a load-balancing pool.</p>
 </tr>
 <tr>
 <td><code>items</code> <em><a href="#litellmguardrail">LiteLLMGuardRail</a> array</em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="litellmkey">LiteLLMKey<a class="headerlink" href="#litellmkey" title="Permanent link">&para;</a></h4>
+<p>LiteLLMKey is the Schema for the litellmkeys API.</p>
+<p><em>Appears in:</em>
+- <a href="#litellmkeylist">LiteLLMKeyList</a></p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td><code>litellm.ackstorm.ai/v1alpha1</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td><code>LiteLLMKey</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td>Kind is a string value representing the REST resource this object represents.<br />Servers may infer this from the endpoint the client submits requests to.<br />Cannot be updated.<br />In CamelCase.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td>APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>metadata</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta">ObjectMeta</a></em></td>
+<td>Refer to Kubernetes API documentation for fields of <code>metadata</code>.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>spec</code> <em><a href="#keyspec">KeySpec</a></em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>status</code> <em><a href="#keystatus">KeyStatus</a></em></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h4 id="litellmkeylist">LiteLLMKeyList<a class="headerlink" href="#litellmkeylist" title="Permanent link">&para;</a></h4>
+<p>LiteLLMKeyList contains a list of LiteLLMKey.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Default</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td><code>litellm.ackstorm.ai/v1alpha1</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td><code>LiteLLMKeyList</code></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>kind</code> <em>string</em></td>
+<td>Kind is a string value representing the REST resource this object represents.<br />Servers may infer this from the endpoint the client submits requests to.<br />Cannot be updated.<br />In CamelCase.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>apiVersion</code> <em>string</em></td>
+<td>APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>metadata</code> <em><a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#listmeta-v1-meta">ListMeta</a></em></td>
+<td>Refer to Kubernetes API documentation for fields of <code>metadata</code>.</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>items</code> <em><a href="#litellmkey">LiteLLMKey</a> array</em></td>
 <td></td>
 <td></td>
 <td></td>
@@ -6833,6 +7254,7 @@ Feature 01 §1.1's <code>self.rpm &gt;= 0</code> / <code>self.tpm &gt;= 0</code>
 as a built-in OpenAPI schema constraint. The K8s API server still rejects
 negative values at admission.</p>
 <p><em>Appears in:</em>
+- <a href="#keyspec">KeySpec</a>
 - <a href="#teamspec">TeamSpec</a></p>
 <table>
 <thead>

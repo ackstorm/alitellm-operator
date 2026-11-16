@@ -1159,6 +1159,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user-guide/key/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LiteLLMKey
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1939,6 +1967,11 @@ production-suitable for a small dogfood cluster.</p>
 <td><code>safetyRelistInterval</code></td>
 <td><code>""</code> (operator default <code>10m</code>)</td>
 <td>Per-reconciler vanish-probe cadence. Maps to <code>LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL</code>. Floor 5s.</td>
+</tr>
+<tr>
+<td><code>keySecretNamespaces</code></td>
+<td><code>[]</code></td>
+<td>Namespaces a <code>LiteLLMKey</code> may write its key Secret to. Each gets a RoleBinding granting the operator <code>get</code>/<code>create</code>/<code>delete</code> on Secrets there. See <a href="../../user-guide/key/">LiteLLMKey</a>.</td>
 </tr>
 <tr>
 <td><code>extraEnv</code></td>
