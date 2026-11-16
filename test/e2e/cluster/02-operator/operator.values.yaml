@@ -24,3 +24,7 @@ resources:
   requests:
     cpu: 50m
     memory: 64Mi
+
+# LiteLLMKey writes its Secret here (test/e2e/key_test.go).
+keySecretNamespaces:
+  - e2e-keys

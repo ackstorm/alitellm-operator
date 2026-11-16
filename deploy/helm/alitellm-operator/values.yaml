@@ -142,6 +142,13 @@ safetyRelistInterval: ""
 #     - name: LITELLM_OPERATOR_REQUIRE_HTTPS_REMOTE
 #       value: "true"
 extraEnv: []
+# keySecretNamespaces: the namespaces a LiteLLMKey may write its key Secret to
+# (spec.secretRef.namespace). Each one gets a RoleBinding granting the operator
+# get/create/delete on Secrets there. Kubernetes cannot limit `get` to the
+# Secrets the operator created, so the operator can read EVERY Secret in a
+# listed namespace. A LiteLLMKey that targets an unlisted namespace reports
+# Ready=False, reason SecretAccessDenied.
+keySecretNamespaces: []
 # resources: manager container resource requests and limits.
 #
 # Defaults below mirror the original kustomize values (config/manager/manager.yaml)

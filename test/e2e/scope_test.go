@@ -31,11 +31,12 @@ var expectedKinds = map[string]bool{
 	"LiteLLMMCPToolset":         true,
 	"LiteLLMAccessGroup":        true,
 	"LiteLLMModelGroupBudget":   true,
+	"LiteLLMKey":                true,
 }
 
 var _ = Describe("Scope and metrics", Ordered, ContinueOnFailure, func() {
 
-	It("exposes exactly 12 in-scope CRDs and no dropped-kind controllers in logs (AC-N1+N2)", func() {
+	It("exposes exactly 13 in-scope CRDs and no dropped-kind controllers in logs (AC-N1+N2)", func() {
 		out, err := exec.Command("kubectl", "get", "crds",
 			"-o", `jsonpath={range .items[?(@.spec.group=="litellm.ackstorm.ai")]}{.spec.names.kind}{"\n"}{end}`,
 		).CombinedOutput()
