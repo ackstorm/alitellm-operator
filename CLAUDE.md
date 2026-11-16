@@ -131,6 +131,7 @@ alitellm-operator/
 | Access groups / team attachment         | `docs/user-guide/access-group.md` (two disjoint namespaces + the only-ADD bypass); team = closed container, `closedTeamGrant` in `internal/controller/team_permission.go` |
 | Model-group budgets                    | `docs/user-guide/model-group-budget.md` (attribution rule; `team.models` mirror) |
 | Model aliases                          | `docs/user-guide/model-alias.md` (aggregate map) |
+| LiteLLM virtual keys (`/key/*`)        | `references/litellm-key-api.md` (measured shapes; hash-only rule) |
 | OLM packaging                          | NOT supported — explicit scope decision (no OperatorHub) |
 
 ## CI gating — one-line summary
