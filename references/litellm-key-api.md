@@ -10,6 +10,8 @@ mock's `writeKey` follow this file.
 | `GET /key/info?key=<sha256>` | 200; `info` holds `key_alias`, `models`, `max_budget` (5.0), `budget_duration` ("30d"), `rpm_limit` (60), `metadata`, `status: "active"`; `key_name` is masked (`sk-...cdef`) |
 | `POST /key/generate`, alias already used | 400; `error.param` = `key_alias`, message "Key with alias 'key-probe' already exists. Unique key aliases across all keys are required." |
 | `GET /key/list?key_alias=<alias>` | 200; `{"keys":["<sha256>"],"total_count":1,...}`; `keys` holds the hash |
+| `GET /key/list?key_alias=kp` with keys aliased `kp` and `kp-api` | 200; one hash, the `kp` key: the alias filter is an exact match, not a substring |
+| `GET /key/info` for a hash that never existed | 404; `error.type` = `not_found_error`, message "Key not found in database" |
 | `POST /key/update` with `null` budget and limits | 200; models replaced (`["m2"]`); `max_budget`, `budget_duration`, `rpm_limit`, `tpm_limit` all `null` afterwards (info confirms) |
 | `POST /key/delete` `{"keys":[<sha256>]}` | 200; `{"deleted_keys":["<sha256>"]}` |
 | `GET /key/info` for a deleted key | 200 (not 404); `info.status` = `"deleted"`, `deleted_at` set |
