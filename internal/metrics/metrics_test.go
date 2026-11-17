@@ -141,7 +141,7 @@ func TestNoUnexpectedMetricNamesInS10Surface(t *testing.T) {
 		}
 	}
 	if hits < 8 {
-		var names []string
+		names := make([]string, 0, len(mfs))
 		for _, mf := range mfs {
 			names = append(names, mf.GetName())
 		}
