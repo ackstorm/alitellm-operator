@@ -214,26 +214,32 @@ type MCPServerRequest struct {
 
 // MCPServerUpdateRequest is the PUT /v1/mcp/server request body. The
 // OpenAPI schema marks server_id as required.
+//
+// LiteLLM applies the PUT as a partial update: a field left out of the body
+// keeps its stored value. The list, map and description fields therefore
+// carry no `omitempty`, and UpdateMCPServer sends them empty when unset, so
+// a param removed from the spec is cleared. The *bool flags stay tri-state
+// (nil is left out) and every other field is sent only when set.
 type MCPServerUpdateRequest struct {
 	ServerID                  string         `json:"server_id"`
 	ServerName                string         `json:"server_name,omitempty"`
 	Alias                     string         `json:"alias,omitempty"`
-	Description               string         `json:"description,omitempty"`
+	Description               string         `json:"description"`
 	Transport                 string         `json:"transport,omitempty"`
 	AuthType                  string         `json:"auth_type,omitempty"`
 	Credentials               map[string]any `json:"credentials,omitempty"`
 	URL                       string         `json:"url,omitempty"`
 	SpecPath                  string         `json:"spec_path,omitempty"`
 	MCPInfo                   map[string]any `json:"mcp_info,omitempty"`
-	MCPAccessGroups           []string       `json:"mcp_access_groups,omitempty"`
-	AllowedTools              []string       `json:"allowed_tools,omitempty"`
-	ToolNameToDisplayName     map[string]any `json:"tool_name_to_display_name,omitempty"`
-	ToolNameToDescription     map[string]any `json:"tool_name_to_description,omitempty"`
-	ExtraHeaders              any            `json:"extra_headers,omitempty"`
-	StaticHeaders             map[string]any `json:"static_headers,omitempty"`
+	MCPAccessGroups           []string       `json:"mcp_access_groups"`
+	AllowedTools              []string       `json:"allowed_tools"`
+	ToolNameToDisplayName     map[string]any `json:"tool_name_to_display_name"`
+	ToolNameToDescription     map[string]any `json:"tool_name_to_description"`
+	ExtraHeaders              any            `json:"extra_headers"`
+	StaticHeaders             map[string]any `json:"static_headers"`
 	Command                   string         `json:"command,omitempty"`
 	Args                      []string       `json:"args,omitempty"`
-	Env                       map[string]any `json:"env,omitempty"`
+	Env                       map[string]any `json:"env"`
 	AuthorizationURL          string         `json:"authorization_url,omitempty"`
 	TokenURL                  string         `json:"token_url,omitempty"`
 	RegistrationURL           string         `json:"registration_url,omitempty"`

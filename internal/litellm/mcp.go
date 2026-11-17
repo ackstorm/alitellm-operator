@@ -29,8 +29,24 @@ func (c *Client) CreateMCPServer(ctx context.Context, req *MCPServerRequest) (*M
 	return &out, nil
 }
 
-// UpdateMCPServer issues PUT /v1/mcp/server.
+// UpdateMCPServer issues PUT /v1/mcp/server. Unset list and map fields are
+// sent empty: LiteLLM keeps the stored value of a field the body leaves out,
+// and rejects null for the ones it types as non-optional.
 func (c *Client) UpdateMCPServer(ctx context.Context, req *MCPServerUpdateRequest) (*MCPServerEntry, error) {
+	if req.MCPAccessGroups == nil {
+		req.MCPAccessGroups = []string{}
+	}
+	if req.AllowedTools == nil {
+		req.AllowedTools = []string{}
+	}
+	if req.ExtraHeaders == nil {
+		req.ExtraHeaders = []string{}
+	}
+	for _, m := range []*map[string]any{&req.StaticHeaders, &req.ToolNameToDisplayName, &req.ToolNameToDescription, &req.Env} {
+		if *m == nil {
+			*m = map[string]any{}
+		}
+	}
 	raw, err := c.makeRequest(ctx, "PUT", "/v1/mcp/server", req)
 	if err != nil {
 		return nil, err

@@ -717,8 +717,9 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 		logger.V(1).Info("mcp server created in LiteLLM", "serverID", newServerID)
 	} else {
-		// UPDATE path — simple PUT /v1/mcp/server (verdict ✓ per
-		// 05-00-SUMMARY.md; PUT IS wholesale-replace on 1.83.10-stable).
+		// UPDATE path — simple PUT /v1/mcp/server. LiteLLM applies it as a
+		// partial update, so UpdateMCPServer sends the unset list and map
+		// fields empty to clear a param removed from the spec.
 		// FIX4.txt H-1: stamp updated_by only on UPDATE (LiteLLM keeps the
 		// original creator).
 		ext.MCPInfo = stampMCPIdentity(ext.MCPInfo, false)

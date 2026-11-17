@@ -1554,6 +1554,27 @@ non-empty = REPLACE, `[]` (and `null`) = CLEAR. With `omitempty` a shrink-to-
 empty serializes away, so the stale grant survives and the revocation silently
 fails. Same trap as the v0.7.25 `object_permission` leak. Guarded by e2e `AG-02`.
 
+### ❌ `omitempty` on a clearable `MCPServerUpdateRequest` field
+```go
+MCPAccessGroups []string `json:"mcp_access_groups,omitempty"`   // WRONG
+```
+✅ `Description`, `MCPAccessGroups`, `AllowedTools`, `ExtraHeaders`,
+`StaticHeaders`, `ToolNameToDisplayName`, `ToolNameToDescription` and `Env`
+carry no `omitempty`, and `UpdateMCPServer` coerces nil → `[]` / `{}`.
+WHY IT FAILS: `PUT /v1/mcp/server` is a partial update (LiteLLM 1.106.0 and
+1.111.0: `update_mcp_server` → `_prepare_mcp_server_data(exclude_unset=True)`),
+so a field left out keeps its stored value. A param removed from `spec.params`
+changes the hash, the PUT goes out without it, the CR reads `Ready=Synced` and
+LiteLLM keeps the old access group or header. Send `[]` / `{}`, not `null`:
+`mcp_access_groups` and `env` are non-optional in LiteLLM's request model.
+NOT cleared on removal: the tri-state flags `allow_all_keys`,
+`available_on_public_internet`, `oauth_passthrough` (nil is left out so a
+server that never sets them keeps LiteLLM's value; set `false` explicitly) and
+`auth_type`, `credentials`, `command`, `args` and the OAuth URL fields. A
+change to the PUT body shape bumps `mcpRenderVersion` (`params_mcp.go`) so
+every server is re-sent once. Guarded by
+`TestUpdateMCPServer_UnsetFieldsSentEmpty`.
+
 ### ❌ Writing `assigned_team_ids` from the operator
 ```go
 req.AssignedTeamIDs = []string{teamID}   // do NOT model this field
