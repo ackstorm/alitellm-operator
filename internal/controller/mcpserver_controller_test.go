@@ -1370,16 +1370,11 @@ func TestMCPServerReconciler_UpdateForwardsAllParams(t *testing.T) {
 	if err := k8sClient.Update(ctx, &live); err != nil {
 		t.Fatalf("update: %v", err)
 	}
-	_ = pollMCPServerCondition(t, ctx, crName, reasonSynced, 30*time.Second)
-
+	// The CR is already Synced from the create, so wait for the PUT body.
 	wireName := litellm.SanitizeMCPServerName(crName, "")
+	waitFor(t, func() bool { return mockServer.LastMCPBody(wireName)["auth_type"] == "oauth2" },
+		"updated params never reached LiteLLM")
 	body := mockServer.LastMCPBody(wireName)
-	if body == nil {
-		t.Fatalf("no recorded body")
-	}
-	if body["auth_type"] != "oauth2" {
-		t.Errorf("auth_type after UPDATE: %v", body["auth_type"])
-	}
 	groups, _ := body["mcp_access_groups"].([]any)
 	if len(groups) != 1 || groups[0] != "new-group" {
 		t.Errorf("mcp_access_groups after UPDATE: %v", body["mcp_access_groups"])

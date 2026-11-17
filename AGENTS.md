@@ -936,11 +936,10 @@ than the per-package PR Envtest job), not on PR CI.
   over-count; `TestConnectionProbeLoop_BadMasterKey` anti-storm) on a fixed
   `-race -shuffle` seed (7→5 failures, 0 regressions). New controller tests
   must NOT assume background relist fires unless they call
-  `enableSuiteRelist(t)`. The remaining 5 `-race -shuffle` failures are
+  `enableSuiteRelist(t)`. The remaining 4 `-race -shuffle` failures are
   PRE-EXISTING test-design/contamination races (MCPServer
   `CreateOnFirstReconcile` / `OwnerRefTolerance` /
-  `DriftSuppressedOnFirstCreate`, Team `DriftSuppressedOnFirstCreate`,
-  MCPServer `UpdateForwardsAllParams`) — tracked for a dedicated debug pass,
+  `DriftSuppressedOnFirstCreate`, Team `DriftSuppressedOnFirstCreate`) — tracked for a dedicated debug pass,
   NOT caused by the gating change.
 NOTE: local envtest on a resource-starved host can fail at suite SETUP
 (`WaitForCacheSync: did not sync within 30s`) or mass ~30s poll-timeouts
