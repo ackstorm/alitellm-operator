@@ -1,7 +1,7 @@
 # Acknowledged govulncheck residuals
 
-**Date:** 2026-11-16
-**Toolchain at acknowledgement:** Go 1.26.11 (`Dockerfile.devtools` + `go.mod` `toolchain` directive), `golang.org/x/net@v0.60.0`
+**Date:** 2026-11-17
+**Toolchain at acknowledgement:** Go 1.27.4 (`Dockerfile.devtools` + `go.mod` `toolchain` directive), `golang.org/x/net@v0.60.0`
 **Scanner:** `govulncheck@v1.3.0` (pinned in `Dockerfile.devtools::GOVULNCHECK_VERSION`)
 **Invocation:** `./scripts/dev.sh govulncheck ./...`
 
@@ -30,6 +30,8 @@ new reachable advisory must be:
 
 ## History
 
+- 2026-11-17: Bumped the Go toolchain 1.26.11 -> 1.27.4 across all four
+  pinned surfaces. No advisory cleared or added. The list stays EMPTY.
 - 2026-11-16: Bumped the Go toolchain 1.26.10 -> 1.26.11 across all four
   pinned surfaces. Cleared stdlib `GO-2026-6859` (net/http: HTTP/1 server
   crash due to MaxBytesReader header race), published after v0.10.4.
