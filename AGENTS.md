@@ -146,17 +146,16 @@ alitellm-operator/
 | push: main `chore(release): v*`       |  -   |  -   |   -     |    -     |  -  (release.yml owns it) |
 
 **PR-only invariant**: `ci.yml` triggers exclusively on `pull_request`.
-Branch protection on `main` enforces PR workflow (required checks:
-Lint / Unit / Envtest / Security / E2E (kind + helm + ginkgo); linear
-history required; no force-push; no deletions). Post-merge SHA on main
+The `protect-main` ruleset blocks only force-push and deletion of `main`.
+GitHub does NOT require the checks (Lint / Unit / Envtest / Security /
+E2E (kind + helm + ginkgo)), so a red or stale PR can be merged: merge
+only on a green run against current `main`. Post-merge SHA on main
 has identical content to the PR head SHA, so re-running CI on push
 main would be dup. Release commits are handled by `release.yml`.
 
 Docs-only PRs (paths-ignore: `**/*.md`, `docs/**`, `.planning/**`,
 `references/**`, `FIX*.txt`, `LICENSE`, `NOTICE`, `CODEOWNERS`,
-`.gitignore`) skip `ci.yml` entirely — required status checks therefore
-will not report on docs-only PRs, so an admin merge or status check
-override is needed to land them.
+`.gitignore`) skip `ci.yml` entirely and report no checks.
 
 Detail and tradeoffs: `references/docs/workflow.md`.
 
@@ -1045,7 +1044,7 @@ WHY IT MATTERS: `dist/` is gitignored and the Helm chart re-templates the image,
 so the visible damage is a dirty tree plus the raw `kustomize build config/default`
 install path pointing at a tag that exists in no registry.
 
-### ❌ Admin-merging a PR over a red required check
+### ❌ Merging a PR over a red check
 ```
 PR #112 merged with Envtest: FAILURE (metric rename half-applied to
 metrics_scrape_test.go). Post-merge CI never runs on main (PR-only
@@ -1057,9 +1056,9 @@ at run-tests.
 unrelated PRs fail the SAME test, suspect main, not the PRs — check
 `gh pr view <merged-pr> --json statusCheckRollup` for a red check that was
 merged over.
-WHY IT FAILS: branch protection's required checks only gate the PR; an
-admin merge bypasses them, and the PR-only CI matrix means nothing
-re-validates main after the merge. The breakage surfaces one PR later,
+WHY IT FAILS: no ruleset requires the checks, so GitHub lets a red PR
+merge, and the PR-only CI matrix means nothing re-validates main after
+the merge. The breakage surfaces one PR later,
 attributed to the wrong author.
 
 ### ❌ Steady-state early-return that skips the Ready-condition heal
