@@ -5,6 +5,7 @@ package controller
 import (
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 
@@ -84,5 +85,26 @@ func TestConnectionReadyTransition_GenericFiresOnReady(t *testing.T) {
 	}
 	if pred.Generic(event.GenericEvent{Object: newConn(metav1.ConditionFalse)}) {
 		t.Error("Generic on Ready=False unexpectedly fired")
+	}
+}
+
+// TestSecretDataChanged — a metadata-only Secret rewrite (External Secrets
+// re-sync) must not re-enqueue dependents; a data change must.
+func TestSecretDataChanged(t *testing.T) {
+	pred := secretDataChanged()
+	sec := func(rv, val string) *corev1.Secret {
+		return &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{ResourceVersion: rv},
+			Data:       map[string][]byte{"KEY": []byte(val)},
+		}
+	}
+	if pred.Update(event.UpdateEvent{ObjectOld: sec("1", "v1"), ObjectNew: sec("2", "v1")}) {
+		t.Error("metadata-only rewrite: fired, want suppressed")
+	}
+	if !pred.Update(event.UpdateEvent{ObjectOld: sec("1", "v1"), ObjectNew: sec("2", "v2")}) {
+		t.Error("data rotation: suppressed, want fired")
+	}
+	if !pred.Create(event.CreateEvent{Object: sec("1", "v1")}) || !pred.Delete(event.DeleteEvent{Object: sec("1", "v1")}) {
+		t.Error("create/delete: suppressed, want fired")
 	}
 }

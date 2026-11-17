@@ -68,8 +68,12 @@ func (c *Client) DeleteGuardrail(ctx context.Context, guardrailID string) error 
 // Use ListGuardrailByName for the operator's per-name resolution path; this
 // raw helper is exposed for tests and for callers that need the full set
 // (e.g. PoolSize sibling counting).
+//
+// Served through the read cache: one guardrail reconcile reads the list up
+// to three times (by name, by id, post-probe refresh), and a relist tick
+// reconciles every guardrail back to back.
 func (c *Client) ListGuardrails(ctx context.Context) (*GuardrailListResponse, error) {
-	raw, err := c.makeRequest(ctx, "GET", "/v2/guardrails/list", nil)
+	raw, err := c.getCached(ctx, "/v2/guardrails/list")
 	if err != nil {
 		return nil, err
 	}

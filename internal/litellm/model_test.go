@@ -359,8 +359,8 @@ func TestGetModelInfoByName_404ReturnsNilNil(t *testing.T) {
 // order, and that rows for OTHER names are skipped.
 func TestGetModelIDsByName_ReturnsAllDuplicates(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("model_name") != testModelName {
-			t.Errorf("expected model_name=my-model, got %q", r.URL.Query().Get("model_name"))
+		if r.URL.RawQuery != "" {
+			t.Errorf("expected unfiltered GET /model/info, got query %q", r.URL.RawQuery)
 		}
 		w.WriteHeader(200)
 		// Three rows for "my-model" interleaved with an "other-model" row;

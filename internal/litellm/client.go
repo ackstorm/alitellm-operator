@@ -31,6 +31,9 @@ type Client struct {
 	// vanish-probe hot paths. Nil → caching disabled (every CachedListXxx
 	// call falls through to the bare LIST). See list_cache.go for details.
 	listCache *listCacheStore
+	// readCache memoizes catalog GETs for a few seconds. Nil → disabled.
+	// See read_cache.go.
+	readCache *readCache
 }
 
 // ClientOption configures optional Client behavior. Apply at construction
@@ -110,6 +113,9 @@ func NewClient(endpoint, masterKey string, log logr.Logger, opts ...ClientOption
 //
 // On 5xx / network: returns nil with a transient fmt.Errorf.
 func (c *Client) makeRequest(ctx context.Context, method, path string, body any) ([]byte, error) {
+	if method != http.MethodGet {
+		defer c.dropReadCache() // any write may change what a cached GET saw.
+	}
 	var reqBody io.Reader
 	if body != nil {
 		buf, err := json.Marshal(body)

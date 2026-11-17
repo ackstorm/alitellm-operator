@@ -144,6 +144,10 @@ func (c *Client) GetModelInfoByName(ctx context.Context, name string) (*ModelInf
 // self-perpetuating (observed: 1718 rows for one model over 9 days). See
 // vanish_probe + model_controller Step 7b.
 //
+// Reads the UNFILTERED GET /model/info through the read cache and filters
+// in memory: a relist burst reads every model's ids within seconds, so one
+// shared full list (~1 MB at ~200 rows) replaces one per-name GET per CR.
+//
 // Order follows LiteLLM's response and is NOT guaranteed stable. Empty ids
 // are skipped (defensive — a row with no model_info.id is not addressable
 // for delete/probe). Error handling mirrors GetModelInfoByName exactly:
@@ -153,8 +157,7 @@ func (c *Client) GetModelInfoByName(ctx context.Context, name string) (*ModelInf
 //
 // §9.1: only the name and status code are logged — no response body content.
 func (c *Client) GetModelIDsByName(ctx context.Context, name string) ([]string, error) {
-	path := "/model/info?model_name=" + url.QueryEscape(name)
-	raw, err := c.makeRequest(ctx, "GET", path, nil)
+	raw, err := c.getCached(ctx, "/model/info")
 	if err != nil {
 		// 401 — propagate the typed error for the §7.7 fast-path.
 		var auth401 *Auth401Error
@@ -170,7 +173,7 @@ func (c *Client) GetModelIDsByName(ctx context.Context, name string) ([]string, 
 	}
 	var list ModelListResponse
 	if err := json.Unmarshal(raw, &list); err != nil {
-		return nil, fmt.Errorf("litellm: decode GET /model/info?model_name: %w", err)
+		return nil, fmt.Errorf("litellm: decode GET /model/info: %w", err)
 	}
 	// Collect ALL exact-name matches (per OWN-01 per-name resolution),
 	// skipping rows with an empty id. nil result on no matches → "not found".

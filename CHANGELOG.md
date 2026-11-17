@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **~90% fewer LiteLLM reads.** Measured in prod at 165 models: ~2,700 req/h,
+  91% of it `GET /model/info?model_name=`. Two causes, two fixes:
+  - Secret watches now ignore metadata-only updates (`secretDataChanged`).
+    External Secrets rewrote one shared token Secret every ~2 min with
+    unchanged data, re-reconciling all 62 Models that referenced it.
+  - The model vanish-probe reads the unfiltered `GET /model/info` and filters
+    by name in memory, and `GET /model/info` + `GET /v2/guardrails/list` go
+    through a 5s per-Client read cache that any write drops
+    (`internal/litellm/read_cache.go`). A relist burst now costs a handful of
+    list reads instead of one GET per CR. Out-of-band drift is seen up to 5s
+    later.
 - **FinOps "Spend by model / by team" panels show spend in the last hour.**
   They took `rate()` over `$__rate_interval`, so a burst of a few expensive
   calls read as an hourly spend that never happened ($71/h shown where the
