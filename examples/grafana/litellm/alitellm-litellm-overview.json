@@ -12,7 +12,7 @@
     "from": "now-6h",
     "to": "now"
   },
-  "refresh": "30s",
+  "refresh": "",
   "timezone": "browser",
   "templating": {
     "list": [
