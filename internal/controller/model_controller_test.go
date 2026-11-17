@@ -3051,7 +3051,7 @@ func TestModel_UnusedSecretRef_EventEmitted(t *testing.T) {
 		} else {
 			// Log all observed events for diagnostics.
 			events := listModelEvents(ctx, t, modelName)
-			var evDescs []string
+			evDescs := make([]string, 0, len(events))
 			for _, ev := range events {
 				evDescs = append(evDescs, fmt.Sprintf("{Type:%q Reason:%q Message:%q}", ev.Type, ev.Reason, ev.Message))
 			}
@@ -3146,7 +3146,7 @@ func TestModel_ProjectionOverride_EventEmitted(t *testing.T) {
 		} else {
 			// Log all observed events for diagnostics.
 			events := listModelEvents(ctx, t, modelName)
-			var evDescs []string
+			evDescs := make([]string, 0, len(events))
 			for _, ev := range events {
 				evDescs = append(evDescs, fmt.Sprintf("{Type:%q Reason:%q Message:%q}", ev.Type, ev.Reason, ev.Message))
 			}
