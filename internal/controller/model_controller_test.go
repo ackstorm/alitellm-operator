@@ -29,6 +29,7 @@ import (
 	litellmv1alpha1 "github.com/ackstorm/alitellm-operator/api/litellm/v1alpha1"
 	"github.com/ackstorm/alitellm-operator/internal/connection"
 	"github.com/ackstorm/alitellm-operator/internal/controller/deletionpolicy"
+	"github.com/ackstorm/alitellm-operator/internal/litellm"
 	"github.com/ackstorm/alitellm-operator/internal/litellm/mock"
 	"github.com/ackstorm/alitellm-operator/internal/metrics"
 )
@@ -1859,6 +1860,73 @@ func TestModel_DriftCounter_FirstReconcile_NoIncrement(t *testing.T) {
 		t.Errorf("OWN-04 violation: update_drifted incremented on first reconcile; delta=%.0f", deltaUD)
 	}
 	t.Logf("OWN-04 AC-DC2: first-reconcile NO metric increment — create_missing delta=%.0f update_drifted delta=%.0f (PASS)", deltaCM, deltaUD)
+}
+
+// POST /model/update never writes the model_info blob, so a row adopted by
+// name whose blob lacks the rendered values is replaced, not updated.
+func TestModel_Adoption_StaleModelInfo_Recreates(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetModels()
+	ensureNoModel(t, ctx, "adopt-stale-info")
+	resetConnCacheSnapshot()
+
+	mockServer.AddHandManagedModel("adopt-stale-info", "pre-existing-id-002")
+
+	ensureNoConnectionDefault(t, ctx)
+	connCR := connDefaultCR()
+	if err := k8sClient.Create(ctx, connCR); err != nil {
+		t.Fatalf("create LiteLLMConnection: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = k8sClient.Delete(context.Background(), connCR, &client.DeleteOptions{})
+		ensureNoModel(t, context.Background(), "adopt-stale-info")
+	})
+	if snap := pollSnapshotReason(30*time.Second, reasonSynced); snap.Reason != reasonSynced {
+		t.Fatalf("LiteLLMConnection not Synced within 30s")
+	}
+
+	if err := k8sClient.Create(ctx, modelSampleCR("adopt-stale-info")); err != nil {
+		t.Fatalf("create Model: %v", err)
+	}
+	m := pollModelCondition(t, ctx, "adopt-stale-info", reasonSynced, 30*time.Second)
+
+	id := m.Status.LastRendered.ModelID
+	if id == "" || id == "pre-existing-id-002" {
+		t.Fatalf("modelID = %q, want a fresh row: the adopted row never got the rendered model_info", id)
+	}
+	if got := mockServer.GetModelID("adopt-stale-info"); got != id {
+		t.Errorf("LiteLLM row id = %q, status tracks %q", got, id)
+	}
+	if got := mockServer.LastModelInfoBody("adopt-stale-info")["access_groups"]; got == nil {
+		t.Errorf("recreated row carries no access_groups; model_info = %v", mockServer.LastModelInfoBody("adopt-stale-info"))
+	}
+}
+
+func TestModelInfoApplied(t *testing.T) {
+	row := litellm.ModelInfo{
+		ID:      "x",
+		Tier:    "paid",
+		Extra:   map[string]any{"access_groups": []any{"default"}, "supports_vision": true},
+		DBModel: true,
+	}
+	cases := []struct {
+		name string
+		info map[string]any
+		want bool
+	}{
+		{"empty render", nil, true},
+		{"subset, typed and extra keys", map[string]any{"access_groups": []string{"default"}, "tier": "paid"}, true},
+		{"value differs", map[string]any{"access_groups": []string{"other"}}, false},
+		{"key missing on the row", map[string]any{"mode": "chat"}, false},
+	}
+	for _, tc := range cases {
+		if got := modelInfoApplied(row, tc.info); got != tc.want {
+			t.Errorf("%s: modelInfoApplied = %v, want %v", tc.name, got, tc.want)
+		}
+	}
 }
 
 // TestModel_DriftCounter_UpdateDrifted — Task 1 Test 2.

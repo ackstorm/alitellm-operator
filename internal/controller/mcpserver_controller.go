@@ -245,9 +245,15 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 					// via ListMCPServers + in-memory filter on metadata.name.
 					// FIX2.txt H-9: probe sanitized first, then original
 					// metadata.name (orphan-adoption fallback).
-					if resolved := r.resolveServerIDByName(ctx, snap.Client, sanitized, mcp.Name, logger); resolved != "" {
-						serverID = resolved
+					resolved, rerr := r.resolveServerIDByName(ctx, snap.Client, sanitized, mcp.Name, logger)
+					if rerr != nil {
+						// A failed lookup says nothing about the entry.
+						logger.Info("deletion: name-resolve failed; delete not acknowledged", "error", rerr.Error())
+						if gerr := onAckMissing("name-resolve failed", is4xxStatus(rerr)); gerr != nil {
+							return ctrl.Result{}, gerr
+						}
 					}
+					serverID = resolved
 				}
 				if serverID != "" {
 					if err := snap.Client.DeleteMCPServer(ctx, serverID); err != nil {
@@ -625,7 +631,7 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// the v0.1.1 → v0.1.3 upgrade-orphan scenario without requiring a
 	// kubectl probe-and-edit dance.
 	if mcp.Status.LastRendered.ServerID == "" {
-		if adopted := r.resolveServerIDByName(ctx, snap.Client, sanitizedName, mcp.Name, logger); adopted != "" {
+		if adopted, _ := r.resolveServerIDByName(ctx, snap.Client, sanitizedName, mcp.Name, logger); adopted != "" {
 			mcp.Status.LastRendered.ServerID = adopted
 		}
 	}
@@ -803,27 +809,20 @@ func (r *MCPServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 //     probe before POSTing so an orphaned LiteLLM record gets adopted as
 //     an UPDATE instead of triggering a 4xx duplicate-name CREATE.
 //
-// Returns "" if neither name matches or the LIST call fails non-fatally.
-// The caller decides what to do with "" (finalizer drains anyway; the
-// CREATE branch proceeds with POST).
-func (r *MCPServerReconciler) resolveServerIDByName(ctx context.Context, llm *litellm.Client, sanitizedName, originalName string, logger logr.Logger) string {
+// "" with a nil error means neither name is listed (finalizer drains; the
+// CREATE branch proceeds with POST). An error means the lookup failed and
+// says nothing about the server.
+func (r *MCPServerReconciler) resolveServerIDByName(ctx context.Context, llm *litellm.Client, sanitizedName, originalName string, logger logr.Logger) (string, error) {
 	entries, err := llm.ListMCPServers(ctx)
 	if err != nil {
 		if errors.Is(err, litellm.ErrNotFound) {
-			return ""
+			return "", nil
 		}
-		var auth401 *litellm.Auth401Error
-		if errors.As(err, &auth401) {
-			r.Cache.InvalidateOn401()
-			logger.Info("name-resolve: 401 fast-path", "path", auth401.Path)
-			return ""
-		}
-		logger.V(1).Info("name-resolve: ListMCPServers failed; treating as absent", "error", err)
-		return ""
+		return "", err
 	}
 	for _, e := range entries {
 		if e.ServerName == sanitizedName {
-			return e.ServerID
+			return e.ServerID, nil
 		}
 	}
 	if originalName != "" && originalName != sanitizedName {
@@ -831,11 +830,11 @@ func (r *MCPServerReconciler) resolveServerIDByName(ctx context.Context, llm *li
 			if e.ServerName == originalName {
 				logger.Info("name-resolve: adopted orphan under pre-sanitize name (FIX2.txt H-9)",
 					"sanitizedName", sanitizedName, "originalName", originalName, "serverID", e.ServerID)
-				return e.ServerID
+				return e.ServerID, nil
 			}
 		}
 	}
-	return ""
+	return "", nil
 }
 
 // classifyMutationError handles §7.7 error classification for LiteLLM

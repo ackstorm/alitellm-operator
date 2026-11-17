@@ -134,9 +134,15 @@ func (r *MCPToolsetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				if toolsetID == "" {
 					// Stale-status fallback: re-resolve by name via
 					// GET /v1/mcp/toolset + in-memory filter.
-					if resolved := r.resolveToolsetIDByName(ctx, snap.Client, ts.Name, logger); resolved != "" {
-						toolsetID = resolved
+					resolved, rerr := r.resolveToolsetIDByName(ctx, snap.Client, ts.Name)
+					if rerr != nil {
+						// A failed lookup says nothing about the entry.
+						logger.Info("deletion: name-resolve failed; delete not acknowledged", "error", rerr.Error())
+						if gerr := onAckMissing("name-resolve failed", is4xxStatus(rerr)); gerr != nil {
+							return ctrl.Result{}, gerr
+						}
 					}
+					toolsetID = resolved
 				}
 				if toolsetID != "" {
 					if err := snap.Client.DeleteMCPToolset(ctx, toolsetID); err != nil {
@@ -172,7 +178,8 @@ func (r *MCPToolsetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 							// entry is absent, so the Delete goal is already met —
 							// drain regardless of deletionPolicy, mirroring the
 							// confirmed-absent rule the model controller follows.
-							if resolved := r.resolveToolsetIDByName(ctx, snap.Client, ts.Name, logger); resolved == "" {
+							// A name-resolve that fails proves nothing.
+							if resolved, rerr := r.resolveToolsetIDByName(ctx, snap.Client, ts.Name); rerr == nil && resolved == "" {
 								metrics.DeletionBlocked.Forget(mcpToolsetKind, ts.Namespace, ts.Name)
 								logger.Info("deletion: DELETE failed but the toolset is confirmed absent; draining finalizer",
 									"toolsetID", toolsetID, "error", err.Error())
@@ -375,7 +382,7 @@ func (r *MCPToolsetReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			// this name already exists (operator restart, or an out-of-band
 			// create). Adopt it by name and push our rendered state onto it
 			// rather than parking the CR forever.
-			adopted := r.resolveToolsetIDByName(ctx, snap.Client, ts.Name, logger)
+			adopted, _ := r.resolveToolsetIDByName(ctx, snap.Client, ts.Name)
 			if adopted == "" {
 				// 409 but the name is not listed — cannot adopt; surface the
 				// original rejection.
@@ -440,29 +447,22 @@ func updateRequestFor(toolsetID string, body *litellm.MCPToolsetRequest) *litell
 // resolveToolsetIDByName re-resolves a toolset's LiteLLM toolset_id from a
 // metadata.name lookup via ListMCPToolsets + in-memory filter. Used by the
 // finalizer path when status.lastRendered.ToolsetID is empty, and by the
-// CREATE arm's 409 adoption branch. Returns "" if the entry is absent or the
-// LIST call fails non-fatally.
-func (r *MCPToolsetReconciler) resolveToolsetIDByName(ctx context.Context, llm *litellm.Client, name string, logger logr.Logger) string {
+// CREATE arm's 409 adoption branch. "" with a nil error means the toolset is
+// not listed; an error means the lookup failed and says nothing about it.
+func (r *MCPToolsetReconciler) resolveToolsetIDByName(ctx context.Context, llm *litellm.Client, name string) (string, error) {
 	entries, err := llm.ListMCPToolsets(ctx)
 	if err != nil {
 		if errors.Is(err, litellm.ErrNotFound) {
-			return ""
+			return "", nil
 		}
-		var auth401 *litellm.Auth401Error
-		if errors.As(err, &auth401) {
-			r.Cache.InvalidateOn401()
-			logger.Info("name-resolve: 401 fast-path", "path", auth401.Path)
-			return ""
-		}
-		logger.V(1).Info("name-resolve: ListMCPToolsets failed; treating as absent", "error", err)
-		return ""
+		return "", err
 	}
 	for _, e := range entries {
 		if e.ToolsetName == name {
-			return e.ToolsetID
+			return e.ToolsetID, nil
 		}
 	}
-	return ""
+	return "", nil
 }
 
 // classifyMutationError handles §7.7 error classification for LiteLLM toolset

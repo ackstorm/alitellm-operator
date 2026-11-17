@@ -84,7 +84,7 @@ func TestStormGateResetsOnRebuild(t *testing.T) {
 		t.Fatal("expected first event")
 	}
 	// Rebuild resets the storm gate (D-10).
-	c.Rebuild(ConnectionSnapshot{Ready: true, Reason: "Synced"})
+	c.Rebuild(ConnectionSnapshot{Reason: "BadMasterKey"})
 	// New InvalidateOn401 should send a new event.
 	c.InvalidateOn401()
 	select {
@@ -492,5 +492,37 @@ func TestInvalidateOn401_RecoveryReEmits(t *testing.T) {
 		// expected: recovery is a real false→true edge and re-enqueues dependents
 	case <-time.After(1 * time.Second):
 		t.Fatal("InvalidateOn401 recovery did not re-emit: lastReady was not reset")
+	}
+}
+
+// A probe that passes right after a 401 says the key is valid, so the 401 is
+// a permission problem: invalidating again would loop probe → rebuilt fan-in
+// → 401. Reproduced on LiteLLM 1.106.0 with a non-admin key (/key/health 200,
+// GET /get/config/callbacks 401): 465 probes in 30s.
+func TestInvalidateOn401_ProbeContradicts_NoSecondInvalidation(t *testing.T) {
+	c := NewCache()
+	ready := ConnectionSnapshot{Ready: true, Reason: "Synced"}
+	c.Rebuild(ready)
+
+	c.InvalidateOn401()
+	<-c.Channel()
+	c.Rebuild(ready) // the probe passed
+
+	c.InvalidateOn401()
+	select {
+	case <-c.Channel():
+		t.Fatal("second 401 after a passing probe enqueued another probe")
+	default:
+	}
+	if !c.Snapshot().Ready {
+		t.Fatal("second 401 after a passing probe flipped the snapshot to not Ready")
+	}
+
+	c.Rebuild(ready) // an ordinary probe tick re-arms the fast path
+	c.InvalidateOn401()
+	select {
+	case <-c.Channel():
+	default:
+		t.Fatal("401 after an ordinary probe did not enqueue a probe")
 	}
 }

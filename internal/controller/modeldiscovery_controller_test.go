@@ -19,6 +19,7 @@ import (
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -2362,5 +2363,124 @@ func TestModelDiscovery_DedupeAfterFilter(t *testing.T) {
 	}
 	if got, want := params["model"], "openai/acme:model-x"; got != want {
 		t.Errorf("params.model = %v; want %s", got, want)
+	}
+}
+
+// A child whose apply fails stays claimed by its Discovery: it must survive
+// the vanish pass of the same reconcile.
+func TestModelDiscovery_FailedApply_KeepsExistingChild(t *testing.T) {
+	ctx := context.Background()
+	const mdName = "failed-apply-anthropic"
+	const childName = "anthropic.claude-3-haiku-20240307"
+
+	ensureNoModelDiscovery(t, ctx, mdName)
+	t.Cleanup(func() {
+		modelDiscoveryClient.fail.Store(nil)
+		ensureNoModelDiscovery(t, context.Background(), mdName)
+	})
+
+	fake := newFakeProvider("anthropic", []providers.Candidate{
+		{ID: "claude-3-haiku-20240307", DisplayName: "Claude 3 Haiku"},
+	})
+	providers.RegisterTestProvider(t, "anthropic", fake)
+	ensureCredentialSecret(t, ctx, mdName+"-creds", "anthropic")
+
+	if err := k8sClient.Create(ctx, modeldiscoverySampleCR(mdName, "anthropic")); err != nil {
+		t.Fatalf("create ModelDiscovery: %v", err)
+	}
+	if got := pollChildrenCount(t, ctx, mdName, 1, 30*time.Second); len(got) != 1 {
+		t.Fatalf("pre-failure child count: got %d, want 1", len(got))
+	}
+
+	key := client.ObjectKey{Namespace: WatchNamespace, Name: childName}
+	modelDiscoveryClient.fail.Store(&key)
+	mdKey := client.ObjectKey{Name: mdName, Namespace: WatchNamespace}
+	var latest litellmv1alpha1.LiteLLMModelDiscovery
+	if err := updateWithRetry(ctx, mdKey, &latest, func(md *litellmv1alpha1.LiteLLMModelDiscovery) error {
+		if md.Annotations == nil {
+			md.Annotations = map[string]string{}
+		}
+		md.Annotations["test.litellm.ackstorm.ai/trigger"] = "1"
+		return nil
+	}); err != nil {
+		t.Fatalf("annotate to trigger reconcile: %v", err)
+	}
+	waitFor(t, func() bool {
+		var md litellmv1alpha1.LiteLLMModelDiscovery
+		if err := k8sClient.Get(ctx, mdKey, &md); err != nil {
+			return false
+		}
+		for _, f := range md.Status.FailedCandidates {
+			if f.Name == childName {
+				return true
+			}
+		}
+		return false
+	}, "apply failure of "+childName+" never reported in failedCandidates")
+
+	var child litellmv1alpha1.LiteLLMModel
+	if err := k8sClient.Get(ctx, key, &child); err != nil {
+		t.Fatalf("child %s gone after its apply failed: %v", childName, err)
+	}
+	if !child.DeletionTimestamp.IsZero() {
+		t.Fatalf("child %s is being deleted after its apply failed", childName)
+	}
+}
+
+// An apply that races into AlreadyExists on a child this Discovery owns is
+// retried on the next reconcile; the child must survive the vanish pass.
+func TestModelDiscovery_AlreadyExistsRetry_KeepsExistingChild(t *testing.T) {
+	ctx := context.Background()
+	const mdName = "retry-keep-anthropic"
+	const childName = "anthropic.claude-3-haiku-20240307"
+
+	ensureNoModelDiscovery(t, ctx, mdName)
+	t.Cleanup(func() {
+		modelDiscoveryClient.mu.Store(nil)
+		modelDiscoveryClient.tripped.Store(false)
+		ensureNoModelDiscovery(t, context.Background(), mdName)
+	})
+
+	fake := newFakeProvider("anthropic", []providers.Candidate{
+		{ID: "claude-3-haiku-20240307", DisplayName: "Claude 3 Haiku"},
+	})
+	providers.RegisterTestProvider(t, "anthropic", fake)
+	ensureCredentialSecret(t, ctx, mdName+"-creds", "anthropic")
+
+	if err := k8sClient.Create(ctx, modeldiscoverySampleCR(mdName, "anthropic")); err != nil {
+		t.Fatalf("create ModelDiscovery: %v", err)
+	}
+	before := pollChildrenCount(t, ctx, mdName, 1, 30*time.Second)
+	if len(before) != 1 {
+		t.Fatalf("pre-race child count: got %d, want 1", len(before))
+	}
+
+	key := client.ObjectKey{Namespace: WatchNamespace, Name: childName}
+	modelDiscoveryClient.gvr = schema.GroupResource{Group: "litellm.ackstorm.ai", Resource: "litellmmodels"}
+	modelDiscoveryClient.tripped.Store(false)
+	modelDiscoveryClient.mu.Store(&key)
+	mdKey := client.ObjectKey{Name: mdName, Namespace: WatchNamespace}
+	var latest litellmv1alpha1.LiteLLMModelDiscovery
+	if err := updateWithRetry(ctx, mdKey, &latest, func(md *litellmv1alpha1.LiteLLMModelDiscovery) error {
+		if md.Annotations == nil {
+			md.Annotations = map[string]string{}
+		}
+		md.Annotations["test.litellm.ackstorm.ai/trigger"] = "1"
+		return nil
+	}); err != nil {
+		t.Fatalf("annotate to trigger reconcile: %v", err)
+	}
+	waitFor(t, modelDiscoveryClient.tripped.Load, "interceptor never tripped: no apply reached "+childName)
+
+	// The vanish pass runs in the reconcile that tripped; give it time to
+	// land. A deleted child is re-created at once, under a new UID.
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		var child litellmv1alpha1.LiteLLMModel
+		if err := k8sClient.Get(ctx, key, &child); err != nil {
+			t.Fatalf("child %s gone after an AlreadyExists retry: %v", childName, err)
+		}
+		if child.UID != before[0].UID || !child.DeletionTimestamp.IsZero() {
+			t.Fatalf("child %s was deleted after an AlreadyExists retry", childName)
+		}
 	}
 }

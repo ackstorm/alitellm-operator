@@ -585,6 +585,35 @@ and invoke the underscore target directly, e.g.
 `docker run ... litellm-devtools:latest make _test-envtest-pkg PKG=./internal/controller/ FOCUS=...`.
 Seen 2026-10-05 on the shared dev host.
 
+### ❌ Vanish-deleting a Discovery child whose write failed
+```go
+desiredSet := generated + skipped + pendingRetries   // `failed` missing
+// → an owned child whose apply errored this round is Deleted in the same pass
+```
+✅ Both Discovery reconcilers fold `failed` into `desiredSet`, and the
+AlreadyExists `retryable` branch registers `pendingRetries`. A child that could
+not be written keeps its last-good object; only a candidate the provider no
+longer lists is vanish-deleted.
+WHY IT FAILED: the child's own finalizer then issued `POST /model/delete`, so
+one apiserver error or one CRD-invalid render removed a live model from
+LiteLLM. Guarded by `TestModelDiscovery_FailedApply_KeepsExistingChild`,
+`TestModelDiscovery_AlreadyExistsRetry_KeepsExistingChild` and
+`TestMCPServerDiscoveryReconciler_FailedApply_KeepsExistingChild`. A deleted
+child is re-created within milliseconds under a NEW UID, so a test that only
+checks "the child exists" cannot see the delete — compare the UID.
+
+### ❌ Adding a mock Mode without listing it in `MockServer.SetMode`
+```go
+mockServer.SetMode(mock.ModeDelete422)   // not in the switch → stored as ModeHappy
+```
+✅ Add the constant to the `case` list in `SetMode` (`internal/litellm/mock/mock.go`).
+WHY IT FAILS: `SetMode` falls back to `ModeHappy` for any value it does not
+list, with no error. The three `*_DeletionPath_Deterministic4xx_OrphanDrains`
+tests ran in happy mode this way: they passed because the delete succeeded,
+not because a 422 drained under Orphan. A test for a failure mode must show
+the failing call in `mockServer.Recorded()` or assert an outcome only the
+failure can produce.
+
 ### ❌ Kubectl from host against the kind cluster
 ```bash
 kubectl get pods -n default
@@ -646,8 +675,11 @@ spec:
 ```
 ✅ `providers.ValidateBaseURL` (M-SEC1) is a **denylist**, not full SSRF
 prevention. It rejects only cloud-metadata (`169.254.169.254`,
-`fd00:ec2::254`), loopback, and link-local hosts plus structural problems
-(non-http(s) scheme, userinfo, query, fragment). Private RFC1918 and `*.svc`
+`fd00:ec2::254`), loopback (IP literals and the `localhost` /
+`*.localhost` names), and link-local hosts plus structural problems
+(non-http(s) scheme, userinfo, query, fragment). The discovery HTTP client
+applies the same host check to every redirect (`providers.CheckRedirect`,
+wired in `cmd/main.go`). Private RFC1918 and `*.svc`
 hosts remain reachable BY DESIGN — KubeAI points `baseUrl` at in-cluster
 service DNS, so a blanket internal-deny would break the supported use case.
 RESIDUAL RISK: a namespaced user can still aim the operator's HTTP client at
@@ -787,7 +819,9 @@ exists. A definitive 404 / empty `data[]` (or 404 on `POST /model/delete`,
 `litellm.IsNotFound`) is positive proof the entry is gone, so the Delete
 goal is already met. The sibling controllers (a2aagent/mcpserver) already
 drain unconditionally on name-resolve-empty; the model controller now
-matches. Break-glass for an already-stuck CR (no operator redeploy):
+matches. EMPTY only: a name-resolve that FAILS (5xx, transport, 401) proves
+nothing, so `resolve*IDByName` return `(id, err)` and the deletion paths route
+an error through `onAckMissing` (finalizer kept). Break-glass for an already-stuck CR (no operator redeploy):
 `kubectl patch <kind> <name> --type=merge -p '{"metadata":{"finalizers":[]}}'`
 (the `deletion-policy-override=Orphan` annotation no longer drains while
 LiteLLM is unreachable — see the Orphan-outage entry below).
@@ -805,7 +839,8 @@ missing ack, outages included.
 ✅ `newAckMissingFn` (`shared_helpers.go`) takes `(reason, permanent)`. Orphan
 drains only on a PERMANENT cause: connection `Absent` (`ackUnavailable(snap)` —
 LiteLLMConnection being deleted, namespace teardown) or a deterministic non-404
-4xx. Every other not-usable reason (`Unreachable`, `Connecting`, `""`,
+4xx (`is4xxStatus`; 408/425/429 ask for a retry and count as transient, on the
+mutation path too). Every other not-usable reason (`Unreachable`, `Connecting`, `""`,
 `BadMasterKey`, `SecretNotFound`, `InvalidEndpoint`, `InsecureEndpoint`) and
 every 401 KEEPS the finalizer, records `deletion_blocked`, emits
 `LiteLLMDeleteDeferred`, and returns an error (backoff ≤30s; no HTTP call while
@@ -821,6 +856,27 @@ looped DELETE→401→invalidate→probe re-Sync→rebuilt fan-in (no backoff)�
 ~600/s (seen in envtest `TestTeamReconciler_AC_T3_Delete401AntiStorm`, which also
 polluted `TestWatchNamespaceEnforcement`'s read count). Plain error return =
 per-item backoff; the probe owns key health.
+
+### ❌ Invalidating the connection cache on every 401
+```
+# operator key = a non-admin virtual key, LiteLLM 1.106.0
+POST /key/health            200      ← probe passes
+GET  /get/config/callbacks  401      ← alias reconciler → InvalidateOn401
+# → probe → Rebuild(Ready) → rebuilt fan-in → 401 → ...  465 probes in 30s
+```
+✅ `Cache.InvalidateOn401` is a no-op while `contradicted` is set
+(`internal/connection/cache.go`): a Ready `Rebuild` that answers an
+invalidation proves the key is valid, so the 401 is a permission problem and
+another probe cannot change it. Any other `Rebuild` (the 5m probe tick, a
+Secret or spec change, a failed probe) clears the flag. The first 401 still
+probes and fans out, so a transient 401 recovers at once. Same key, fixed
+operator: 2 probes in 30s.
+WHY IT FAILED: the rebuilt fan-in re-enqueues every CR with no backoff, and
+LiteLLM answers 401 (not 403) on several admin-only routes for a key that
+`/key/health` accepts: `/get/config/callbacks`, `/v2/team/list`, `/team/new`,
+`/v1/access_group`. TRADE-OFF: after such a cycle a genuine key rotation is
+noticed by the next probe tick (≤5m) instead of at the first 401. Guarded by
+`TestInvalidateOn401_ProbeContradicts_NoSecondInvalidation`.
 
 ### ❌ Gating a LiteLLM mutation on `snap.Ready` alone
 ```go
@@ -1048,7 +1104,10 @@ Models UI row:  alitellm-operator/0.7.8   Unknown date
 ✅ The operator must stamp `model_info.created_at` / `model_info.updated_at`
 itself on CREATE — same mechanism as the `created_by` stamp (FIX2 M-8).
 `model_controller.go` sets all four on the `POST /model/new` body
-(RFC3339 UTC). Adopted/out-of-band rows cannot be back-stamped.
+(RFC3339 UTC). A row adopted by name on the CREATE arm is replaced
+(`POST /model/delete` + `POST /model/new`) when it lacks a rendered
+`model_info` value (`modelInfoApplied`), so it gets the stamps too; a row that
+already carries them is adopted with `POST /model/update` and keeps its own.
 WHY IT FAILS: in OSS (non-premium) LiteLLM, `proxy_server.get_model_info_with_id`
 copies the DB `created_at`/`updated_at` columns into `model_info` ONLY when
 `premium_user is True` (Enterprise). Non-premium UIs read the date straight
@@ -1082,7 +1141,13 @@ silently (treated as unchanged) to avoid a mass recreate of every model on
 operator upgrade. CONSEQUENCE: models whose blob is ALREADY stale in LiteLLM
 (e.g. `access_groups` added before this fix shipped) are NOT auto-healed —
 delete the entry in LiteLLM once and the operator recreates it fresh via
-`POST /model/new`. Forward changes are handled correctly.
+`POST /model/new`. Forward changes are handled correctly. Adoption by name
+(CREATE arm, empty `modelID`) compares the row instead: `modelInfoApplied`
+checks every rendered key against the row's `model_info`, ignoring keys
+LiteLLM adds, and a mismatch replaces the row. A stale-cache re-reconcile of a
+row the operator just created matches and stays a plain update. The
+vanish-probe re-target (tracked id gone, another row listed) clears the id and
+lands on the same arm, so the same check applies to it.
 
 ### ❌ Model created with no access group → unreachable by group-scoped keys
 Symptom: a `LiteLLMModel` (or Discovery-generated child) with no
@@ -1291,8 +1356,9 @@ strands the CR PERMANENTLY (nothing but a manual `kubectl patch` clears it).
 `mcptoolset_controller.go` therefore re-resolves by name in the 5xx branch: an
 empty name-resolve is positive proof the entry is absent, so the Delete goal is
 met and the finalizer drains regardless of `deletionPolicy` — the same
-confirmed-absent rule the model controller follows. A still-listed entry keeps
-the transient backoff. Break-glass for an already-stuck CR:
+confirmed-absent rule the model controller follows. A still-listed entry, or a
+name-resolve that itself fails, keeps the transient backoff. Break-glass for an
+already-stuck CR:
 ```bash
 kubectl patch litellmmcptoolset <name> --type=merge -p '{"metadata":{"finalizers":[]}}'
 ```

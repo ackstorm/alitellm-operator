@@ -160,3 +160,56 @@ func TestModelAlias_Envtest_NameCharset_AdmissionValidation(t *testing.T) {
 		}
 	}
 }
+
+// A reconcile that finds LiteLLM's alias map already equal to the desired
+// one issues no POST /config/update.
+func TestModelAlias_Envtest_SteadyState_NoConfigUpdate(t *testing.T) {
+	ctx := context.Background()
+
+	ensureNoConnectionDefault(t, ctx)
+	connCR := connDefaultCR()
+	if err := k8sClient.Create(ctx, connCR); err != nil {
+		t.Fatalf("create LiteLLMConnection: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = k8sClient.Delete(context.Background(), connCR, &client.DeleteOptions{})
+		time.Sleep(50 * time.Millisecond)
+	})
+	if snap := pollSnapshotReason(30*time.Second, reasonSynced); snap.Reason != reasonSynced {
+		t.Fatalf("LiteLLMConnection not Synced within 30s; got reason=%q", snap.Reason)
+	}
+
+	a := &litellmv1alpha1.LiteLLMModelAlias{
+		ObjectMeta: metav1.ObjectMeta{Name: "ack-steady", Namespace: WatchNamespace},
+		Spec: litellmv1alpha1.LiteLLMModelAliasSpec{
+			Aliases: []litellmv1alpha1.ModelAliasEntry{{Name: "ackstorm.steady", Value: "GEMINI.gemini-3-flash"}},
+		},
+	}
+	if err := k8sClient.Create(ctx, a); err != nil {
+		t.Fatalf("create LiteLLMModelAlias: %v", err)
+	}
+	t.Cleanup(func() { _ = k8sClient.Delete(context.Background(), a) })
+	waitFor(t, func() bool { return mockServer.ModelGroupAlias()["ackstorm.steady"] != "" },
+		"alias never written to LiteLLM")
+
+	posts := func() int64 { return mockServer.PathCallCount("/config/update") }
+	gets := func() int64 { return mockServer.PathCallCount("/get/config/callbacks") }
+	before := waitQuiet(t, posts, time.Second, 20*time.Second)
+	getsBefore := gets()
+
+	key := types.NamespacedName{Name: a.Name, Namespace: WatchNamespace}
+	var latest litellmv1alpha1.LiteLLMModelAlias
+	if err := updateWithRetry(ctx, key, &latest, func(a *litellmv1alpha1.LiteLLMModelAlias) error {
+		if a.Annotations == nil {
+			a.Annotations = map[string]string{}
+		}
+		a.Annotations["test.litellm.ackstorm.ai/trigger"] = "1"
+		return nil
+	}); err != nil {
+		t.Fatalf("annotate to trigger reconcile: %v", err)
+	}
+	waitFor(t, func() bool { return gets() > getsBefore }, "no alias reconcile after the touch")
+	if after := waitQuiet(t, posts, time.Second, 20*time.Second); after != before {
+		t.Fatalf("POST /config/update on an unchanged alias map: %d -> %d", before, after)
+	}
+}

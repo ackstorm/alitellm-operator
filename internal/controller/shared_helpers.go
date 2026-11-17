@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -45,9 +46,15 @@ func rejectedStatus(err error) int {
 // gate the 401 fast-path before reaching this helper (same contract as the
 // legacy is4xxError / 400-loop scanners, which never matched Auth401Error's
 // "litellm: 401 unauthorized on ." string either).
+//
+// 408, 425 and 429 ask the caller to retry, so they are transient like a 5xx.
 func is4xxStatus(err error) bool {
-	s := rejectedStatus(err)
-	return s >= 400 && s < 500
+	switch s := rejectedStatus(err); s {
+	case http.StatusRequestTimeout, http.StatusTooEarly, http.StatusTooManyRequests:
+		return false
+	default:
+		return s >= 400 && s < 500
+	}
 }
 
 // newAckMissingFn builds the deletion-path "ack-missing" handler shared by all

@@ -1168,12 +1168,12 @@ func (m *MockServer) SetLoggingCallbacksNull(v bool) {
 }
 
 // SetMode switches the mock's response mode. Valid values are ModeHappy,
-// Mode401, ModeTransient5xx, ModeSlow, Mode422, ModeNotFoundListTeams,
-// ModeNotFoundDeleteTeam, Mode401DeleteTeam. Unknown values fall back to
-// ModeHappy so a fat-fingered test doesn't silently hang.
+// Mode401, ModeTransient5xx, ModeSlow, Mode422, ModeDelete422,
+// ModeNotFoundListTeams, ModeNotFoundDeleteTeam, Mode401DeleteTeam. Unknown
+// values fall back to ModeHappy so a fat-fingered test doesn't silently hang.
 func (m *MockServer) SetMode(mode string) {
 	switch mode {
-	case ModeHappy, Mode401, ModeTransient5xx, ModeSlow, Mode422,
+	case ModeHappy, Mode401, ModeTransient5xx, ModeSlow, Mode422, ModeDelete422,
 		ModeNotFoundListTeams, ModeNotFoundDeleteTeam, Mode401DeleteTeam:
 		m.mode.Store(mode)
 	default:
@@ -1816,18 +1816,26 @@ func (m *MockServer) statefulBody(r *http.Request) []byte {
 			// dup id != the tracked id and (pre-fix) treats it as drift. The
 			// set-membership fix is order-independent, so this ordering is
 			// the adversarial case for the regression test.
+			// Every row carries the model_info last written under the name: a
+			// duplicate is a second POST /model/new of the same body.
+			row := func(id string) string {
+				info := map[string]any{}
+				for k, v := range m.lastModelInfo[modelName] {
+					info[k] = v
+				}
+				info["id"] = id
+				infoJSON, _ := json.Marshal(info)
+				return fmt.Sprintf(
+					`{"model_id":%q,"model_name":%q,"litellm_params":{},"model_info":%s}`,
+					id, modelName, infoJSON,
+				)
+			}
 			rows := make([]string, 0, 1+len(m.dupModelRows[modelName]))
 			for _, dupID := range m.dupModelRows[modelName] {
-				rows = append(rows, fmt.Sprintf(
-					`{"model_id":%q,"model_name":%q,"litellm_params":{},"model_info":{"id":%q}}`,
-					dupID, modelName, dupID,
-				))
+				rows = append(rows, row(dupID))
 			}
 			if e, ok := m.models[modelName]; ok {
-				rows = append(rows, fmt.Sprintf(
-					`{"model_id":%q,"model_name":%q,"litellm_params":{},"model_info":{"id":%q}}`,
-					e.ModelID, e.ModelName, e.ModelID,
-				))
+				rows = append(rows, row(e.ModelID))
 			}
 			return []byte(fmt.Sprintf(`{"data":[%s]}`, strings.Join(rows, ",")))
 		}

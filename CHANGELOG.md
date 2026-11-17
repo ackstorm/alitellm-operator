@@ -52,6 +52,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   echoes the team's models.
 
 ### Fixed
+- **An operator key that is valid but not admin no longer storms LiteLLM.**
+  LiteLLM answers 401 on admin-only routes for a key `/key/health` accepts;
+  each 401 invalidated the connection cache, the probe passed, and every CR
+  was re-enqueued at once (465 probes in 30s on LiteLLM 1.106.0). A 401 that a
+  passing probe has just contradicted no longer triggers another probe.
+- **Adopting a LiteLLM model row by name rewrites its `model_info`.** A row
+  that lacks a rendered value (`access_groups`, the operator stamps) is
+  deleted and created again, since `POST /model/update` never writes that
+  blob; the CR used to report `Synced` over a stale one.
+- **A Discovery no longer deletes a child whose write failed.** A
+  `LiteLLMModelDiscovery` / `LiteLLMMCPServerDiscovery` child whose apply
+  errored (apiserver failure, invalid render, AlreadyExists race) fell out of
+  the keep-set and was deleted in the same reconcile, removing the live entry
+  from LiteLLM. It now keeps its last-good object.
+- **A failed name lookup no longer counts as "entry absent" on delete.**
+  MCP toolsets, MCP servers, A2A agents and access groups dropped the finalizer
+  when the LiteLLM list call itself failed (5xx, network, 401), leaking the
+  row. The finalizer now stays until the lookup answers.
+- **Guardrail delete: a 4xx other than 404 no longer drops the finalizer under
+  `deletionPolicy: Delete`.**
+- **408, 425 and 429 from LiteLLM are retried with backoff** instead of being
+  treated as a permanent rejection (parked `LiteLLMRejected`, or an orphaned
+  row on delete).
+- **Docs: the operator owns the whole `model_group_alias` map.** Aliases set
+  outside a `LiteLLMModelAlias` CR are removed on the next reconcile.
+- **Team `default` gets its empty body back** when a `LiteLLMTeam/default` CR
+  is removed without the operator's re-apply (failed re-apply, finalizer
+  dropped by hand).
+- **Model aliases: no `POST /config/update` when the alias map is unchanged.**
+  Every reconcile used to rewrite all of `router_settings`.
+- **`LiteLLMModelDiscovery.spec.baseUrl` rejects `localhost` names**, and the
+  discovery client refuses redirects to loopback, link-local and cloud-metadata
+  hosts.
 - **e2e preloads the LiteLLM image with `crictl pull` inside the kind node.**
   `docker pull` + `kind load` failed with `content digest ... not found` on
   runners using Docker's containerd image store.

@@ -313,9 +313,15 @@ func (r *AccessGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				if groupID == "" {
 					// Stale-status fallback: re-resolve by name via
 					// GET /v1/access_group.
-					if resolved := r.resolveAccessGroupIDByName(ctx, snap.Client, ag.Name, logger); resolved != "" {
-						groupID = resolved
+					resolved, rerr := r.resolveAccessGroupIDByName(ctx, snap.Client, ag.Name)
+					if rerr != nil {
+						// A failed lookup says nothing about the entry.
+						logger.Info("deletion: name-resolve failed; delete not acknowledged", "error", rerr.Error())
+						if gerr := onAckMissing("name-resolve failed", is4xxStatus(rerr)); gerr != nil {
+							return ctrl.Result{}, gerr
+						}
 					}
+					groupID = resolved
 				}
 				if ag.Name == implicitDefaultAccessGroup {
 					// Fall back to the implicit EMPTY group: keep the row and its
@@ -589,7 +595,7 @@ func (r *AccessGroupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			// with this name already exists (operator restart, or an
 			// out-of-band create). Adopt it by name and push our rendered
 			// state onto it rather than parking the CR forever.
-			adopted := r.resolveAccessGroupIDByName(ctx, snap.Client, ag.Name, logger)
+			adopted, _ := r.resolveAccessGroupIDByName(ctx, snap.Client, ag.Name)
 			if adopted == "" {
 				// 409 but the name is not listed — cannot adopt; surface the
 				// original rejection.
@@ -661,27 +667,20 @@ func accessGroupUpdateBody(ag *litellmv1alpha1.LiteLLMAccessGroup, rendered rend
 // resolveAccessGroupIDByName re-resolves an access group's LiteLLM
 // access_group_id from a metadata.name lookup. Used by the finalizer path when
 // status.lastRendered.AccessGroupID is empty, and by the CREATE arm's 409
-// adoption branch. Returns "" if the entry is absent or the LIST call fails
-// non-fatally.
-func (r *AccessGroupReconciler) resolveAccessGroupIDByName(ctx context.Context, llm *litellm.Client, name string, logger logr.Logger) string {
+// adoption branch. "" with a nil error means the group is not listed; an error
+// means the lookup failed and says nothing about the group.
+func (r *AccessGroupReconciler) resolveAccessGroupIDByName(ctx context.Context, llm *litellm.Client, name string) (string, error) {
 	entry, err := llm.GetAccessGroupByName(ctx, name)
 	if err != nil {
 		if errors.Is(err, litellm.ErrNotFound) {
-			return ""
+			return "", nil
 		}
-		var auth401 *litellm.Auth401Error
-		if errors.As(err, &auth401) {
-			r.Cache.InvalidateOn401()
-			logger.Info("name-resolve: 401 fast-path", "path", auth401.Path)
-			return ""
-		}
-		logger.V(1).Info("name-resolve: GET /v1/access_group failed; treating as absent", "error", err)
-		return ""
+		return "", err
 	}
 	if entry == nil {
-		return ""
+		return "", nil
 	}
-	return entry.AccessGroupID
+	return entry.AccessGroupID, nil
 }
 
 // implicitDefaultAccessGroup is the always-present unified access group. With

@@ -1897,10 +1897,16 @@ type patchInterceptor struct {
 	// ownership read and its write (#141).
 	strip    atomic.Pointer[client.ObjectKey]
 	stripped atomic.Bool
+	// fail, when non-nil, makes every Patch matching this key return an
+	// InternalError: the apiserver refusing one child's apply.
+	fail atomic.Pointer[client.ObjectKey]
 }
 
 func (p *patchInterceptor) Patch(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
 	key := client.ObjectKeyFromObject(obj)
+	if target := p.fail.Load(); target != nil && key == *target {
+		return apierrors.NewInternalError(errors.New("injected apply failure"))
+	}
 	if target := p.mu.Load(); target != nil {
 		if key == *target && p.tripped.CompareAndSwap(false, true) {
 			return apierrors.NewAlreadyExists(p.gvr, key.Name)
@@ -2131,5 +2137,57 @@ func TestMCPServerDiscoveryReconciler_NameCollision(t *testing.T) {
 		_ = k8sClient.Get(ctx, client.ObjectKey{Name: mdName, Namespace: WatchNamespace}, &md2)
 		t.Fatalf("NameCollision condition not True within 10s; conditions=%+v skipped=%+v",
 			md2.Status.Conditions, md2.Status.SkippedCandidates)
+	}
+}
+
+// A child whose apply fails stays claimed by its Discovery: it must survive
+// the vanish pass of the same reconcile.
+func TestMCPServerDiscoveryReconciler_FailedApply_KeepsExistingChild(t *testing.T) {
+	ctx := context.Background()
+	const mdName = "failed-apply"
+	const thNamespace = "dev"
+	const thName = "tool-failed-apply"
+	dotted := mdName + "-" + thName
+
+	ensureNoMCPServerDiscovery(t, ctx, mdName)
+	ensureNoToolhiveObject(t, ctx, toolhive.MCPServerGVK, thNamespace, thName)
+	ensureNoMCPServer(t, ctx, dotted)
+	t.Cleanup(func() {
+		mcpServerDiscoveryClient.fail.Store(nil)
+		ensureNoMCPServerDiscovery(t, context.Background(), mdName)
+		ensureNoToolhiveObject(t, context.Background(), toolhive.MCPServerGVK, thNamespace, thName)
+		ensureNoMCPServer(t, context.Background(), dotted)
+	})
+
+	createToolhiveMCPServer(t, ctx, thNamespace, thName, "https://failed-apply.example.com", "http")
+	if err := k8sClient.Create(ctx, msDiscSampleCR(mdName, []string{thNamespace})); err != nil {
+		t.Fatalf("create MCPServerDiscovery: %v", err)
+	}
+	if children := pollMCPServerDiscoveryChildren(t, ctx, mdName, 1, 30*time.Second); len(children) != 1 {
+		t.Fatalf("pre-failure child count: got %d, want 1", len(children))
+	}
+
+	key := client.ObjectKey{Namespace: WatchNamespace, Name: dotted}
+	mcpServerDiscoveryClient.fail.Store(&key)
+	touchMCPServerDiscovery(t, ctx, mdName)
+	waitFor(t, func() bool {
+		var md litellmv1alpha1.LiteLLMMCPServerDiscovery
+		if err := k8sClient.Get(ctx, client.ObjectKey{Name: mdName, Namespace: WatchNamespace}, &md); err != nil {
+			return false
+		}
+		for _, f := range md.Status.FailedCandidates {
+			if f.Name == dotted {
+				return true
+			}
+		}
+		return false
+	}, "apply failure of "+dotted+" never reported in failedCandidates")
+
+	var child litellmv1alpha1.LiteLLMMCPServer
+	if err := k8sClient.Get(ctx, key, &child); err != nil {
+		t.Fatalf("child %s gone after its apply failed: %v", dotted, err)
+	}
+	if !child.DeletionTimestamp.IsZero() {
+		t.Fatalf("child %s is being deleted after its apply failed", dotted)
 	}
 }
