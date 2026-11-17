@@ -1581,6 +1581,9 @@ func TestA2AAgent_DeletionPath_NoID_ListFails_KeepsFinalizer(t *testing.T) {
 	// The agent exists in LiteLLM, but every call fails: the CR gets its
 	// finalizer and never learns an id.
 	mockServer.AddHandManagedAgent(name)
+	// A probe landing in the outage flips the connection to Unreachable and
+	// the deletion path then makes no call at all.
+	waitQuiet(t, func() int64 { return mockServer.PathCallCount("/key/health") }, 500*time.Millisecond, 10*time.Second)
 	mockServer.SetMode(mock.ModeTransient5xx)
 	if err := k8sClient.Create(ctx, a2aSampleCR(name)); err != nil {
 		t.Fatalf("create A2AAgent: %v", err)

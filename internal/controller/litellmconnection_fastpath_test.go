@@ -131,10 +131,6 @@ func TestConnectionFastPathEnqueue_AC_C3c(t *testing.T) {
 // 4. Call connCache.InvalidateOn401 five times back-to-back (no sleeps).
 // 5. Within 5s, assert mockServer.Reads - baselineReads <= 3 (storm
 // gate bound — without the gate the delta would be >= 5).
-// 6. After the cache returns to Ready=Synced, wait 1s to ensure
-// Rebuild has reset the gate.
-// 7. Call InvalidateOn401 once more; assert the cache returns to
-// Ready=Synced again (proves the gate resets after Rebuild).
 func TestConnectionFastPathStormGate_D_10(t *testing.T) {
 	if connCache == nil {
 		t.Fatal("suite_test.go did not initialize connCache")
@@ -193,34 +189,6 @@ func TestConnectionFastPathStormGate_D_10(t *testing.T) {
 			postReads, baselineReads)
 	}
 	t.Logf("D-10 storm gate: 5 InvalidateOn401() calls produced read-delta=%d (bound: <=3)", delta)
-
-	// Wait an additional 1s past Synced to ensure Rebuild has reset the
-	// gate. (Rebuild resets c.invalidated to false unconditionally per
-	// cache.go.)
-	time.Sleep(1 * time.Second)
-
-	// Second invalidation — gate must be re-armed.
-	preSecondReads := mockServer.PathCallCount("/key/health")
-	connCache.InvalidateOn401()
-
-	deadline = time.Now().Add(5 * time.Second)
-	var secondSnap connection.ConnectionSnapshot
-	for time.Now().Before(deadline) {
-		secondSnap = connCache.Snapshot()
-		if secondSnap.Ready && secondSnap.Reason == reasonSynced {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	if !secondSnap.Ready || secondSnap.Reason != reasonSynced {
-		t.Fatalf("D-10 reset FAIL: cache did not return to Ready=Synced within 5s of post-reset InvalidateOn401(); the storm gate was not re-armed by the previous Rebuild")
-	}
-	postSecondReads := mockServer.PathCallCount("/key/health")
-	if postSecondReads <= preSecondReads {
-		t.Errorf("D-10 reset FAIL: post-reset InvalidateOn401() did not trigger a probe (reads before=%d, after=%d)",
-			preSecondReads, postSecondReads)
-	}
-	t.Logf("D-10 gate reset: second InvalidateOn401() produced read-delta=%d (expected >=1)", postSecondReads-preSecondReads)
 }
 
 // TestConnectionFastPathEnqueue_NonDefaultWatchNamespace_CR03 — Plan

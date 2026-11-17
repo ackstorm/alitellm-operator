@@ -52,6 +52,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   echoes the team's models.
 
 ### Fixed
+- **An operator key that is valid but not admin no longer storms LiteLLM.**
+  LiteLLM answers 401 on admin-only routes for a key `/key/health` accepts;
+  each 401 invalidated the connection cache, the probe passed, and every CR
+  was re-enqueued at once (465 probes in 30s on LiteLLM 1.106.0). A 401 that a
+  passing probe has just contradicted no longer triggers another probe.
+- **Adopting a LiteLLM model row by name rewrites its `model_info`.** A row
+  that lacks a rendered value (`access_groups`, the operator stamps) is
+  deleted and created again, since `POST /model/update` never writes that
+  blob; the CR used to report `Synced` over a stale one.
 - **A Discovery no longer deletes a child whose write failed.** A
   `LiteLLMModelDiscovery` / `LiteLLMMCPServerDiscovery` child whose apply
   errored (apiserver failure, invalid render, AlreadyExists race) fell out of
@@ -66,6 +75,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **408, 425 and 429 from LiteLLM are retried with backoff** instead of being
   treated as a permanent rejection (parked `LiteLLMRejected`, or an orphaned
   row on delete).
+- **Docs: the operator owns the whole `model_group_alias` map.** Aliases set
+  outside a `LiteLLMModelAlias` CR are removed on the next reconcile.
 - **Team `default` gets its empty body back** when a `LiteLLMTeam/default` CR
   is removed without the operator's re-apply (failed re-apply, finalizer
   dropped by hand).

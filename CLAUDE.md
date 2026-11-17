@@ -857,6 +857,27 @@ looped DELETE→401→invalidate→probe re-Sync→rebuilt fan-in (no backoff)�
 polluted `TestWatchNamespaceEnforcement`'s read count). Plain error return =
 per-item backoff; the probe owns key health.
 
+### ❌ Invalidating the connection cache on every 401
+```
+# operator key = a non-admin virtual key, LiteLLM 1.106.0
+POST /key/health            200      ← probe passes
+GET  /get/config/callbacks  401      ← alias reconciler → InvalidateOn401
+# → probe → Rebuild(Ready) → rebuilt fan-in → 401 → ...  465 probes in 30s
+```
+✅ `Cache.InvalidateOn401` is a no-op while `contradicted` is set
+(`internal/connection/cache.go`): a Ready `Rebuild` that answers an
+invalidation proves the key is valid, so the 401 is a permission problem and
+another probe cannot change it. Any other `Rebuild` (the 5m probe tick, a
+Secret or spec change, a failed probe) clears the flag. The first 401 still
+probes and fans out, so a transient 401 recovers at once. Same key, fixed
+operator: 2 probes in 30s.
+WHY IT FAILED: the rebuilt fan-in re-enqueues every CR with no backoff, and
+LiteLLM answers 401 (not 403) on several admin-only routes for a key that
+`/key/health` accepts: `/get/config/callbacks`, `/v2/team/list`, `/team/new`,
+`/v1/access_group`. TRADE-OFF: after such a cycle a genuine key rotation is
+noticed by the next probe tick (≤5m) instead of at the first 401. Guarded by
+`TestInvalidateOn401_ProbeContradicts_NoSecondInvalidation`.
+
 ### ❌ Gating a LiteLLM mutation on `snap.Ready` alone
 ```go
 snap := r.Cache.Snapshot()
@@ -1083,7 +1104,10 @@ Models UI row:  alitellm-operator/0.7.8   Unknown date
 ✅ The operator must stamp `model_info.created_at` / `model_info.updated_at`
 itself on CREATE — same mechanism as the `created_by` stamp (FIX2 M-8).
 `model_controller.go` sets all four on the `POST /model/new` body
-(RFC3339 UTC). Adopted/out-of-band rows cannot be back-stamped.
+(RFC3339 UTC). A row adopted by name on the CREATE arm is replaced
+(`POST /model/delete` + `POST /model/new`) when it lacks a rendered
+`model_info` value (`modelInfoApplied`), so it gets the stamps too; a row that
+already carries them is adopted with `POST /model/update` and keeps its own.
 WHY IT FAILS: in OSS (non-premium) LiteLLM, `proxy_server.get_model_info_with_id`
 copies the DB `created_at`/`updated_at` columns into `model_info` ONLY when
 `premium_user is True` (Enterprise). Non-premium UIs read the date straight
@@ -1117,7 +1141,13 @@ silently (treated as unchanged) to avoid a mass recreate of every model on
 operator upgrade. CONSEQUENCE: models whose blob is ALREADY stale in LiteLLM
 (e.g. `access_groups` added before this fix shipped) are NOT auto-healed —
 delete the entry in LiteLLM once and the operator recreates it fresh via
-`POST /model/new`. Forward changes are handled correctly.
+`POST /model/new`. Forward changes are handled correctly. Adoption by name
+(CREATE arm, empty `modelID`) compares the row instead: `modelInfoApplied`
+checks every rendered key against the row's `model_info`, ignoring keys
+LiteLLM adds, and a mismatch replaces the row. A stale-cache re-reconcile of a
+row the operator just created matches and stays a plain update. The
+vanish-probe re-target (tracked id gone, another row listed) clears the id and
+lands on the same arm, so the same check applies to it.
 
 ### ❌ Model created with no access group → unreachable by group-scoped keys
 Symptom: a `LiteLLMModel` (or Discovery-generated child) with no

@@ -54,14 +54,15 @@ func ensureNoKey(t *testing.T, ctx context.Context, name string) {
 	if err := k8sClient.Get(ctx, key, &k); apierrors.IsNotFound(err) {
 		return
 	}
-	k.Finalizers = nil
-	_ = k8sClient.Update(ctx, &k)
 	_ = k8sClient.Delete(ctx, &k)
 	deadline := time.Now().Add(keyPollTimeout)
 	for time.Now().Before(deadline) {
 		if err := k8sClient.Get(ctx, key, &k); apierrors.IsNotFound(err) {
 			return
 		}
+		// Retried: the reconciler's status write can conflict with the strip.
+		k.Finalizers = nil
+		_ = k8sClient.Update(ctx, &k)
 		time.Sleep(50 * time.Millisecond)
 	}
 	t.Fatalf("key %s not removed", name)

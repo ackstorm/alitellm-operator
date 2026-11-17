@@ -37,6 +37,12 @@ type Cache struct {
 	// next cycle can fire again.
 	invalidated atomic.Bool
 
+	// contradicted is true while the last Rebuild was a Ready probe that
+	// answered a 401 invalidation: the key is valid, so the 401 is a
+	// permission problem and another invalidation would loop
+	// probe → rebuilt fan-in → 401. Any other Rebuild clears it.
+	contradicted atomic.Bool
+
 	// closed is the CR-02 shutdown guard. Start sets this to true BEFORE
 	// close(c.ch) so InvalidateOn401 can short-circuit instead of panicking
 	// with `send on closed channel`. Per VERIFICATION.md (Phase 2),
@@ -133,7 +139,7 @@ func (c *Cache) Rebuild(snap ConnectionSnapshot) {
 	// might overwrite on return.
 	c.snapshot.Store(&snap)
 	// D-10: reset the storm gate so the next 401 fast-path can fire.
-	c.invalidated.Store(false)
+	c.contradicted.Store(c.invalidated.Swap(false) && snap.Ready)
 
 	// Emit a rebuilt event on false→true (or initial) Ready transitions
 	// so dependent reconcilers can re-enqueue their CRs and close the
@@ -211,7 +217,7 @@ func (c *Cache) emitRebuilt() {
 // caller's logger already redacts on the wire layer.
 func (c *Cache) InvalidateOn401() {
 	// CR-02 shutdown guard — primary defense.
-	if c.closed.Load() {
+	if c.closed.Load() || c.contradicted.Load() {
 		return
 	}
 	if c.invalidated.CompareAndSwap(false, true) {
