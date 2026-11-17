@@ -131,7 +131,7 @@ jobs:
       - name: Generate gosec SARIF
         if: always()
         run: |
-          ./scripts/dev.sh bash -c 'go run github.com/securego/gosec/v2/cmd/gosec@v2.22.7 -no-fail -fmt=sarif -out=gosec-results.sarif -exclude-dir=vendor -exclude-dir=.gocache ./...'
+          ./scripts/dev.sh bash -c 'go run github.com/securego/gosec/v2/cmd/gosec@v2.30.0 -no-fail -fmt=sarif -out=gosec-results.sarif -exclude-dir=vendor -exclude-dir=.gocache ./...'
 
       - name: Upload gosec SARIF to GitHub Security tab
         if: always()
