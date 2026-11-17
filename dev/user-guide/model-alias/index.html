@@ -1761,6 +1761,10 @@ conflict. The winner is decided alphabetically-last on
 <code>(namespace, name, array index)</code>; losers report <code>Ready=False</code> with
 <code>reason=AliasConflict</code> and name the winner in <code>status.aliasStatuses[]</code>. See
 <a href="../../concepts/conflict-resolution/">Conflict Resolution</a>.</p>
+<p>The operator owns the whole map. An alias set in the LiteLLM UI or through
+the API, with no CR behind it, is removed on the next reconcile; with no
+<code>LiteLLMModelAlias</code> in the cluster the map is emptied. Declare every alias you
+want to keep as a CR.</p>
 <p><code>applied: true</code> on an entry means the operator successfully wrote it into
 LiteLLM — <strong>not</strong> that the value resolves to a real model. An alias pointing at
 a name LiteLLM does not know is written happily and fails only at call time.</p>
