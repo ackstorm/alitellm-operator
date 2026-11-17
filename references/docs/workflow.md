@@ -6,10 +6,11 @@ workflows) and to `.github/workflows/*.yml` (authoritative source).
 
 ## Tiered gating policy — PR-only
 
-`ci.yml` triggers exclusively on `pull_request` against `main`. Branch
-protection on `main` enforces PR-only merges (required checks:
-Lint / Unit / Envtest / Security / E2E (kind + helm + ginkgo); linear
-history; no force-push; no deletions). The post-merge `main` SHA is
+`ci.yml` triggers exclusively on `pull_request` against `main`. The
+`protect-main` ruleset blocks only force-push and deletion of `main`;
+GitHub does NOT require the checks (Lint / Unit / Envtest / Security /
+E2E (kind + helm + ginkgo)), so merging on green is a convention, not a
+gate. The post-merge `main` SHA is
 content-identical to the PR head SHA — re-running CI on push to main
 would be pure dup, so it is intentionally not wired.
 
@@ -30,8 +31,8 @@ Rationale:
 - **PR → main**: full pre-merge gate INCLUDING e2e. The PR is the
   merge boundary — a broken e2e here blocks merge instead of breaking
   main after the fact. Draft PRs skip e2e (the rest still run).
-- **Post-merge main push**: 0 CI runs. Branch protection guarantees
-  the merged commit's content was already validated as the PR head.
+- **Post-merge main push**: 0 CI runs. The merged commit's content was
+  already validated as the PR head.
   Re-running envtest / security on the merge SHA would catch nothing
   net-new — they exercise the same code with the same dependencies.
 - **Release commit (`chore(release): v*`)**: `ci.yml` not triggered
@@ -64,13 +65,11 @@ A PR that touches ONLY these paths produces no `ci.yml` run
 (`docs.yml` still fires for `docs/**` deploys). If a PR mixes a docs
 file with code, the workflow fires normally.
 
-**Branch protection caveat**: GitHub treats "workflow did not run"
-distinctly from "workflow passed". Required status checks
-(Lint / Unit / Envtest / Security / E2E) will appear as
-missing-checks on docs-only PRs and block merge. Workarounds:
-(a) admin merge (`enforce_admins: false` allows this), or
-(b) drop `paths-ignore` and accept full CI cost on docs PRs, or
-(c) add a no-op workflow that reports the same check names with
+**Required-checks caveat**: GitHub treats "workflow did not run"
+distinctly from "workflow passed". If the checks are ever made required,
+docs-only PRs will show them as missing and block merge. Options then:
+(a) drop `paths-ignore` and accept full CI cost on docs PRs, or
+(b) add a no-op workflow that reports the same check names with
 success on docs-only changes (skip-condition pattern).
 
 ## Lifecycle table
@@ -78,7 +77,7 @@ success on docs-only changes (skip-condition pattern).
 | Stage                         | Local command                                                                                         | Workflow(s) fired                                                                  | Job-level gate (`if:`)                                              | Outcome                                                                                                            |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | Dev branch push (no PR)       | `git push origin <branch>`                                                                            | `govulncheck.yml` only                                                             | branch trigger                                                      | Zero `ci.yml` cost. Local `make pre-push` hook gates the push.                                                     |
-| PR open / sync                | `gh pr create --base main`                                                                            | `ci.yml` (lint + unit + envtest + security + **e2e**), `docs.yml` build-test, `pr-labeler.yml` | `pull_request: main` (non-draft for e2e)                | PR blocked until all five required checks are green. Draft PRs skip e2e only.                                       |
+| PR open / sync                | `gh pr create --base main`                                                                            | `ci.yml` (lint + unit + envtest + security + **e2e**), `docs.yml` build-test, `pr-labeler.yml` | `pull_request: main` (non-draft for e2e)                | Merge only when all five checks are green (not enforced). Draft PRs skip e2e only.                               |
 | Merge PR to main              | `gh pr merge N --merge --delete-branch`                                                               | `docs.yml` deploys `latest`+`dev`. `ci.yml` NOT fired (no push trigger).           | n/a (`ci.yml` only listens to `pull_request`)                       | Zero `ci.yml` cost on merge. Merge SHA content already validated as PR head.                                       |
 | Release commit                | `git commit --allow-empty -m 'chore(release): vX.Y.Z'` → `make pre-push` → `git push origin main`     | `release.yml` (active), `docs.yml`. `ci.yml` NOT fired (no push trigger).          | `startsWith(head_commit.message, 'chore(release): v')`              | release.yml runs unit + envtest-fast sanity, bumps manifests, goreleaser, cosign keyless OIDC, CycloneDX SBOM, helm OCI push, **tag created LAST**. |
 | Tag push (rare manual)        | `git tag vX.Y.Z && git push origin vX.Y.Z`                                                            | `docs.yml` (mike deploy stable / preview alias)                                    | `startsWith(github.ref, 'refs/tags/v')`                             | Versioned doc set deployed; container/chart NOT rebuilt (those rely on the chore-commit path)                       |

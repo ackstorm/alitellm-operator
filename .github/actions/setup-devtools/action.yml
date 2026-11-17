@@ -23,7 +23,7 @@ runs:
   using: composite
   steps:
     - name: Cache Go module + build caches (mounted into devtools container)
-      uses: actions/cache@v5  # v4.3.0
+      uses: actions/cache@v6
       with:
         path: |
           .gocache/build

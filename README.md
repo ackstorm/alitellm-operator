@@ -103,8 +103,7 @@ Discovery-owned-children rule.
 
 `ci.yml` triggers exclusively on `pull_request` against `main`. Pushes to
 feature branches and post-merge pushes to `main` do not fire `ci.yml`
-(branch protection guarantees the merged commit's content was already
-validated as the PR head). Authoritative trigger reference:
+(the merged content was already validated as the PR head). Authoritative trigger reference:
 [`references/docs/workflow.md`](references/docs/workflow.md).
 
 | Trigger | Workflow | Wall-clock budget |
@@ -117,13 +116,13 @@ validated as the PR head). Authoritative trigger reference:
 | Cron Mon 05:08 UTC | `govulncheck.yml` (drift detection) | ≤ 3 min |
 | `chore(release): v*` commit on main | `release.yml` (tests → bump → image + chart push → gh release → tag) | ≤ 20 min |
 
-Branch protection on `main` requires `Lint`, `Unit`, `Envtest`, `Security`,
-and `E2E (kind + helm + ginkgo)` to be green before a PR can merge.
+Merge a PR only when `Lint`, `Unit`, `Envtest`, `Security` and
+`E2E (kind + helm + ginkgo)` are green. GitHub does not enforce it: the
+`protect-main` ruleset blocks only force-push and deletion of `main`.
 Draft PRs skip e2e unconditionally; the rest of the checks still run.
 Docs-only PRs (paths matching `**/*.md`, `docs/**`, `.planning/**`,
 `references/**`, `FIX*.txt`, `LICENSE`, `NOTICE`, `CODEOWNERS`,
-`.gitignore`) skip `ci.yml` entirely — landing them needs an admin merge
-since required checks will show as missing.
+`.gitignore`) skip `ci.yml` entirely and report no checks.
 
 ## Cutting a release
 
