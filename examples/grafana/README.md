@@ -6,7 +6,7 @@ Four dashboards, split by **who owns the metric**:
 |------|-----|--------|-----------------------|
 | `operator/alitellm-operator.json` | `alitellm-operator` | aLiteLLM Operator | **this operator** — reconciles, drift corrections, discovery, conflicts, orphaned deletions, CR status age, controller-runtime |
 | `litellm/alitellm-litellm-overview.json` | `alitellm-litellm-overview` | aLiteLLM | LiteLLM proxy **callback** (`PrometheusLogger`) — traffic, errors, latency split between provider and proxy |
-| `litellm/alitellm-litellm-finops.json` | `alitellm-litellm-finops` | aLiteLLM | callback **plus** `litellm-exporter` — spend, tokens, budgets, key inventory |
+| `litellm/alitellm-litellm-finops.json` | `alitellm-litellm-finops` | aLiteLLM | callback — spend, tokens, budgets |
 | `litellm/alitellm-litellm-deployments.json` | `alitellm-litellm-deployments` | aLiteLLM | callback — per-deployment health, rate-limit headroom, proxy internals |
 
 The `<group>` directory selects the Grafana folder (`metrics.dashboards.folders`
@@ -66,30 +66,18 @@ every panel).
   `connection_ready` → `alitellm_operator_connection_ready`, and so on); against
   an older operator these panels are empty.
 - **LiteLLM dashboards**: a Prometheus job scraping the LiteLLM proxy with
-  `callbacks: ["prometheus"]` enabled. The FinOps dashboard's *Inventory &
-  budgets* row additionally needs the `litellm-exporter` — see below.
+  `callbacks: ["prometheus"]` enabled. Nothing else.
 
-## Callback vs exporter — why both
+## Why no litellm-exporter
 
-The proxy callback only emits for entities that produced traffic **since the
-proxy process started**, and its spend is a per-pod counter. The exporter reads
-the LiteLLM database. Measured on one prod cluster, same moment:
-
-| | exporter | callback |
-|---|---|---|
-| teams covered | 12 (all) | 6 |
-| keys covered | 72 (all) | 9 |
-| lifetime spend | $14.60 | $7.66 (since pod start) |
-| key expiry | 86 series | no equivalent metric |
-
-So the dashboards mix both on purpose: rates and per-request attribution come
-from the callback, inventory and lifetime totals from the exporter. Each panel
-that depends on the exporter says so in its description.
-
-**Known exporter defect (2026-07-27):** `litellm_key_expiry` is documented as
-seconds-until-expiry and does tick down at 1/s, but 61 of 86 keys read < 60s for
-over an hour without ever expiring or disappearing. The dashboard therefore shows
-the ordering, not a "keys expiring soon" alert tile. Fix belongs in the exporter.
+The FinOps dashboard used to read DB-derived metrics from `litellm-exporter`.
+They were dropped: the exporter computes its windowed metrics (spend, cache
+hits) from `LiteLLM_SpendLogs`, which deployments prune aggressively, so on prod
+it reported 0 cache hits against 45 from the callback and half the callback's
+30-day spend. Spend over any range comes from `increase()` on the callback
+counter; budgets from `litellm_remaining_*_budget_metric`; team count from
+`litellm_teams_count`. Lifetime DB spend and key expiry have no callback
+equivalent and are not shown.
 
 ## Rates vs counts
 

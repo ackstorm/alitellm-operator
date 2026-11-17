@@ -4,6 +4,7 @@ package controller
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -2433,4 +2434,203 @@ func TestTeam_ClosedBaselineWithoutGroups(t *testing.T) {
 	if ids, ok := body["access_group_ids"].([]any); !ok || len(ids) != 0 {
 		t.Errorf("access_group_ids: want [], got %v", body["access_group_ids"])
 	}
+}
+
+// TestTeam_MirrorsGroupModelsAndFollowsGroupEdits — team.models carries the
+// attached group's access_model_names after the sentinel, and editing the
+// group CR re-drives the team without safety relist.
+func TestTeam_MirrorsGroupModelsAndFollowsGroupEdits(t *testing.T) {
+	ctx := context.Background()
+	const team, group = "team-mirror", "ag-mirror"
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetTeams()
+	mockServer.ResetAccessGroups()
+	teamReconciler.ResetImplicitDefaultCache()
+	ensureNoTeam(t, ctx, team)
+	ensureNoAccessGroup(t, ctx, group)
+	resetConnCacheSnapshot()
+
+	cleanupConn := setupReadyConnectionTeam(t, ctx)
+	t.Cleanup(func() {
+		cleanupConn()
+		ensureNoTeam(t, context.Background(), team)
+		ensureNoAccessGroup(t, context.Background(), group)
+		mockServer.ResetAccessGroups()
+	})
+
+	ag := accessGroupSampleCR(group, litellmv1alpha1.AccessGroupSpec{ModelGroups: []string{"tag-a"}})
+	if err := k8sClient.Create(ctx, ag); err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	pollAccessGroupCondition(t, ctx, group, reasonSynced)
+
+	cr := teamSampleCR(team)
+	cr.Spec.AccessGroups = []string{group}
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create team: %v", err)
+	}
+	pollTeamCondition(t, ctx, team, reasonSynced, 30*time.Second)
+	waitTeamModels(t, team, []any{"no-default-models", "tag-a"})
+
+	var cur litellmv1alpha1.LiteLLMAccessGroup
+	if err := k8sClient.Get(ctx, client.ObjectKey{Name: group, Namespace: WatchNamespace}, &cur); err != nil {
+		t.Fatal(err)
+	}
+	cur.Spec.ModelGroups = []string{"tag-b"}
+	if err := k8sClient.Update(ctx, &cur); err != nil {
+		t.Fatalf("update group: %v", err)
+	}
+	waitTeamModels(t, team, []any{"no-default-models", "tag-b"})
+}
+
+// TestTeam_NarrowsGrantWhenAttachedGroupVanishes — an attached group whose
+// LiteLLM row disappears (here: its CR deleted under deletionPolicy Delete)
+// must not leave its mirrored names in team.models. The team is narrowed to
+// the groups that still resolve (none) and THEN parks AccessGroupNotFound.
+func TestTeam_NarrowsGrantWhenAttachedGroupVanishes(t *testing.T) {
+	ctx := context.Background()
+	const team, group = "team-narrow", "ag-narrow"
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetTeams()
+	mockServer.ResetAccessGroups()
+	teamReconciler.ResetImplicitDefaultCache()
+	ensureNoTeam(t, ctx, team)
+	ensureNoAccessGroup(t, ctx, group)
+	resetConnCacheSnapshot()
+
+	cleanupConn := setupReadyConnectionTeam(t, ctx)
+	t.Cleanup(func() {
+		cleanupConn()
+		ensureNoTeam(t, context.Background(), team)
+		ensureNoAccessGroup(t, context.Background(), group)
+		mockServer.ResetAccessGroups()
+	})
+
+	ag := accessGroupSampleCR(group, litellmv1alpha1.AccessGroupSpec{
+		ModelGroups:    []string{"tag-a"},
+		DeletionPolicy: "Delete",
+	})
+	if err := k8sClient.Create(ctx, ag); err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	pollAccessGroupCondition(t, ctx, group, reasonSynced)
+
+	cr := teamSampleCR(team)
+	cr.Spec.AccessGroups = []string{group}
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create team: %v", err)
+	}
+	pollTeamCondition(t, ctx, team, reasonSynced, 30*time.Second)
+	waitTeamModels(t, team, []any{"no-default-models", "tag-a"})
+
+	// Delete the group CR: the group controller DELETEs the LiteLLM row, and
+	// the CR's removal re-drives the team via accessGroupToTeams (no relist).
+	if err := k8sClient.Delete(ctx, ag); err != nil {
+		t.Fatalf("delete group: %v", err)
+	}
+	waitTeamModels(t, team, []any{"no-default-models"})
+	body := mockServer.LastTeamBody(team)
+	if ids, ok := body["access_group_ids"].([]any); !ok || len(ids) != 0 {
+		t.Errorf("access_group_ids: want [], got %v", body["access_group_ids"])
+	}
+	tm := pollTeamCondition(t, ctx, team, reasonAccessGroupNotFound, 30*time.Second)
+	if c := apimeta.FindStatusCondition(tm.Status.Conditions, conditionTypeReady); c == nil ||
+		c.Status != metav1.ConditionFalse || c.Reason != reasonAccessGroupNotFound {
+		t.Fatalf("Ready condition: want False/AccessGroupNotFound, got %+v", c)
+	}
+
+	// The group coming back must re-widen the team: the narrowed hash recorded
+	// while parked must not short-circuit the full render at Step 9.
+	ensureNoAccessGroup(t, ctx, group)
+	ag = accessGroupSampleCR(group, litellmv1alpha1.AccessGroupSpec{ModelGroups: []string{"tag-a"}})
+	if err := k8sClient.Create(ctx, ag); err != nil {
+		t.Fatalf("re-create group: %v", err)
+	}
+	waitTeamModels(t, team, []any{"no-default-models", "tag-a"})
+	pollTeamCondition(t, ctx, team, reasonSynced, 30*time.Second)
+}
+
+func waitTeamModels(t *testing.T, alias string, want []any) {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	var got any
+	for time.Now().Before(deadline) {
+		if body := mockServer.LastTeamBody(alias); body != nil {
+			got = body["models"]
+			if m, ok := got.([]any); ok && slices.Equal(m, want) {
+				return
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("team %s models: got %v want %v", alias, got, want)
+}
+
+// A LiteLLMTeam/default CR that goes away without its re-apply (finalizer
+// dropped by hand during an outage) leaves its body on the team: the next
+// synthetic reconcile must put the implicit body back.
+func TestTeamReconciler_DefaultCRGoneWithoutReapply_ImplicitReapplies(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetTeams()
+	teamReconciler.ResetImplicitDefaultCache()
+	ensureNoTeam(t, ctx, "default")
+	resetConnCacheSnapshot()
+
+	cleanupConn := setupReadyConnectionTeam(t, ctx)
+	t.Cleanup(func() {
+		cleanupConn()
+		ensureNoTeam(t, context.Background(), "default")
+	})
+	waitFor(t, func() bool { return mockServer.HasTeam("default") }, "implicit Team/default never bootstrapped")
+
+	budget := func() float64 {
+		v, _ := mockServer.LastTeamBody("default")["max_budget"].(float64)
+		return v
+	}
+	cr := &litellmv1alpha1.LiteLLMTeam{
+		ObjectMeta: metav1.ObjectMeta{Name: "default", Namespace: WatchNamespace},
+		Spec:       litellmv1alpha1.TeamSpec{Budget: &litellmv1alpha1.BudgetSpec{Limit: floatPtr(100.0)}},
+	}
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create Team/default: %v", err)
+	}
+	waitFor(t, func() bool { return budget() == 100.0 }, "max_budget=100 never applied")
+	if !waitForTeamFinalizer(ctx, "default", 10*time.Second) {
+		t.Fatal("finalizer never added")
+	}
+
+	// Outage: the deletion path cannot re-apply, so the finalizer is
+	// dropped by hand.
+	resetConnCacheSnapshot()
+	key := client.ObjectKey{Name: "default", Namespace: WatchNamespace}
+	var tm litellmv1alpha1.LiteLLMTeam
+	if err := k8sClient.Get(ctx, key, &tm); err != nil {
+		t.Fatalf("get Team/default: %v", err)
+	}
+	if err := k8sClient.Delete(ctx, &tm); err != nil {
+		t.Fatalf("delete Team/default: %v", err)
+	}
+	if err := updateWithRetry(ctx, key, &tm, func(tm *litellmv1alpha1.LiteLLMTeam) error {
+		tm.Finalizers = nil
+		return nil
+	}); err != nil && !apierrors.IsNotFound(err) {
+		t.Fatalf("drop finalizer: %v", err)
+	}
+	if !waitForTeamReaped(ctx, "default", 10*time.Second) {
+		t.Fatal("Team/default CR not reaped")
+	}
+	if budget() != 100.0 {
+		t.Fatalf("precondition: the CR's budget was already replaced (max_budget=%v)", budget())
+	}
+
+	setConnCacheReady()
+	waitFor(t, func() bool { return budget() != 100.0 },
+		"team default still carries the deleted CR's budget: implicit body never re-applied")
 }

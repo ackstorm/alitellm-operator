@@ -86,6 +86,12 @@ const (
 	// the SafetyRelistRunnable re-drives the CR (ordering dependency with
 	// LiteLLMMCPServer CRs).
 	reasonMCPServerNotFound = "MCPServerNotFound"
+	// reasonModelGroupNotFound: no LiteLLM model carries the budgeted tag
+	// (GET/PUT /access_group/{tag}/budget → 404). Re-driven by safety relist.
+	reasonModelGroupNotFound = "ModelGroupNotFound"
+	// reasonDuplicateModelGroup: an older LiteLLMModelGroupBudget already owns
+	// the tag; this CR makes no LiteLLM calls.
+	reasonDuplicateModelGroup = "DuplicateModelGroup"
 )
 
 // EnvRequireHTTPSRemote, when "true", upgrades the M-SEC2 plaintext-http

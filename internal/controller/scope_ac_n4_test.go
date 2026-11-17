@@ -3,7 +3,9 @@
 package controller
 
 import (
+	"bytes"
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,11 +35,11 @@ const outOfWatchNamespace = "ac-n4-out-of-watch"
 //
 //  1. Ensure outOfWatchNamespace != WatchNamespace (fixture guard).
 //  2. Create outOfWatchNamespace in the envtest apiserver if absent.
-//  3. Snapshot reconcileCalls and mock counters.
+//  3. Snapshot the noop reconciler's foreign-namespace count and the mock log.
 //  4. Create a Model CR in outOfWatchNamespace.
 //  5. Wait 10s (we are asserting NO reconcile — sleep is intentional).
-//  6. Assert reconcileCalls.Load did NOT change.
-//  7. Assert mock.Mutations == 0 AND mock.Reads == 0 (defense-in-depth).
+//  6. Assert no reconcile fired for a request outside WatchNamespace.
+//  7. Assert the mock saw no call naming the CR (defense-in-depth).
 //
 // This is the AC-N4 dry-run. The kind-e2e equivalent
 // (TestNamespaceScopeAC_N4_E2E in test/e2e/) verifies the same property
@@ -62,9 +64,8 @@ func TestWatchNamespaceEnforcement(t *testing.T) {
 	}
 
 	// Snapshot pre-state.
-	beforeCalls := reconcileCalls.Load()
-	beforeMutations := mockServer.Mutations()
-	beforeReads := mockServer.Reads()
+	beforeCalls := reconciler.ForeignNamespaceCalls.Load()
+	beforeRecorded := len(mockServer.Recorded())
 
 	// Create a Model CR in the wrong namespace.
 	model := &litellmv1alpha1.LiteLLMModel{
@@ -92,13 +93,31 @@ func TestWatchNamespaceEnforcement(t *testing.T) {
 		t.Logf("note: mock mode is %q, not happy", mockServer.Mode())
 	}
 
-	gotCalls := reconcileCalls.Load() - beforeCalls
+	// Scope both assertions to the out-of-namespace CR. Global counters
+	// (all noop reconciles, all mock traffic) also pick up WatchNamespace
+	// work left draining by earlier tests — seen at 10 reconciles and 305
+	// reads in one 1.25s window — and fail without any scope leak.
+	gotCalls := reconciler.ForeignNamespaceCalls.Load() - beforeCalls
 	if gotCalls != 0 {
 		t.Errorf("AC-N4 FAIL: noop reconciler was called %d times for a CR in non-watched namespace (cache filter did not enforce SCOPE-04)", gotCalls)
 	}
-	gotMutations := mockServer.Mutations() - beforeMutations
-	gotReads := mockServer.Reads() - beforeReads
-	if gotMutations != 0 || gotReads != 0 {
-		t.Errorf("AC-N4 defense-in-depth: mock saw %d mutations and %d reads for an out-of-namespace CR (expected zero of each)", gotMutations, gotReads)
+	// Defense-in-depth: a leaked reconcile of this CR — by any controller,
+	// on any route — names it in the path, query or body of its LiteLLM
+	// call. Matching the name keeps background traffic from WatchNamespace
+	// out of the count.
+	leaked := 0
+	other := map[string]int{}
+	for _, c := range mockServer.Recorded()[beforeRecorded:] {
+		if strings.Contains(c.Path, model.Name) || strings.Contains(c.Query, model.Name) || bytes.Contains(c.Body, []byte(model.Name)) {
+			leaked++
+		} else {
+			other[c.Method+" "+c.Path]++
+		}
+	}
+	if leaked != 0 {
+		t.Errorf("AC-N4 defense-in-depth: mock saw %d calls naming the out-of-namespace CR %q (expected zero)", leaked, model.Name)
+	}
+	if len(other) > 0 {
+		t.Logf("AC-N4: unrelated mock traffic in window: %v", other)
 	}
 }

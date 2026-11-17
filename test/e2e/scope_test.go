@@ -12,9 +12,10 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-// Expected 11 operator-owned kinds (spec §10 kind enum +
+// Expected 12 operator-owned kinds (spec §10 kind enum +
 // LiteLLMGuardRail added in v0.3.1 + LiteLLMModelAlias added in v0.5.0 +
-// LiteLLMMCPToolset and LiteLLMAccessGroup, which need LiteLLM 1.93.0+).
+// LiteLLMMCPToolset and LiteLLMAccessGroup, which need LiteLLM 1.93.0+, and
+// LiteLLMModelGroupBudget, which needs 1.100.0+).
 //
 // This set is EXHAUSTIVE — adding a CRD without adding it here fails AC-N1.
 var expectedKinds = map[string]bool{
@@ -29,11 +30,13 @@ var expectedKinds = map[string]bool{
 	"LiteLLMModelAlias":         true,
 	"LiteLLMMCPToolset":         true,
 	"LiteLLMAccessGroup":        true,
+	"LiteLLMModelGroupBudget":   true,
+	"LiteLLMKey":                true,
 }
 
 var _ = Describe("Scope and metrics", Ordered, ContinueOnFailure, func() {
 
-	It("exposes exactly 11 in-scope CRDs and no dropped-kind controllers in logs (AC-N1+N2)", func() {
+	It("exposes exactly 13 in-scope CRDs and no dropped-kind controllers in logs (AC-N1+N2)", func() {
 		out, err := exec.Command("kubectl", "get", "crds",
 			"-o", `jsonpath={range .items[?(@.spec.group=="litellm.ackstorm.ai")]}{.spec.names.kind}{"\n"}{end}`,
 		).CombinedOutput()
@@ -69,14 +72,14 @@ var _ = Describe("Scope and metrics", Ordered, ContinueOnFailure, func() {
 		}
 	})
 
-	It("LiteLLM Pod runs the operator-targeted image tag :v1.93.0 (chart-pin override smoke)", func() {
+	It("LiteLLM Pod runs the operator-targeted image tag :v1.106.0 (chart-pin override smoke)", func() {
 		out, err := exec.Command("kubectl", "-n", "litellm-system",
 			"get", "pod", "-l", "app.kubernetes.io/name=litellm",
 			"-o", "jsonpath={.items[0].spec.containers[*].image}",
 		).CombinedOutput()
 		Expect(err).NotTo(HaveOccurred(), "out=%s", string(out))
 		img := strings.TrimSpace(string(out))
-		Expect(img).To(HaveSuffix(":v1.93.0"),
-			"LiteLLM image %q does not pin v1.93.0 — chart bump regressed", img)
+		Expect(img).To(HaveSuffix(":v1.106.0"),
+			"LiteLLM image %q does not pin v1.106.0 — chart bump regressed", img)
 	})
 })

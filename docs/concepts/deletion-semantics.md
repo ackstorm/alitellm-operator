@@ -27,9 +27,10 @@ A `401` on the delete call is retried with per-CR exponential backoff
 probe alone decides whether the master key is bad, and once it does,
 deferred deletes make no LiteLLM calls at all.
 
-This is governed by `spec.deletionPolicy` on seven CRD kinds:
+This is governed by `spec.deletionPolicy` on nine CRD kinds:
 `LiteLLMModel`, `LiteLLMTeam`, `LiteLLMMCPServer`, `LiteLLMA2AAgent`,
-`LiteLLMGuardRail`, `LiteLLMMCPToolset`, `LiteLLMAccessGroup`. `LiteLLMConnection` is excluded — its finalizer
+`LiteLLMGuardRail`, `LiteLLMMCPToolset`, `LiteLLMAccessGroup`,
+`LiteLLMModelGroupBudget`, `LiteLLMKey`. `LiteLLMConnection` is excluded — its finalizer
 runs no LiteLLM HTTP call.
 
 ## Why two modes

@@ -111,7 +111,7 @@ func mcpWithTags(name, serverID, params string, deleting bool) litellmv1alpha1.L
 }
 
 // TestTaggedMCPServerIDs pins the selection rule: mcp_access_groups wins over
-// the access_groups alias, registered only, not deleting.
+// the access_groups alias, registered only, not deleting, not a conflict loser.
 func TestTaggedMCPServerIDs(t *testing.T) {
 	servers := []litellmv1alpha1.LiteLLMMCPServer{
 		mcpWithTags("a", "s-a", `{"access_groups":["default"]}`, false),
@@ -121,6 +121,13 @@ func TestTaggedMCPServerIDs(t *testing.T) {
 		mcpWithTags("e", "s-e", `{"access_groups":["default"]}`, true),
 		mcpWithTags("f", "s-f", ``, false),
 		mcpWithTags("g", "s-g", `{"mcp_access_groups":["x"],"access_groups":["default"]}`, false),
+		mcpWithTags("h", "s-a", `{"access_groups":["default","admin"]}`, false),
+	}
+	// h is a conflict loser still pointing at a's entry: its tags must not
+	// grant that entry ("admin" would otherwise select s-a).
+	servers[7].Status.Conditions = []metav1.Condition{{Type: conditionTypeReady, Status: metav1.ConditionFalse, Reason: "Conflict"}}
+	if got := taggedMCPServerIDs(servers, []string{"admin"}); len(got) != 0 {
+		t.Fatalf("conflict loser's tags must select nothing, got %v", got)
 	}
 	if got, want := taggedMCPServerIDs(servers, []string{"default"}), []string{"s-a", "s-b"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("taggedMCPServerIDs = %v, want %v", got, want)

@@ -184,9 +184,15 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 				if agentID == "" {
 					// Phase 5 D-02 stale-status fallback: re-resolve by name
 					// via ListAgents + in-memory filter on metadata.name.
-					if resolved := r.resolveAgentIDByName(ctx, snap.Client, a2a.Name, logger); resolved != "" {
-						agentID = resolved
+					resolved, rerr := r.resolveAgentIDByName(ctx, snap.Client, a2a.Name)
+					if rerr != nil {
+						// A failed lookup says nothing about the entry.
+						logger.Info("deletion: name-resolve failed; delete not acknowledged", "error", rerr.Error())
+						if gerr := onAckMissing("name-resolve failed", is4xxStatus(rerr)); gerr != nil {
+							return ctrl.Result{}, gerr
+						}
 					}
+					agentID = resolved
 				}
 				if agentID != "" {
 					if err := snap.Client.DeleteAgent(ctx, agentID); err != nil {
@@ -560,7 +566,7 @@ func (r *A2AAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 			//
 			// Gated on is4xxStatus, which excludes Auth401Error — a 401 must
 			// still take the InvalidateOn401 fast path below.
-			adopted := r.resolveAgentIDByName(ctx, snap.Client, a2a.Name, logger)
+			adopted, _ := r.resolveAgentIDByName(ctx, snap.Client, a2a.Name)
 			if adopted == "" {
 				// Rejected for some other reason (or the name genuinely is not
 				// listed) — surface the original rejection.
@@ -713,29 +719,23 @@ func toInt(v any) (int, bool) {
 // resolveAgentIDByName re-resolves a LiteLLMA2AAgent's LiteLLM agent_id from a
 // metadata.name lookup via ListAgents + in-memory filter. Used by the
 // finalizer path when status.lastRendered.AgentID is empty (Phase 5 D-02
-// stale-status fallback). Returns "" if the entry is absent or the LIST
-// call fails non-fatally.
-func (r *A2AAgentReconciler) resolveAgentIDByName(ctx context.Context, llm *litellm.Client, name string, logger logr.Logger) string {
+// stale-status fallback) and by the CREATE arm's adoption branch. "" with a
+// nil error means the agent is not listed; an error means the lookup failed
+// and says nothing about the agent.
+func (r *A2AAgentReconciler) resolveAgentIDByName(ctx context.Context, llm *litellm.Client, name string) (string, error) {
 	entries, err := llm.ListAgents(ctx)
 	if err != nil {
 		if errors.Is(err, litellm.ErrNotFound) {
-			return ""
+			return "", nil
 		}
-		var auth401 *litellm.Auth401Error
-		if errors.As(err, &auth401) {
-			r.Cache.InvalidateOn401()
-			logger.Info("name-resolve: 401 fast-path", "path", auth401.Path)
-			return ""
-		}
-		logger.V(1).Info("name-resolve: ListAgents failed; treating as absent", "error", err)
-		return ""
+		return "", err
 	}
 	for _, e := range entries {
 		if e.AgentName == name {
-			return e.AgentID
+			return e.AgentID, nil
 		}
 	}
-	return ""
+	return "", nil
 }
 
 // classifyMutationError handles §7.7 error classification for LiteLLM

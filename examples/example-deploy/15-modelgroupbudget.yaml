@@ -1,0 +1,16 @@
+---
+# Copyright 2026 ACKstorm.
+# SPDX-License-Identifier: MIT
+#
+# LiteLLMModelGroupBudget — a LiteLLM budget on a model access-group TAG.
+# Requires LiteLLM 1.100.0+ (/access_group/{tag}/budget).
+#
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMModelGroupBudget
+metadata:
+  name: openai-monthly
+spec:
+  modelGroup: openai   # a model_info.access_groups tag, see 14-accessgroup.yaml modelGroups
+  limit: 500
+  softLimit: 400
+  period: 30d

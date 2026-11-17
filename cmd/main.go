@@ -22,6 +22,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -32,6 +33,7 @@ import (
 	"github.com/ackstorm/alitellm-operator/internal/controller"
 	"github.com/ackstorm/alitellm-operator/internal/identity"
 	"github.com/ackstorm/alitellm-operator/internal/litellm"
+	"github.com/ackstorm/alitellm-operator/internal/providers"
 	"github.com/ackstorm/alitellm-operator/internal/toolhive"
 
 	// Blank-import the metrics package so its init registers the §10
@@ -295,7 +297,8 @@ func main() {
 	// Conservative timeouts: 10s total request, 30s idle conn timeout,
 	// 4 max idle conns per host (5 providers × few CRs each).
 	discoveryHTTPClient := &http.Client{
-		Timeout: 10 * time.Second,
+		Timeout:       10 * time.Second,
+		CheckRedirect: providers.CheckRedirect,
 		Transport: &http.Transport{
 			MaxIdleConnsPerHost: 4,
 			IdleConnTimeout:     30 * time.Second,
@@ -304,6 +307,7 @@ func main() {
 
 	if err := (&controller.ModelDiscoveryReconciler{
 		Client:     mgr.GetClient(),
+		APIReader:  mgr.GetAPIReader(),
 		Scheme:     mgr.GetScheme(),
 		HTTPClient: discoveryHTTPClient,
 		Recorder:   mgr.GetEventRecorderFor("modeldiscovery-controller"),
@@ -478,6 +482,72 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(),
+		&litellmv1alpha1.LiteLLMModelGroupBudget{},
+		controller.ModelGroupBudgetGroupIndexField,
+		controller.IndexModelGroupBudgetGroup,
+	); err != nil {
+		setupLog.Error(err, "unable to register ModelGroupBudget modelGroup field indexer")
+		os.Exit(1)
+	}
+	modelGroupBudgetSafetyRelistCh := make(chan reconcile.Request, 256)
+	if err := mgr.Add(&controller.SafetyRelistRunnable{
+		Client:       mgr.GetClient(),
+		Namespace:    watchNS,
+		Interval:     relistInterval,
+		Log:          ctrl.Log.WithName("modelgroupbudget-safety-relist"),
+		RequeueCh:    modelGroupBudgetSafetyRelistCh,
+		ListRequests: controller.ListModelGroupBudgetRequests,
+		LogLabel:     "modelgroupbudgets",
+	}); err != nil {
+		setupLog.Error(err, "unable to add modelgroupbudget SafetyRelistRunnable")
+		os.Exit(1)
+	}
+	if err := (&controller.ModelGroupBudgetReconciler{
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		Cache:             connCache,
+		Recorder:          mgr.GetEventRecorderFor("modelgroupbudget-controller"),
+		Namespace:         watchNS,
+		ConnectionRebuilt: connCache.Subscribe(),
+	}).SetupWithManager(mgr, modelGroupBudgetSafetyRelistCh); err != nil {
+		setupLog.Error(err, "unable to set up ModelGroupBudget reconciler")
+		os.Exit(1)
+	}
+
+	// Key Secrets live outside WATCH_NAMESPACE, which the manager cache does
+	// not cover, so they are read and written through a non-caching client.
+	keySecrets, err := client.New(mgr.GetConfig(), client.Options{Scheme: mgr.GetScheme()})
+	if err != nil {
+		setupLog.Error(err, "unable to build the key Secret client")
+		os.Exit(1)
+	}
+	keySafetyRelistCh := make(chan reconcile.Request, 256)
+	if err := mgr.Add(&controller.SafetyRelistRunnable{
+		Client:       mgr.GetClient(),
+		Namespace:    watchNS,
+		Interval:     relistInterval,
+		Log:          ctrl.Log.WithName("key-safety-relist"),
+		RequeueCh:    keySafetyRelistCh,
+		ListRequests: controller.ListKeyRequests,
+		LogLabel:     "keys",
+	}); err != nil {
+		setupLog.Error(err, "unable to add key SafetyRelistRunnable")
+		os.Exit(1)
+	}
+	if err := (&controller.KeyReconciler{
+		Client:            mgr.GetClient(),
+		Scheme:            mgr.GetScheme(),
+		Cache:             connCache,
+		Recorder:          mgr.GetEventRecorderFor("key-controller"),
+		Namespace:         watchNS,
+		ConnectionRebuilt: connCache.Subscribe(),
+		Secrets:           keySecrets,
+	}).SetupWithManager(mgr, keySafetyRelistCh); err != nil {
+		setupLog.Error(err, "unable to set up Key reconciler")
+		os.Exit(1)
+	}
+
 	// Phase 6 — TeamReconciler (Pipeline A): per-CR
 	// resolve/diff/apply against /team/new + /team/update via the alias-
 	// list resolution from spec §7.4 + the smallest-team_id duplicate
@@ -588,6 +658,7 @@ func main() {
 	// (Phase 3 D-06 pattern).
 	if err := (&controller.MCPServerDiscoveryReconciler{
 		Client:           mgr.GetClient(),
+		APIReader:        mgr.GetAPIReader(),
 		Scheme:           mgr.GetScheme(),
 		ToolHiveInformer: toolHiveInformer,
 		Recorder:         mgr.GetEventRecorderFor("mcpserverdiscovery-controller"),

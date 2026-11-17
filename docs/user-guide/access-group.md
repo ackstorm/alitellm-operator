@@ -191,15 +191,18 @@ is already broken.
 
 !!! danger "A group grant overrides the team's deny-by-default sentinel"
 
-    Every team is projected with the `["no-default-models"]` sentinel, which
-    denies every model ([closed baseline](team.md#access-a-closed-team-opened-by-access-groups)).
+    Every team's `models` starts with the `no-default-models` sentinel (which
+    on its own denies every model), followed by the attached groups' mirrored
+    model names ([closed baseline](team.md#access-a-closed-team-opened-by-access-groups)).
     An attached access group **overrides** that: LiteLLM composes group grants
     additively, so a group granting `gpt-4o` makes `gpt-4o` reachable by that
-    team's keys even though `team.models` is still `["no-default-models"]`.
+    team's keys even though `team.models` still starts with `"no-default-models"` (followed by the
+    group's mirrored model names, see [team](team.md)).
 
-    Measured on stock LiteLLM 1.93.0 and covered by the `AG-04` e2e spec: the
+    Measured on stock LiteLLM 1.93.0 (the e2e suite now runs on 1.106.0 with
+    unchanged behaviour) and covered by the `AG-04` e2e spec: the
     same team is denied `team_model_access_denied` before the attachment and
-    succeeds after it, with its own `models` list unchanged.
+    succeeds after it.
 
 Consequences to plan around:
 
@@ -283,4 +286,5 @@ the now-dangling id from enforcement.
 | Group is `Synced` but grants nothing | A `spec.models` entry matches neither a model name nor a model access-group tag. Nothing validates it; check `GET /v1/access_group`. |
 | Group does not appear in `GET /access_group/list` | Expected — that is the legacy tag namespace. See [Two access-group namespaces](#two-access-group-namespaces). |
 | `assigned_team_ids` is `[]` despite an attached team | Expected — the group side does not mirror a team-side write. Read `GET /team/info`. |
+| A team key's `GET /v1/models` lists a tag name (e.g. `anthropic`) as a model | LiteLLM behavior (measured on 1.106.0): a tag reached through `access_group_ids` is listed verbatim, not expanded. The real models are listed because the operator mirrors the group's entries into `team.models`, where LiteLLM does expand tags. Calling the tag name fails; clients that show the catalog (LibreChat) show it as an extra entry. Granting by model name (`spec.models`) instead of tag avoids it. |
 | A team can reach a model none of its intended groups grant | Another attached group grants it. Groups only ADD. |

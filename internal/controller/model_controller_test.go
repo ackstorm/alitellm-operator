@@ -1862,6 +1862,73 @@ func TestModel_DriftCounter_FirstReconcile_NoIncrement(t *testing.T) {
 	t.Logf("OWN-04 AC-DC2: first-reconcile NO metric increment — create_missing delta=%.0f update_drifted delta=%.0f (PASS)", deltaCM, deltaUD)
 }
 
+// POST /model/update never writes the model_info blob, so a row adopted by
+// name whose blob lacks the rendered values is replaced, not updated.
+func TestModel_Adoption_StaleModelInfo_Recreates(t *testing.T) {
+	ctx := context.Background()
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetCounters()
+	mockServer.ResetRecorded()
+	mockServer.ResetModels()
+	ensureNoModel(t, ctx, "adopt-stale-info")
+	resetConnCacheSnapshot()
+
+	mockServer.AddHandManagedModel("adopt-stale-info", "pre-existing-id-002")
+
+	ensureNoConnectionDefault(t, ctx)
+	connCR := connDefaultCR()
+	if err := k8sClient.Create(ctx, connCR); err != nil {
+		t.Fatalf("create LiteLLMConnection: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = k8sClient.Delete(context.Background(), connCR, &client.DeleteOptions{})
+		ensureNoModel(t, context.Background(), "adopt-stale-info")
+	})
+	if snap := pollSnapshotReason(30*time.Second, reasonSynced); snap.Reason != reasonSynced {
+		t.Fatalf("LiteLLMConnection not Synced within 30s")
+	}
+
+	if err := k8sClient.Create(ctx, modelSampleCR("adopt-stale-info")); err != nil {
+		t.Fatalf("create Model: %v", err)
+	}
+	m := pollModelCondition(t, ctx, "adopt-stale-info", reasonSynced, 30*time.Second)
+
+	id := m.Status.LastRendered.ModelID
+	if id == "" || id == "pre-existing-id-002" {
+		t.Fatalf("modelID = %q, want a fresh row: the adopted row never got the rendered model_info", id)
+	}
+	if got := mockServer.GetModelID("adopt-stale-info"); got != id {
+		t.Errorf("LiteLLM row id = %q, status tracks %q", got, id)
+	}
+	if got := mockServer.LastModelInfoBody("adopt-stale-info")["access_groups"]; got == nil {
+		t.Errorf("recreated row carries no access_groups; model_info = %v", mockServer.LastModelInfoBody("adopt-stale-info"))
+	}
+}
+
+func TestModelInfoApplied(t *testing.T) {
+	row := litellm.ModelInfo{
+		ID:      "x",
+		Tier:    "paid",
+		Extra:   map[string]any{"access_groups": []any{"default"}, "supports_vision": true},
+		DBModel: true,
+	}
+	cases := []struct {
+		name string
+		info map[string]any
+		want bool
+	}{
+		{"empty render", nil, true},
+		{"subset, typed and extra keys", map[string]any{"access_groups": []string{"default"}, "tier": "paid"}, true},
+		{"value differs", map[string]any{"access_groups": []string{"other"}}, false},
+		{"key missing on the row", map[string]any{"mode": "chat"}, false},
+	}
+	for _, tc := range cases {
+		if got := modelInfoApplied(row, tc.info); got != tc.want {
+			t.Errorf("%s: modelInfoApplied = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
 // TestModel_DriftCounter_UpdateDrifted — Task 1 Test 2.
 //
 // AC-DC4 / AC-O2 / OWN-02: after a Model reaches Synced, editing spec.params
@@ -1999,14 +2066,17 @@ func TestModel_DriftCounter_CreateMissing_SafetyRelist(t *testing.T) {
 
 	// Also clear the status.lastRendered.ModelID to simulate the
 	// operator seeing the model as "missing" on the CREATE branch.
-	// Re-get the latest CR.
+	// Re-get on conflict: the safety re-list may write status first.
 	key := client.ObjectKey{Name: "drift-create-missing", Namespace: WatchNamespace}
-	if err := k8sClient.Get(ctx, key, m); err != nil {
-		t.Fatalf("re-get model: %v", err)
-	}
-	savedHash := m.Status.LastRendered.Hash // non-empty = NOT first reconcile
-	m.Status.LastRendered.ModelID = ""
-	if err := k8sClient.Status().Update(ctx, m); err != nil {
+	var savedHash string
+	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := k8sClient.Get(ctx, key, m); err != nil {
+			return err
+		}
+		savedHash = m.Status.LastRendered.Hash // non-empty = NOT first reconcile
+		m.Status.LastRendered.ModelID = ""
+		return k8sClient.Status().Update(ctx, m)
+	}); err != nil {
 		t.Fatalf("clear ModelID: %v", err)
 	}
 	t.Logf("savedHash=%q (non-empty = past first reconcile)", savedHash)

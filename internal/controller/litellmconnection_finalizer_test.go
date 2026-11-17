@@ -100,8 +100,13 @@ func TestConnectionFinalizerAddRemove_CONN_09(t *testing.T) {
 	// between Delete and full removal), not about quiescence during
 	// the Ready handshake. The original strict precondition was
 	// over-broad and flaky on CI runners.
-	readsAtDelete := mockServer.Reads()
-	mutationsAtDelete := mockServer.Mutations()
+	//
+	// Wait for mutations to go quiet first: once Connection flips Ready the
+	// implicit Team/default bootstraps (POST /team/new) asynchronously, and
+	// that write landing after the baseline read as a finalizer API call.
+	// Reads skip GET /v2/team/list (see mockReadsSince).
+	mutationsAtDelete := waitQuiet(t, mockServer.Mutations, time.Second, 15*time.Second)
+	recordedAtDelete := len(mockServer.Recorded())
 
 	// Step 6: delete the CR; poll for full removal.
 	if err := k8sClient.Delete(ctx, &withFinalizer); err != nil {
@@ -128,18 +133,18 @@ func TestConnectionFinalizerAddRemove_CONN_09(t *testing.T) {
 	// - Reads: bounded by readsAtDelete+2 — at most two additional
 	// reads may occur due to a race where a previously-enqueued
 	// reconcile is processing when DeletionTimestamp lands.
-	readsFinal := mockServer.Reads()
+	readsDelta := mockReadsSince(recordedAtDelete)
 	mutationsFinal := mockServer.Mutations()
 	if mutationsFinal != mutationsAtDelete {
 		t.Errorf("CONN-09 FAIL: mockServer.Mutations() drifted from %d to %d across deletion (no API call should occur during finalizer cleanup)",
 			mutationsAtDelete, mutationsFinal)
 	}
-	if readsFinal > readsAtDelete+2 {
-		t.Errorf("CONN-09 FAIL: mockServer.Reads() grew from %d to %d across deletion (max tolerated readsAtDelete+2 = %d) — finalizer block may be issuing a probe",
-			readsAtDelete, readsFinal, readsAtDelete+2)
+	if readsDelta > 2 {
+		t.Errorf("CONN-09 FAIL: %d mock reads across deletion (max tolerated 2) — finalizer block may be issuing a probe",
+			readsDelta)
 	}
-	t.Logf("CONN-09: reads atDelete=%d, final=%d (delta=%d ≤ 2); mutations atDelete=%d, final=%d",
-		readsAtDelete, readsFinal, readsFinal-readsAtDelete, mutationsAtDelete, mutationsFinal)
+	t.Logf("CONN-09: reads delta=%d (≤ 2); mutations atDelete=%d, final=%d",
+		readsDelta, mutationsAtDelete, mutationsFinal)
 
 	// Step 8: assert cache was invalidated with Reason="Absent".
 	finalSnap := connCache.Snapshot()

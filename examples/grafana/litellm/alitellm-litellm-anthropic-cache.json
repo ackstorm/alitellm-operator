@@ -10,7 +10,7 @@
     "from": "now-7d",
     "to": "now"
   },
-  "refresh": "5m",
+  "refresh": "",
   "templating": {
     "list": [
       {

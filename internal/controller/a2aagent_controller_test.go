@@ -1561,3 +1561,59 @@ func TestA2AAgent_DeletionPath_Deterministic4xx_OrphanDrains(t *testing.T) {
 	}
 	t.Fatalf("A2AAgent stuck Terminating after deterministic 4xx under Orphan policy")
 }
+
+// A CR with no persisted id resolves its agent by name on delete. A failed
+// LIST proves nothing: the finalizer stays and the row is deleted on recovery.
+func TestA2AAgent_DeletionPath_NoID_ListFails_KeepsFinalizer(t *testing.T) {
+	ctx := context.Background()
+	const name = "a2a-del-list-fails"
+	resetMockA2A()
+	ensureNoA2AAgent(t, ctx, name)
+	resetConnCacheSnapshot()
+
+	cleanupConn := setupReadyConnectionA2A(t, ctx)
+	t.Cleanup(func() {
+		mockServer.SetMode(mock.ModeHappy)
+		cleanupConn()
+		ensureNoA2AAgent(t, context.Background(), name)
+	})
+
+	// The agent exists in LiteLLM, but every call fails: the CR gets its
+	// finalizer and never learns an id.
+	mockServer.AddHandManagedAgent(name)
+	// A probe landing in the outage flips the connection to Unreachable and
+	// the deletion path then makes no call at all.
+	waitQuiet(t, func() int64 { return mockServer.PathCallCount("/key/health") }, 500*time.Millisecond, 10*time.Second)
+	mockServer.SetMode(mock.ModeTransient5xx)
+	if err := k8sClient.Create(ctx, a2aSampleCR(name)); err != nil {
+		t.Fatalf("create A2AAgent: %v", err)
+	}
+	key := client.ObjectKey{Name: name, Namespace: WatchNamespace}
+	var a litellmv1alpha1.LiteLLMA2AAgent
+	waitFor(t, func() bool {
+		return k8sClient.Get(ctx, key, &a) == nil && controllerutil.ContainsFinalizer(&a, a2aAgentFinalizer)
+	}, "finalizer never added")
+	if a.Status.LastRendered.AgentID != "" {
+		t.Fatalf("precondition: CR learned an id (%q) while LiteLLM was failing", a.Status.LastRendered.AgentID)
+	}
+
+	from := len(mockServer.Recorded())
+	if err := k8sClient.Delete(ctx, &a); err != nil {
+		t.Fatalf("delete A2AAgent: %v", err)
+	}
+	waitFor(t, func() bool { return mockCallIndex(from, "GET", "/v1/agents") >= 0 },
+		"deletion never tried to resolve the agent by name")
+	// Hold the outage: a finalizer drained on the failed LIST goes now.
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		if apierrors.IsNotFound(k8sClient.Get(ctx, key, &a)) {
+			break
+		}
+	}
+
+	mockServer.SetMode(mock.ModeHappy)
+	waitFor(t, func() bool { return apierrors.IsNotFound(k8sClient.Get(ctx, key, &a)) },
+		"CR still present after LiteLLM recovered")
+	if mockServer.HasAgent(name) {
+		t.Error("agent row leaked: the finalizer drained on a failed name-resolve")
+	}
+}

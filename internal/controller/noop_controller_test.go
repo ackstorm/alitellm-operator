@@ -106,6 +106,11 @@ type NoOpReconciler struct {
 	// CRs) and AC-R1 smoke (steady-state count).
 	ReconcileCalls atomic.Int64
 
+	// ForeignNamespaceCalls counts reconciles for a request outside
+	// WatchNamespace — the AC-N4 signal. ReconcileCalls alone also counts
+	// WatchNamespace Model events left over from earlier tests.
+	ForeignNamespaceCalls atomic.Int64
+
 	// SafetyRelistInterval is the §7.6 safety re-list cadence. Production
 	// uses 30 minutes; Phase 1's accelerated AC-R1 smoke sets it to 1s
 	// to compress the test window. Currently unused by the reconcile
@@ -127,6 +132,9 @@ type NoOpReconciler struct {
 // 5. Else: return ctrl.Result{}, nil — no requeue, event-driven only.
 func (r *NoOpReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	r.ReconcileCalls.Add(1)
+	if req.Namespace != WatchNamespace {
+		r.ForeignNamespaceCalls.Add(1)
+	}
 	logger := log.FromContext(ctx).WithValues("noop-reconciler", req.NamespacedName)
 
 	_, err := r.LiteLLM.ProbeConnection(ctx)

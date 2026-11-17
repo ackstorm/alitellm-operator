@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -178,6 +179,12 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		}
 		return ctrl.Result{}, err
 	}
+	if team.Name == teamAliasDefault {
+		// The CR owns the team body from here on. The implicit cache would
+		// otherwise still read "steady state" once the CR is gone without
+		// its re-apply (failed re-apply, finalizer dropped by hand).
+		r.ResetImplicitDefaultCache()
+	}
 
 	// ─── Step 1.5: Protected-deletion + finalizer-add ─────────
 	//
@@ -274,7 +281,7 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	//
 	// Applied BEFORE the Step 8 hash so the resolved ids participate in drift
 	// detection. A group appearing/disappearing changes the hash → one update.
-	var groupIDs []string
+	var groupIDs, groupModels, missing []string
 	if len(team.Spec.AccessGroups) > 0 {
 		groups, gerr := snap.Client.ListAccessGroups(ctx)
 		if gerr != nil && !errors.Is(gerr, litellm.ErrNotFound) {
@@ -282,24 +289,21 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		}
 		// ErrNotFound → zero groups registered → every name missing below.
 		nameToID := make(map[string]string, len(groups))
+		nameToModels := make(map[string][]string, len(groups))
 		for _, g := range groups {
 			nameToID[g.AccessGroupName] = g.AccessGroupID
+			nameToModels[g.AccessGroupName] = g.AccessModelNames
 		}
-		var missing []string
 		groupIDs, missing = resolveNames(team.Spec.AccessGroups, nameToID)
 		sort.Strings(groupIDs) // order-independent hash, like renderAccessGroup
-		if len(missing) > 0 {
-			msg := fmt.Sprintf("spec.accessGroups not yet registered in LiteLLM: %s", strings.Join(missing, ", "))
-			if werr := r.writeStatus(ctx, &team, metav1.ConditionFalse, reasonAccessGroupNotFound, msg); werr != nil {
-				logStatusUpdateErr(logger, werr, "reason", reasonAccessGroupNotFound)
-			}
-			metrics.ReconcileTotal.WithLabelValues(teamKind, "success").Inc()
-			// Ordering dependency with LiteLLMAccessGroup CRs — requeue.
-			return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
-		}
+		// Missing names have no nameToModels entry, so they contribute nothing.
+		groupModels = attachedGroupModels(team.Spec.AccessGroups, nameToModels)
 	}
-	for k, v := range closedTeamGrant(groupIDs) {
+	for k, v := range closedTeamGrant(groupIDs, groupModels) {
 		body[k] = v
+	}
+	if len(missing) > 0 {
+		return r.narrowAndPark(ctx, &team, logger, snap, body, missing)
 	}
 
 	// ─── Step 8: Compute currentRenderedHash (Phase 3 D-01) ───────────────
@@ -543,7 +547,7 @@ func implicitDefaultBody() map[string]any {
 		// rpm_limit_type / tpm_limit_type INTENTIONALLY ABSENT — conditional-add
 		// per Feature 01 §2.1: omitted (not nil) when *_limit is nil.
 	}
-	for k, v := range closedTeamGrant(nil) {
+	for k, v := range closedTeamGrant(nil, nil) {
 		body[k] = v
 	}
 	return body
@@ -1016,6 +1020,54 @@ func isTransientLiteLLMError(err error) bool {
 	return err != nil && !is4xxStatus(err)
 }
 
+// narrowAndPark handles a team whose spec.accessGroups names a group with no
+// LiteLLM row (not created yet, or deleted: CR under deletionPolicy Delete,
+// row removed in the UI). body is the normal render built from only the
+// groups that DO resolve. If the team already exists it is first narrowed to
+// that body — otherwise team.models would keep the vanished group's mirrored
+// names and the team its access indefinitely. The write never grants beyond
+// the resolvable part of the spec (a newly added group that resolves does
+// land while parked).
+// Then the CR parks Ready=False/AccessGroupNotFound and requeues.
+//
+// lastRendered.hash records the narrowed body (what LiteLLM now holds): the
+// full render differs from it by the missing group's id, so the group's return
+// always takes the UPDATE path instead of short-circuiting at Step 9.
+func (r *TeamReconciler) narrowAndPark(
+	ctx context.Context,
+	team *litellmv1alpha1.LiteLLMTeam,
+	logger logr.Logger,
+	snap connection.ConnectionSnapshot,
+	body map[string]any,
+	missing []string,
+) (ctrl.Result, error) {
+	if teamID := team.Status.LastRendered.TeamID; teamID != "" {
+		canonicalBytes, err := canonicalJSON(body)
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("team controller: canonical JSON: %w", err)
+		}
+		narrowedHash := fmt.Sprintf("%x", sha256.Sum256(canonicalBytes))
+		// Already narrowed by an earlier pass — skip the redundant write.
+		if team.Status.LastRendered.Hash != narrowedHash {
+			body["team_id"] = teamID
+			if _, uerr := snap.Client.UpdateTeamRaw(ctx, body); uerr != nil {
+				return r.classifyMutationError(ctx, team, logger, uerr, "POST /team/update (narrow to resolved access groups)")
+			}
+			now := metav1.NewTime(time.Now())
+			team.Status.LastRendered.Hash = narrowedHash
+			team.Status.LastRendered.At = &now
+			logger.V(1).Info("team narrowed to resolved access groups", "teamID", teamID, "missing", missing)
+		}
+	}
+	msg := fmt.Sprintf("spec.accessGroups not yet registered in LiteLLM: %s", strings.Join(missing, ", "))
+	if werr := r.writeStatus(ctx, team, metav1.ConditionFalse, reasonAccessGroupNotFound, msg); werr != nil {
+		logStatusUpdateErr(logger, werr, "reason", reasonAccessGroupNotFound)
+	}
+	metrics.ReconcileTotal.WithLabelValues(teamKind, "success").Inc()
+	// Ordering dependency with LiteLLMAccessGroup CRs — requeue.
+	return ctrl.Result{RequeueAfter: snap.NormalizedRequeueOnRejectedAfter()}, nil
+}
+
 // classifyMutationError handles §7.7 error classification for LiteLLM
 // mutation calls (CreateTeamRaw / UpdateTeamRaw / ListTeamsByAlias):
 // - Auth401Error → cache invalidation + LiteLLMUnavailable + nil return
@@ -1106,6 +1158,10 @@ func (r *TeamReconciler) SetupWithManager(mgr ctrl.Manager, requeueCh ...chan re
 			handler.EnqueueRequestsFromMapFunc(r.connectionToTeams),
 			builder.WithPredicates(connectionReadyTransition()),
 		).
+		Watches(
+			&litellmv1alpha1.LiteLLMAccessGroup{},
+			handler.EnqueueRequestsFromMapFunc(r.accessGroupToTeams),
+		).
 		WithOptions(transientBackoffOptions()).
 		Named("team")
 
@@ -1160,4 +1216,23 @@ func ListTeamRequests(ctx context.Context, c client.Client, namespace string) ([
 		})
 	}
 	return reqs, nil
+}
+
+// accessGroupToTeams re-drives every Team that attaches the changed group, so
+// a model removed from a group leaves team.models immediately instead of at
+// the next safety relist. No GenerationChanged predicate on purpose: the
+// group's status write (after its LiteLLM PUT lands) must also re-drive, or
+// the team could read the pre-PUT row.
+func (r *TeamReconciler) accessGroupToTeams(ctx context.Context, obj client.Object) []reconcile.Request {
+	var list litellmv1alpha1.LiteLLMTeamList
+	if err := r.List(ctx, &list, client.InNamespace(obj.GetNamespace())); err != nil {
+		return nil
+	}
+	var reqs []reconcile.Request
+	for i := range list.Items {
+		if slices.Contains(list.Items[i].Spec.AccessGroups, obj.GetName()) {
+			reqs = append(reqs, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])})
+		}
+	}
+	return reqs
 }

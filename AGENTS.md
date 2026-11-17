@@ -57,15 +57,16 @@ CRDs, and config are original ACKstorm material.
                        └──────────────────┘
 ```
 
-Owned CRDs (11 — the exhaustive set e2e `AC-N1` asserts in
+Owned CRDs (13 — the exhaustive set e2e `AC-N1` asserts in
 `test/e2e/scope_test.go`; adding a kind without updating that set fails e2e):
 `LiteLLMTeam`, `LiteLLMModel`, `LiteLLMModelDiscovery`, `LiteLLMModelAlias`,
 `LiteLLMMCPServer`, `LiteLLMMCPServerDiscovery`, `LiteLLMMCPToolset`,
 `LiteLLMA2AAgent`, `LiteLLMGuardRail`, `LiteLLMConnection`,
-`LiteLLMAccessGroup`. API group
+`LiteLLMAccessGroup`, `LiteLLMModelGroupBudget`, `LiteLLMKey`. API group
 `litellm.ackstorm.ai`, version `v1alpha1`. `LiteLLMMCPToolset` requires
 LiteLLM **1.93.0+** (`/v1/mcp/toolset` does not exist before that); so does
-`LiteLLMAccessGroup` (`/v1/access_group`).
+`LiteLLMAccessGroup` (`/v1/access_group`). `LiteLLMModelGroupBudget` requires LiteLLM **1.100.0+**
+(`/access_group/{tag}/budget`).
 
 Critical paths:
 - CRD apply → reconciler → LiteLLM HTTP call → status condition update
@@ -128,7 +129,10 @@ alitellm-operator/
 | Docs site, mkdocs, mike, gh-pages flow | `references/docs/documentation.md`       |
 | CI / PR / release lifecycle (push/PR matrix) | `references/docs/workflow.md`        |
 | Access groups / team attachment         | `docs/user-guide/access-group.md` (two disjoint namespaces + the only-ADD bypass); team = closed container, `closedTeamGrant` in `internal/controller/team_permission.go` |
+| Model-group budgets                    | `docs/user-guide/model-group-budget.md` (attribution rule; `team.models` mirror) |
 | Model aliases                          | `docs/user-guide/model-alias.md` (aggregate map) |
+| LiteLLM virtual keys (`/key/*`)        | `references/litellm-key-api.md` (measured shapes; hash-only rule) |
+| Service keys (`LiteLLMKey`)            | `docs/user-guide/key.md` (Secret ownership, `keySecretNamespaces`, rotation) |
 | OLM packaging                          | NOT supported — explicit scope decision (no OperatorHub) |
 
 ## CI gating — one-line summary
@@ -187,9 +191,9 @@ make shell                       # interactive shell in the devtools container
   PR that changes Dockerfile.devtools racing the image workflow, GHCR
   unavailable), the composite action falls back to a local build — slower
   but always correct.
-- Pinned: Go 1.26.6 (Dockerfile.devtools `golang:1.26.6-bookworm`,
-  Dockerfile `golang:1.26.6`, release.yml `GO_VERSION: '1.26.6'`; go.mod
-  `go 1.26.0` / `toolchain go1.26.6`), kubebuilder v4.4.0,
+- Pinned: Go 1.26.11 (Dockerfile.devtools `golang:1.26.11-bookworm`,
+  Dockerfile `golang:1.26.11`, release.yml `GO_VERSION: '1.26.11'`; go.mod
+  `go 1.26.0` / `toolchain go1.26.11`), kubebuilder v4.4.0,
   controller-runtime v0.19.4, k8s.io/* v0.31.0, govulncheck v1.3.0. PR
   CI and release run the same toolchain (issue #43 close); any future
   bump MUST update all four surfaces in the same change.
@@ -581,6 +585,35 @@ and invoke the underscore target directly, e.g.
 `docker run ... litellm-devtools:latest make _test-envtest-pkg PKG=./internal/controller/ FOCUS=...`.
 Seen 2026-10-05 on the shared dev host.
 
+### ❌ Vanish-deleting a Discovery child whose write failed
+```go
+desiredSet := generated + skipped + pendingRetries   // `failed` missing
+// → an owned child whose apply errored this round is Deleted in the same pass
+```
+✅ Both Discovery reconcilers fold `failed` into `desiredSet`, and the
+AlreadyExists `retryable` branch registers `pendingRetries`. A child that could
+not be written keeps its last-good object; only a candidate the provider no
+longer lists is vanish-deleted.
+WHY IT FAILED: the child's own finalizer then issued `POST /model/delete`, so
+one apiserver error or one CRD-invalid render removed a live model from
+LiteLLM. Guarded by `TestModelDiscovery_FailedApply_KeepsExistingChild`,
+`TestModelDiscovery_AlreadyExistsRetry_KeepsExistingChild` and
+`TestMCPServerDiscoveryReconciler_FailedApply_KeepsExistingChild`. A deleted
+child is re-created within milliseconds under a NEW UID, so a test that only
+checks "the child exists" cannot see the delete — compare the UID.
+
+### ❌ Adding a mock Mode without listing it in `MockServer.SetMode`
+```go
+mockServer.SetMode(mock.ModeDelete422)   // not in the switch → stored as ModeHappy
+```
+✅ Add the constant to the `case` list in `SetMode` (`internal/litellm/mock/mock.go`).
+WHY IT FAILS: `SetMode` falls back to `ModeHappy` for any value it does not
+list, with no error. The three `*_DeletionPath_Deterministic4xx_OrphanDrains`
+tests ran in happy mode this way: they passed because the delete succeeded,
+not because a 422 drained under Orphan. A test for a failure mode must show
+the failing call in `mockServer.Recorded()` or assert an outcome only the
+failure can produce.
+
 ### ❌ Kubectl from host against the kind cluster
 ```bash
 kubectl get pods -n default
@@ -642,8 +675,11 @@ spec:
 ```
 ✅ `providers.ValidateBaseURL` (M-SEC1) is a **denylist**, not full SSRF
 prevention. It rejects only cloud-metadata (`169.254.169.254`,
-`fd00:ec2::254`), loopback, and link-local hosts plus structural problems
-(non-http(s) scheme, userinfo, query, fragment). Private RFC1918 and `*.svc`
+`fd00:ec2::254`), loopback (IP literals and the `localhost` /
+`*.localhost` names), and link-local hosts plus structural problems
+(non-http(s) scheme, userinfo, query, fragment). The discovery HTTP client
+applies the same host check to every redirect (`providers.CheckRedirect`,
+wired in `cmd/main.go`). Private RFC1918 and `*.svc`
 hosts remain reachable BY DESIGN — KubeAI points `baseUrl` at in-cluster
 service DNS, so a blanket internal-deny would break the supported use case.
 RESIDUAL RISK: a namespaced user can still aim the operator's HTTP client at
@@ -783,7 +819,9 @@ exists. A definitive 404 / empty `data[]` (or 404 on `POST /model/delete`,
 `litellm.IsNotFound`) is positive proof the entry is gone, so the Delete
 goal is already met. The sibling controllers (a2aagent/mcpserver) already
 drain unconditionally on name-resolve-empty; the model controller now
-matches. Break-glass for an already-stuck CR (no operator redeploy):
+matches. EMPTY only: a name-resolve that FAILS (5xx, transport, 401) proves
+nothing, so `resolve*IDByName` return `(id, err)` and the deletion paths route
+an error through `onAckMissing` (finalizer kept). Break-glass for an already-stuck CR (no operator redeploy):
 `kubectl patch <kind> <name> --type=merge -p '{"metadata":{"finalizers":[]}}'`
 (the `deletion-policy-override=Orphan` annotation no longer drains while
 LiteLLM is unreachable — see the Orphan-outage entry below).
@@ -801,7 +839,8 @@ missing ack, outages included.
 ✅ `newAckMissingFn` (`shared_helpers.go`) takes `(reason, permanent)`. Orphan
 drains only on a PERMANENT cause: connection `Absent` (`ackUnavailable(snap)` —
 LiteLLMConnection being deleted, namespace teardown) or a deterministic non-404
-4xx. Every other not-usable reason (`Unreachable`, `Connecting`, `""`,
+4xx (`is4xxStatus`; 408/425/429 ask for a retry and count as transient, on the
+mutation path too). Every other not-usable reason (`Unreachable`, `Connecting`, `""`,
 `BadMasterKey`, `SecretNotFound`, `InvalidEndpoint`, `InsecureEndpoint`) and
 every 401 KEEPS the finalizer, records `deletion_blocked`, emits
 `LiteLLMDeleteDeferred`, and returns an error (backoff ≤30s; no HTTP call while
@@ -817,6 +856,27 @@ looped DELETE→401→invalidate→probe re-Sync→rebuilt fan-in (no backoff)�
 ~600/s (seen in envtest `TestTeamReconciler_AC_T3_Delete401AntiStorm`, which also
 polluted `TestWatchNamespaceEnforcement`'s read count). Plain error return =
 per-item backoff; the probe owns key health.
+
+### ❌ Invalidating the connection cache on every 401
+```
+# operator key = a non-admin virtual key, LiteLLM 1.106.0
+POST /key/health            200      ← probe passes
+GET  /get/config/callbacks  401      ← alias reconciler → InvalidateOn401
+# → probe → Rebuild(Ready) → rebuilt fan-in → 401 → ...  465 probes in 30s
+```
+✅ `Cache.InvalidateOn401` is a no-op while `contradicted` is set
+(`internal/connection/cache.go`): a Ready `Rebuild` that answers an
+invalidation proves the key is valid, so the 401 is a permission problem and
+another probe cannot change it. Any other `Rebuild` (the 5m probe tick, a
+Secret or spec change, a failed probe) clears the flag. The first 401 still
+probes and fans out, so a transient 401 recovers at once. Same key, fixed
+operator: 2 probes in 30s.
+WHY IT FAILED: the rebuilt fan-in re-enqueues every CR with no backoff, and
+LiteLLM answers 401 (not 403) on several admin-only routes for a key that
+`/key/health` accepts: `/get/config/callbacks`, `/v2/team/list`, `/team/new`,
+`/v1/access_group`. TRADE-OFF: after such a cycle a genuine key rotation is
+noticed by the next probe tick (≤5m) instead of at the first 401. Guarded by
+`TestInvalidateOn401_ProbeContradicts_NoSecondInvalidation`.
 
 ### ❌ Gating a LiteLLM mutation on `snap.Ready` alone
 ```go
@@ -910,6 +970,21 @@ CI's Envtest job, which is the reliable signal.
   trade-off as the Non-Goals "tick spread" note in the relist-convergence plan
   (per-kind gates were explicitly out of scope); `make e2e-full` against a
   real cluster is the decisive gate, not a local `-race` full-package run.
+  **Superseded 2026-10-19:** both were windows opened before the create burst
+  drained. BadMasterKey's extra probe was the connection reconciler's OWN third
+  probe (all three `probe: BadMasterKey` log lines precede the window; nothing
+  else logged a probe). CONN_09's baseline likely raced the async Team/default
+  bootstrap write (inferred: no failing log survived; passing runs show 1 or 2
+  delete-time mutations depending on whether that write had landed). Negative windows now open via `waitQuiet` (counter held
+  still ≥1s, `poll_until_test.go`) and read counts skip the ungated
+  Team/default `GET /v2/team/list` (`mockReadsSince`). New "nothing may happen
+  in this window" assertions MUST start with `waitQuiet`, never a fixed sleep.
+  Gating the suite `TeamDefaultRunnable` at the source (so no exclusion list is
+  needed) was considered and REJECTED 2026-10-20: every implicit-default /
+  bootstrap test would need an opt-in, and that churn risks more flakes than
+  the exclusion costs. A count-based window should prefer scoping to its own CR
+  (AC-N4 matches the CR name in path/query/body; mock `RecordedCall` carries
+  `Query` + `Body`) over growing an exclusion list.
 
 ### ❌ Secret watch without a data predicate → mass re-reconcile on ESO syncs
 ```go
@@ -1060,7 +1135,10 @@ Models UI row:  alitellm-operator/0.7.8   Unknown date
 ✅ The operator must stamp `model_info.created_at` / `model_info.updated_at`
 itself on CREATE — same mechanism as the `created_by` stamp (FIX2 M-8).
 `model_controller.go` sets all four on the `POST /model/new` body
-(RFC3339 UTC). Adopted/out-of-band rows cannot be back-stamped.
+(RFC3339 UTC). A row adopted by name on the CREATE arm is replaced
+(`POST /model/delete` + `POST /model/new`) when it lacks a rendered
+`model_info` value (`modelInfoApplied`), so it gets the stamps too; a row that
+already carries them is adopted with `POST /model/update` and keeps its own.
 WHY IT FAILS: in OSS (non-premium) LiteLLM, `proxy_server.get_model_info_with_id`
 copies the DB `created_at`/`updated_at` columns into `model_info` ONLY when
 `premium_user is True` (Enterprise). Non-premium UIs read the date straight
@@ -1094,7 +1172,13 @@ silently (treated as unchanged) to avoid a mass recreate of every model on
 operator upgrade. CONSEQUENCE: models whose blob is ALREADY stale in LiteLLM
 (e.g. `access_groups` added before this fix shipped) are NOT auto-healed —
 delete the entry in LiteLLM once and the operator recreates it fresh via
-`POST /model/new`. Forward changes are handled correctly.
+`POST /model/new`. Forward changes are handled correctly. Adoption by name
+(CREATE arm, empty `modelID`) compares the row instead: `modelInfoApplied`
+checks every rendered key against the row's `model_info`, ignoring keys
+LiteLLM adds, and a mismatch replaces the row. A stale-cache re-reconcile of a
+row the operator just created matches and stays a plain update. The
+vanish-probe re-target (tracked id gone, another row listed) clears the id and
+lands on the same arm, so the same check applies to it.
 
 ### ❌ Model created with no access group → unreachable by group-scoped keys
 Symptom: a `LiteLLMModel` (or Discovery-generated child) with no
@@ -1205,7 +1289,7 @@ spec:
   accessGroups: [dream]
 ```
 The operator always sends a CLOSED team (`closedTeamGrant`,
-`team_permission.go`): `models: ["no-default-models"]`, agents = null UUID,
+`team_permission.go`): `models: ["no-default-models", <attached groups' access_model_names, sorted, wildcards skipped>]` (LiteLLM charges a tag budget only when the tag literally is in `team.models`; `attachedGroupModels`; an AccessGroup watch re-drives teams), agents = null UUID,
 `[]` for mcp_servers / mcp_access_groups / agent_access_groups / mcp_toolsets,
 plus `access_group_ids` — every field on every write, the implicit
 `Team/default` included. WHY each piece:
@@ -1303,14 +1387,67 @@ strands the CR PERMANENTLY (nothing but a manual `kubectl patch` clears it).
 `mcptoolset_controller.go` therefore re-resolves by name in the 5xx branch: an
 empty name-resolve is positive proof the entry is absent, so the Delete goal is
 met and the finalizer drains regardless of `deletionPolicy` — the same
-confirmed-absent rule the model controller follows. A still-listed entry keeps
-the transient backoff. Break-glass for an already-stuck CR:
+confirmed-absent rule the model controller follows. A still-listed entry, or a
+name-resolve that itself fails, keeps the transient backoff. Break-glass for an
+already-stuck CR:
 ```bash
 kubectl patch litellmmcptoolset <name> --type=merge -p '{"metadata":{"finalizers":[]}}'
 ```
 WHY IT MATTERS BEYOND TOOLSETS: `litellm.IsNotFound` covers 404/ErrNotFound, but
 an endpoint that 500s on a missing row defeats it. Any NEW delete path should
 confirm absence before treating a 5xx as retry-forever.
+
+### ❌ Deleting an MCPServer conflict loser DELETEs the winner's entry
+```
+# foo-bar reconciled before foo.bar existed (both sanitize to foo-bar under ".")
+foo-bar: "mcp server created in LiteLLM" serverID=foo-bar
+foo.bar: adopts foo-bar → Ready=Synced; foo-bar → Ready=False Conflict,
+         status.lastRendered.serverID STILL "foo-bar" (keepPersistedID)
+kubectl delete litellmmcpserver foo-bar
+# ≤v0.10.2: DELETE /v1/mcp/server/foo-bar — the WINNER's live entry
+```
+Same hit with the winner created first: the loser has no serverID, so the
+deletion path's name-resolve fallback found the winner's entry by sanitized
+name and deleted that. Deleting the WINNER also deleted the entry the promoted
+loser was about to take over. Not a 10m hole: the sibling self-watch fans the
+Delete event out at once, and the survivor's Step 7b probe (MCP list cache
+invalidated by the DELETE) missed the entry and re-created it. Result: a brief
+outage and a re-created row.
+✅ Before any resolve/DELETE, the deletion path asks `conflictWinner`
+(`mcpserver_controller.go`, the SAME `conflict.ResolveWinner` call the
+reconcile-time loser short-circuit uses) whether a live, non-deleting sibling
+shares the sanitized `server_name` (`sharedEntryOwner`). If so, and this CR's
+`serverID` is empty, the sanitized name, or the owner's id, it skips the
+LiteLLM call, emits `LiteLLMDeleteSkipped`, and drains the finalizer. A
+DISTINCT id is a row of this CR's own (created before the collision) and is
+deleted as usual. The entry is deleted exactly
+when the LAST owning CR goes away, under that CR's `deletionPolicy`. The check
+runs only on a Usable snapshot (zero separator otherwise, #61).
+Because the entry now survives, the promoted loser MUST rewrite it. The loser
+branch therefore sets `status.lastRendered.hash` to the sentinel `mcpLoserHash`
+(`"conflict-loser"`; its real hash describes a body the winner has since
+overwritten) but keeps `serverID`. On promotion, Step 8 cannot short-circuit
+(hash mismatch), Step 7b still probes the kept id (the entry may have vanished
+while the loser was parked), and Step 9 takes the UPDATE arm on the kept id (or
+adopts by name / re-creates), so the loser's spec replaces the deleted winner's
+as a counted drift correction behind the recreate breaker. Do NOT blank the
+hash instead: an empty hash reads as `firstReconcile`, skips Step 7b, and a PUT
+onto a vanished id 404s forever (LiteLLM 1.106.0: `MCP Server not found`; the
+mock now 404s it too). Do NOT weaken `keepPersistedID` to clear the id.
+Losers are also excluded from `taggedMCPServerIDs`
+(`accessgroup_controller.go`): their tags would otherwise grant the WINNER's
+entry to groups the winner never named.
+CAVEAT: a promoted loser that stops before Step 9 (duplicate `secrets[].as`,
+SecretNotFound, missing placeholder) leaves the deleted winner's endpoint and
+credentials live until it can reconcile. Guarded by
+`TestMCPServer_ConflictLoserDelete_LateWinner_KeepsWinnerEntry`,
+`TestMCPServer_ConflictWinnerDelete_LoserInherits_LastOwnerDeletes`,
+`TestMCPServer_ConflictWinnerDelete_LateWinner_LoserRewritesEntry`,
+`TestMCPServer_ConflictWinnerDelete_StaleKeptID_LoserRecreates` and
+`TestMCPServer_ConflictLoserDelete_DistinctRow_Deleted`.
+WHY: the deletion path trusted `status.lastRendered.serverID` (and the name
+fallback) as proof of ownership. For a sanitization collision, ownership is a
+property of the live CR set, not of one CR's status.
 
 ### ❌ Asserting `object_permission` from `/v2/team/list`
 ```go
@@ -1358,15 +1495,42 @@ spec:
 ```
 The team is NOT denied `gpt-4o`. Verified live 2026-08-06 on LiteLLM 1.93.0
 (e2e `AG-04`): the same team's key answers `team_model_access_denied` before the
-attachment, and after it the response carries NEITHER that marker nor the
-sentinel echo — while `team.models` is still the deny-all sentinel
+attachment, and after it the response no longer carries that marker (the
+denial body used to also echo the sentinel; that echo disappeared in LiteLLM
+1.106.0, so only `team_model_access_denied` is asserted) — while `team.models` is still the deny-all sentinel
 (`__deny_all__` then, `no-default-models` since v0.9.0). Assert
-the markers' ABSENCE, never `status == 200`: on the e2e mock a correctly
+the marker's ABSENCE, never `status == 200`: on the e2e mock a correctly
 authorized call never returns 200, so a `== 200` assertion inverts the verdict.
 ✅ Groups compose ADDITIVELY and OVERRIDE the deny-by-default sentinel. Treat
 every attachment as a widening of the team's ceiling; there is no way to use one
 to narrow access. DOCUMENTED, not fixed — suppressing it would mean the operator
 second-guessing an explicit grant the user wrote.
+
+### ❌ Expecting a model-group budget to charge `access_group_ids` traffic
+```yaml
+kind: LiteLLMTeam
+spec: { accessGroups: [dream] }   # dream grants tag "anthropic" via modelGroups
+# team.models = ["no-default-models"]  → calls reach the model, budget stays at $0
+```
+✅ The operator mirrors the attached groups' `access_model_names` (minus
+wildcards) into `team.models` after the sentinel (`["no-default-models",
+"anthropic"]`) and a `LiteLLMAccessGroup` watch re-drives attached teams.
+WHY: LiteLLM charges `/access_group/<tag>/budget` only when the tag literally
+appears in the key's or team's `models`; a grant via `access_group_ids` is
+never charged. The mirror grants nothing new. Hand-managed groups (no CR) are
+picked up only at the next relist; a vanished group row first NARROWS the team
+to the groups that still resolve (`narrowAndPark`, `team_controller.go` — the
+write never grants beyond the resolvable spec; skipping it would let the mirror
+keep granting the vanished group), then parks it
+`AccessGroupNotFound`. Denial text is
+`Budget has been exceeded! Model access group=<tag>` (assert that marker, not a
+status). Budgets: `docs/user-guide/model-group-budget.md`.
+CATALOG SIDE EFFECT (measured 1.106.0, 2026-10-20): `GET /v1/models` for a team
+key lists a tag reached via `access_group_ids` VERBATIM (a phantom "model"),
+while a tag in `team.models` is EXPANDED to its real models. So the mirror is
+what makes the real models listable; the phantom tag comes from the group,
+predates the mirror, and mirroring fewer tags only removes real models from
+the catalog (tried and reverted). Granting by model name avoids the phantom.
 
 ### ❌ Asserting a team attachment from the GROUP side
 ```go
@@ -1454,6 +1618,56 @@ bumped `Chart.yaml`, `values.yaml` (`image.tag`), `pyproject.toml` and
 `main.py`. `make release-cut` creates an *empty* commit in both repos, so in
 alitellm-auth it publishes a chart pinned to the previous image tag.
 
+### ❌ Adopting a Discovery child while a Discovery reconcile is in flight (fixed)
+```bash
+kubectl patch litellmmodel <child> --type=json \
+  -p '[{"op":"remove","path":"/metadata/ownerReferences"}]'
+# moments later the controller ownerRef is back; status keeps reporting the
+# child under generatedChildren, skippedCandidates stays empty
+```
+Symptom: the adoption (strip ownerRefs so the Discovery stops managing the
+child) is silently lost. No error, no event. The child is still owned and
+still overwritten from the Discovery template. Affects
+`LiteLLMModelDiscovery` and `LiteLLMMCPServerDiscovery`.
+✅ Fixed (issue https://github.com/ackstorm/alitellm-operator/issues/141): both
+Discovery reconcilers read the child UNCACHED (`APIReader`, wired from
+`mgr.GetAPIReader()`) in `classifyAlreadyExists`, then SSA-apply with
+`metadata.resourceVersion` set to that live value — an optimistic-lock
+precondition. A strip landing between read and write fails the apply with 409;
+the child joins `pendingRetries` (kept out of vanish-delete) and the Discovery
+requeues in `childDeletingRequeue` (5s). The vanish Delete carries
+`Preconditions{UID, ResourceVersion}` from the cached list for the same reason.
+The short requeue is required: the strip bumps no `generation`, so the Owns()
+`ownedChildSpecChanged` predicate never re-enqueues the Discovery for it.
+Guarded deterministically by `TestMCPServerDiscoveryReconciler_AdoptionDuringApply_Kept`
+(`patchInterceptor.strip` strips between read and apply); `stripOwnerRefs` in
+`poll_until_test.go` now strips ONCE and fails if the ref comes back.
+WHY IT HAPPENED: a Discovery reconcile already running when the strip landed
+still held the pre-strip cache view. It SSA-applied the child with
+`ForceOwnership`, and that apply re-added the controller ownerRef. The window
+was narrow (one reconcile), but nothing re-checked it, so the loss was
+permanent until the user noticed.
+
+### ❌ Reading a LiteLLMKey Secret through the manager client
+```go
+r.Get(ctx, client.ObjectKey{Namespace: ref.Namespace, Name: ref.Name}, &secret)
+// unknown namespace for the cache
+```
+✅ `KeyReconciler.Secrets` is a non-caching client (`cmd/main.go`). The key
+Secret lives in `spec.secretRef.namespace`, outside `WATCH_NAMESPACE`.
+WHY IT MATTERS BEYOND THE ERROR: a cached read that lags a create looks like
+a deleted Secret, and a deleted Secret means "rotate" — the operator would
+replace a live key. Any new code that decides something from a key Secret's
+absence must read it uncached.
+
+### ❌ Passing a raw key value to a `/key/*` call
+```go
+c.GetKeyInfo(ctx, value)        // sk-… in the query string → access logs
+```
+✅ `c.GetKeyInfo(ctx, litellm.HashKey(value))`. Only the `/key/generate` body
+carries the raw value. `TestKey_ValueNeverLeaks` checks every recorded URL
+and body. Shapes: `references/litellm-key-api.md`.
+
 ## Repository-specific patterns
 
 - **`mcp_toolsets` is always `[]` on a team, and toolsets are not grantable
@@ -1487,8 +1701,8 @@ alitellm-auth it publishes a chart pinned to the previous image tag.
   full refresh interval (seen migrating prod off exposeAsModel).
 
 - **Periodic drift detection = `SafetyRelistRunnable`, never `RequeueAfter`.**
-  Each of the six domain reconcilers (Model, Team, MCPServer, A2AAgent,
-  GuardRail, MCPToolset) has exactly one `SafetyRelistRunnable` in `cmd/main.go`, ticking
+  Each of the domain reconcilers (Model, Team, MCPServer, A2AAgent,
+  GuardRail, MCPToolset, AccessGroup, ModelGroupBudget, Key) has exactly one `SafetyRelistRunnable` in `cmd/main.go`, ticking
   at `LITELLM_OPERATOR_SAFETY_RELIST_INTERVAL` (default 10m). Reconcilers
   return bare `ctrl.Result{}, nil` — there are no `RequeueAfter` safety-relist
   paths and no `withJitter`. WHY: a `RequeueAfter` only fires from the return

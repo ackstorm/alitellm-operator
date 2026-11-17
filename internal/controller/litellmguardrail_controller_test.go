@@ -942,3 +942,44 @@ func TestGuardRail_SteadyState_HealsStaleReadyFalse(t *testing.T) {
 			synced.Status.LastRendered.GuardrailID, healed.Status.LastRendered.GuardrailID)
 	}
 }
+
+// A non-404 4xx on DELETE does not prove the guardrail is gone: under
+// deletionPolicy=Delete the finalizer stays until the delete succeeds.
+func TestGuardRail_DeletionPath_Deterministic4xx_DeletePolicyBlocks(t *testing.T) {
+	ctx := context.Background()
+	name := "gr-del-4xx"
+	ensureNoGuardrailCR(t, ctx, name)
+	t.Cleanup(func() {
+		mockServer.SetMode(mock.ModeHappy)
+		ensureNoGuardrailCR(t, context.Background(), name)
+	})
+	mockServer.SetMode(mock.ModeHappy)
+	mockServer.ResetGuardrails()
+	ensureLiteLLMConnectionDefault(t, ctx)
+	readyConnectionForTest(t)
+
+	cr := guardrailReconcilerSampleCR(name)
+	cr.Spec.DeletionPolicy = string(deletionpolicy.Delete)
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("Create CR: %v", err)
+	}
+	synced := pollGuardrailCondition(t, ctx, name, "Synced")
+
+	from := len(mockServer.Recorded())
+	mockServer.SetMode(mock.ModeDelete422)
+	if err := k8sClient.Delete(ctx, synced); err != nil {
+		t.Fatalf("Delete CR: %v", err)
+	}
+	waitFor(t, func() bool { return mockCallIndex(from, "DELETE", "/guardrails/") >= 0 },
+		"finalizer never attempted the DELETE")
+
+	mockServer.SetMode(mock.ModeHappy)
+	key := client.ObjectKey{Name: name, Namespace: WatchNamespace}
+	waitFor(t, func() bool {
+		var check litellmv1alpha1.LiteLLMGuardRail
+		return apierrors.IsNotFound(k8sClient.Get(ctx, key, &check))
+	}, "CR still present after LiteLLM accepted deletes again")
+	if mockServer.HasGuardrail(name) {
+		t.Error("guardrail row leaked: the finalizer drained on a 4xx under deletionPolicy=Delete")
+	}
+}

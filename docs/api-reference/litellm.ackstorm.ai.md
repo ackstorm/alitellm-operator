@@ -17,6 +17,8 @@ Package v1alpha1 contains API Schema definitions for the litellm v1alpha1 API gr
 - [LiteLLMConnectionList](#litellmconnectionlist)
 - [LiteLLMGuardRail](#litellmguardrail)
 - [LiteLLMGuardRailList](#litellmguardraillist)
+- [LiteLLMKey](#litellmkey)
+- [LiteLLMKeyList](#litellmkeylist)
 - [LiteLLMMCPServer](#litellmmcpserver)
 - [LiteLLMMCPServerDiscovery](#litellmmcpserverdiscovery)
 - [LiteLLMMCPServerDiscoveryList](#litellmmcpserverdiscoverylist)
@@ -28,6 +30,8 @@ Package v1alpha1 contains API Schema definitions for the litellm v1alpha1 API gr
 - [LiteLLMModelAliasList](#litellmmodelaliaslist)
 - [LiteLLMModelDiscovery](#litellmmodeldiscovery)
 - [LiteLLMModelDiscoveryList](#litellmmodeldiscoverylist)
+- [LiteLLMModelGroupBudget](#litellmmodelgroupbudget)
+- [LiteLLMModelGroupBudgetList](#litellmmodelgroupbudgetlist)
 - [LiteLLMModelList](#litellmmodellist)
 - [LiteLLMTeam](#litellmteam)
 - [LiteLLMTeamList](#litellmteamlist)
@@ -264,6 +268,7 @@ becomes a concern.
 
 
 _Appears in:_
+- [KeySpec](#keyspec)
 - [TeamSpec](#teamspec)
 
 | Field | Description | Default | Validation |
@@ -398,6 +403,83 @@ _Appears in:_
 | `observedGeneration` _integer_ | ObservedGeneration is the metadata.generation of the<br />LiteLLMGuardRail CR the reconciler most recently processed<br />successfully (OWN-08). |  |  |
 | `conditions` _[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#condition-v1-meta) array_ | Conditions carries the standard metav1.Condition list. The<br />single type defined for LiteLLMGuardRail is Ready, with reason<br />values:<br />  - Synced — rendered body matches LiteLLM; no drift.<br />  - LiteLLMUnavailable — LiteLLMConnection/default not Ready.<br />  - LiteLLMRejected — LiteLLM returned a 4xx/5xx on mutation.<br />  - SecretNotFound — a spec.secrets[].secretRef is missing.<br />  - UnresolvedPlaceholder — a \{\{NAME\}\} in spec.params/info has<br />    no matching spec.secrets[] entry.<br />  - InvalidMode — spec.mode combination is rejected<br />    (e.g. realtime_input_transcription not alone).<br />  - ConflictsWithConfigGuardrail — a guardrail of the same name<br />    is already loaded from the LiteLLM config file<br />    (guardrail_definition_location=config); such rows are not<br />    addressable via POST/PUT/DELETE /guardrails.<br />  - PoolProviderMismatch — two CRs share guardrailName but<br />    declare different providers. |  |  |
 | `lastRendered` _[GuardRailLastRenderedStatus](#guardraillastrenderedstatus)_ | LastRendered is the operator-side drift source of truth (D-01,<br />D-07 — same pattern as LiteLLMModel). On each reconcile the<br />rendered post-substitution body is hashed and compared against<br />LastRendered.Hash; a mismatch triggers a PUT /guardrails/\{id\}<br />(drift correction) and increments<br />alitellm_operator_drift_corrected_total\{domain=guardrail,action=update_drifted\}. |  |  |
+
+
+#### KeyLastRenderedStatus
+
+
+
+KeyLastRenderedStatus records what was last applied to LiteLLM. It never
+holds the key value.
+
+
+
+_Appears in:_
+- [KeyStatus](#keystatus)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `hash` _string_ | Hash is the SHA-256 of the rendered models, budget and limits. |  |  |
+| `keyAlias` _string_ | KeyAlias is the key's alias in LiteLLM (metadata.name). |  |  |
+| `at` _[Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#time-v1-meta)_ |  |  |  |
+
+
+#### KeySecretRef
+
+
+
+KeySecretRef names the Secret entry the operator writes the key value to.
+Unlike SecretKeyRef it carries a namespace: the LiteLLMKey lives in the
+operator's namespace and the Secret in the consuming service's.
+
+
+
+_Appears in:_
+- [KeySpec](#keyspec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `namespace` _string_ | Namespace of the Secret. The operator needs get/create/delete on<br />Secrets there (Helm value keySecretNamespaces). |  | MinLength: 1 <br /> |
+| `name` _string_ | Name of the Secret. The operator creates it and refuses one it did<br />not create. |  | MinLength: 1 <br /> |
+| `key` _string_ | Key is the entry inside the Secret's data that holds the key value. |  | MinLength: 1 <br /> |
+
+
+#### KeySpec
+
+
+
+KeySpec declares a LiteLLM virtual key with no user and no team.
+
+
+
+_Appears in:_
+- [LiteLLMKey](#litellmkey)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `models` _string array_ | Models the key may call, projected onto `models`. LiteLLM model names<br />or LiteLLMModelAlias names; not validated against LiteLLM. At least<br />one is required: a teamless key with no models can call every model. |  | MinItems: 1 <br />items:MinLength: 1 <br /> |
+| `budget` _[BudgetSpec](#budgetspec)_ | Budget caps the key's spend (max_budget, budget_duration). |  |  |
+| `rateLimits` _[RateLimitsSpec](#ratelimitsspec)_ | RateLimits caps the key's request and token rate (rpm_limit, tpm_limit). |  |  |
+| `secretRef` _[KeySecretRef](#keysecretref)_ | SecretRef is where the key value is written. Immutable: to move the<br />Secret, delete and recreate the LiteLLMKey. |  |  |
+| `deletionPolicy` _string_ | DeletionPolicy controls finalizer behavior when the LiteLLM-side DELETE<br />cannot be confirmed. Defaults to "Orphan" per REL-06 anti-storm. | Orphan | Enum: [Orphan Delete] <br /> |
+
+
+#### KeyStatus
+
+
+
+
+
+
+
+_Appears in:_
+- [LiteLLMKey](#litellmkey)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `observedGeneration` _integer_ |  |  |  |
+| `conditions` _[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#condition-v1-meta) array_ | Conditions: single type `Ready`, reasons Synced, LiteLLMUnavailable,<br />LiteLLMRejected, SecretAccessDenied, SecretNotOwned, Conflict. |  |  |
+| `lastRendered` _[KeyLastRenderedStatus](#keylastrenderedstatus)_ |  |  |  |
 
 
 #### LastRenderedStatus
@@ -674,6 +756,48 @@ LiteLLMGuardRailList contains a list of LiteLLMGuardRail.
 | `apiVersion` _string_ | APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources |  |  |
 | `metadata` _[ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#listmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
 | `items` _[LiteLLMGuardRail](#litellmguardrail) array_ |  |  |  |
+
+
+#### LiteLLMKey
+
+
+
+LiteLLMKey is the Schema for the litellmkeys API.
+
+
+
+_Appears in:_
+- [LiteLLMKeyList](#litellmkeylist)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `apiVersion` _string_ | `litellm.ackstorm.ai/v1alpha1` | | |
+| `kind` _string_ | `LiteLLMKey` | | |
+| `kind` _string_ | Kind is a string value representing the REST resource this object represents.<br />Servers may infer this from the endpoint the client submits requests to.<br />Cannot be updated.<br />In CamelCase.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds |  |  |
+| `apiVersion` _string_ | APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources |  |  |
+| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
+| `spec` _[KeySpec](#keyspec)_ |  |  |  |
+| `status` _[KeyStatus](#keystatus)_ |  |  |  |
+
+
+#### LiteLLMKeyList
+
+
+
+LiteLLMKeyList contains a list of LiteLLMKey.
+
+
+
+
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `apiVersion` _string_ | `litellm.ackstorm.ai/v1alpha1` | | |
+| `kind` _string_ | `LiteLLMKeyList` | | |
+| `kind` _string_ | Kind is a string value representing the REST resource this object represents.<br />Servers may infer this from the endpoint the client submits requests to.<br />Cannot be updated.<br />In CamelCase.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds |  |  |
+| `apiVersion` _string_ | APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources |  |  |
+| `metadata` _[ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#listmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
+| `items` _[LiteLLMKey](#litellmkey) array_ |  |  |  |
 
 
 #### LiteLLMMCPServer
@@ -1062,6 +1186,48 @@ LiteLLMModelDiscoveryList contains a list of LiteLLMModelDiscovery.
 | `apiVersion` _string_ | APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources |  |  |
 | `metadata` _[ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#listmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
 | `items` _[LiteLLMModelDiscovery](#litellmmodeldiscovery) array_ |  |  |  |
+
+
+#### LiteLLMModelGroupBudget
+
+
+
+LiteLLMModelGroupBudget is the Schema for the litellmmodelgroupbudgets API.
+
+
+
+_Appears in:_
+- [LiteLLMModelGroupBudgetList](#litellmmodelgroupbudgetlist)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `apiVersion` _string_ | `litellm.ackstorm.ai/v1alpha1` | | |
+| `kind` _string_ | `LiteLLMModelGroupBudget` | | |
+| `kind` _string_ | Kind is a string value representing the REST resource this object represents.<br />Servers may infer this from the endpoint the client submits requests to.<br />Cannot be updated.<br />In CamelCase.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds |  |  |
+| `apiVersion` _string_ | APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources |  |  |
+| `metadata` _[ObjectMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#objectmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
+| `spec` _[ModelGroupBudgetSpec](#modelgroupbudgetspec)_ |  |  |  |
+| `status` _[ModelGroupBudgetStatus](#modelgroupbudgetstatus)_ |  |  |  |
+
+
+#### LiteLLMModelGroupBudgetList
+
+
+
+LiteLLMModelGroupBudgetList contains a list of LiteLLMModelGroupBudget.
+
+
+
+
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `apiVersion` _string_ | `litellm.ackstorm.ai/v1alpha1` | | |
+| `kind` _string_ | `LiteLLMModelGroupBudgetList` | | |
+| `kind` _string_ | Kind is a string value representing the REST resource this object represents.<br />Servers may infer this from the endpoint the client submits requests to.<br />Cannot be updated.<br />In CamelCase.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds |  |  |
+| `apiVersion` _string_ | APIVersion defines the versioned schema of this representation of an object.<br />Servers should convert recognized schemas to the latest internal value, and<br />may reject unrecognized values.<br />More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources |  |  |
+| `metadata` _[ListMeta](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#listmeta-v1-meta)_ | Refer to Kubernetes API documentation for fields of `metadata`. |  |  |
+| `items` _[LiteLLMModelGroupBudget](#litellmmodelgroupbudget) array_ |  |  |  |
 
 
 #### LiteLLMModelList
@@ -1763,6 +1929,48 @@ _Appears in:_
 | `lastRefreshAt` _[Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#time-v1-meta)_ | LastRefreshAt is the timestamp of the most recent SUCCESSFUL<br />provider-list reconcile (NOT every reconcile attempt — transient<br />failures do not update this field). Mirrors Phase 3's<br />LastRendered.At pattern (model_types.go:237-243). |  |  |
 
 
+#### ModelGroupBudgetSpec
+
+
+
+ModelGroupBudgetSpec declares a LiteLLM budget on a model access-group TAG
+(model_info.access_groups — NOT a LiteLLMAccessGroup). Requires LiteLLM
+1.100.0+. LiteLLM charges a request against it only when the tag appears
+by name in the caller's key/team models; operator teams get it there via
+LiteLLMAccessGroup.spec.modelGroups (mirrored into team.models).
+
+
+
+_Appears in:_
+- [LiteLLMModelGroupBudget](#litellmmodelgroupbudget)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `modelGroup` _string_ | ModelGroup is the model access-group tag the budget applies to.<br />Immutable: a rename would orphan the old tag's budget. |  | MinLength: 1 <br /> |
+| `limit` _float_ | Limit is the USD hard cap shared by every caller granted the tag,<br />projected onto max_budget. 0 means NO cap in LiteLLM (check skipped). |  | Minimum: 0 <br /> |
+| `softLimit` _float_ | SoftLimit is the USD alert threshold (soft_budget). Requests still succeed. |  | Minimum: 0 <br /> |
+| `period` _string_ | Period is the reset interval (budget_duration), e.g. `30d`. |  | Pattern: `^[0-9]+[smhd]$` <br /> |
+| `deletionPolicy` _string_ | DeletionPolicy controls finalizer behavior when the LiteLLM-side DELETE<br />cannot be confirmed. Defaults to "Orphan" per REL-06 anti-storm. | Orphan | Enum: [Orphan Delete] <br /> |
+
+
+#### ModelGroupBudgetStatus
+
+
+
+ModelGroupBudgetStatus is deliberately minimal: the operator declares the
+budget; spend and reset time are LiteLLM's to report.
+
+
+
+_Appears in:_
+- [LiteLLMModelGroupBudget](#litellmmodelgroupbudget)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `observedGeneration` _integer_ |  |  |  |
+| `conditions` _[Condition](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#condition-v1-meta) array_ | Conditions: single type `Ready`, reasons Synced, LiteLLMUnavailable,<br />LiteLLMRejected, ModelGroupNotFound, DuplicateModelGroup. |  |  |
+
+
 #### ModelSpec
 
 
@@ -1858,6 +2066,7 @@ negative values at admission.
 
 
 _Appears in:_
+- [KeySpec](#keyspec)
 - [TeamSpec](#teamspec)
 
 | Field | Description | Default | Validation |

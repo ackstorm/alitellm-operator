@@ -701,9 +701,19 @@ func (r *ModelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 				return ctrl.Result{RequeueAfter: recreateThrottleBackoff}, nil
 			}
 		}
-		if existing, probeErr := snap.Client.GetModelInfoByName(ctx, model.Name); probeErr != nil {
+		existing, probeErr := snap.Client.GetModelInfoByName(ctx, model.Name)
+		if probeErr != nil {
 			return ctrl.Result{}, probeErr
-		} else if existing != nil && existing.ModelInfo.ID != "" {
+		}
+		if existing != nil && existing.ModelInfo.ID != "" && !modelInfoApplied(existing.ModelInfo, infoMap) {
+			// POST /model/update never writes the model_info blob: a row
+			// that lacks the rendered values is replaced, not adopted.
+			if derr := snap.Client.DeleteModel(ctx, existing.ModelInfo.ID); derr != nil {
+				return r.classifyMutationError(ctx, &model, logger, derr, "POST /model/delete (adoption)")
+			}
+			existing = nil
+		}
+		if existing != nil && existing.ModelInfo.ID != "" {
 			newModelID = existing.ModelInfo.ID
 			logger.V(1).Info("model already exists in LiteLLM; adopting id (idempotency probe)", "modelID", newModelID)
 			// FIX4.txt H-1 (2026-05-22): the adoption branch skips POST
@@ -1054,6 +1064,31 @@ func (r *ModelReconciler) SetupWithManager(mgr ctrl.Manager, safetyRelistCh ...c
 // sufficient for the AC-R1 steady-state hash (D-01 Claude's Discretion).
 func canonicalJSON(v any) ([]byte, error) {
 	return canonicalMarshal(v)
+}
+
+// modelInfoApplied reports whether a LiteLLM row already carries every
+// rendered model_info value. LiteLLM adds keys of its own, so keys the render
+// does not set are ignored.
+func modelInfoApplied(row litellm.ModelInfo, infoMap map[string]any) bool {
+	raw, err := json.Marshal(row)
+	if err != nil {
+		return false
+	}
+	var have map[string]any
+	if err := json.Unmarshal(raw, &have); err != nil {
+		return false
+	}
+	for k, want := range infoMap {
+		if k == "id" {
+			continue
+		}
+		a, _ := canonicalJSON(want)
+		b, _ := canonicalJSON(have[k])
+		if string(a) != string(b) {
+			return false
+		}
+	}
+	return true
 }
 
 // infoHash returns the SHA-256 (hex) of the canonical-JSON model_info map,

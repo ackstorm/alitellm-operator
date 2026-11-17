@@ -1,0 +1,18 @@
+---
+# Copyright 2026 ACKstorm.
+# SPDX-License-Identifier: MIT
+#
+# LiteLLMKey — a LiteLLM virtual key for one service. The value is written to
+# a Secret in the service's namespace, which must be listed in the Helm value
+# keySecretNamespaces.
+#
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMKey
+metadata:
+  name: billing-service
+spec:
+  models: [gpt-4o]
+  budget: {limit: 5, period: 30d}
+  rateLimits: {rpm: 60}
+  secretRef: {namespace: billing, name: billing-llm-key, key: api-key}
+  deletionPolicy: Delete

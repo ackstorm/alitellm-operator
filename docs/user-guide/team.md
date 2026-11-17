@@ -136,7 +136,7 @@ update, whatever the spec says:
 
 | LiteLLM field                            | Value                                        |
 |------------------------------------------|----------------------------------------------|
-| `models`                                 | `["no-default-models"]`                      |
+| `models`                                 | `["no-default-models", …]` + attached groups' model names |
 | `object_permission.agents`               | `["00000000-0000-0000-0000-000000000000"]`   |
 | `object_permission.mcp_servers`          | `[]`                                         |
 | `object_permission.mcp_access_groups`    | `[]`                                         |
@@ -150,6 +150,20 @@ Why the sentinels: LiteLLM reads an **empty** `models` or `agents` list as
 model catalog, so a closed team lists zero models instead of a phantom row.
 Every field is sent every time (never omitted) because `POST /team/update`
 keeps an omitted field's old value.
+
+After the sentinel, `models` mirrors the `access_model_names` of the attached
+groups (`models` ∪ `modelGroups`; sorted, de-duplicated, wildcards such as `*` / `all-proxy-models`
+skipped). This grants nothing new — the groups already grant them through
+`access_group_ids` — but LiteLLM charges a model access-group (tag) budget
+only when the tag literally appears in `team.models`. Editing or removing a
+`LiteLLMAccessGroup` CR re-drives the attached teams immediately; a group
+managed by hand in LiteLLM (no CR) is picked up at the next safety relist. If an
+attached group's row disappears from LiteLLM (its CR deleted under
+`deletionPolicy: Delete`, or the row removed in the UI), the team is first
+narrowed to the groups that still resolve — their ids in `access_group_ids`,
+their names in `models` — so the vanished group's access is revoked; then it
+parks `AccessGroupNotFound` until the group exists again. See
+[model-group budgets](model-group-budget.md).
 
 Access groups only **add**: an attached group overrides the sentinels for
 what it grants. A team without `accessGroups` reaches nothing.

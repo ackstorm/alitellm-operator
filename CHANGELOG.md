@@ -19,6 +19,105 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     (`internal/litellm/read_cache.go`). A relist burst now costs a handful of
     list reads instead of one GET per CR. Out-of-band drift is seen up to 5s
     later.
+- **FinOps "Spend by model / by team" panels show spend in the last hour.**
+  They took `rate()` over `$__rate_interval`, so a burst of a few expensive
+  calls read as an hourly spend that never happened ($71/h shown where the
+  real peak hour was $24). Each point is now the spend of the preceding hour.
+
+### Added
+- **`LiteLLMKey` CRD** — a LiteLLM virtual key for one service, with no user
+  and no team: `models` (required), `budget`, `rateLimits`, `secretRef`,
+  `deletionPolicy`. The operator mints the value and writes it to a Secret in
+  `secretRef.namespace`; a key LiteLLM lost is registered again with the same
+  value. New Helm value `keySecretNamespaces` grants the operator
+  `get`/`create`/`delete` on Secrets in each listed namespace only. See
+  `docs/user-guide/key.md`.
+- **`LiteLLMModelGroupBudget` CRD** — declares a LiteLLM budget on a model
+  access-group TAG (`/access_group/{tag}/budget`, LiteLLM 1.100.0+): `limit`,
+  `softLimit`, `period`, `deletionPolicy`. One owner per tag (oldest CR wins,
+  duplicates park `DuplicateModelGroup`); status is conditions only. See
+  `docs/user-guide/model-group-budget.md`.
+
+### Changed
+- **LiteLLM dashboards no longer need `litellm-exporter`.** FinOps drops the
+  *Inventory & budgets (DB truth)* stats and tables (lifetime spend, budget
+  utilization, key/team counts, key expiry) and keeps the remaining-budget
+  graphs under a *Budgets* row; Deployments' cache hit ratio reads
+  `litellm_cache_{hits,misses}_metric_total`. The exporter's SpendLogs-derived
+  numbers were wrong wherever spend logs are pruned.
+- **Deployments "Cooldowns (range)"** reads `litellm_deployment_cooled_down_total`
+  instead of deriving it from total − success − failure.
+- **The operator now calls `/key/*`** (`generate`, `info`, `update`, `delete`,
+  `list`) for `LiteLLMKey`. It still never calls `/user/*`.
+- **`team.models` mirrors the attached access groups.** LiteLLM charges a tag
+  budget only when the tag appears by name in `models`, never via
+  `access_group_ids`, so every team now sends
+  `["no-default-models", <groups' access_model_names>...]` (wildcards never
+  mirrored). Expect one `/team/update` per team after upgrade. Editing a
+  `LiteLLMAccessGroup` re-drives its teams immediately.
+- **Missing access group narrows before parking.** When an attached group's
+  LiteLLM row is gone, the team is first rewritten with only the groups that
+  still resolve, then parks `AccessGroupNotFound` — a vanished group no longer
+  leaves its models granted.
+- **e2e runs LiteLLM 1.106.0** (was 1.93.0). Its 403 denial message no longer
+  echoes the team's models.
+
+### Fixed
+- **An operator key that is valid but not admin no longer storms LiteLLM.**
+  LiteLLM answers 401 on admin-only routes for a key `/key/health` accepts;
+  each 401 invalidated the connection cache, the probe passed, and every CR
+  was re-enqueued at once (465 probes in 30s on LiteLLM 1.106.0). A 401 that a
+  passing probe has just contradicted no longer triggers another probe.
+- **Adopting a LiteLLM model row by name rewrites its `model_info`.** A row
+  that lacks a rendered value (`access_groups`, the operator stamps) is
+  deleted and created again, since `POST /model/update` never writes that
+  blob; the CR used to report `Synced` over a stale one.
+- **A Discovery no longer deletes a child whose write failed.** A
+  `LiteLLMModelDiscovery` / `LiteLLMMCPServerDiscovery` child whose apply
+  errored (apiserver failure, invalid render, AlreadyExists race) fell out of
+  the keep-set and was deleted in the same reconcile, removing the live entry
+  from LiteLLM. It now keeps its last-good object.
+- **A failed name lookup no longer counts as "entry absent" on delete.**
+  MCP toolsets, MCP servers, A2A agents and access groups dropped the finalizer
+  when the LiteLLM list call itself failed (5xx, network, 401), leaking the
+  row. The finalizer now stays until the lookup answers.
+- **Guardrail delete: a 4xx other than 404 no longer drops the finalizer under
+  `deletionPolicy: Delete`.**
+- **408, 425 and 429 from LiteLLM are retried with backoff** instead of being
+  treated as a permanent rejection (parked `LiteLLMRejected`, or an orphaned
+  row on delete).
+- **Docs: the operator owns the whole `model_group_alias` map.** Aliases set
+  outside a `LiteLLMModelAlias` CR are removed on the next reconcile.
+- **Team `default` gets its empty body back** when a `LiteLLMTeam/default` CR
+  is removed without the operator's re-apply (failed re-apply, finalizer
+  dropped by hand).
+- **Model aliases: no `POST /config/update` when the alias map is unchanged.**
+  Every reconcile used to rewrite all of `router_settings`.
+- **`LiteLLMModelDiscovery.spec.baseUrl` rejects `localhost` names**, and the
+  discovery client refuses redirects to loopback, link-local and cloud-metadata
+  hosts.
+- **e2e preloads the LiteLLM image with `crictl pull` inside the kind node.**
+  `docker pull` + `kind load` failed with `content digest ... not found` on
+  runners using Docker's containerd image store.
+- **Model-group budgets react without waiting for the relist.** A budget
+  parked `ModelGroupNotFound` retries when a `LiteLLMModel` changes; a
+  duplicate takes over the moment the owner is deleted; and of two budgets
+  created in the same second, the one that reconciled first no longer keeps
+  reporting `Synced` after losing the tie.
+- **Deleting an MCPServer conflict CR no longer deletes the shared entry.**
+  When two `LiteLLMMCPServer` CRs sanitize to the same `server_name`, deleting
+  either one keeps the LiteLLM entry while the other is live (event
+  `LiteLLMDeleteSkipped`); the survivor rewrites it with its own spec, and
+  re-creates it if it vanished meanwhile. A CR whose status points at a row of
+  its own still deletes that row.
+- **A conflict loser's `mcp_access_groups` no longer grant the winner's
+  entry.** Losers are left out of `LiteLLMAccessGroup` tag selection.
+- **Adopting a Discovery child no longer loses the race with an in-flight
+  reconcile (#141).** Stripping a generated `LiteLLMModel` /
+  `LiteLLMMCPServer`'s ownerReferences while its Discovery was mid-reconcile
+  could have the ref silently re-added. The Discovery now reads the child
+  uncached and applies it with a resourceVersion precondition, so the
+  adoption sticks.
 
 ### Removed
 - **`configmaps` grant on the leader-election Role.** Kubebuilder scaffold

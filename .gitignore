@@ -48,6 +48,9 @@ kubeconfig
 # Antigravity CLI local state
 .antigravitycli/
 
+# Superpowers specs/plans (agent working docs, kept locally, not committed)
+docs/superpowers/
+
 # Git worktrees (used by superpowers:using-git-worktrees)
 .worktrees/
 worktrees/

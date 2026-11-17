@@ -171,13 +171,12 @@ func (r *GuardRailReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 							return ctrl.Result{}, gerr
 						}
 					case is4xxStatus(err):
-						// 404 / 4xx — treat as success; entry is already gone.
-						// Not ack-missing — LiteLLM positively reports the entry
-						// is gone, so finalizer removal is safe under both
-						// policies.
-						metrics.DeletionBlocked.Forget(guardrailKind, gr.Namespace, gr.Name)
-						logger.V(1).Info("deletion: 4xx from LiteLLM; treating as already-absent",
-							"guardrailID", guardrailID, "error", err.Error())
+						// The client folds DELETE 404 into success, so a 4xx
+						// here does not say the entry is gone.
+						logger.Info("deletion: deterministic 4xx on DeleteGuardrail; ack-missing", "error", err.Error())
+						if gerr := onAckMissing("4xx on DeleteGuardrail: "+err.Error(), true); gerr != nil {
+							return ctrl.Result{}, gerr
+						}
 					default:
 						// Transient — leave finalizer for backoff.
 						return ctrl.Result{}, err

@@ -758,3 +758,54 @@ func TestMCPToolset_NotUsableSnapshotParks(t *testing.T) {
 		t.Error("toolset was created despite an unusable connection snapshot")
 	}
 }
+
+// A failed name-resolve proves nothing about the toolset: with DELETE and
+// LIST both failing, the finalizer stays and the row is deleted on recovery.
+func TestMCPToolset_FinalizerKeptWhenDeleteAndListBothFail(t *testing.T) {
+	ctx := context.Background()
+	name := "ts-delete-list-fail"
+	resetMockToolset()
+	ensureNoToolset(t, ctx, name)
+	resetConnCacheSnapshot()
+
+	cleanupConn := setupReadyConnectionToolset(t, ctx)
+	t.Cleanup(func() {
+		cleanupConn()
+		setConnCacheReady()
+		ensureNoToolset(t, context.Background(), name)
+	})
+
+	cr := toolsetSampleCR(name, litellmv1alpha1.MCPToolsetServerTools{
+		Server: "s1", Tools: []string{"t1"},
+	})
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatalf("create toolset CR: %v", err)
+	}
+	synced := pollToolsetCondition(t, ctx, name, reasonSynced)
+	if synced.Status.LastRendered.ToolsetID == "" {
+		t.Fatal("precondition: toolset never reached Synced with an id")
+	}
+
+	from := len(mockServer.Recorded())
+	mockServer.SetMode(mock.ModeTransient5xx)
+	if err := k8sClient.Delete(ctx, synced); err != nil {
+		t.Fatalf("delete toolset CR: %v", err)
+	}
+	del := -1
+	waitFor(t, func() bool {
+		del = mockCallIndex(from, "DELETE", "/v1/mcp/toolset/")
+		return del >= 0
+	}, "finalizer never attempted the DELETE")
+	waitFor(t, func() bool { return mockCallIndex(del, "GET", "/v1/mcp/toolset") >= 0 },
+		"finalizer never re-resolved the toolset after the failed DELETE")
+
+	mockServer.SetMode(mock.ModeHappy)
+	key := client.ObjectKey{Name: name, Namespace: WatchNamespace}
+	waitFor(t, func() bool {
+		var check litellmv1alpha1.LiteLLMMCPToolset
+		return apierrors.IsNotFound(k8sClient.Get(ctx, key, &check))
+	}, "CR still present after LiteLLM recovered")
+	if mockServer.HasToolset(name) {
+		t.Error("toolset row leaked: the finalizer drained on a failed name-resolve")
+	}
+}

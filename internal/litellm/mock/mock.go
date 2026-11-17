@@ -4,11 +4,14 @@ package mock
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sort"
 	"strings"
 	"sync"
@@ -85,6 +88,16 @@ const pathMCPToolset = "/v1/mcp/toolset"
 // (PUT/DELETE) append /{access_group_id}. LiteLLM answers POST with 201 and
 // GET with a BARE array.
 const pathAccessGroup = "/v1/access_group"
+
+// pathMCPServer is the MCP server collection route (POST create, PUT update,
+// GET list).
+const pathMCPServer = "/v1/mcp/server"
+
+// Model access-group (TAG) budget route: /access_group/{tag}/budget.
+const (
+	pathModelGroupBudgetPrefix = "/access_group/"
+	pathModelGroupBudgetSuffix = "/budget"
+)
 
 // modelEntry is a stateful in-memory record of a model created via
 // POST /model/new. The mock tracks these to serve realistic GET /model/info
@@ -280,6 +293,14 @@ type MockServer struct {
 	accessGroupByName map[string]string            // AccessGroupName → AccessGroupID
 	accessGroupSeq    atomic.Int64
 
+	// Model access-group (TAG) budget state: /access_group/{tag}/budget.
+	modelGroups       map[string]bool           // tags that "exist" (carried by some model)
+	modelGroupBudgets map[string]map[string]any // tag → stored budget fields
+
+	// Virtual keys: /key/{generate,info,update,delete,list}.
+	keys        map[string]map[string]any // key hash → stored fields
+	deletedKeys map[string]bool           // hashes served as status "deleted"
+
 	// Team state. Two indices for O(1) lookups:
 	// teams — keyed by TeamID (the LiteLLM-assigned UUID,
 	// surfaced in POST/UPDATE response bodies + DELETE
@@ -332,7 +353,11 @@ type MockServer struct {
 type RecordedCall struct {
 	Method string
 	Path   string
-	When   time.Time
+	// Query and Body are the raw query string and request body, so a test
+	// can find calls made on behalf of one CR by name.
+	Query string
+	Body  []byte
+	When  time.Time
 }
 
 // NewServer constructs a MockServer in ModeHappy and starts the underlying
@@ -362,6 +387,12 @@ func NewServer(t *testing.T) *MockServer {
 
 		accessGroups:      make(map[string]*accessGroupEntry),
 		accessGroupByName: make(map[string]string),
+
+		modelGroups:       make(map[string]bool),
+		modelGroupBudgets: make(map[string]map[string]any),
+
+		keys:        make(map[string]map[string]any),
+		deletedKeys: make(map[string]bool),
 
 		teams:            make(map[string]*teamEntry),
 		teamByAlias:      make(map[string]string),
@@ -593,6 +624,33 @@ func (m *MockServer) writeDuplicateAgentConflict(w http.ResponseWriter, r *http.
 	return true
 }
 
+// writeMCPServerUpdate404 answers PUT /v1/mcp/server for an unknown
+// server_id the way LiteLLM 1.106.0 does (measured): 404, never a silent
+// no-op 200 — a 200 would let a reconciler PUT onto a vanished id and report
+// Synced over an absent entry.
+func (m *MockServer) writeMCPServerUpdate404(w http.ResponseWriter, r *http.Request, mode string) bool {
+	if mode != ModeHappy || r.Method != http.MethodPut || r.URL.Path != pathMCPServer {
+		return false
+	}
+	body, _ := io.ReadAll(r.Body)
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	var reqBody struct {
+		ServerID string `json:"server_id"`
+	}
+	_ = json.Unmarshal(body, &reqBody)
+	m.mu.Lock()
+	_, present := m.mcpServers[reqBody.ServerID]
+	m.mu.Unlock()
+	if present {
+		return false
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNotFound)
+	_, _ = w.Write([]byte(fmt.Sprintf(
+		`{"detail":{"error":"MCP Server not found, passed server_id=%s"}}`, reqBody.ServerID)))
+	return true
+}
+
 // ── MCP toolset helpers ──────────────────────────────
 
 // ResetToolsets clears the in-memory MCP toolset store. Call between tests
@@ -706,6 +764,54 @@ func (m *MockServer) ResetAccessGroups() {
 	m.mu.Lock()
 	m.accessGroups = make(map[string]*accessGroupEntry)
 	m.accessGroupByName = make(map[string]string)
+	m.mu.Unlock()
+}
+
+// ResetModelGroupBudgets clears the model-group tags and their budgets.
+func (m *MockServer) ResetModelGroupBudgets() {
+	m.mu.Lock()
+	m.modelGroups = make(map[string]bool)
+	m.modelGroupBudgets = make(map[string]map[string]any)
+	m.mu.Unlock()
+}
+
+// SeedModelGroup makes a tag "exist" (as if some model carried it), so
+// /access_group/{tag}/budget stops answering 404.
+func (m *MockServer) SeedModelGroup(tag string) {
+	m.mu.Lock()
+	m.modelGroups[tag] = true
+	m.mu.Unlock()
+}
+
+// ModelGroupBudget returns a copy of the stored budget body for a tag.
+func (m *MockServer) ModelGroupBudget(tag string) (map[string]any, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	b, ok := m.modelGroupBudgets[tag]
+	if !ok {
+		return nil, false
+	}
+	out := make(map[string]any, len(b))
+	for k, v := range b {
+		out[k] = v
+	}
+	return out, true
+}
+
+// SetModelGroupBudgetOutOfBand stores a budget for a tag as if set by a
+// human in LiteLLM (drift injection). Also makes the tag exist; a budget_id
+// is minted when the caller omits one.
+func (m *MockServer) SetModelGroupBudgetOutOfBand(tag string, budget map[string]any) {
+	cp := make(map[string]any, len(budget)+1)
+	for k, v := range budget {
+		cp[k] = v
+	}
+	if _, ok := cp["budget_id"]; !ok {
+		cp["budget_id"] = "mock-budget-" + tag
+	}
+	m.mu.Lock()
+	m.modelGroups[tag] = true
+	m.modelGroupBudgets[tag] = cp
 	m.mu.Unlock()
 }
 
@@ -1062,12 +1168,12 @@ func (m *MockServer) SetLoggingCallbacksNull(v bool) {
 }
 
 // SetMode switches the mock's response mode. Valid values are ModeHappy,
-// Mode401, ModeTransient5xx, ModeSlow, Mode422, ModeNotFoundListTeams,
-// ModeNotFoundDeleteTeam, Mode401DeleteTeam. Unknown values fall back to
-// ModeHappy so a fat-fingered test doesn't silently hang.
+// Mode401, ModeTransient5xx, ModeSlow, Mode422, ModeDelete422,
+// ModeNotFoundListTeams, ModeNotFoundDeleteTeam, Mode401DeleteTeam. Unknown
+// values fall back to ModeHappy so a fat-fingered test doesn't silently hang.
 func (m *MockServer) SetMode(mode string) {
 	switch mode {
-	case ModeHappy, Mode401, ModeTransient5xx, ModeSlow, Mode422,
+	case ModeHappy, Mode401, ModeTransient5xx, ModeSlow, Mode422, ModeDelete422,
 		ModeNotFoundListTeams, ModeNotFoundDeleteTeam, Mode401DeleteTeam:
 		m.mode.Store(mode)
 	default:
@@ -1292,6 +1398,78 @@ func (m *MockServer) writeAccessGroupResponse(w http.ResponseWriter, r *http.Req
 	return m.writeAccessGroupDelete404(w, r, mode)
 }
 
+// writeModelGroupBudget serves /access_group/{tag}/budget (LiteLLM 1.100+).
+// Semantics follow references/litellm-model-group-budget-api.md: unknown tag
+// -> 404 on GET/PUT/DELETE; PUT merges the sent fields over the stored ones
+// and a sent null does NOT clear a field; DELETE of an existing tag is 200
+// either way.
+func (m *MockServer) writeModelGroupBudget(w http.ResponseWriter, r *http.Request, mode string) bool {
+	p := r.URL.EscapedPath()
+	if mode != ModeHappy || !strings.HasPrefix(p, pathModelGroupBudgetPrefix) || !strings.HasSuffix(p, pathModelGroupBudgetSuffix) {
+		return false
+	}
+	tag, err := url.PathUnescape(strings.TrimSuffix(strings.TrimPrefix(p, pathModelGroupBudgetPrefix), pathModelGroupBudgetSuffix))
+	if err != nil {
+		return false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	w.Header().Set("Content-Type", "application/json")
+	if !m.modelGroups[tag] {
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]any{"detail": map[string]any{"error": fmt.Sprintf("Access group '%s' not found", tag)}})
+		return true
+	}
+	switch r.Method {
+	case http.MethodPut:
+		// Body validation as measured on 1.106.0: missing or malformed
+		// body 422, an unknown key 422 (extra_forbidden), no budget key 400.
+		var in map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_ = json.NewEncoder(w).Encode(map[string]any{"detail": []any{map[string]any{"type": "json_invalid", "msg": err.Error()}}})
+			return true
+		}
+		known := 0
+		for k := range in {
+			switch k {
+			case "max_budget", "soft_budget", "budget_duration", "budget_id":
+				known++
+			default:
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				_ = json.NewEncoder(w).Encode(map[string]any{"detail": []any{map[string]any{"type": "extra_forbidden", "loc": []any{"body", k}}}})
+				return true
+			}
+		}
+		if known == 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]any{"detail": map[string]any{"error": "One of max_budget, soft_budget, budget_duration or budget_id is required"}})
+			return true
+		}
+		cur := m.modelGroupBudgets[tag]
+		if cur == nil {
+			cur = map[string]any{"budget_id": "mock-budget-" + tag}
+		}
+		for k, v := range in {
+			if v != nil { // null is ignored by LiteLLM, not a clear
+				cur[k] = v
+			}
+		}
+		m.modelGroupBudgets[tag] = cur
+	case http.MethodDelete:
+		_, had := m.modelGroupBudgets[tag]
+		delete(m.modelGroupBudgets, tag)
+		_ = json.NewEncoder(w).Encode(map[string]any{"access_group": tag, "budget_deleted": had})
+		return true
+	}
+	resp := map[string]any{"access_group": tag, "spend": 0.0, "budget": nil}
+	if b, ok := m.modelGroupBudgets[tag]; ok {
+		resp["budget"] = b
+	}
+	_ = json.NewEncoder(w).Encode(resp)
+	return true
+}
+
 // nonNilStrings coerces a nil slice to empty so the mock's JSON renders [],
 // never null — matching what LiteLLM returns for these fields.
 func nonNilStrings(s []string) []string {
@@ -1328,10 +1506,14 @@ func (m *MockServer) handle(w http.ResponseWriter, r *http.Request) {
 		m.mutations.Add(1)
 	}
 
+	body, _ := io.ReadAll(r.Body)
+	r.Body = io.NopCloser(bytes.NewReader(body))
 	m.mu.Lock()
 	m.recorded = append(m.recorded, RecordedCall{
 		Method: r.Method,
 		Path:   r.URL.Path,
+		Query:  r.URL.RawQuery,
+		Body:   body,
 		When:   time.Now(),
 	})
 	// pathCalls: increment under the same mutex so PathCallCount sees a
@@ -1400,9 +1582,12 @@ func (m *MockServer) handle(w http.ResponseWriter, r *http.Request) {
 	// answer here instead. First writer wins.
 	for _, write := range []func(http.ResponseWriter, *http.Request, string) bool{
 		m.writeDuplicateAgentConflict,
+		m.writeMCPServerUpdate404,
 		m.writeDuplicateToolsetConflict,
 		m.writeAbsentToolsetDelete500,
 		m.writeAccessGroupResponse,
+		m.writeModelGroupBudget,
+		m.writeKey,
 	} {
 		if write(w, r, mode) {
 			return
@@ -1631,18 +1816,26 @@ func (m *MockServer) statefulBody(r *http.Request) []byte {
 			// dup id != the tracked id and (pre-fix) treats it as drift. The
 			// set-membership fix is order-independent, so this ordering is
 			// the adversarial case for the regression test.
+			// Every row carries the model_info last written under the name: a
+			// duplicate is a second POST /model/new of the same body.
+			row := func(id string) string {
+				info := map[string]any{}
+				for k, v := range m.lastModelInfo[modelName] {
+					info[k] = v
+				}
+				info["id"] = id
+				infoJSON, _ := json.Marshal(info)
+				return fmt.Sprintf(
+					`{"model_id":%q,"model_name":%q,"litellm_params":{},"model_info":%s}`,
+					id, modelName, infoJSON,
+				)
+			}
 			rows := make([]string, 0, 1+len(m.dupModelRows[modelName]))
 			for _, dupID := range m.dupModelRows[modelName] {
-				rows = append(rows, fmt.Sprintf(
-					`{"model_id":%q,"model_name":%q,"litellm_params":{},"model_info":{"id":%q}}`,
-					dupID, modelName, dupID,
-				))
+				rows = append(rows, row(dupID))
 			}
 			if e, ok := m.models[modelName]; ok {
-				rows = append(rows, fmt.Sprintf(
-					`{"model_id":%q,"model_name":%q,"litellm_params":{},"model_info":{"id":%q}}`,
-					e.ModelID, e.ModelName, e.ModelID,
-				))
+				rows = append(rows, row(e.ModelID))
 			}
 			return []byte(fmt.Sprintf(`{"data":[%s]}`, strings.Join(rows, ",")))
 		}
@@ -1861,7 +2054,7 @@ func (m *MockServer) statefulBody(r *http.Request) []byte {
 		return []byte(`{}`)
 	}
 	// POST /v1/mcp/server — create, mint server_id, return body.
-	if method == http.MethodPost && path == "/v1/mcp/server" {
+	if method == http.MethodPost && path == pathMCPServer {
 		var reqBody map[string]any
 		if b, err := io.ReadAll(r.Body); err == nil {
 			_ = json.Unmarshal(b, &reqBody)
@@ -1899,7 +2092,7 @@ func (m *MockServer) statefulBody(r *http.Request) []byte {
 	// PUT /v1/mcp/server — wholesale-replace (Phase 5 D-01 ✓ branch /
 	// Probe 10c). The mock keeps the same server_id but overwrites all
 	// other fields with the PUT body's values.
-	if method == http.MethodPut && path == "/v1/mcp/server" {
+	if method == http.MethodPut && path == pathMCPServer {
 		var reqBody map[string]any
 		if b, err := io.ReadAll(r.Body); err == nil {
 			_ = json.Unmarshal(b, &reqBody)
@@ -1926,7 +2119,7 @@ func (m *MockServer) statefulBody(r *http.Request) []byte {
 		))
 	}
 	// GET /v1/mcp/server — bare-array list of all MCP servers.
-	if method == http.MethodGet && strings.HasPrefix(path, "/v1/mcp/server") {
+	if method == http.MethodGet && strings.HasPrefix(path, pathMCPServer) {
 		m.mu.Lock()
 		entries := make([]string, 0, len(m.mcpServers))
 		for _, e := range m.mcpServers {
@@ -2292,4 +2485,173 @@ func (m *MockServer) ModelGroupAlias() map[string]string {
 		}
 	}
 	return out
+}
+
+// mockKeyHash mirrors LiteLLM's hash_token_if_needed: a raw `sk-` value is
+// hashed, anything else is taken as the hash.
+func mockKeyHash(key string) string {
+	if !strings.HasPrefix(key, "sk-") {
+		return key
+	}
+	sum := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(sum[:])
+}
+
+func writeKeyError(w http.ResponseWriter, status int, typ, msg string) {
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{
+		"message": msg, "type": typ, "param": "key", "code": fmt.Sprintf("%d", status),
+	}})
+}
+
+// writeKey serves the /key/* routes the LiteLLMKey reconciler uses, following
+// references/litellm-key-api.md. /key/health is not handled here.
+func (m *MockServer) writeKey(w http.ResponseWriter, r *http.Request, mode string) bool {
+	if mode != ModeHappy {
+		return false
+	}
+	route := r.Method + " " + r.URL.Path
+	switch route {
+	case "POST /key/generate", "GET /key/info", "POST /key/update", "POST /key/delete", "GET /key/list":
+	default:
+		return false
+	}
+	var in map[string]any
+	if r.Method == http.MethodPost {
+		_ = json.NewDecoder(r.Body).Decode(&in)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	w.Header().Set("Content-Type", "application/json")
+
+	switch route {
+	case "POST /key/generate":
+		value, _ := in["key"].(string)
+		if !strings.HasPrefix(value, "sk-") || len(value) < 16 {
+			writeKeyError(w, http.StatusBadRequest, "bad_request_error", "Invalid key format")
+			return true
+		}
+		alias, _ := in["key_alias"].(string)
+		for _, row := range m.keys {
+			if alias != "" && row["key_alias"] == alias {
+				writeKeyError(w, http.StatusBadRequest, "bad_request_error",
+					fmt.Sprintf("Key with alias '%s' already exists. Unique key aliases across all keys are required.", alias))
+				return true
+			}
+		}
+		row := make(map[string]any, len(in))
+		for k, v := range in {
+			if k != "key" {
+				row[k] = v
+			}
+		}
+		hash := mockKeyHash(value)
+		m.keys[hash] = row
+		delete(m.deletedKeys, hash)
+		_ = json.NewEncoder(w).Encode(map[string]any{"key": value, "token": hash, "key_alias": alias})
+	case "GET /key/info":
+		q := r.URL.Query().Get("key")
+		hash := mockKeyHash(q)
+		row, ok := m.keys[hash]
+		switch {
+		case ok:
+			_ = json.NewEncoder(w).Encode(map[string]any{"key": q, "info": row})
+		case m.deletedKeys[hash]:
+			_ = json.NewEncoder(w).Encode(map[string]any{"key": q, "info": map[string]any{"status": "deleted"}})
+		default:
+			writeKeyError(w, http.StatusNotFound, "not_found_error", "Key not found in database")
+		}
+	case "POST /key/update":
+		key, _ := in["key"].(string)
+		row, ok := m.keys[mockKeyHash(key)]
+		if !ok {
+			writeKeyError(w, http.StatusNotFound, "not_found_error", "Key not found.")
+			return true
+		}
+		for k, v := range in {
+			if k != "key" {
+				row[k] = v // null clears
+			}
+		}
+		_ = json.NewEncoder(w).Encode(row)
+	case "POST /key/delete":
+		keys, _ := in["keys"].([]any)
+		deleted := 0
+		for _, k := range keys {
+			s, _ := k.(string)
+			hash := mockKeyHash(s)
+			if _, ok := m.keys[hash]; ok {
+				delete(m.keys, hash)
+				m.deletedKeys[hash] = true
+				deleted++
+			}
+		}
+		if deleted == 0 {
+			writeKeyError(w, http.StatusNotFound, "not_found_error", "Key not found.")
+			return true
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"deleted_keys": keys})
+	case "GET /key/list":
+		hashes := m.keyHashesByAliasLocked(r.URL.Query().Get("key_alias"))
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"keys": hashes, "total_count": len(hashes), "current_page": 1, "total_pages": 1,
+		})
+	}
+	return true
+}
+
+func (m *MockServer) keyHashesByAliasLocked(alias string) []string {
+	hashes := []string{}
+	for hash, row := range m.keys {
+		if row["key_alias"] == alias {
+			hashes = append(hashes, hash)
+		}
+	}
+	sort.Strings(hashes)
+	return hashes
+}
+
+// ResetKeys clears the virtual keys.
+func (m *MockServer) ResetKeys() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.keys = make(map[string]map[string]any)
+	m.deletedKeys = make(map[string]bool)
+}
+
+// Key returns a copy of a live key's stored fields.
+func (m *MockServer) Key(hash string) (map[string]any, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	row, ok := m.keys[hash]
+	if !ok {
+		return nil, false
+	}
+	cp := make(map[string]any, len(row))
+	for k, v := range row {
+		cp[k] = v
+	}
+	return cp, true
+}
+
+// KeyHashesByAlias returns the hashes of the live keys holding alias.
+func (m *MockServer) KeyHashesByAlias(alias string) []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.keyHashesByAliasLocked(alias)
+}
+
+// SeedKey stores a key as if created outside the operator.
+func (m *MockServer) SeedKey(hash string, row map[string]any) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.keys[hash] = row
+}
+
+// DeleteKeyOutOfBand removes a key as if deleted in the LiteLLM UI.
+func (m *MockServer) DeleteKeyOutOfBand(hash string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.keys, hash)
+	m.deletedKeys[hash] = true
 }
