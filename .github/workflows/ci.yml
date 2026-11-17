@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6  # v4.3.1
+      - uses: actions/checkout@v7  # v4.3.1
 
       - name: Set up devtools (pull or build)
         uses: ./.github/actions/setup-devtools
@@ -65,7 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6  # v4.3.1
+      - uses: actions/checkout@v7  # v4.3.1
 
       - name: Set up devtools (pull or build)
         uses: ./.github/actions/setup-devtools
@@ -87,7 +87,7 @@ jobs:
     needs: unit
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v6  # v4.3.1
+      - uses: actions/checkout@v7  # v4.3.1
 
       - name: Set up devtools (pull or build)
         uses: ./.github/actions/setup-devtools
@@ -112,7 +112,7 @@ jobs:
       security-events: write
       actions: read
     steps:
-      - uses: actions/checkout@v6  # v4.3.1
+      - uses: actions/checkout@v7  # v4.3.1
 
       - name: Dependency Review
         uses: actions/dependency-review-action@v5  # v4.9.0
@@ -148,7 +148,7 @@ jobs:
     timeout-minutes: 25
     if: "!github.event.pull_request.draft"
     steps:
-      - uses: actions/checkout@v6  # v4.3.1
+      - uses: actions/checkout@v7  # v4.3.1
 
       - name: Set up devtools (pull or build)
         uses: ./.github/actions/setup-devtools
