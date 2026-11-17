@@ -5,6 +5,7 @@ package controller
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -156,4 +157,15 @@ func stripOwnerRefs[T any, PT interface {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+}
+
+// mockCallIndex returns the index of the first recorded mock call at or
+// after `from` with this method and path prefix, or -1.
+func mockCallIndex(from int, method, pathPrefix string) int {
+	for i, c := range mockServer.Recorded() {
+		if i >= from && c.Method == method && strings.HasPrefix(c.Path, pathPrefix) {
+			return i
+		}
+	}
+	return -1
 }

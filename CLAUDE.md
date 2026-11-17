@@ -585,6 +585,35 @@ and invoke the underscore target directly, e.g.
 `docker run ... litellm-devtools:latest make _test-envtest-pkg PKG=./internal/controller/ FOCUS=...`.
 Seen 2026-10-05 on the shared dev host.
 
+### ❌ Vanish-deleting a Discovery child whose write failed
+```go
+desiredSet := generated + skipped + pendingRetries   // `failed` missing
+// → an owned child whose apply errored this round is Deleted in the same pass
+```
+✅ Both Discovery reconcilers fold `failed` into `desiredSet`, and the
+AlreadyExists `retryable` branch registers `pendingRetries`. A child that could
+not be written keeps its last-good object; only a candidate the provider no
+longer lists is vanish-deleted.
+WHY IT FAILED: the child's own finalizer then issued `POST /model/delete`, so
+one apiserver error or one CRD-invalid render removed a live model from
+LiteLLM. Guarded by `TestModelDiscovery_FailedApply_KeepsExistingChild`,
+`TestModelDiscovery_AlreadyExistsRetry_KeepsExistingChild` and
+`TestMCPServerDiscoveryReconciler_FailedApply_KeepsExistingChild`. A deleted
+child is re-created within milliseconds under a NEW UID, so a test that only
+checks "the child exists" cannot see the delete — compare the UID.
+
+### ❌ Adding a mock Mode without listing it in `MockServer.SetMode`
+```go
+mockServer.SetMode(mock.ModeDelete422)   // not in the switch → stored as ModeHappy
+```
+✅ Add the constant to the `case` list in `SetMode` (`internal/litellm/mock/mock.go`).
+WHY IT FAILS: `SetMode` falls back to `ModeHappy` for any value it does not
+list, with no error. The three `*_DeletionPath_Deterministic4xx_OrphanDrains`
+tests ran in happy mode this way: they passed because the delete succeeded,
+not because a 422 drained under Orphan. A test for a failure mode must show
+the failing call in `mockServer.Recorded()` or assert an outcome only the
+failure can produce.
+
 ### ❌ Kubectl from host against the kind cluster
 ```bash
 kubectl get pods -n default
@@ -646,8 +675,11 @@ spec:
 ```
 ✅ `providers.ValidateBaseURL` (M-SEC1) is a **denylist**, not full SSRF
 prevention. It rejects only cloud-metadata (`169.254.169.254`,
-`fd00:ec2::254`), loopback, and link-local hosts plus structural problems
-(non-http(s) scheme, userinfo, query, fragment). Private RFC1918 and `*.svc`
+`fd00:ec2::254`), loopback (IP literals and the `localhost` /
+`*.localhost` names), and link-local hosts plus structural problems
+(non-http(s) scheme, userinfo, query, fragment). The discovery HTTP client
+applies the same host check to every redirect (`providers.CheckRedirect`,
+wired in `cmd/main.go`). Private RFC1918 and `*.svc`
 hosts remain reachable BY DESIGN — KubeAI points `baseUrl` at in-cluster
 service DNS, so a blanket internal-deny would break the supported use case.
 RESIDUAL RISK: a namespaced user can still aim the operator's HTTP client at
@@ -787,7 +819,9 @@ exists. A definitive 404 / empty `data[]` (or 404 on `POST /model/delete`,
 `litellm.IsNotFound`) is positive proof the entry is gone, so the Delete
 goal is already met. The sibling controllers (a2aagent/mcpserver) already
 drain unconditionally on name-resolve-empty; the model controller now
-matches. Break-glass for an already-stuck CR (no operator redeploy):
+matches. EMPTY only: a name-resolve that FAILS (5xx, transport, 401) proves
+nothing, so `resolve*IDByName` return `(id, err)` and the deletion paths route
+an error through `onAckMissing` (finalizer kept). Break-glass for an already-stuck CR (no operator redeploy):
 `kubectl patch <kind> <name> --type=merge -p '{"metadata":{"finalizers":[]}}'`
 (the `deletion-policy-override=Orphan` annotation no longer drains while
 LiteLLM is unreachable — see the Orphan-outage entry below).
@@ -805,7 +839,8 @@ missing ack, outages included.
 ✅ `newAckMissingFn` (`shared_helpers.go`) takes `(reason, permanent)`. Orphan
 drains only on a PERMANENT cause: connection `Absent` (`ackUnavailable(snap)` —
 LiteLLMConnection being deleted, namespace teardown) or a deterministic non-404
-4xx. Every other not-usable reason (`Unreachable`, `Connecting`, `""`,
+4xx (`is4xxStatus`; 408/425/429 ask for a retry and count as transient, on the
+mutation path too). Every other not-usable reason (`Unreachable`, `Connecting`, `""`,
 `BadMasterKey`, `SecretNotFound`, `InvalidEndpoint`, `InsecureEndpoint`) and
 every 401 KEEPS the finalizer, records `deletion_blocked`, emits
 `LiteLLMDeleteDeferred`, and returns an error (backoff ≤30s; no HTTP call while
@@ -1291,8 +1326,9 @@ strands the CR PERMANENTLY (nothing but a manual `kubectl patch` clears it).
 `mcptoolset_controller.go` therefore re-resolves by name in the 5xx branch: an
 empty name-resolve is positive proof the entry is absent, so the Delete goal is
 met and the finalizer drains regardless of `deletionPolicy` — the same
-confirmed-absent rule the model controller follows. A still-listed entry keeps
-the transient backoff. Break-glass for an already-stuck CR:
+confirmed-absent rule the model controller follows. A still-listed entry, or a
+name-resolve that itself fails, keeps the transient backoff. Break-glass for an
+already-stuck CR:
 ```bash
 kubectl patch litellmmcptoolset <name> --type=merge -p '{"metadata":{"finalizers":[]}}'
 ```

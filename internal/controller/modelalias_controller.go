@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -136,14 +137,18 @@ func (r *ModelAliasReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		msg := fmt.Sprintf("GET /get/config/callbacks: %v", err)
 		return r.broadcastNotReady(ctx, list.Items, modelAliasErrorReason(err), msg, snap.NormalizedRequeueOnRejectedAfter(), logger)
 	}
-	current.ModelGroupAlias = agg.Desired
-	if err := cli.UpdateRouterSettings(ctx, current); err != nil {
-		var auth401 *litellm.Auth401Error
-		if errors.As(err, &auth401) {
-			r.Cache.InvalidateOn401()
+	// POST /config/update rewrites all of router_settings: skip it when the
+	// alias map already matches.
+	if !maps.Equal(current.ModelGroupAlias, agg.Desired) {
+		current.ModelGroupAlias = agg.Desired
+		if err := cli.UpdateRouterSettings(ctx, current); err != nil {
+			var auth401 *litellm.Auth401Error
+			if errors.As(err, &auth401) {
+				r.Cache.InvalidateOn401()
+			}
+			msg := fmt.Sprintf("POST /config/update: %v", err)
+			return r.broadcastNotReady(ctx, list.Items, modelAliasErrorReason(err), msg, snap.NormalizedRequeueOnRejectedAfter(), logger)
 		}
-		msg := fmt.Sprintf("POST /config/update: %v", err)
-		return r.broadcastNotReady(ctx, list.Items, modelAliasErrorReason(err), msg, snap.NormalizedRequeueOnRejectedAfter(), logger)
 	}
 
 	if err := r.writePerCRStatuses(ctx, list.Items, agg, logger); err != nil {

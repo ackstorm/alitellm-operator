@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -62,22 +63,41 @@ func ValidateBaseURL(raw string) error {
 			return errors.New("invalid port (must be 1-65535)")
 		}
 	}
-	// IP-literal denial. DNS names (e.g. *.svc) are NOT resolved here — the
-	// denylist targets literal metadata/loopback/link-local addresses a
-	// caller would hardcode; DNS-based rebinding is out of scope for this
-	// denylist (documented residual risk).
+	if err := deniedHost(host); err != nil {
+		return fmt.Errorf("baseUrl %w", err)
+	}
+	return nil
+}
+
+// deniedHost rejects IP literals and the localhost names. Other DNS names
+// (e.g. *.svc) are NOT resolved — the denylist targets metadata/loopback/
+// link-local addresses a caller would hardcode; DNS-based rebinding is out of
+// scope (documented residual risk).
+func deniedHost(host string) error {
+	if h := strings.TrimSuffix(strings.ToLower(host), "."); h == "localhost" || strings.HasSuffix(h, ".localhost") {
+		return fmt.Errorf("host %q is loopback (denied)", host)
+	}
 	if ip := net.ParseIP(host); ip != nil {
 		if ip.IsLoopback() {
-			return fmt.Errorf("baseUrl host %q is loopback (denied)", host)
+			return fmt.Errorf("host %q is loopback (denied)", host)
 		}
 		if ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-			return fmt.Errorf("baseUrl host %q is link-local (denied)", host)
+			return fmt.Errorf("host %q is link-local (denied)", host)
 		}
 		if isCloudMetadataIP(ip) {
-			return fmt.Errorf("baseUrl host %q is a cloud metadata address (denied)", host)
+			return fmt.Errorf("host %q is a cloud metadata address (denied)", host)
 		}
 	}
 	return nil
+}
+
+// CheckRedirect is the redirect policy for discovery HTTP clients: a redirect
+// may not reach a host ValidateBaseURL denies.
+func CheckRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("stopped after 10 redirects")
+	}
+	return deniedHost(req.URL.Hostname())
 }
 
 // isCloudMetadataIP reports whether ip is a well-known cloud instance

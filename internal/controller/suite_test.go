@@ -207,6 +207,9 @@ var (
 	// on it to inject a one-shot AlreadyExists from Patch, without
 	// swapping the reconciler's Client field at runtime.
 	mcpServerDiscoveryClient *patchInterceptor
+	// modelDiscoveryClient is the same interceptor for the ModelDiscovery
+	// reconciler.
+	modelDiscoveryClient *patchInterceptor
 
 	// GuardRailReconciler. Shares connCache with the
 	// Phase 2/3/5/6 reconcilers. Tests exercise the GR-01..n surface
@@ -460,8 +463,9 @@ func setupAndRun(m *testing.M) int {
 		fmt.Fprintf(os.Stderr, "IndexField(ModelDiscovery credentialsSecretRef): %v\n", err)
 		return 1
 	}
+	modelDiscoveryClient = &patchInterceptor{Client: mgr.GetClient()}
 	mdReconciler = &ModelDiscoveryReconciler{
-		Client:     mgr.GetClient(),
+		Client:     modelDiscoveryClient,
 		APIReader:  mgr.GetAPIReader(),
 		Scheme:     mgr.GetScheme(),
 		HTTPClient: &http.Client{Timeout: 30 * time.Second},

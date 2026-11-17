@@ -2,7 +2,12 @@
 
 package providers
 
-import "testing"
+import (
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
+	"testing"
+)
 
 func TestValidateBaseURL(t *testing.T) {
 	bad := []string{
@@ -35,5 +40,38 @@ func TestValidateBaseURL(t *testing.T) {
 		if err := ValidateBaseURL(u); err != nil {
 			t.Errorf("expected accept %q: %v", u, err)
 		}
+	}
+}
+
+func TestValidateBaseURL_DeniesLocalhostNames(t *testing.T) {
+	for _, u := range []string{
+		"http://localhost:8080",
+		"http://LOCALHOST/v1",
+		"http://localhost./v1",
+		"http://metrics.localhost/v1",
+	} {
+		if err := ValidateBaseURL(u); err == nil {
+			t.Errorf("ValidateBaseURL(%q) = nil, want a loopback denial", u)
+		}
+	}
+}
+
+// A redirect may not reach a host the baseUrl denylist rejects.
+func TestCheckRedirect_DeniedHostNotFollowed(t *testing.T) {
+	var hits atomic.Int32
+	target := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hits.Add(1) }))
+	defer target.Close()
+	src := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusFound)
+	}))
+	defer src.Close()
+
+	resp, err := (&http.Client{CheckRedirect: CheckRedirect}).Get(src.URL)
+	if err == nil {
+		_ = resp.Body.Close()
+		t.Fatal("redirect to a loopback host was followed")
+	}
+	if n := hits.Load(); n != 0 {
+		t.Fatalf("redirect target received %d requests, want 0", n)
 	}
 }

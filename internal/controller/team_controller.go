@@ -179,6 +179,12 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		}
 		return ctrl.Result{}, err
 	}
+	if team.Name == teamAliasDefault {
+		// The CR owns the team body from here on. The implicit cache would
+		// otherwise still read "steady state" once the CR is gone without
+		// its re-apply (failed re-apply, finalizer dropped by hand).
+		r.ResetImplicitDefaultCache()
+	}
 
 	// ─── Step 1.5: Protected-deletion + finalizer-add ─────────
 	//

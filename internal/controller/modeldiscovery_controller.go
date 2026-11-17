@@ -893,6 +893,8 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 					// resolve on the next reconcile. Result label: count
 					// as a conflict so OBS-04 surfaces the contention.
 					metrics.ChildCRWritesTotal.WithLabelValues(modelDiscoveryKind, action, "conflict").Inc()
+					// Still ours: keep it out of the vanish pass.
+					pendingRetries[childName] = struct{}{}
 					logger.V(1).Info("AlreadyExists retry-soon",
 						"child", childName, "reason", "transient race")
 					continue
@@ -969,6 +971,10 @@ func (r *ModelDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 	for n := range pendingRetries {
 		desiredSet[n] = struct{}{}
+	}
+	// A child whose write failed is still claimed: keep the last-good object.
+	for _, f := range failed {
+		desiredSet[f.Name] = struct{}{}
 	}
 
 	// Reuse `existingChildren` listed in Step 8.5 above (single

@@ -1168,12 +1168,12 @@ func (m *MockServer) SetLoggingCallbacksNull(v bool) {
 }
 
 // SetMode switches the mock's response mode. Valid values are ModeHappy,
-// Mode401, ModeTransient5xx, ModeSlow, Mode422, ModeNotFoundListTeams,
-// ModeNotFoundDeleteTeam, Mode401DeleteTeam. Unknown values fall back to
-// ModeHappy so a fat-fingered test doesn't silently hang.
+// Mode401, ModeTransient5xx, ModeSlow, Mode422, ModeDelete422,
+// ModeNotFoundListTeams, ModeNotFoundDeleteTeam, Mode401DeleteTeam. Unknown
+// values fall back to ModeHappy so a fat-fingered test doesn't silently hang.
 func (m *MockServer) SetMode(mode string) {
 	switch mode {
-	case ModeHappy, Mode401, ModeTransient5xx, ModeSlow, Mode422,
+	case ModeHappy, Mode401, ModeTransient5xx, ModeSlow, Mode422, ModeDelete422,
 		ModeNotFoundListTeams, ModeNotFoundDeleteTeam, Mode401DeleteTeam:
 		m.mode.Store(mode)
 	default:

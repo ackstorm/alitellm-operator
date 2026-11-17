@@ -858,6 +858,10 @@ func (r *MCPServerDiscoveryReconciler) Reconcile(ctx context.Context, req ctrl.R
 	for n := range pendingRetries {
 		desiredSet[n] = struct{}{}
 	}
+	// A child whose write failed is still claimed: keep the last-good object.
+	for _, f := range failed {
+		desiredSet[f.Name] = struct{}{}
+	}
 	for i := range existingChildren.Items {
 		child := &existingChildren.Items[i]
 		if _, keep := desiredSet[child.Name]; keep {

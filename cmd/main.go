@@ -33,6 +33,7 @@ import (
 	"github.com/ackstorm/alitellm-operator/internal/controller"
 	"github.com/ackstorm/alitellm-operator/internal/identity"
 	"github.com/ackstorm/alitellm-operator/internal/litellm"
+	"github.com/ackstorm/alitellm-operator/internal/providers"
 	"github.com/ackstorm/alitellm-operator/internal/toolhive"
 
 	// Blank-import the metrics package so its init registers the §10
@@ -296,7 +297,8 @@ func main() {
 	// Conservative timeouts: 10s total request, 30s idle conn timeout,
 	// 4 max idle conns per host (5 providers × few CRs each).
 	discoveryHTTPClient := &http.Client{
-		Timeout: 10 * time.Second,
+		Timeout:       10 * time.Second,
+		CheckRedirect: providers.CheckRedirect,
 		Transport: &http.Transport{
 			MaxIdleConnsPerHost: 4,
 			IdleConnTimeout:     30 * time.Second,

@@ -78,3 +78,17 @@ func TestAckUnavailable_OnlyAbsentIsPermanent(t *testing.T) {
 		}
 	}
 }
+
+// Retryable 4xx statuses are not deterministic rejections.
+func TestIs4xxStatus_RetryableStatuses(t *testing.T) {
+	for _, s := range []int{408, 425, 429} {
+		if is4xxStatus(&litellm.RejectedError{Status: s}) {
+			t.Errorf("status %d classified as a deterministic 4xx", s)
+		}
+	}
+	for _, s := range []int{400, 403, 404, 409, 422} {
+		if !is4xxStatus(&litellm.RejectedError{Status: s}) {
+			t.Errorf("status %d not classified as a deterministic 4xx", s)
+		}
+	}
+}
