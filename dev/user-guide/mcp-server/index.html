@@ -2027,8 +2027,16 @@ verbatim. <code>stdio</code> is rejected. The Discovery-side normalization
 <code>spec.params</code>) is compared against <code>status.lastRendered.hash</code>:</p>
 <ul>
 <li>Match → no LiteLLM call.</li>
-<li>Mismatch → <code>PUT /v1/mcp/server</code> (wholesale-replace per LiteLLM
-  1.83.10).</li>
+<li>Mismatch → <code>PUT /v1/mcp/server</code>. LiteLLM applies it as a partial
+  update (a field left out keeps its stored value), so the operator
+  sends <code>description</code>, <code>mcp_access_groups</code> / <code>access_groups</code>,
+  <code>allowed_tools</code>, <code>extra_headers</code>, <code>static_headers</code>,
+  <code>tool_name_to_display_name</code>, <code>tool_name_to_description</code> and <code>env</code>
+  on every update, empty when <code>spec.params</code> does not set them:
+  removing one clears it in LiteLLM. Every other param is sent only
+  when set, so removing it keeps the stored value. To turn off
+  <code>allow_all_keys</code>, <code>available_on_public_internet</code> or
+  <code>oauth_passthrough</code>, set it to <code>false</code>.</li>
 <li>Row vanished in LiteLLM (out-of-band DELETE) → <code>POST /v1/mcp/server</code>,
   re-pin <code>serverID</code>, increment
   <code>alitellm_operator_drift_corrected_total{domain=mcpserver,action=create_missing}</code>.</li>
