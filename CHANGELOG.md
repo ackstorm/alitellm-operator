@@ -63,6 +63,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   echoes the team's models.
 
 ### Fixed
+- **Removing an MCP server param from the spec clears it in LiteLLM.** The
+  update sent `omitempty` fields, so a removed `description`, `allowedTools`,
+  access group, header, env entry or tool display override stayed on the
+  server row: a tool removed from `allowedTools` kept being served. Those
+  fields are now always sent, empty when unset. Tri-state flags, auth fields,
+  `command` and `args` are not cleared on removal.
 - **An operator key that is valid but not admin no longer storms LiteLLM.**
   LiteLLM answers 401 on admin-only routes for a key `/key/health` accepts;
   each 401 invalidated the connection cache, the probe passed, and every CR
