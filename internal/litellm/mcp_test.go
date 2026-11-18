@@ -135,7 +135,7 @@ func TestCreateMCPServerPathIsAdminImmediate(t *testing.T) {
 	}
 }
 
-// TestUpdateMCPServerUsesPUT — PUT /v1/mcp/server (§5.1 wholesale-replace).
+// TestUpdateMCPServerUsesPUT — PUT /v1/mcp/server.
 func TestUpdateMCPServerUsesPUT(t *testing.T) {
 	var captured []capturedRequest
 	srv := httptest.NewServer(captureMock(t, &captured, func(i int, w http.ResponseWriter) {
@@ -151,6 +151,51 @@ func TestUpdateMCPServerUsesPUT(t *testing.T) {
 	}
 	if len(captured) != 1 || captured[0].Method != http.MethodPut || captured[0].Path != pathV1MCPServer {
 		t.Errorf("UpdateMCPServer: want PUT /v1/mcp/server, got %+v", captured)
+	}
+}
+
+// LiteLLM applies PUT /v1/mcp/server as a partial update: a field left out of
+// the body keeps its stored value. A param removed from the spec must
+// therefore reach the wire as an empty value, or the removal is never applied.
+func TestUpdateMCPServer_UnsetFieldsSentEmpty(t *testing.T) {
+	var captured []capturedRequest
+	srv := httptest.NewServer(captureMock(t, &captured, func(i int, w http.ResponseWriter) {
+		w.WriteHeader(202)
+		_, _ = w.Write([]byte(`{"server_id":"mcp-1","transport":"http"}`))
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv.URL)
+	if _, err := c.UpdateMCPServer(context.Background(), &MCPServerUpdateRequest{
+		ServerID: "mcp-1", ServerName: "srv", URL: "https://example.com/mcp", Transport: "http",
+	}); err != nil {
+		t.Fatalf("UpdateMCPServer: %v", err)
+	}
+	if len(captured) != 1 {
+		t.Fatalf("want 1 request, got %d", len(captured))
+	}
+	var body map[string]any
+	if err := json.Unmarshal(captured[0].Body, &body); err != nil {
+		t.Fatalf("decode request body: %v", err)
+	}
+	for _, k := range []string{"mcp_access_groups", "allowed_tools", "extra_headers"} {
+		if arr, ok := body[k].([]any); !ok || len(arr) != 0 {
+			t.Errorf("%s = %#v, want []", k, body[k])
+		}
+	}
+	for _, k := range []string{"static_headers", "tool_name_to_display_name", "tool_name_to_description", "env"} {
+		if m, ok := body[k].(map[string]any); !ok || len(m) != 0 {
+			t.Errorf("%s = %#v, want {}", k, body[k])
+		}
+	}
+	if d, ok := body["description"].(string); !ok || d != "" {
+		t.Errorf(`description = %#v, want ""`, body["description"])
+	}
+	// The flags are tri-state: unset means "leave LiteLLM's value alone".
+	for _, k := range []string{"allow_all_keys", "available_on_public_internet", "oauth_passthrough"} {
+		if _, present := body[k]; present {
+			t.Errorf("%s = %#v, want it left out", k, body[k])
+		}
 	}
 }
 

@@ -156,8 +156,16 @@ Per-reconcile SHA-256 hash of the rendered post-substitution body
 `spec.params`) is compared against `status.lastRendered.hash`:
 
 - Match → no LiteLLM call.
-- Mismatch → `PUT /v1/mcp/server` (wholesale-replace per LiteLLM
-  1.83.10).
+- Mismatch → `PUT /v1/mcp/server`. LiteLLM applies it as a partial
+  update (a field left out keeps its stored value), so the operator
+  sends `description`, `mcp_access_groups` / `access_groups`,
+  `allowed_tools`, `extra_headers`, `static_headers`,
+  `tool_name_to_display_name`, `tool_name_to_description` and `env`
+  on every update, empty when `spec.params` does not set them:
+  removing one clears it in LiteLLM. Every other param is sent only
+  when set, so removing it keeps the stored value. To turn off
+  `allow_all_keys`, `available_on_public_internet` or
+  `oauth_passthrough`, set it to `false`.
 - Row vanished in LiteLLM (out-of-band DELETE) → `POST /v1/mcp/server`,
   re-pin `serverID`, increment
   `alitellm_operator_drift_corrected_total{domain=mcpserver,action=create_missing}`.
