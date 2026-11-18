@@ -6,8 +6,8 @@ GitHub home at `git@github.com:ackstorm/alitellm-operator.git`.
 Public-repo publication is **irreversible**: once a commit is pushed,
 assume it is permanently indexed by mirrors, search engines, and training
 corpora — even if the repo is later deleted or made private. The
-procedure below exists so we catch leaks, large binaries, and internal
-references *before* that happens.
+procedure below exists so we catch leaks and internal references
+*before* that happens.
 
 ---
 
@@ -15,60 +15,39 @@ references *before* that happens.
 
 ```bash
 # from repo root
-make pre-push           # or ./scripts/pre-push-check.sh — must exit 0
-git push -u origin main # only after the script passes
+git push -u origin main # the machine-wide pre-push hook runs gitleaks first
 ```
 
 First-time setup:
 
 ```bash
 git remote add origin git@github.com:ackstorm/alitellm-operator.git
-make hooks              # symlinks .git/hooks/pre-push -> scripts/pre-push-check.sh
 ```
 
 ---
 
 ## Prerequisites
 
-- **Docker** running and reachable by the current user (sandboxes the
-  secret scanners and pins their versions).
+- **gitleaks** on `PATH`, with the machine-wide git `pre-push` hook
+  installed.
 - **SSH key** on this machine with push access to the `ackstorm` org.
 - **Working tree** committed or stashed — uncommitted changes are not
-  pushed; the script warns about them.
+  pushed.
 
 ---
 
-## The 15 hard gates
+## What checks a push
 
-`scripts/pre-push-check.sh` runs 15 hard checks (failure blocks push) and
-5 soft checks (informational warnings). The gate list:
+- **Secrets**: the machine-wide git `pre-push` hook runs gitleaks over the
+  commits being pushed and blocks the push on any finding. Allowlist:
+  `.gitleaks.toml`. The repo installs no hook of its own.
+- **Everything else**: CI on the pull request (`.github/workflows/ci.yml`:
+  `Lint`, `Unit`, `Envtest`, `Security`, `E2E (kind + helm + ginkgo)`) is
+  the merge gate.
 
-| #  | Check                          | Block reason                                                  |
-|----|--------------------------------|---------------------------------------------------------------|
-| 1  | gitleaks (`origin/main..HEAD`; full history on first push) | API keys, tokens, high-entropy strings. Allowlist: `.gitleaks.toml`. |
-| 2  | trufflehog `--only-verified`   | Confirms suspected secrets are actually live.                 |
-| 3  | Large tracked files (>2 MB)    | Public repos amplify accidental binary commits.               |
-| 4  | Sensitive file patterns        | `.env`, `*.pem`, `*.key`, kubeconfig, `credentials.json`, ... |
-| 5  | `LICENSE` and `README.md`      | Required for any public OSS repo.                             |
-| 6  | `origin` remote matches        | Prevents pushing to the wrong remote.                         |
-| 13 | govulncheck ack-list 1:1       | Routes through `scripts/govulncheck-gate.sh` (devtools binary; pinned `v1.3.0`). The wrapper enforces an exact match between the reachable advisories and `docs/security/govulncheck-acknowledged.md`. Any NEW HIGH or ack-list drift blocks. |
-| 14 | `go mod tidy` drift            | Snapshots `go.mod`/`go.sum`, runs tidy, diffs; restores on drift so the working tree stays clean. |
-| 15 | Per-file SPDX license header   | Every tracked `*.go` outside `vendor/`, `zz_generated*.go`, `mock_*.go`, `.claude/` must carry `// SPDX-License-Identifier: MIT` within its first 5 lines. Build-tag-first files (`//go:build ...` line 1) satisfy on line 3. |
-
-Soft checks (7-12): internal hostnames / private IPv4, `@ackstorm.com` /
-`@ackstorm.es` emails, `.gitignore` sanity, commit author audit,
-`DO NOT COMMIT` markers, working-tree status.
-
-Per [CLAUDE.md](./CLAUDE.md), **never** pass `--no-verify` to `git push`.
-If a gate fails, fix the root cause — rotate credentials, rewrite
-history with `git filter-repo`, bump the dependency, regenerate the SPDX
-header.
-
-### CI parity
-
-The same supply-chain gates run server-side in the `Security` job of
-`.github/workflows/ci.yml`. The local pre-push script is the fast
-feedback loop; the CI `Security` job is the authoritative merge gate.
+**Never** pass `--no-verify` to `git push`: it skips the secret scan. If
+gitleaks blocks the push, fix the root cause — rotate the credential and
+rewrite history with `git filter-repo`.
 
 ---
 
@@ -76,25 +55,11 @@ feedback loop; the CI `Security` job is the authoritative merge gate.
 
 1. **Sync.** `git fetch` (if a remote exists) and confirm `main` is the
    branch you intend to publish.
-2. **Run the script.**
-   ```bash
-   make pre-push
-   ```
-   Or rely on the installed git hook (`make hooks`).
-3. **If a hard check fails:** do not push. Common remediations:
-   - Leak detected: **rotate the credential first**, then remove from
-     history with `git filter-repo` — `git rm` alone is not enough.
-   - Large file: `git rm` + `git filter-repo --strip-blobs-bigger-than 2M`.
-   - Sensitive file pattern: `git rm --cached <file>`, add to
-     `.gitignore`, commit, rewrite history if it existed in earlier
-     commits.
-   - Wrong `origin`: `git remote set-url origin <expected>`.
-
-   After any history rewrite, **re-run the script from scratch.**
-4. **If only warnings remain:** read each one. Confirm matches are test
-   fixtures or doc examples. Re-run if you change anything.
-5. **Push.** `git push -u origin main`
-6. **Post-push.** Sanity-check on GitHub: README renders, LICENSE
+2. **Push.** `git push -u origin main`
+3. **If gitleaks blocks the push:** **rotate the credential first**, then
+   remove it from history with `git filter-repo` — `git rm` alone is not
+   enough. Push again after the rewrite.
+4. **Post-push.** Sanity-check on GitHub: README renders, LICENSE
    detected, no large blobs flagged, no Dependabot or secret-scanning
    alerts waiting in the Security tab.
 
@@ -150,10 +115,7 @@ git commit -m "Initial commit"
 git branch -D main
 git branch -m tmp-public main
 
-# 5. Re-run the pre-push validation against the new single-commit history.
-make pre-push
-
-# 6. Push. The remote has no main yet, so this is a normal push, not a force.
+# 5. Push. The remote has no main yet, so this is a normal push, not a force.
 git push -u origin main
 ```
 

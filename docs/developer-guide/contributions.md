@@ -2,8 +2,7 @@
 
 Thanks for considering a contribution to `alitellm-operator`. This
 page summarizes the local dev loop, gates, and PR flow. Authoritative
-files live in the repo root (`CONTRIBUTING.md`, `CLAUDE.md`,
-`scripts/pre-push-check.sh`).
+files live in the repo root (`CONTRIBUTING.md`, `CLAUDE.md`).
 
 ## Before you start
 
@@ -50,13 +49,11 @@ directly on the host.
 | E2E (kind + Helm)    | `make e2e-full`                      | Final gate before commit (~10m clean).    |
 | E2E focused          | `./scripts/dev.sh make e2e-focus FOCUS="..."` | Iterate after `make cluster-keep`. |
 | Security             | `./scripts/dev.sh make qa-security`     | Before commit (~6m).                      |
-| Pre-push gate        | `make pre-push`                      | Before every push (host-only).            |
 
 Umbrella targets:
 
 - `make test-full` = `unit` + `envtest-run`
-- `make verify` = `./scripts/dev.sh make qa-security` + `make pre-push`
-- `make hooks` installs `.git/hooks/pre-push -> scripts/pre-push-check.sh`
+- `make verify` = `qa-lint` + `test-unit` + `qa-security`
 
 Inner-loop helpers when iterating on a single package:
 
@@ -80,26 +77,14 @@ make operator-redeploy                          # hot-reload after code edit
 
 When done, `make cluster-down`; for a clean final gate, `make cluster-reset` then `make e2e-full`.
 
-## Pre-push gate (18 gates)
+## Secret scan and CI gate
 
-`make pre-push` is HOST-ONLY (it spawns gitleaks/trufflehog
-containers on host docker — never via `./scripts/dev.sh`). Hard
-failures block push; do NOT bypass with `--no-verify`.
+The repo installs no git hook. Maintainers scan the pushed commits with
+gitleaks from a machine-wide git `pre-push` hook (allowlist:
+`.gitleaks.toml`); do NOT bypass it with `--no-verify`. CI on the pull
+request is the gate for everything else.
 
-Gates include:
-
-- gitleaks + trufflehog (scope: `origin/main..HEAD`; full history on
-  first push)
-- Large files >2 MB
-- Sensitive patterns (`.env`, `*.pem`, `*.key`, kubeconfig, …)
-- LICENSE + README presence
-- Origin remote matches expected
-- `govulncheck` ack-list 1:1 match
-  (`references/security/govulncheck-acknowledged.md`)
-- `go mod tidy` drift
-- Per-file SPDX license header
-
-Fix the root cause; if a vulnerability needs an ack, add the entry to
+If a vulnerability needs an ack, add the entry to
 `references/security/govulncheck-acknowledged.md` in the same commit.
 
 ## Commit style — conventional commits
@@ -131,7 +116,7 @@ Release commits use `chore(release): v<MAJOR>.<MINOR>.<PATCH>` on
 1. Branch off `main`.
 2. Iterate; run `./scripts/dev.sh make test-unit` per change.
 3. Before push: `./scripts/dev.sh make test-envtest` if touching
-   controllers; `make pre-push`.
+   controllers.
 4. Open PR — CI runs `lint`, `unit`, `envtest`, `security`, `e2e`.
    All five must be green.
 5. CodeRabbit auto-review; address findings.

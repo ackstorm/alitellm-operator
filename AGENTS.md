@@ -20,8 +20,8 @@ Triggers requiring a docs/CLAUDE.md update:
   state, ...) and `docs/` if user-facing.
 - New `wait-*` target, blessed pattern, or polling rule → update the
   "Waiting for state" table and the bash anti-patterns section.
-- New pre-push gate, govulncheck ack-list entry, or SPDX/license rule →
-  update the "Publication" section and `references/security/...`.
+- New CI gate, govulncheck ack-list entry, or SPDX/license rule →
+  update the "CI gating" section and `references/security/...`.
 - Release pipeline change (`release.yml`, goreleaser configs, bump
   flow) → update the "Release pipeline" section.
 - New common failure mode encountered while debugging → add a
@@ -99,7 +99,7 @@ alitellm-operator/
 ├── hack/boilerplate.go.txt  ← SPDX one-liner, prepended to generated files
 ├── references/              ← agent-facing internal docs (NOT on public site)
 │   └── security/govulncheck-acknowledged.md
-├── scripts/                 ← dev.sh, cluster.sh, pre-push-check.sh, ...
+├── scripts/                 ← dev.sh, cluster.sh, ...
 ├── spec/                    ← frozen LiteLLM OpenAPI + design spec
 ├── test/                    ← e2e (Ginkgo) + utils
 │   ├── e2e/cluster/         standing-hydration kustomize phases (00-namespaces,
@@ -122,7 +122,6 @@ alitellm-operator/
 | E2E tests (kind cluster + Helm)        | `test/e2e/README.md`                     |
 | CI workflows (ci, docs, release, ...)  | `references/docs/workflow.md` (matrix + rationale); `.github/workflows/*.yml` is authoritative |
 | Release tooling (goreleaser, signing)  | `.goreleaser.yml` + `release.yml` workflow |
-| Pre-push gate logic                    | `scripts/pre-push-check.sh` (gate list)  |
 | Publication / first-push procedure     | `PUBLISH.md`                             |
 | Helm chart values + defaults           | `deploy/helm/alitellm-operator/values.yaml` |
 | API reference rendering                | `docs/Makefile` (`gen-crd-ref-docs`) + `docs/.crd-ref-docs.yaml` |
@@ -156,6 +155,10 @@ main would be dup. Release commits are handled by `release.yml`.
 Docs-only PRs (paths-ignore: `**/*.md`, `docs/**`, `.planning/**`,
 `references/**`, `FIX*.txt`, `LICENSE`, `NOTICE`, `CODEOWNERS`,
 `.gitignore`) skip `ci.yml` entirely and report no checks.
+
+The only local check is the machine-wide git `pre-push` hook, which runs
+gitleaks over the pushed commits (allowlist: `.gitleaks.toml`). The repo
+installs no hook of its own; CI is the gate for everything else.
 
 Detail and tradeoffs: `references/docs/workflow.md`.
 
@@ -205,7 +208,7 @@ not two). Never prefix a routed target with `./scripts/dev.sh` out of
 habit — the prefix is redundant.
 
 Only context-B/C targets run directly on the host: `docker-*` (host
-docker), the gate orchestrators (`pre-push`, `verify`), `release-*`, and
+docker), the gate orchestrator `verify`, `release-*`, and
 `ensure-inotify`. `operator-redeploy` builds + `kind load`s on the host but
 runs its `kubectl rollout restart/status` THROUGH the devtools container
 (`$(E2E_KUBECTL)`) — host kubectl has no context for the kind
@@ -233,16 +236,15 @@ the e2e cluster MUST use `$(E2E_KUBECTL)`, never bare `kubectl`.
 |--------------------|----------------------------------------|---------------------------------------|
 | `make test-unit`        | pure-logic, ~5s warm                   | every iteration                       |
 | `make qa-lint-changed`| golangci-lint scoped to touched pkgs   | every iteration                       |
-| `make qa-lint`        | golangci-lint full sweep               | before commit; re-run in pre-push gate |
+| `make qa-lint`        | golangci-lint full sweep               | before commit; CI Lint job            |
 | `make test-envtest` | controller-runtime envtest (race), ~7m | before commit on controller changes   |
 | `make test-envtest-fast`| envtest without -race, ~3m            | dev inner loop                        |
 | `make e2e-full`    | kind + Helm + Ginkgo, ~6m             | final gate before commit              |
 | `make qa-security`    | gosec + govulncheck + fuzz-short, ≤6m | in-container; before push             |
-| `make pre-push`    | full publication gate (secrets, filesystem, build hygiene, SPDX, lint + unit, ...) | host-only; runs on every `git push` once `make hooks` installed — manual invocation is a dry-run / verification only |
 
 Umbrella targets:
 - `make test-full` = `test-unit` + `test-envtest`
-- `make verify` = `make qa-lint` + `make test-unit` + `make qa-security` + `make pre-push` (each self-routes; the gates stay host-only)
+- `make verify` = `make qa-lint` + `make test-unit` + `make qa-security` (each self-routes)
 
 ### UAT vs e2e — where a check belongs
 
@@ -270,12 +272,6 @@ ported OUT of the runbook and must not be re-added to it:
 `TEAM-07` is why the mock serves `/v1/chat/completions`: without a positive
 inference path, `TEAM-05`'s denial alone cannot distinguish "deny-by-default
 works" from "all team keys are broken".
-- `make hooks` installs `.git/hooks/pre-push -> scripts/pre-push-check.sh`
-  (and removes any stale pre-commit hook from a prior install)
-
-`make pre-push` is host-only — it spawns gitleaks/trufflehog containers
-on host docker. Do NOT call it via `./scripts/dev.sh` (would nest docker
-mounts that don't resolve).
 
 Inner-loop iteration helpers:
 - `make test-unit-pkg PKG=./internal/litellm/...`
@@ -320,13 +316,13 @@ Cutting a release (stable example, `v0.1.0`):
 # Most common — empty release commit (no manifest pre-bump).
 # `make release-cut` runs preconditions (on main, clean tree, in-sync
 # with origin/main), creates `chore(release): v0.1.0` as an empty
-# commit, runs the pre-push gate, and pushes to main.
+# commit, and pushes to main.
 make release-cut VERSION=0.1.0
 
 # Bundle the release intent with a real change:
 # (edit, then commit the change yourself, then:)
 git commit -am 'chore(release): v0.1.0'
-git push origin main   # installed pre-push hook runs the gate automatically
+git push origin main
 ```
 
 There is no need to `make release-bump` locally or to create the tag yourself.
@@ -383,44 +379,6 @@ pushed as `ghcr.io/ackstorm/alitellm-operator:main` +
 `docker_signs:` and `signs:` blocks require:
 - `id-token: write` in the workflow (already set).
 - cosign on PATH (release.yml installs via `sigstore/cosign-installer`).
-
-## Publication — the pre-push gate is non-negotiable
-
-Public remote: `git@github.com:ackstorm/alitellm-operator.git`. A single
-local hook stage pays the cost of "oops, CI failed lint" before the push
-leaves the host (the former fast `pre-commit` gate has been retired —
-lint + unit now run only in the pre-push gate and in CI):
-
-- `pre-push` (`make pre-push`) — full publication check. Runs on
-  every `git push` once `make hooks` is installed; do NOT invoke
-  `make pre-push` manually before `git push` as a "belt and braces"
-  step — the hook will fire it automatically and a manual call just
-  double-spends the ~6 min gate. Manual invocation is reserved for
-  dry-runs (verifying a WIP branch is push-ready without actually
-  pushing). The authoritative gate list lives in
-  `scripts/pre-push-check.sh`; the categories below are intent, not
-  inventory, so the script can evolve without doc drift.
-
-Gate categories — any failure blocks push:
-- **Secret scanners**: gitleaks + trufflehog over `origin/main..HEAD`
-  (full history on first push). Allowlist: `.gitleaks.toml`.
-- **Filesystem hygiene**: large-file caps, sensitive patterns
-  (`.env`, `*.pem`, `*.key`, kubeconfig, ...), required top-level files
-  (LICENSE, README), `.gitignore` coverage.
-- **Repo identity**: origin remote matches expected, branch up to date.
-- **Build hygiene**: `go mod tidy` drift, govulncheck ack-list 1:1
-  match (`scripts/govulncheck-gate.sh` against
-  `references/security/govulncheck-acknowledged.md`).
-- **Code provenance**: per-file SPDX header
-  (`// SPDX-License-Identifier: MIT`).
-- **Defense in depth**: full `make qa-lint` + `make test-unit` run inside
-  the devtools container on every push.
-- **Informational warns** (do not block): commit-author summary,
-  urgent TODO / DO-NOT-COMMIT markers, working-tree status.
-
-If a gate fails, fix the root cause — never `--no-verify` or otherwise
-bypass. Note: `--no-verify` skips ONLY the local hook; it does not
-exempt CI, which reruns the same gates.
 
 ## Waiting for state — use blessed make targets
 
@@ -532,22 +490,6 @@ first run the cluster is KEPT (no teardown), so re-run only the focused
 test or hot-reload the operator instead of paying cluster-up again.
 Teardown is explicit: `make cluster-down`.
 
-### ❌ Pushing without the pre-push hook installed
-```bash
-git push origin main --no-verify
-```
-✅ Install the hook once per clone; never use `--no-verify`:
-```bash
-make hooks          # idempotent; symlinks .git/hooks/pre-push -> scripts/pre-push-check.sh
-git push origin main   # the hook runs make pre-push automatically before the push leaves the host
-```
-Manual `make pre-push` is a dry-run / sanity-check only — `git push`
-already invokes the gate via the installed hook, so running it
-explicitly before pushing is redundant.
-WHY IT FAILS: Pushed secrets, license-header drift, govulncheck advisory
-regressions cannot be untrue-d from public history. The pre-push gate
-script is the contract; the git hook makes it unmissable.
-
 ### ❌ Committing an unexplained `+78 /go.mod` batch in `go.sum`
 ```
  M go.sum      # 78 insertions, all `<module> <version>/go.mod h1:...`
@@ -555,10 +497,8 @@ script is the contract; the git hook makes it unmissable.
 Appears after a generator or test run, unrelated to any dependency change.
 `db87b4d` reverted one such batch that rode in on `3da34bc`; a second
 appeared during the v0.8.2 work.
-✅ Discard it — `git restore go.sum` — and check the pre-push gate's
-"go mod tidy drift" line, which reports go.sum tidy when it is genuinely
-clean. `go mod tidy` also removes these, which is what makes them spurious:
-nothing in the build needs them.
+✅ Discard it — `git restore go.sum`. `go mod tidy` also removes these,
+which is what makes them spurious: nothing in the build needs them.
 WHY IT WAS POSSIBLE: `Dockerfile.devtools` used to set `GOFLAGS=-mod=mod`,
 which licenses an ordinary `go build` / `go test` to SILENTLY write missing
 module-graph hashes into `go.sum`. That ENV is now unset, so the container
@@ -1024,8 +964,8 @@ _build-installer: gen-manifests gen-code kustomize
 `kustomize edit` is a write, not a read: a plain `make build-installer` flipped
 the committed `newTag: v0.8.0` pin to `controller:latest` and left
 `config/manager/kustomization.yaml` dirty (also via `helm-sync`, which depends on
-it). Three snapshot/restore workarounds had grown around it (`ci.yml`,
-`release.yml`, `pre-push-check.sh`), and `release-bump` could not repair the
+it). Snapshot/restore workarounds had grown around it in `ci.yml` and
+`release.yml`, and `release-bump` could not repair the
 damage — its `newTag: v.*` sed does not match `newTag: latest`, so a
 `controller:latest` landing on `main` would be shipped silently.
 ✅ Route every kustomize image pin through `kustomize_pin_image` (Makefile):
@@ -1814,7 +1754,7 @@ and body. Shapes: `references/litellm-key-api.md`.
 
 - **SPDX-only license headers**: every `*.go` outside `vendor/`,
   `zz_generated*.go`, `mock_*.go` starts with
-  `// SPDX-License-Identifier: MIT`. Pre-push gate 15 enforces.
+  `// SPDX-License-Identifier: MIT`. No automated check enforces it.
   `hack/boilerplate.go.txt` provides the header for controller-gen
   output; `make gen-code` wires it in via `object:headerFile=`.
 
@@ -1823,7 +1763,7 @@ and body. Shapes: `references/litellm-key-api.md`.
   `references/`, not `docs/`, since the ack-list is agent-facing internal
   documentation that is not published on the mkdocs site). The gate
   script enforces the reachable set matches this list exactly — drift
-  in either direction blocks push.
+  in either direction fails CI.
 
 - **AC-N4 (SCOPE-04) envtest fixture**: `internal/controller/scope_ac_n4_test.go`
   creates a Model CR in `outOfWatchNamespace = "ac-n4-out-of-watch"`

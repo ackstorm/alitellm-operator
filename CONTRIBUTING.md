@@ -16,7 +16,6 @@ make qa-lint       # golangci-lint
 make test-unit     # pure logic
 make test-envtest  # controllers against a real API server
 make e2e-full      # kind + Helm + Ginkgo
-make hooks         # once per clone: installs the pre-push gate
 ```
 
 ## House rules

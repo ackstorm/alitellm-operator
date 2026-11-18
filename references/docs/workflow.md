@@ -24,9 +24,9 @@ would be pure dup, so it is intentionally not wired.
 
 Rationale:
 
-- **Feature branch push (no PR)**: zero CI runs. The local `pre-push`
-  hook (`make pre-push`) gates the push (lint + unit + scanners + SPDX
-  + govulncheck). Opening the PR fires the full suite once; subsequent
+- **Feature branch push (no PR)**: zero CI runs. The machine-wide git
+  `pre-push` hook scans the pushed commits with gitleaks; nothing else
+  runs. Opening the PR fires the full suite once; subsequent
   pushes to the PR branch supersede via `cancel-in-progress: true`.
 - **PR → main**: full pre-merge gate INCLUDING e2e. The PR is the
   merge boundary — a broken e2e here blocks merge instead of breaking
@@ -76,10 +76,10 @@ success on docs-only changes (skip-condition pattern).
 
 | Stage                         | Local command                                                                                         | Workflow(s) fired                                                                  | Job-level gate (`if:`)                                              | Outcome                                                                                                            |
 | ----------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Dev branch push (no PR)       | `git push origin <branch>`                                                                            | `govulncheck.yml` only                                                             | branch trigger                                                      | Zero `ci.yml` cost. Local `make pre-push` hook gates the push.                                                     |
+| Dev branch push (no PR)       | `git push origin <branch>`                                                                            | `govulncheck.yml` only                                                             | branch trigger                                                      | Zero `ci.yml` cost.                                                     |
 | PR open / sync                | `gh pr create --base main`                                                                            | `ci.yml` (lint + unit + envtest + security + **e2e**), `docs.yml` build-test, `pr-labeler.yml` | `pull_request: main` (non-draft for e2e)                | Merge only when all five checks are green (not enforced). Draft PRs skip e2e only.                               |
 | Merge PR to main              | `gh pr merge N --merge --delete-branch`                                                               | `docs.yml` deploys `latest`+`dev`. `ci.yml` NOT fired (no push trigger).           | n/a (`ci.yml` only listens to `pull_request`)                       | Zero `ci.yml` cost on merge. Merge SHA content already validated as PR head.                                       |
-| Release commit                | `git commit --allow-empty -m 'chore(release): vX.Y.Z'` → `make pre-push` → `git push origin main`     | `release.yml` (active), `docs.yml`. `ci.yml` NOT fired (no push trigger).          | `startsWith(head_commit.message, 'chore(release): v')`              | release.yml runs unit + envtest-fast sanity, bumps manifests, goreleaser, cosign keyless OIDC, CycloneDX SBOM, helm OCI push, **tag created LAST**. |
+| Release commit                | `git commit --allow-empty -m 'chore(release): vX.Y.Z'` → `git push origin main`     | `release.yml` (active), `docs.yml`. `ci.yml` NOT fired (no push trigger).          | `startsWith(head_commit.message, 'chore(release): v')`              | release.yml runs unit + envtest-fast sanity, bumps manifests, goreleaser, cosign keyless OIDC, CycloneDX SBOM, helm OCI push, **tag created LAST**. |
 | Tag push (rare manual)        | `git tag vX.Y.Z && git push origin vX.Y.Z`                                                            | `docs.yml` (mike deploy stable / preview alias)                                    | `startsWith(github.ref, 'refs/tags/v')`                             | Versioned doc set deployed; container/chart NOT rebuilt (those rely on the chore-commit path)                       |
 
 ## Trigger matrix
@@ -173,34 +173,12 @@ Prerelease tags `vX.Y.Z-{alpha,beta,rc}*` follow the same flow with
 `.goreleaser.prerelease.yml` and the `preview` mike alias instead of
 `stable`.
 
-## Pre-push gates — host-only
+## Local secret scan
 
-`make pre-push` runs `scripts/pre-push-check.sh` (authoritative source
-for the exact gate list and order; this section describes intent, not
-inventory, so the script can evolve without doc drift).
-
-Categories covered:
-
-- **Secret scanners** (`gitleaks`, `trufflehog`) over
-  `origin/main..HEAD`, full history on first push.
-- **Filesystem hygiene** — large-file caps, sensitive patterns
-  (`.env`, `*.pem`, `*.key`, kubeconfig, ...), required top-level files
-  (LICENSE, README), `.gitignore` coverage.
-- **Repo identity** — origin remote matches expected, branch is up to
-  date with remote.
-- **Information warns** (do not block) — commit-author summary,
-  urgent TODO / DO-NOT-COMMIT markers, working-tree status.
-- **Build hygiene** — `go mod tidy` drift, govulncheck residuals
-  match the ack-list (`references/security/govulncheck-acknowledged.md`)
-  1:1.
-- **Code provenance** — per-file SPDX license header
-  (`// SPDX-License-Identifier: MIT`).
-- **Defense in depth** — full `make qa-lint` + `make test-unit` run
-  inside the devtools container on every push.
-
-Bypass is banned. If a gate fails, fix the root cause, never
-`--no-verify`. Run `scripts/pre-push-check.sh` directly (or
-`bash -x` it) when you need to see the live count and exact order.
+The machine-wide git `pre-push` hook runs gitleaks over the commits being
+pushed (allowlist: `.gitleaks.toml`). The repo installs no hook of its
+own; CI on the pull request is the gate for everything else. Never
+`--no-verify`: it skips the scan.
 
 ## Recovery procedures
 
@@ -220,7 +198,6 @@ Bypass is banned. If a gate fails, fix the root cause, never
 # DEV LOOP — feature branch + PR
 git checkout -b fix/foo
 # ... edit ...
-make pre-push                         # host-side publication gate
 git push -u origin fix/foo
 gh pr create --base main --title "..." --body "..."
 gh pr checks --watch                  # wait for CI
@@ -228,7 +205,7 @@ gh pr merge --merge --delete-branch   # squash if preferred
 
 # RELEASE (stable, e.g. v0.2.0)
 git checkout main && git pull --ff-only
-make release-cut VERSION=0.2.0            # empty chore commit + pre-push + push
+make release-cut VERSION=0.2.0            # empty chore commit + push
                                        # → triggers release.yml
                                        # (preconditions: on main, clean tree, in-sync with origin)
 
@@ -250,8 +227,7 @@ make release-cut VERSION=0.3.0-rc.1       # same wrapper; semver suffix supporte
 - `.github/workflows/govulncheck.yml` — vuln scan.
 - `.github/workflows/pr-labeler.yml` — auto-label by file paths.
 - `.goreleaser.yml`, `.goreleaser.prerelease.yml`, `.goreleaser.snapshot.yml`
-- `scripts/pre-push-check.sh` — host-side publication gate (authoritative gate list).
-- `CLAUDE.md` — agent-facing single source of truth (sections: Release pipeline, Publication).
+- `CLAUDE.md` — agent-facing single source of truth (sections: Release pipeline, CI gating).
 
 Any divergence between this file and the YAML workflows: trust the
 YAML. Update this file in the same commit per the

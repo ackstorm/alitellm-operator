@@ -126,6 +126,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   adoption sticks.
 
 ### Removed
+- **The `pre-push` git hook, with `make pre-push` and `make hooks`.** CI is
+  the gate. Delete `.git/hooks/pre-push` from existing clones.
 - **`configmaps` grant on the leader-election Role.** Kubebuilder scaffold
   leftover: controller-runtime elects over `coordination.k8s.io/leases` only
   (client-go dropped the configmaps lock), so the Role now holds `leases` +

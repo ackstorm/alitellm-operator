@@ -301,20 +301,11 @@ _qa-security: qa-lint
 	bash scripts/govulncheck-gate.sh
 	$(MAKE) qa-fuzz-short
 
-.PHONY: pre-push
-pre-push: ## Host-only — 18-gate pre-publication check (gitleaks + trufflehog + qa-lint + test-unit + SPDX + govulncheck + ...). Uses docker on host; do NOT call via ./scripts/dev.sh.
-	./scripts/pre-push-check.sh
-
 .PHONY: verify
-verify: ## Host-only — full pre-publication gate bundle: qa-lint + test-unit + in-container qa-security + host pre-push. Single command for all gates.
+verify: ## Local gate bundle: qa-lint + test-unit + qa-security.
 	$(MAKE) qa-lint
 	$(MAKE) test-unit
 	$(MAKE) qa-security
-	$(MAKE) pre-push
-
-.PHONY: hooks
-hooks: ## Install git hooks (pre-push).
-	./scripts/install-hooks.sh
 
 ##@ Release
 
@@ -337,7 +328,7 @@ release-bump: ## Internal: bump version across all manifests. Used by release.ym
 	@echo "Manifests bumped to v$(VERSION)."
 
 .PHONY: release-cut
-release-cut: ## Cut a release: empty `chore(release): vX.Y.Z` commit, run pre-push, push to main. Usage: make release-cut VERSION=X.Y.Z
+release-cut: ## Cut a release: empty `chore(release): vX.Y.Z` commit, push to main. Usage: make release-cut VERSION=X.Y.Z
 	@test -n "$(VERSION)" || (echo "ERROR: VERSION=X.Y.Z required (no leading 'v')" >&2; exit 1)
 	@echo "$(VERSION)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$$' || \
 		(echo "ERROR: VERSION must be semver without leading 'v' (e.g. 0.0.3 or 0.1.0-rc1)" >&2; exit 1)
@@ -349,7 +340,6 @@ release-cut: ## Cut a release: empty `chore(release): vX.Y.Z` commit, run pre-pu
 	@local=$$(git rev-parse HEAD); remote=$$(git rev-parse origin/main); \
 	test "$$local" = "$$remote" || (echo "ERROR: local main differs from origin/main; rebase or pull first" >&2; exit 1)
 	git commit --allow-empty -m "chore(release): v$(VERSION)"
-	$(MAKE) pre-push
 	git push origin main
 	@echo ""
 	@echo "release.yml is now running. Watch with:"
@@ -484,7 +474,7 @@ CONTROLLER_TOOLS_VERSION ?= v0.17.0
 # go IS available — make then re-evaluates the Makefile inside the
 # container and the derivation succeeds. This avoids the cosmetic
 # `make: go: No such file or directory` noise on host-only targets such
-# as `make hooks`, `make cluster-up`, etc.
+# as `make cluster-up`, etc.
 #
 # (i.e. release-0.20)
 ENVTEST_VERSION ?= $(shell command -v go >/dev/null 2>&1 && go list -m -f "{{ .Version }}" sigs.k8s.io/controller-runtime | awk -F'[v.]' '{printf "release-%d.%d", $$2, $$3}')

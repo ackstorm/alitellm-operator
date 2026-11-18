@@ -108,7 +108,7 @@ feature branches and post-merge pushes to `main` do not fire `ci.yml`
 
 | Trigger | Workflow | Wall-clock budget |
 |---|---|---|
-| Push to feature branch (no PR) | none (local `make pre-push` hook gates the push) | n/a |
+| Push to feature branch (no PR) | none | n/a |
 | PR → main (non-draft) | `ci.yml` (lint + unit + envtest + security + e2e) | ≤ 12 min |
 | PR → main (draft) | `ci.yml` (lint + unit + envtest + security; e2e skipped) | ≤ 8 min |
 | PR → main (any) | `govulncheck.yml` (HIGH advisory gate vs ack-list) | ≤ 3 min |
@@ -134,7 +134,6 @@ on origin.
 
 ```bash
 git commit --allow-empty -m 'chore(release): v0.1.0'
-make pre-push                              # publication safety gates
 git push origin main                       # triggers release.yml
 ```
 

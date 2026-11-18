@@ -47,7 +47,7 @@ in the chart: `make helm-sync` mirrors these JSONs into
 renders one ConfigMap per dashboard, labelled `grafana_dashboard: "1"` for the
 kube-prometheus-stack Grafana sidecar to auto-load. No Prometheus Operator CRD is
 involved (plain ConfigMaps). Provisioned dashboards are read-only in the UI —
-edit them here. `make helm-sync-check` (pre-push gate 14b) fails on drift between
+edit them here. `make helm-sync-check` fails on drift between
 this directory and the chart copies.
 
 The `folders` values only take effect where the sidecar runs with

@@ -37,7 +37,7 @@ The wrapper:
 `make` targets that shell out to `go` MUST be prefixed
 `./scripts/dev.sh`. Targets that only call `kubectl`/`docker`/`helm`/
 `kind`/`bash` (`make cluster-up`, `make operator-redeploy`,
-`make logs-*`, `make pre-push`) run on the host.
+`make logs-*`) run on the host.
 
 ## Inner loop — code → unit → envtest
 
@@ -122,19 +122,13 @@ with explicit timeouts:
 Default `WAIT_TIMEOUT=300s` (override per call). Add a new `wait-*`
 target if the need isn't covered.
 
-## Security + pre-push gates
+## Security gate
 
 ```bash
 ./scripts/dev.sh make qa-security    # gosec + govulncheck + fuzz-short (~6m)
-make pre-push                     # host-only; 15 publication gates
 ```
 
-`make pre-push` MUST run on the host — it spawns gitleaks/trufflehog
-containers on host docker; calling it via `./scripts/dev.sh` nests
-docker mounts that don't resolve.
-
-`make verify` = `security` + `pre-push`. `make hooks` installs the
-git pre-push hook.
+`make verify` = `qa-lint` + `test-unit` + `qa-security`.
 
 If a govulncheck advisory is reachable, fix it. If it cannot be
 fixed (e.g. waiting for an upstream stdlib release), add an entry to
@@ -171,7 +165,7 @@ make mock-mode INSTANCE=openai-mock MODE=reject-401   # flip a mock's auth mode
 - [Release Process](release-process.md) — cutting a release.
 - [`CLAUDE.md`](https://github.com/ackstorm/alitellm-operator/blob/main/CLAUDE.md)
   — agent-facing surgical reference card (authoritative for the
-  guardrails on dev loop, waits, and pre-push).
+  guardrails on dev loop and waits).
 
 ## Help
 
