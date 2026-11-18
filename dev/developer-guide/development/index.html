@@ -1363,10 +1363,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#security-pre-push-gates" class="md-nav__link">
+  <a href="#security-gate" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Security + pre-push gates
+        Security gate
       
     </span>
   </a>
@@ -1815,10 +1815,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#security-pre-push-gates" class="md-nav__link">
+  <a href="#security-gate" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Security + pre-push gates
+        Security gate
       
     </span>
   </a>
@@ -1922,7 +1922,7 @@ For PR / commit / release flow see <a href="../contributions/">Contributions</a>
 <p><code>make</code> targets that shell out to <code>go</code> MUST be prefixed
 <code>./scripts/dev.sh</code>. Targets that only call <code>kubectl</code>/<code>docker</code>/<code>helm</code>/
 <code>kind</code>/<code>bash</code> (<code>make cluster-up</code>, <code>make operator-redeploy</code>,
-<code>make logs-*</code>, <code>make pre-push</code>) run on the host.</p>
+<code>make logs-*</code>) run on the host.</p>
 <h2 id="inner-loop-code-unit-envtest">Inner loop — code → unit → envtest<a class="headerlink" href="#inner-loop-code-unit-envtest" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>./scripts/dev.sh<span class="w"> </span>make<span class="w"> </span>test-unit<span class="w">                </span><span class="c1"># ~5s warm, every iteration</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>./scripts/dev.sh<span class="w"> </span>make<span class="w"> </span>test-unit-pkg<span class="w"> </span><span class="nv">PKG</span><span class="o">=</span>./internal/litellm/...
@@ -2018,15 +2018,10 @@ with explicit timeouts:</p>
 </table>
 <p>Default <code>WAIT_TIMEOUT=300s</code> (override per call). Add a new <code>wait-*</code>
 target if the need isn't covered.</p>
-<h2 id="security-pre-push-gates">Security + pre-push gates<a class="headerlink" href="#security-pre-push-gates" title="Permanent link">&para;</a></h2>
+<h2 id="security-gate">Security gate<a class="headerlink" href="#security-gate" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>./scripts/dev.sh<span class="w"> </span>make<span class="w"> </span>qa-security<span class="w">    </span><span class="c1"># gosec + govulncheck + fuzz-short (~6m)</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>make<span class="w"> </span>pre-push<span class="w">                     </span><span class="c1"># host-only; 15 publication gates</span>
 </code></pre></div>
-<p><code>make pre-push</code> MUST run on the host — it spawns gitleaks/trufflehog
-containers on host docker; calling it via <code>./scripts/dev.sh</code> nests
-docker mounts that don't resolve.</p>
-<p><code>make verify</code> = <code>security</code> + <code>pre-push</code>. <code>make hooks</code> installs the
-git pre-push hook.</p>
+<p><code>make verify</code> = <code>qa-lint</code> + <code>test-unit</code> + <code>qa-security</code>.</p>
 <p>If a govulncheck advisory is reachable, fix it. If it cannot be
 fixed (e.g. waiting for an upstream stdlib release), add an entry to
 <code>references/security/govulncheck-acknowledged.md</code> in the SAME commit
@@ -2079,7 +2074,7 @@ that introduces the dependency change.</p>
 <li><a href="../release-process/">Release Process</a> — cutting a release.</li>
 <li><a href="https://github.com/ackstorm/alitellm-operator/blob/main/CLAUDE.md"><code>CLAUDE.md</code></a>
   — agent-facing surgical reference card (authoritative for the
-  guardrails on dev loop, waits, and pre-push).</li>
+  guardrails on dev loop and waits).</li>
 </ul>
 <h2 id="help">Help<a class="headerlink" href="#help" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>make<span class="w"> </span><span class="nb">help</span><span class="w">              </span><span class="c1"># all Makefile targets</span>

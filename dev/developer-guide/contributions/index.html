@@ -1397,10 +1397,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#pre-push-gate-18-gates" class="md-nav__link">
+  <a href="#secret-scan-and-ci-gate" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Pre-push gate (18 gates)
+        Secret scan and CI gate
       
     </span>
   </a>
@@ -1771,10 +1771,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#pre-push-gate-18-gates" class="md-nav__link">
+  <a href="#secret-scan-and-ci-gate" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Pre-push gate (18 gates)
+        Secret scan and CI gate
       
     </span>
   </a>
@@ -1848,8 +1848,7 @@
 <h1 id="contributing">Contributing<a class="headerlink" href="#contributing" title="Permanent link">&para;</a></h1>
 <p>Thanks for considering a contribution to <code>alitellm-operator</code>. This
 page summarizes the local dev loop, gates, and PR flow. Authoritative
-files live in the repo root (<code>CONTRIBUTING.md</code>, <code>CLAUDE.md</code>,
-<code>scripts/pre-push-check.sh</code>).</p>
+files live in the repo root (<code>CONTRIBUTING.md</code>, <code>CLAUDE.md</code>).</p>
 <h2 id="before-you-start">Before you start<a class="headerlink" href="#before-you-start" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Read the project's <a href="https://github.com/ackstorm/alitellm-operator/blob/main/CONTRIBUTING.md">Code of Conduct</a>.</li>
@@ -1918,18 +1917,12 @@ directly on the host.</p>
 <td><code>./scripts/dev.sh make qa-security</code></td>
 <td>Before commit (~6m).</td>
 </tr>
-<tr>
-<td>Pre-push gate</td>
-<td><code>make pre-push</code></td>
-<td>Before every push (host-only).</td>
-</tr>
 </tbody>
 </table>
 <p>Umbrella targets:</p>
 <ul>
 <li><code>make test-full</code> = <code>unit</code> + <code>envtest-run</code></li>
-<li><code>make verify</code> = <code>./scripts/dev.sh make qa-security</code> + <code>make pre-push</code></li>
-<li><code>make hooks</code> installs <code>.git/hooks/pre-push -&gt; scripts/pre-push-check.sh</code></li>
+<li><code>make verify</code> = <code>qa-lint</code> + <code>test-unit</code> + <code>qa-security</code></li>
 </ul>
 <p>Inner-loop helpers when iterating on a single package:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>./scripts/dev.sh<span class="w"> </span>make<span class="w"> </span>test-unit-pkg<span class="w"> </span><span class="nv">PKG</span><span class="o">=</span>./internal/litellm/...
@@ -1945,24 +1938,12 @@ cluster:</p>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>make<span class="w"> </span>operator-redeploy<span class="w">                          </span><span class="c1"># hot-reload after code edit</span>
 </code></pre></div>
 <p>When done, <code>make cluster-down</code>; for a clean final gate, <code>make cluster-reset</code> then <code>make e2e-full</code>.</p>
-<h2 id="pre-push-gate-18-gates">Pre-push gate (18 gates)<a class="headerlink" href="#pre-push-gate-18-gates" title="Permanent link">&para;</a></h2>
-<p><code>make pre-push</code> is HOST-ONLY (it spawns gitleaks/trufflehog
-containers on host docker — never via <code>./scripts/dev.sh</code>). Hard
-failures block push; do NOT bypass with <code>--no-verify</code>.</p>
-<p>Gates include:</p>
-<ul>
-<li>gitleaks + trufflehog (scope: <code>origin/main..HEAD</code>; full history on
-  first push)</li>
-<li>Large files &gt;2 MB</li>
-<li>Sensitive patterns (<code>.env</code>, <code>*.pem</code>, <code>*.key</code>, kubeconfig, …)</li>
-<li>LICENSE + README presence</li>
-<li>Origin remote matches expected</li>
-<li><code>govulncheck</code> ack-list 1:1 match
-  (<code>references/security/govulncheck-acknowledged.md</code>)</li>
-<li><code>go mod tidy</code> drift</li>
-<li>Per-file SPDX license header</li>
-</ul>
-<p>Fix the root cause; if a vulnerability needs an ack, add the entry to
+<h2 id="secret-scan-and-ci-gate">Secret scan and CI gate<a class="headerlink" href="#secret-scan-and-ci-gate" title="Permanent link">&para;</a></h2>
+<p>The repo installs no git hook. Maintainers scan the pushed commits with
+gitleaks from a machine-wide git <code>pre-push</code> hook (allowlist:
+<code>.gitleaks.toml</code>); do NOT bypass it with <code>--no-verify</code>. CI on the pull
+request is the gate for everything else.</p>
+<p>If a vulnerability needs an ack, add the entry to
 <code>references/security/govulncheck-acknowledged.md</code> in the same commit.</p>
 <h2 id="commit-style-conventional-commits">Commit style — conventional commits<a class="headerlink" href="#commit-style-conventional-commits" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>feat(&lt;scope&gt;): &lt;subject&gt;
@@ -1986,7 +1967,7 @@ failures block push; do NOT bypass with <code>--no-verify</code>.</p>
 <li>Branch off <code>main</code>.</li>
 <li>Iterate; run <code>./scripts/dev.sh make test-unit</code> per change.</li>
 <li>Before push: <code>./scripts/dev.sh make test-envtest</code> if touching
-   controllers; <code>make pre-push</code>.</li>
+   controllers.</li>
 <li>Open PR — CI runs <code>lint</code>, <code>unit</code>, <code>envtest</code>, <code>security</code>, <code>e2e</code>.
    All five must be green.</li>
 <li>CodeRabbit auto-review; address findings.</li>
