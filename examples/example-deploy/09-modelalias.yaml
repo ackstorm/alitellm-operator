@@ -25,6 +25,10 @@ spec:
       value: "GEMINI.gemini-3-pro-preview"
     - name: "ackstorm.fast"
       value: "GEMINI.gemini-3-flash"
+    # Tried in order when a call through the alias still fails.
+    - name: "ackstorm.super"
+      value: "GEMINI.gemini-3-pro-preview"
+      fallbacks: ["GEMINI.gemini-3-flash"]
     # Real LiteLLM model identifiers are valid alias names too — square
     # brackets (context-window variants), colons (tags), at-signs (version
     # pins). The name is only ever a model_group_alias map key.

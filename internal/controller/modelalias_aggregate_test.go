@@ -147,3 +147,54 @@ func TestAggregateModelAliases_ResolveCRProducesPerEntryStatuses(t *testing.T) {
 		t.Fatalf("loser entry 1 (no conflict) should still apply: %+v", lStat[1])
 	}
 }
+
+func TestAggregateModelAliases_FallbacksFollowTheWinner(t *testing.T) {
+	loser := litellmv1alpha1.LiteLLMModelAlias{
+		ObjectMeta: metav1.ObjectMeta{Name: "a", Namespace: "ns"},
+		Spec: litellmv1alpha1.LiteLLMModelAliasSpec{Aliases: []litellmv1alpha1.ModelAliasEntry{
+			{Name: "ack.super", Value: "argon", Fallbacks: []string{"loser-fb"}},
+			{Name: "ack.fast", Value: "flash", Fallbacks: []string{"fb1", "fb2"}},
+		}},
+	}
+	winner := litellmv1alpha1.LiteLLMModelAlias{
+		ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "ns"},
+		Spec: litellmv1alpha1.LiteLLMModelAliasSpec{Aliases: []litellmv1alpha1.ModelAliasEntry{
+			{Name: "ack.super", Value: "carbon"},
+		}},
+	}
+	got := AggregateModelAliases([]litellmv1alpha1.LiteLLMModelAlias{winner, loser}).Fallbacks
+	want := map[string][]string{"ack.fast": {"fb1", "fb2"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Fallbacks = %v, want %v", got, want)
+	}
+}
+
+func TestMergeAliasFallbacks(t *testing.T) {
+	foreign := map[string]any{"real-model": []any{"other"}}
+	wildcard := map[string]any{"*": []any{"catch-all"}}
+	existing := []any{
+		foreign,
+		map[string]any{"ack.removed": []any{"x"}},
+		map[string]any{"ack.super": []any{"stale"}},
+		wildcard,
+	}
+	ours := map[string]string{"ack.removed": "m", "ack.super": "argon", "ack.fast": "flash"}
+	desired := map[string][]string{"ack.super": {"carbon", "sonnet"}, "ack.fast": {"lite"}}
+
+	got := mergeAliasFallbacks(existing, ours, desired)
+	want := []any{
+		foreign,
+		wildcard,
+		map[string]any{"ack.fast": []any{"lite"}},
+		map[string]any{"ack.super": []any{"carbon", "sonnet"}},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("merge = %v, want %v", got, want)
+	}
+	if again := mergeAliasFallbacks(got, ours, desired); !reflect.DeepEqual(again, got) {
+		t.Fatalf("merge is not stable: %v then %v", got, again)
+	}
+	if empty := mergeAliasFallbacks(nil, ours, nil); len(empty) != 0 {
+		t.Fatalf("no fallbacks anywhere must stay empty, got %v", empty)
+	}
+}

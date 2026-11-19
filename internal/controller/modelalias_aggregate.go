@@ -26,8 +26,13 @@ import (
 //	(CR, entry) tuples overwritten by the winner. The list is
 //	in the order entries were overwritten (NOT sorted) —
 //	caller may sort if it needs determinism for output.
+//
+// Fallbacks     — alias name → the winning entry's fallbacks; aliases
+//
+//	without any are absent.
 type ModelAliasAggregate struct {
 	Desired       map[string]string
+	Fallbacks     map[string][]string
 	Winners       map[string]string
 	LosersByAlias map[string][]string
 }
@@ -84,6 +89,7 @@ func (a ModelAliasAggregate) ResolveCR(cr litellmv1alpha1.LiteLLMModelAlias) []l
 func AggregateModelAliases(items []litellmv1alpha1.LiteLLMModelAlias) ModelAliasAggregate {
 	out := ModelAliasAggregate{
 		Desired:       map[string]string{},
+		Fallbacks:     map[string][]string{},
 		Winners:       map[string]string{},
 		LosersByAlias: map[string][]string{},
 	}
@@ -103,7 +109,45 @@ func AggregateModelAliases(items []litellmv1alpha1.LiteLLMModelAlias) ModelAlias
 			}
 			out.Desired[e.Name] = e.Value
 			out.Winners[e.Name] = owner
+			delete(out.Fallbacks, e.Name)
+			if len(e.Fallbacks) > 0 {
+				out.Fallbacks[e.Name] = e.Fallbacks
+			}
 		}
+	}
+	return out
+}
+
+// mergeAliasFallbacks returns the router_settings.fallbacks list to write:
+// every existing entry not keyed by an alias name (ours), in its order,
+// then one entry per alias with fallbacks, sorted by name. Entries keyed by
+// a real model name or "*" are not the operator's and survive.
+func mergeAliasFallbacks(existing any, ours map[string]string, desired map[string][]string) []any {
+	out := []any{}
+	list, _ := existing.([]any)
+	for _, item := range list {
+		if m, ok := item.(map[string]any); ok && len(m) == 1 {
+			owned := false
+			for k := range m {
+				_, owned = ours[k]
+			}
+			if owned {
+				continue
+			}
+		}
+		out = append(out, item)
+	}
+	names := make([]string, 0, len(desired))
+	for name := range desired {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		targets := make([]any, len(desired[name]))
+		for i, t := range desired[name] {
+			targets[i] = t
+		}
+		out = append(out, map[string]any{name: targets})
 	}
 	return out
 }

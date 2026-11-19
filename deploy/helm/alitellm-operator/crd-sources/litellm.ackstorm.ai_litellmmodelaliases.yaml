@@ -101,6 +101,19 @@ spec:
                     The operator does NOT validate that Value resolves to a live LiteLLM
                     model — LiteLLM resolves at inference time.
                   properties:
+                    fallbacks:
+                      description: |-
+                        Fallbacks are the LiteLLM model names (or aliases) tried in order
+                        when a call made through this alias still fails after LiteLLM's
+                        retries. Written as the entry keyed by Name in
+                        router_settings.fallbacks, forwarded verbatim. A direct call to Value
+                        does not use them: LiteLLM matches the name the client sent.
+                      items:
+                        maxLength: 253
+                        minLength: 1
+                        type: string
+                      maxItems: 16
+                      type: array
                     name:
                       description: |-
                         Name is the model_group_alias map KEY — the model name clients send to

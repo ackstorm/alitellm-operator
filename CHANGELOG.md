@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   real peak hour was $24). Each point is now the spend of the preceding hour.
 
 ### Added
+- **`LiteLLMModelAlias` fallbacks** — `spec.aliases[].fallbacks` lists the
+  models LiteLLM tries, in order, when a call through the alias still fails
+  after its retries. Written to `router_settings.fallbacks` keyed by the alias
+  name; entries keyed by anything else are left alone. See
+  `docs/user-guide/model-alias.md`.
 - **`LiteLLMKey` CRD** — a LiteLLM virtual key for one service, with no user
   and no team: `models` (required), `budget`, `rateLimits`, `secretRef`,
   `deletionPolicy`. The operator mints the value and writes it to a Secret in
