@@ -4,6 +4,7 @@ package controller
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 
@@ -212,4 +213,80 @@ func TestModelAlias_Envtest_SteadyState_NoConfigUpdate(t *testing.T) {
 	if after := waitQuiet(t, posts, time.Second, 20*time.Second); after != before {
 		t.Fatalf("POST /config/update on an unchanged alias map: %d -> %d", before, after)
 	}
+}
+
+// An alias's fallbacks land in router_settings.fallbacks keyed by the alias
+// name, replace an entry no CR declares, and go away with the CR.
+func TestModelAlias_Envtest_Fallbacks(t *testing.T) {
+	ctx := context.Background()
+
+	ensureNoConnectionDefault(t, ctx)
+	connCR := connDefaultCR()
+	if err := k8sClient.Create(ctx, connCR); err != nil {
+		t.Fatalf("create LiteLLMConnection: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = k8sClient.Delete(context.Background(), connCR, &client.DeleteOptions{})
+		time.Sleep(50 * time.Millisecond)
+	})
+	if snap := pollSnapshotReason(30*time.Second, reasonSynced); snap.Reason != reasonSynced {
+		t.Fatalf("LiteLLMConnection not Synced within 30s; got reason=%q", snap.Reason)
+	}
+
+	foreign := map[string]any{"real-model": []any{"other-model"}}
+	setFallbacks := func(v []any) {
+		rs, err := suiteLLMClient.GetRouterSettings(context.Background())
+		if err != nil {
+			t.Fatalf("GET router settings: %v", err)
+		}
+		rs.Extra["fallbacks"] = v
+		if err := suiteLLMClient.UpdateRouterSettings(context.Background(), rs); err != nil {
+			t.Fatalf("POST router settings: %v", err)
+		}
+	}
+	setFallbacks([]any{foreign})
+	t.Cleanup(func() { setFallbacks([]any{}) })
+	fallbacksAre := func(want ...any) func() bool {
+		return func() bool {
+			rs, err := suiteLLMClient.GetRouterSettings(ctx)
+			got, _ := rs.Extra["fallbacks"].([]any)
+			return err == nil && len(got) == len(want) && (len(want) == 0 || reflect.DeepEqual(got, want))
+		}
+	}
+
+	a := &litellmv1alpha1.LiteLLMModelAlias{
+		ObjectMeta: metav1.ObjectMeta{Name: "ack-fallback", Namespace: WatchNamespace},
+		Spec: litellmv1alpha1.LiteLLMModelAliasSpec{
+			Aliases: []litellmv1alpha1.ModelAliasEntry{{
+				Name: "ackstorm.super", Value: "gemini.argon", Fallbacks: []string{"gemini.carbon", "anthropic.sonnet"},
+			}},
+		},
+	}
+	if err := k8sClient.Create(ctx, a); err != nil {
+		t.Fatalf("create LiteLLMModelAlias: %v", err)
+	}
+	t.Cleanup(func() { _ = k8sClient.Delete(context.Background(), a) })
+	waitFor(t, fallbacksAre(map[string]any{"ackstorm.super": []any{"gemini.carbon", "anthropic.sonnet"}}),
+		"router_settings.fallbacks is not exactly the alias's entry")
+
+	posts := func() int64 { return mockServer.PathCallCount("/config/update") }
+	gets := func() int64 { return mockServer.PathCallCount("/get/config/callbacks") }
+	before := waitQuiet(t, posts, time.Second, 20*time.Second)
+	getsBefore := gets()
+	var latest litellmv1alpha1.LiteLLMModelAlias
+	if err := updateWithRetry(ctx, client.ObjectKeyFromObject(a), &latest, func(a *litellmv1alpha1.LiteLLMModelAlias) error {
+		a.Annotations = map[string]string{"test.litellm.ackstorm.ai/trigger": "1"}
+		return nil
+	}); err != nil {
+		t.Fatalf("annotate to trigger reconcile: %v", err)
+	}
+	waitFor(t, func() bool { return gets() > getsBefore }, "no alias reconcile after the touch")
+	if after := waitQuiet(t, posts, time.Second, 20*time.Second); after != before {
+		t.Fatalf("POST /config/update with fallbacks already in place: %d -> %d", before, after)
+	}
+
+	if err := k8sClient.Delete(ctx, a); err != nil {
+		t.Fatalf("delete LiteLLMModelAlias: %v", err)
+	}
+	waitFor(t, fallbacksAre(), "alias fallbacks not removed with the CR")
 }
