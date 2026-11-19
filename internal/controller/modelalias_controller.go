@@ -138,11 +138,7 @@ func (r *ModelAliasReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		msg := fmt.Sprintf("GET /get/config/callbacks: %v", err)
 		return r.broadcastNotReady(ctx, list.Items, modelAliasErrorReason(err), msg, snap.NormalizedRequeueOnRejectedAfter(), logger)
 	}
-	// An alias name is ours whether LiteLLM still lists it or a CR declares
-	// it, so a removed alias takes its fallbacks entry with it.
-	ours := maps.Clone(current.ModelGroupAlias)
-	maps.Copy(ours, agg.Desired)
-	fallbacks := mergeAliasFallbacks(current.Extra["fallbacks"], ours, agg.Fallbacks)
+	fallbacks := aliasFallbacks(agg.Fallbacks)
 	existingFallbacks, _ := current.Extra["fallbacks"].([]any)
 	fallbacksMatch := len(fallbacks) == len(existingFallbacks) &&
 		(len(fallbacks) == 0 || reflect.DeepEqual(fallbacks, existingFallbacks))

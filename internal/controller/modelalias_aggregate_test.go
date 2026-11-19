@@ -169,32 +169,16 @@ func TestAggregateModelAliases_FallbacksFollowTheWinner(t *testing.T) {
 	}
 }
 
-func TestMergeAliasFallbacks(t *testing.T) {
-	foreign := map[string]any{"real-model": []any{"other"}}
-	wildcard := map[string]any{"*": []any{"catch-all"}}
-	existing := []any{
-		foreign,
-		map[string]any{"ack.removed": []any{"x"}},
-		map[string]any{"ack.super": []any{"stale"}},
-		wildcard,
-	}
-	ours := map[string]string{"ack.removed": "m", "ack.super": "argon", "ack.fast": "flash"}
-	desired := map[string][]string{"ack.super": {"carbon", "sonnet"}, "ack.fast": {"lite"}}
-
-	got := mergeAliasFallbacks(existing, ours, desired)
+func TestAliasFallbacks(t *testing.T) {
+	got := aliasFallbacks(map[string][]string{"ack.super": {"carbon", "sonnet"}, "ack.fast": {"lite"}})
 	want := []any{
-		foreign,
-		wildcard,
 		map[string]any{"ack.fast": []any{"lite"}},
 		map[string]any{"ack.super": []any{"carbon", "sonnet"}},
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("merge = %v, want %v", got, want)
+		t.Fatalf("aliasFallbacks = %v, want %v", got, want)
 	}
-	if again := mergeAliasFallbacks(got, ours, desired); !reflect.DeepEqual(again, got) {
-		t.Fatalf("merge is not stable: %v then %v", got, again)
-	}
-	if empty := mergeAliasFallbacks(nil, ours, nil); len(empty) != 0 {
-		t.Fatalf("no fallbacks anywhere must stay empty, got %v", empty)
+	if empty := aliasFallbacks(nil); len(empty) != 0 {
+		t.Fatalf("no fallbacks must render empty, got %v", empty)
 	}
 }

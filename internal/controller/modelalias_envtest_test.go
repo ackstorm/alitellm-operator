@@ -216,7 +216,7 @@ func TestModelAlias_Envtest_SteadyState_NoConfigUpdate(t *testing.T) {
 }
 
 // An alias's fallbacks land in router_settings.fallbacks keyed by the alias
-// name, leave an entry keyed by a real model alone, and go away with the CR.
+// name, replace an entry no CR declares, and go away with the CR.
 func TestModelAlias_Envtest_Fallbacks(t *testing.T) {
 	ctx := context.Background()
 
@@ -249,7 +249,8 @@ func TestModelAlias_Envtest_Fallbacks(t *testing.T) {
 	fallbacksAre := func(want ...any) func() bool {
 		return func() bool {
 			rs, err := suiteLLMClient.GetRouterSettings(ctx)
-			return err == nil && reflect.DeepEqual(rs.Extra["fallbacks"], want)
+			got, _ := rs.Extra["fallbacks"].([]any)
+			return err == nil && len(got) == len(want) && (len(want) == 0 || reflect.DeepEqual(got, want))
 		}
 	}
 
@@ -265,8 +266,8 @@ func TestModelAlias_Envtest_Fallbacks(t *testing.T) {
 		t.Fatalf("create LiteLLMModelAlias: %v", err)
 	}
 	t.Cleanup(func() { _ = k8sClient.Delete(context.Background(), a) })
-	waitFor(t, fallbacksAre(foreign, map[string]any{"ackstorm.super": []any{"gemini.carbon", "anthropic.sonnet"}}),
-		"alias fallbacks never written next to the foreign entry")
+	waitFor(t, fallbacksAre(map[string]any{"ackstorm.super": []any{"gemini.carbon", "anthropic.sonnet"}}),
+		"router_settings.fallbacks is not exactly the alias's entry")
 
 	posts := func() int64 { return mockServer.PathCallCount("/config/update") }
 	gets := func() int64 { return mockServer.PathCallCount("/get/config/callbacks") }
@@ -287,5 +288,5 @@ func TestModelAlias_Envtest_Fallbacks(t *testing.T) {
 	if err := k8sClient.Delete(ctx, a); err != nil {
 		t.Fatalf("delete LiteLLMModelAlias: %v", err)
 	}
-	waitFor(t, fallbacksAre(foreign), "alias fallbacks not removed with the CR, or the foreign entry was lost")
+	waitFor(t, fallbacksAre(), "alias fallbacks not removed with the CR")
 }

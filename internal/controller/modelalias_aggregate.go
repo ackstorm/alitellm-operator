@@ -118,30 +118,15 @@ func AggregateModelAliases(items []litellmv1alpha1.LiteLLMModelAlias) ModelAlias
 	return out
 }
 
-// mergeAliasFallbacks returns the router_settings.fallbacks list to write:
-// every existing entry not keyed by an alias name (ours), in its order,
-// then one entry per alias with fallbacks, sorted by name. Entries keyed by
-// a real model name or "*" are not the operator's and survive.
-func mergeAliasFallbacks(existing any, ours map[string]string, desired map[string][]string) []any {
-	out := []any{}
-	list, _ := existing.([]any)
-	for _, item := range list {
-		if m, ok := item.(map[string]any); ok && len(m) == 1 {
-			owned := false
-			for k := range m {
-				_, owned = ours[k]
-			}
-			if owned {
-				continue
-			}
-		}
-		out = append(out, item)
-	}
+// aliasFallbacks renders the router_settings.fallbacks list: one entry per
+// alias with fallbacks, sorted by name.
+func aliasFallbacks(desired map[string][]string) []any {
 	names := make([]string, 0, len(desired))
 	for name := range desired {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	out := make([]any, 0, len(names))
 	for _, name := range names {
 		targets := make([]any, len(desired[name]))
 		for i, t := range desired[name] {
