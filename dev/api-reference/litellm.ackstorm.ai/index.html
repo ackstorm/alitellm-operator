@@ -6739,6 +6739,12 @@ model — LiteLLM resolves at inference time.</p>
 <td></td>
 <td>MaxLength: 253 <br />MinLength: 1 <br />Required: {} <br /></td>
 </tr>
+<tr>
+<td><code>fallbacks</code> <em>string array</em></td>
+<td>Fallbacks are the LiteLLM model names (or aliases) tried in order<br />when a call made through this alias still fails after LiteLLM's<br />retries. Written as the entry keyed by Name in<br />router_settings.fallbacks, forwarded verbatim. A direct call to Value<br />does not use them: LiteLLM matches the name the client sent.</td>
+<td></td>
+<td>MaxItems: 16 <br />items:MaxLength: 253 <br />items:MinLength: 1 <br /></td>
+</tr>
 </tbody>
 </table>
 <h4 id="modeldiscoveryaliasrule">ModelDiscoveryAliasRule<a class="headerlink" href="#modeldiscoveryaliasrule" title="Permanent link">&para;</a></h4>
