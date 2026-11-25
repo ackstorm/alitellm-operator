@@ -188,10 +188,11 @@ func TestGuardRail_Mode_EnumValues_Compile(t *testing.T) {
 		"logging_only",
 		"pre_mcp_call",
 		"during_mcp_call",
+		"post_mcp_call",
 		"realtime_input_transcription",
 	}
-	if len(cases) != 7 {
-		t.Fatalf("expected 7 mode values, got %d", len(cases))
+	if len(cases) != 8 {
+		t.Fatalf("expected 8 mode values, got %d", len(cases))
 	}
 	for i, c := range cases {
 		if c == "" {

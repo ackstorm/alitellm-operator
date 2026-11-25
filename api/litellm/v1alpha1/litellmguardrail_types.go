@@ -14,10 +14,11 @@ import (
 // LiteLLM accepts both shapes on POST /guardrails.
 //
 // pre_call / post_call / during_call / logging_only are the standard
-// slots. pre_mcp_call / during_mcp_call are MCP-specific. The realtime
-// slot is mutually exclusive with the others (validation in the
-// reconciler).
-// +kubebuilder:validation:Enum=pre_call;post_call;during_call;logging_only;pre_mcp_call;during_mcp_call;realtime_input_transcription
+// slots. pre_mcp_call / during_mcp_call / post_mcp_call are
+// MCP-specific; post_mcp_call runs on the tool result before it reaches
+// the model. The realtime slot is mutually exclusive with the others
+// (validation in the reconciler).
+// +kubebuilder:validation:Enum=pre_call;post_call;during_call;logging_only;pre_mcp_call;during_mcp_call;post_mcp_call;realtime_input_transcription
 type GuardRailMode string
 
 // GuardRailSpec defines the desired state of LiteLLMGuardRail.
@@ -27,9 +28,8 @@ type GuardRailMode string
 // sharing spec.guardrailName form a load-balancing pool: LiteLLM
 // dispatches across all entries with identical guardrail_name.
 //
-// Per-key / per-team opt-in is set on LiteLLMVirtualKey /
-// LiteLLMTeam.spec.guardrails []string by guardrailName (LiteLLM
-// Enterprise runtime feature, out of scope here).
+// Per-key / per-team opt-in (a LiteLLM Enterprise runtime feature) is
+// not modeled: LiteLLMKey and LiteLLMTeam have no guardrails field.
 //
 // Shape mirrors LiteLLMModel: pass-through spec.params (litellm_params)
 // and spec.info (guardrail_info), with {{NAME}} placeholders resolved
@@ -38,8 +38,7 @@ type GuardRailMode string
 // admin owns the corresponding env var (this operator is an HTTP-API
 // client and never touches the LiteLLM Deployment).
 type GuardRailSpec struct {
-	// GuardrailName is the litellm_params.guardrail_name path key used
-	// by LiteLLMVirtualKey.spec.guardrails / LiteLLMTeam.spec.guardrails
+	// GuardrailName is the litellm_params.guardrail_name callers use
 	// to reference this guardrail. Two LiteLLMGuardRail CRs sharing
 	// this name form a load-balancing pool (operator POSTs both;
 	// LiteLLM dispatches across the pool).
@@ -68,15 +67,15 @@ type GuardRailSpec struct {
 	// the only element (enforced in the reconciler — invalid combos
 	// surface as Ready=False, reason=InvalidMode).
 	//
-	// MaxItems=6 admits all six non-realtime hook slots (pre_call,
-	// post_call, during_call, logging_only, pre_mcp_call, during_mcp_call)
-	// in a single guardrail. realtime_input_transcription is the
-	// mutually-exclusive 7th enum value, rejected here by count and
-	// enforced as single-element in the reconciler.
+	// MaxItems=7 admits all seven non-realtime hook slots (pre_call,
+	// post_call, during_call, logging_only, pre_mcp_call, during_mcp_call,
+	// post_mcp_call) in a single guardrail. realtime_input_transcription
+	// is the mutually-exclusive 8th enum value, rejected here by count
+	// and enforced as single-element in the reconciler.
 	//
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
-	// +kubebuilder:validation:MaxItems=6
+	// +kubebuilder:validation:MaxItems=7
 	Mode []GuardRailMode `json:"mode"`
 
 	// DefaultOn renders as litellm_params.default_on. When true the

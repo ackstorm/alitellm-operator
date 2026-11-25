@@ -21,9 +21,9 @@ adds the usual conveniences of the other kinds:
 |---|---|---|
 | `spec.guardrailName` | yes | The LiteLLM-side guardrail identifier; opt-in callers reference this name. |
 | `spec.provider` | yes | `litellm_content_filter` (on-device, no upstream), `aporia`, `bedrock/guardrail`, `presidio`, etc. |
-| `spec.mode` | yes | `[pre_call]` (filter prompt), `[post_call]` (filter response), or both. |
+| `spec.mode` | yes | One or more of `pre_call` (filter prompt), `post_call` (filter response), `during_call`, `logging_only`, `pre_mcp_call` (filter MCP tool arguments), `during_mcp_call`, `post_mcp_call` (filter MCP tool result before it reaches the model), `realtime_input_transcription` (must be the only mode). |
 | `spec.defaultOn` | no | When `true` the guardrail applies to every request without per-key / per-team opt-in. Default `false`. |
-| `spec.params` | yes | Free-form pass-through bag. Operator forwards verbatim after substitution. |
+| `spec.params` | no | Free-form pass-through bag. Operator forwards verbatim after substitution. |
 | `spec.info` | no | `guardrail_info` metadata (description, surfaced params). |
 | `spec.secrets[]` | no | Secret-substitution bindings: `{as, secretRef: {name, key}}` resolved into `{{NAME}}` placeholders inside `spec.params`. |
 
@@ -133,6 +133,22 @@ When the model emits `123-45-6789` the response is rewritten to
 output returns HTTP 403 with `guardrail_mode: post_call` in the
 error envelope.
 
+**MCP tool-result example — `mode: [post_mcp_call]`**
+
+Runs on the result of an MCP tool call before it reaches the model,
+e.g. masking an AWS key printed by a cloud or GitLab tool.
+
+```yaml
+spec:
+  guardrailName: mcp-result-credential-mask
+  provider: litellm_content_filter
+  mode: [post_mcp_call]
+  defaultOn: true
+  params:
+    patterns:
+      - { pattern_type: prebuilt, pattern_name: aws_access_key, action: MASK }
+```
+
 ### `aporia` — hosted policy enforcement
 
 External provider — requires an Aporia tenant + API key supplied via
@@ -182,8 +198,8 @@ spec:
 
 `defaultOn: true` applies the guardrail to every request through the
 proxy — the blanket DLP floor. Per-request opt-in lives on the
-**LiteLLMVirtualKey** / **LiteLLMTeam** side (LiteLLM Enterprise
-runtime feature; not modeled by this operator's CRDs today). When you
+key / team side (LiteLLM Enterprise runtime feature; `LiteLLMKey` and
+`LiteLLMTeam` have no guardrails field). When you
 need per-key granularity, configure it via the key/team metadata
 directly on the LiteLLM side.
 

@@ -25,9 +25,8 @@
 #     config file and is NOT mutable via the HTTP CRUD API).
 #   - status.lastRendered.poolSize=1 (no LB sibling in this sample set).
 #
-# Per-key / per-team opt-in via LiteLLMVirtualKey.spec.guardrails or
-# LiteLLMTeam.spec.guardrails is a LiteLLM Enterprise runtime feature
-# and lives on those CRs (not modeled here). All samples below set
+# Per-key / per-team opt-in is a LiteLLM Enterprise runtime feature
+# that LiteLLMKey and LiteLLMTeam do not model. All samples below set
 # `defaultOn: true` so they apply to every request without explicit
 # opt-in (useful for blanket DLP / leak prevention).
 
