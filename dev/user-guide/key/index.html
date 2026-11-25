@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.8.1">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.8.2">
     
     
       
@@ -1074,6 +1074,34 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#routes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Routes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Routes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-key-for-prometheus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A key for Prometheus
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#allow-the-target-namespace" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1705,6 +1733,34 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#routes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Routes
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Routes">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-key-for-prometheus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A key for Prometheus
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#allow-the-target-namespace" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1782,8 +1838,8 @@
 <h1 id="litellmkey">LiteLLMKey<a class="headerlink" href="#litellmkey" title="Permanent link">&para;</a></h1>
 <p>A <code>LiteLLMKey</code> creates a LiteLLM virtual key for one service and writes its
 value to a Secret in that service's namespace. The key has no user and no
-team: it can call the models you list, within the budget and rate limits you
-set. Verified on LiteLLM 1.106.0.</p>
+team: it can call the models you list, on the routes you allow, within the
+budget and rate limits you set. Verified on LiteLLM 1.111.0.</p>
 <p>Use it so a service does not need the LiteLLM master key.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">litellm.ackstorm.ai/v1alpha1</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">LiteLLMKey</span>
@@ -1814,7 +1870,11 @@ set. Verified on LiteLLM 1.106.0.</p>
 <tbody>
 <tr>
 <td><code>spec.models</code></td>
-<td>Required, at least one. LiteLLM lets a teamless key with no models call every model, so an empty list is rejected. Names are not checked against LiteLLM.</td>
+<td>Models the key may call. A key with none can call no model: LiteLLM lets a teamless key with an empty list call every model, so the operator sends LiteLLM's <code>no-default-models</code> in its place. Names are not checked against LiteLLM.</td>
+</tr>
+<tr>
+<td><code>spec.allowedRoutes</code></td>
+<td>Proxy routes the key is confined to, sent verbatim as <code>allowed_routes</code>. See <a href="#routes">Routes</a>. Removing it clears the restriction.</td>
 </tr>
 <tr>
 <td><code>spec.budget</code></td>
@@ -1836,10 +1896,46 @@ set. Verified on LiteLLM 1.106.0.</p>
 </table>
 <p>The key's alias in LiteLLM is the <code>LiteLLMKey</code> name. LiteLLM requires an alias
 of at least two characters.</p>
+<h2 id="routes">Routes<a class="headerlink" href="#routes" title="Permanent link">&para;</a></h2>
+<p>Without <code>allowedRoutes</code> a key reaches the routes LiteLLM gives any virtual
+key: the model APIs and a few read-only ones. With it, the key reaches only
+the routes listed. An entry is one of:</p>
+<ul>
+<li>a path, which matches itself and everything under it (<code>/metrics</code> covers
+  <code>/metrics/</code>);</li>
+<li>a pattern with <code>*</code> (<code>/v1/*</code>);</li>
+<li>a LiteLLM route group name (<code>llm_api_routes</code>, <code>info_routes</code>).</li>
+</ul>
+<p>Entries are not checked against LiteLLM.</p>
+<div class="admonition warning">
+<p class="admonition-title">An entry also opens an admin-only route</p>
+<p>A route that LiteLLM reserves for admins becomes reachable by the key
+when an entry matches it. That is what makes a scrape key work, and it
+applies to every other admin route too. List only what the consumer
+calls.</p>
+</div>
+<p><code>allowedRoutes</code> does not grant models. A key that lists a model route and no
+<code>models</code> is refused there with <code>key_model_access_denied</code>.</p>
+<h3 id="a-key-for-prometheus">A key for Prometheus<a class="headerlink" href="#a-key-for-prometheus" title="Permanent link">&para;</a></h3>
+<p>With <code>litellm_settings.require_auth_for_metrics_endpoint</code> on, LiteLLM
+refuses a plain virtual key on <code>/metrics</code> with 401. This key can scrape and
+do nothing else:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">litellm.ackstorm.ai/v1alpha1</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">LiteLLMKey</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nt">metadata</span><span class="p">:</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">prometheus-scrape</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">litellm-system</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="nt">spec</span><span class="p">:</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">  </span><span class="nt">allowedRoutes</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">/metrics</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">  </span><span class="nt">secretRef</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="nv">monitoring</span><span class="p p-Indicator">,</span><span class="nt"> name</span><span class="p">:</span><span class="w"> </span><span class="nv">litellm-scrape-key</span><span class="p p-Indicator">,</span><span class="nt"> key</span><span class="p">:</span><span class="w"> </span><span class="nv">api-key</span><span class="p p-Indicator">}</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">  </span><span class="nt">deletionPolicy</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Delete</span>
+</code></pre></div>
+<p>LiteLLM serves the metrics at <code>/metrics/</code> and answers <code>/metrics</code> with a 307
+redirect to it.</p>
 <h2 id="allow-the-target-namespace">Allow the target namespace<a class="headerlink" href="#allow-the-target-namespace" title="Permanent link">&para;</a></h2>
 <p>The operator may only touch Secrets in its own namespace. List every namespace
 a <code>LiteLLMKey</code> writes to in the Helm value:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">keySecretNamespaces</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">billing</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">search</span><span class="p p-Indicator">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">keySecretNamespaces</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">billing</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">search</span><span class="p p-Indicator">]</span>
 </code></pre></div>
 <p>Each listed namespace gets a RoleBinding that grants the operator <code>get</code>,
 <code>create</code> and <code>delete</code> on Secrets. A <code>LiteLLMKey</code> that targets a namespace not
@@ -1859,8 +1955,8 @@ deletes the old key in LiteLLM and registers the new one. The operator does
 not watch Secrets outside its own namespace, so that reconcile is the next
 safety relist (10 minutes by default). To rotate at once, also touch the
 <code>LiteLLMKey</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>kubectl<span class="w"> </span>-n<span class="w"> </span>billing<span class="w"> </span>delete<span class="w"> </span>secret<span class="w"> </span>billing-llm-key
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>kubectl<span class="w"> </span>-n<span class="w"> </span>litellm-system<span class="w"> </span>annotate<span class="w"> </span>litellmkey<span class="w"> </span>billing-service<span class="w"> </span>rotated-at<span class="o">=</span><span class="s2">"</span><span class="k">$(</span>date<span class="w"> </span>+%s<span class="k">)</span><span class="s2">"</span><span class="w"> </span>--overwrite
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>kubectl<span class="w"> </span>-n<span class="w"> </span>billing<span class="w"> </span>delete<span class="w"> </span>secret<span class="w"> </span>billing-llm-key
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>kubectl<span class="w"> </span>-n<span class="w"> </span>litellm-system<span class="w"> </span>annotate<span class="w"> </span>litellmkey<span class="w"> </span>billing-service<span class="w"> </span>rotated-at<span class="o">=</span><span class="s2">"</span><span class="k">$(</span>date<span class="w"> </span>+%s<span class="k">)</span><span class="s2">"</span><span class="w"> </span>--overwrite
 </code></pre></div>
 <p>Pods that read the key from an environment variable must be restarted.</p>
 <h2 id="what-the-operator-does">What the operator does<a class="headerlink" href="#what-the-operator-does" title="Permanent link">&para;</a></h2>
@@ -1868,7 +1964,7 @@ safety relist (10 minutes by default). To rotate at once, also touch the
 <li>Generates the value itself (<code>sk-</code> plus 26 random characters) and passes it
   to <code>POST /key/generate</code>. If LiteLLM loses the key, the operator registers
   the same value again and the service keeps working.</li>
-<li>Corrects models, budget and limits changed outside the CR.</li>
+<li>Corrects models, routes, budget and limits changed outside the CR.</li>
 <li>Never writes to a Secret it did not create. An existing Secret with the
   same name gives <code>Ready=False</code>, reason <code>SecretNotOwned</code>.</li>
 <li>Never deletes a LiteLLM key it did not create. A key that already holds the
@@ -1917,7 +2013,7 @@ LiteLLM by its SHA-256 hash.</p>
 <p>A namespace that does not exist has no RoleBinding, so a <code>LiteLLMKey</code> that targets it reports <code>SecretAccessDenied</code>. <code>helm install</code> and <code>helm upgrade</code> fail when a namespace listed in <code>keySecretNamespaces</code> does not exist: create the namespace first.</p>
 <h2 id="limits">Limits<a class="headerlink" href="#limits" title="Permanent link">&para;</a></h2>
 <ul>
-<li>The key restricts models only. It carries no agent or MCP permissions of its own, so LiteLLM's defaults for a key without a team apply: A2A agents registered on the proxy are reachable with it unless <code>general_settings.agent_access_default_deny</code> is set on the proxy. What such a key can reach on MCP servers is not verified.</li>
+<li>The key restricts models and routes only. It carries no agent or MCP permissions of its own, so LiteLLM's defaults for a key without a team apply: A2A agents registered on the proxy are reachable with it unless <code>general_settings.agent_access_default_deny</code> is set on the proxy. What such a key can reach on MCP servers is not verified.</li>
 <li>One operator per LiteLLM. Two operators that share a LiteLLM and each have a <code>LiteLLMKey</code> with the same name replace and delete each other's key: a key is matched by its alias and the <code>managed-by</code> mark, not by which operator created it.</li>
 <li>No team attachment, expiry or automatic rotation.</li>
 </ul>

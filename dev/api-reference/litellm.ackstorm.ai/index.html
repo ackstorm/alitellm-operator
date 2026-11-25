@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.8.1">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.8.2">
     
     
       
@@ -4164,7 +4164,7 @@ holds the key value.</p>
 <tbody>
 <tr>
 <td><code>hash</code> <em>string</em></td>
-<td>Hash is the SHA-256 of the rendered models, budget and limits.</td>
+<td>Hash is the SHA-256 of the rendered models, routes, budget and limits.</td>
 <td></td>
 <td></td>
 </tr>
@@ -4234,9 +4234,15 @@ operator's namespace and the Secret in the consuming service's.</p>
 <tbody>
 <tr>
 <td><code>models</code> <em>string array</em></td>
-<td>Models the key may call, projected onto <code>models</code>. LiteLLM model names<br />or LiteLLMModelAlias names; not validated against LiteLLM. At least<br />one is required: a teamless key with no models can call every model.</td>
+<td>Models the key may call, projected onto <code>models</code>. LiteLLM model names<br />or LiteLLMModelAlias names; not validated against LiteLLM. A key with<br />none can call no model.</td>
 <td></td>
-<td>MinItems: 1 <br />items:MinLength: 1 <br /></td>
+<td>items:MinLength: 1 <br /></td>
+</tr>
+<tr>
+<td><code>allowedRoutes</code> <em>string array</em></td>
+<td>AllowedRoutes confines the key to these proxy routes, projected<br />verbatim onto <code>allowed_routes</code>: a path (matches itself and anything<br />under it), a <code>*</code> wildcard or a LiteLLM route group name. It also opens<br />admin-only routes such as /metrics to the key. Empty leaves the key on<br />LiteLLM's default routes. Not validated against LiteLLM.</td>
+<td></td>
+<td>items:MinLength: 1 <br /></td>
 </tr>
 <tr>
 <td><code>budget</code> <em><a href="#budgetspec">BudgetSpec</a></em></td>
