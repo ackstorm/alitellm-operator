@@ -2,14 +2,16 @@
 #
 # Used by:  scripts/cluster.sh up   (step 5 — helm pull + helm upgrade --install litellm)
 # Chart:    oci://docker.litellm.ai/berriai/litellm-helm  (upstream, OCI, BETA)
-# Image:    v1.106.0 (operator's binary target — see test/e2e/CHART_PINS.md)
+# Image:    ghcr.io/berriai/litellm:v1.111.0 (operator's binary target — see
+#           test/e2e/CHART_PINS.md)
 #
 # WARNING: the upstream litellm-helm chart is currently in BETA. When bumping
 # `chartVersion`, re-run `make test-full` and inspect any failed Tier 2
 # scenarios for schema drift.
 #
-# NOTE on image.tag override: chart 1.106.0's appVersion is `1.106.0` (no `v`
-# prefix), which does not resolve to a published image tag. The `image.tag`
+# NOTE on image.tag override: the chart and the image are pinned separately
+# (no chart is published for 1.111.0), and a chart appVersion carries no `v`
+# prefix, so it does not resolve to a published image tag. The `image.tag`
 # value below is an explicit override and must NOT be dropped on chart bumps —
 # keep it pinned to whatever the operator targets in
 # `test/e2e/CHART_PINS.md`. A Tier 2 scope_test assertion (Task 9.11)
@@ -21,8 +23,8 @@
 chartVersion: 1.106.0             # see test/e2e/CHART_PINS.md (BETA — verify suite on bumps)
 
 image:
-  repository: ghcr.io/berriai/litellm-database
-  tag: v1.106.0                   # explicit override — see comment above
+  repository: ghcr.io/berriai/litellm   # scripts/cluster.sh pre-pulls repository:tag
+  tag: v1.111.0                   # explicit override — see comment above
   # Override chart default `Always`: scripts/cluster.sh pre-pulls + `kind
   # load`s this image into the node before `helm install`. With Always,
   # kubelet round-trips ghcr.io on every Pod start (and EVERY migrations
@@ -69,6 +71,13 @@ postgresql:
 # is mistyped, which produces a misleading 401 on /health probes.
 masterkey: sk-test-master-key
 
+# Merged over the chart's default proxy_config. KEY-02 needs /metrics behind
+# key auth; the prometheus callback is what the setting was measured with.
+proxy_config:
+  litellm_settings:
+    callbacks: ["prometheus"]
+    require_auth_for_metrics_endpoint: true
+
 envVars:
   LITELLM_LOG: ERROR
   MCP_TOOL_PREFIX_SEPARATOR: "."        # Phase 7.1 CR-14 (server_name hyphen rejection workaround)
@@ -83,7 +92,7 @@ envVars:
   # min) — by which time the Postgres StatefulSet has come up.
   ENFORCE_PRISMA_MIGRATION_CHECK: "true"
 
-# resources: deliberately unset. LiteLLM 1.106 is heavy (Python + Prisma + many
+# resources: deliberately unset. LiteLLM is heavy (Python + Prisma + many
 # provider SDKs); fixed limits keep tripping OOMKilled on kind. Tier 2 is a
 # test env, not capacity-constrained — let kubelet best-effort schedule.
 
