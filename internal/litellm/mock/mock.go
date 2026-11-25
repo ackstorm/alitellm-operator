@@ -2568,6 +2568,10 @@ func (m *MockServer) writeKey(w http.ResponseWriter, r *http.Request, mode strin
 			writeKeyError(w, http.StatusNotFound, "not_found_error", "Key not found.")
 			return true
 		}
+		if v, sent := in["allowed_routes"]; sent && v == nil {
+			writeKeyError(w, http.StatusBadRequest, "bad_request_error", "allowed_routes: null is not a list")
+			return true
+		}
 		for k, v := range in {
 			if k != "key" {
 				row[k] = v // null clears
