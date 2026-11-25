@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"reflect"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -137,10 +138,17 @@ func (r *ModelAliasReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		msg := fmt.Sprintf("GET /get/config/callbacks: %v", err)
 		return r.broadcastNotReady(ctx, list.Items, modelAliasErrorReason(err), msg, snap.NormalizedRequeueOnRejectedAfter(), logger)
 	}
+	fallbacks := aliasFallbacks(agg.Fallbacks)
+	existingFallbacks, _ := current.Extra["fallbacks"].([]any)
+	fallbacksMatch := len(fallbacks) == len(existingFallbacks) &&
+		(len(fallbacks) == 0 || reflect.DeepEqual(fallbacks, existingFallbacks))
 	// POST /config/update rewrites all of router_settings: skip it when the
-	// alias map already matches.
-	if !maps.Equal(current.ModelGroupAlias, agg.Desired) {
+	// alias map and the fallbacks already match.
+	if !maps.Equal(current.ModelGroupAlias, agg.Desired) || !fallbacksMatch {
 		current.ModelGroupAlias = agg.Desired
+		if !fallbacksMatch {
+			current.Extra["fallbacks"] = fallbacks
+		}
 		if err := cli.UpdateRouterSettings(ctx, current); err != nil {
 			var auth401 *litellm.Auth401Error
 			if errors.As(err, &auth401) {

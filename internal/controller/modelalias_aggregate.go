@@ -26,8 +26,13 @@ import (
 //	(CR, entry) tuples overwritten by the winner. The list is
 //	in the order entries were overwritten (NOT sorted) —
 //	caller may sort if it needs determinism for output.
+//
+// Fallbacks     — alias name → the winning entry's fallbacks; aliases
+//
+//	without any are absent.
 type ModelAliasAggregate struct {
 	Desired       map[string]string
+	Fallbacks     map[string][]string
 	Winners       map[string]string
 	LosersByAlias map[string][]string
 }
@@ -84,6 +89,7 @@ func (a ModelAliasAggregate) ResolveCR(cr litellmv1alpha1.LiteLLMModelAlias) []l
 func AggregateModelAliases(items []litellmv1alpha1.LiteLLMModelAlias) ModelAliasAggregate {
 	out := ModelAliasAggregate{
 		Desired:       map[string]string{},
+		Fallbacks:     map[string][]string{},
 		Winners:       map[string]string{},
 		LosersByAlias: map[string][]string{},
 	}
@@ -103,7 +109,30 @@ func AggregateModelAliases(items []litellmv1alpha1.LiteLLMModelAlias) ModelAlias
 			}
 			out.Desired[e.Name] = e.Value
 			out.Winners[e.Name] = owner
+			delete(out.Fallbacks, e.Name)
+			if len(e.Fallbacks) > 0 {
+				out.Fallbacks[e.Name] = e.Fallbacks
+			}
 		}
+	}
+	return out
+}
+
+// aliasFallbacks renders the router_settings.fallbacks list: one entry per
+// alias with fallbacks, sorted by name.
+func aliasFallbacks(desired map[string][]string) []any {
+	names := make([]string, 0, len(desired))
+	for name := range desired {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := make([]any, 0, len(names))
+	for _, name := range names {
+		targets := make([]any, len(desired[name]))
+		for i, t := range desired[name] {
+			targets[i] = t
+		}
+		out = append(out, map[string]any{name: targets})
 	}
 	return out
 }

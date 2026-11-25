@@ -31,6 +31,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   real peak hour was $24). Each point is now the spend of the preceding hour.
 
 ### Added
+- **`LiteLLMModelAlias` fallbacks** — `spec.aliases[].fallbacks` lists the
+  models LiteLLM tries, in order, when a call through the alias still fails
+  after its retries. Written to `router_settings.fallbacks` keyed by the alias
+  name. The operator owns that whole list: entries set in the LiteLLM UI or
+  API are removed. See `docs/user-guide/model-alias.md`.
 - **`LiteLLMGuardRail.spec.mode` accepts `post_mcp_call`**, which runs the
   guardrail on an MCP tool result before it reaches the model (e.g. a
   `litellm_content_filter` that masks a credential a tool printed). The enum

@@ -5,6 +5,7 @@
 package e2e_test
 
 import (
+	"encoding/json"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -92,6 +93,32 @@ var _ = Describe("LiteLLMModelAlias", Label("modelalias"), Ordered, ContinueOnFa
 				g.Expect(rm["applied"]).To(BeTrue(), "row %v not applied", rm)
 				g.Expect(rm["appliedValue"]).NotTo(BeEmpty(), "row %v missing appliedValue", rm)
 			}
+		}, 90*time.Second, 2*time.Second).Should(Succeed())
+	})
+
+	It("writes an alias's fallbacks to router_settings.fallbacks", func() {
+		got, err := dyn.Resource(modelAliasGVR).Namespace(ns).Get(ctx, crName, metav1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		aliases, _, _ := unstructured.NestedSlice(got.Object, "spec", "aliases")
+		aliases[0].(map[string]interface{})["fallbacks"] = []interface{}{"gemini.gemini-pro-latest"}
+		Expect(unstructured.SetNestedSlice(got.Object, aliases, "spec", "aliases")).To(Succeed())
+		_, err = dyn.Resource(modelAliasGVR).Namespace(ns).Update(ctx, got, metav1.UpdateOptions{})
+		Expect(err).NotTo(HaveOccurred(), "Update CR")
+
+		Eventually(func(g Gomega) {
+			body := curlPodJSON("litellm-system", "aliasfb-poke", '{',
+				"curl", "-sS", "--max-time", "20",
+				"-H", "Authorization: Bearer sk-test-master-key",
+				litellmBase+"/get/config/callbacks",
+			)
+			var resp struct {
+				RouterSettings struct {
+					Fallbacks []map[string][]string `json:"fallbacks"`
+				} `json:"router_settings"`
+			}
+			g.Expect(json.Unmarshal(body, &resp)).To(Succeed(), "raw=%s", string(body))
+			g.Expect(resp.RouterSettings.Fallbacks).To(ContainElement(
+				map[string][]string{"e2e.smart": {"gemini.gemini-pro-latest"}}))
 		}, 90*time.Second, 2*time.Second).Should(Succeed())
 	})
 })

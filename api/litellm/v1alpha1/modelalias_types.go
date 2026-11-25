@@ -42,6 +42,18 @@ type ModelAliasEntry struct {
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=253
 	Value string `json:"value"`
+
+	// Fallbacks are the LiteLLM model names (or aliases) tried in order
+	// when a call made through this alias still fails after LiteLLM's
+	// retries. Written as the entry keyed by Name in
+	// router_settings.fallbacks, forwarded verbatim. A direct call to Value
+	// does not use them: LiteLLM matches the name the client sent.
+	//
+	// +optional
+	// +kubebuilder:validation:MaxItems=16
+	// +kubebuilder:validation:items:MinLength=1
+	// +kubebuilder:validation:items:MaxLength=253
+	Fallbacks []string `json:"fallbacks,omitempty"`
 }
 
 // LiteLLMModelAliasSpec is a collection of model_group_alias entries

@@ -147,3 +147,38 @@ func TestAggregateModelAliases_ResolveCRProducesPerEntryStatuses(t *testing.T) {
 		t.Fatalf("loser entry 1 (no conflict) should still apply: %+v", lStat[1])
 	}
 }
+
+func TestAggregateModelAliases_FallbacksFollowTheWinner(t *testing.T) {
+	loser := litellmv1alpha1.LiteLLMModelAlias{
+		ObjectMeta: metav1.ObjectMeta{Name: "a", Namespace: "ns"},
+		Spec: litellmv1alpha1.LiteLLMModelAliasSpec{Aliases: []litellmv1alpha1.ModelAliasEntry{
+			{Name: "ack.super", Value: "argon", Fallbacks: []string{"loser-fb"}},
+			{Name: "ack.fast", Value: "flash", Fallbacks: []string{"fb1", "fb2"}},
+		}},
+	}
+	winner := litellmv1alpha1.LiteLLMModelAlias{
+		ObjectMeta: metav1.ObjectMeta{Name: "b", Namespace: "ns"},
+		Spec: litellmv1alpha1.LiteLLMModelAliasSpec{Aliases: []litellmv1alpha1.ModelAliasEntry{
+			{Name: "ack.super", Value: "carbon"},
+		}},
+	}
+	got := AggregateModelAliases([]litellmv1alpha1.LiteLLMModelAlias{winner, loser}).Fallbacks
+	want := map[string][]string{"ack.fast": {"fb1", "fb2"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Fallbacks = %v, want %v", got, want)
+	}
+}
+
+func TestAliasFallbacks(t *testing.T) {
+	got := aliasFallbacks(map[string][]string{"ack.super": {"carbon", "sonnet"}, "ack.fast": {"lite"}})
+	want := []any{
+		map[string]any{"ack.fast": []any{"lite"}},
+		map[string]any{"ack.super": []any{"carbon", "sonnet"}},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("aliasFallbacks = %v, want %v", got, want)
+	}
+	if empty := aliasFallbacks(nil); len(empty) != 0 {
+		t.Fatalf("no fallbacks must render empty, got %v", empty)
+	}
+}

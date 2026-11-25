@@ -129,7 +129,7 @@ alitellm-operator/
 | CI / PR / release lifecycle (push/PR matrix) | `references/docs/workflow.md`        |
 | Access groups / team attachment         | `docs/user-guide/access-group.md` (two disjoint namespaces + the only-ADD bypass); team = closed container, `closedTeamGrant` in `internal/controller/team_permission.go` |
 | Model-group budgets                    | `docs/user-guide/model-group-budget.md` (attribution rule; `team.models` mirror) |
-| Model aliases                          | `docs/user-guide/model-alias.md` (aggregate map) |
+| Model aliases                          | `docs/user-guide/model-alias.md` (aggregate map; the operator owns the whole `router_settings.fallbacks` list too) |
 | LiteLLM virtual keys (`/key/*`)        | `references/litellm-key-api.md` (measured shapes; hash-only rule; `allowed_routes` and the no-models sentinel) |
 | Service keys (`LiteLLMKey`)            | `docs/user-guide/key.md` (Secret ownership, `keySecretNamespaces`, rotation, routes) |
 | OLM packaging                          | NOT supported — explicit scope decision (no OperatorHub) |
