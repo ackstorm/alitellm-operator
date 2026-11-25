@@ -335,12 +335,13 @@ element, and as a JSON array when more than one is given —
 LiteLLM accepts both shapes on POST /guardrails.
 
 pre_call / post_call / during_call / logging_only are the standard
-slots. pre_mcp_call / during_mcp_call are MCP-specific. The realtime
-slot is mutually exclusive with the others (validation in the
-reconciler).
+slots. pre_mcp_call / during_mcp_call / post_mcp_call are
+MCP-specific; post_mcp_call runs on the tool result before it reaches
+the model. The realtime slot is mutually exclusive with the others
+(validation in the reconciler).
 
 _Validation:_
-- Enum: [pre_call post_call during_call logging_only pre_mcp_call during_mcp_call realtime_input_transcription]
+- Enum: [pre_call post_call during_call logging_only pre_mcp_call during_mcp_call post_mcp_call realtime_input_transcription]
 
 _Appears in:_
 - [GuardRailSpec](#guardrailspec)
@@ -358,9 +359,8 @@ the LiteLLMConnection/default instance (POST /guardrails). Two CRs
 sharing spec.guardrailName form a load-balancing pool: LiteLLM
 dispatches across all entries with identical guardrail_name.
 
-Per-key / per-team opt-in is set on LiteLLMVirtualKey /
-LiteLLMTeam.spec.guardrails []string by guardrailName (LiteLLM
-Enterprise runtime feature, out of scope here).
+Per-key / per-team opt-in (a LiteLLM Enterprise runtime feature) is
+not modeled: LiteLLMKey and LiteLLMTeam have no guardrails field.
 
 Shape mirrors LiteLLMModel: pass-through spec.params (litellm_params)
 and spec.info (guardrail_info), with {{NAME}} placeholders resolved
@@ -376,9 +376,9 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `guardrailName` _string_ | GuardrailName is the litellm_params.guardrail_name path key used<br />by LiteLLMVirtualKey.spec.guardrails / LiteLLMTeam.spec.guardrails<br />to reference this guardrail. Two LiteLLMGuardRail CRs sharing<br />this name form a load-balancing pool (operator POSTs both;<br />LiteLLM dispatches across the pool). |  | MaxLength: 253 <br />MinLength: 1 <br />Required: \{\} <br /> |
+| `guardrailName` _string_ | GuardrailName is the litellm_params.guardrail_name callers use<br />to reference this guardrail. Two LiteLLMGuardRail CRs sharing<br />this name form a load-balancing pool (operator POSTs both;<br />LiteLLM dispatches across the pool). |  | MaxLength: 253 <br />MinLength: 1 <br />Required: \{\} <br /> |
 | `provider` _string_ | Provider is forwarded verbatim as litellm_params.guardrail.<br />Open-string — any value LiteLLM accepts is allowed so the<br />operator does not require a release when upstream adds a new<br />provider. Common values (2026): litellm_content_filter, aporia,<br />lakera_v2, bedrock/guardrail, presidio, azure/text_moderations,<br />openai_moderation, model_armor, generic_guardrail_api,<br />prompt_guard, hide_secrets, custom_guardrail, custom_code.<br />See https://docs.litellm.ai/docs/guardrail_providers. |  | MinLength: 1 <br />Required: \{\} <br /> |
-| `mode` _[GuardRailMode](#guardrailmode) array_ | Mode is one or more execution slots from GuardrailEventHooks.<br />The operator emits a scalar string on the wire when len == 1<br />and an array otherwise. realtime_input_transcription must be<br />the only element (enforced in the reconciler — invalid combos<br />surface as Ready=False, reason=InvalidMode).<br />MaxItems=6 admits all six non-realtime hook slots (pre_call,<br />post_call, during_call, logging_only, pre_mcp_call, during_mcp_call)<br />in a single guardrail. realtime_input_transcription is the<br />mutually-exclusive 7th enum value, rejected here by count and<br />enforced as single-element in the reconciler. |  | Enum: [pre_call post_call during_call logging_only pre_mcp_call during_mcp_call realtime_input_transcription] <br />MaxItems: 6 <br />MinItems: 1 <br />Required: \{\} <br /> |
+| `mode` _[GuardRailMode](#guardrailmode) array_ | Mode is one or more execution slots from GuardrailEventHooks.<br />The operator emits a scalar string on the wire when len == 1<br />and an array otherwise. realtime_input_transcription must be<br />the only element (enforced in the reconciler — invalid combos<br />surface as Ready=False, reason=InvalidMode).<br />MaxItems=7 admits all seven non-realtime hook slots (pre_call,<br />post_call, during_call, logging_only, pre_mcp_call, during_mcp_call,<br />post_mcp_call) in a single guardrail. realtime_input_transcription<br />is the mutually-exclusive 8th enum value, rejected here by count<br />and enforced as single-element in the reconciler. |  | Enum: [pre_call post_call during_call logging_only pre_mcp_call during_mcp_call post_mcp_call realtime_input_transcription] <br />MaxItems: 7 <br />MinItems: 1 <br />Required: \{\} <br /> |
 | `defaultOn` _boolean_ | DefaultOn renders as litellm_params.default_on. When true the<br />guardrail evaluates on every request even when keys/teams have<br />not explicitly opted in. Server-side default is false; omit to<br />inherit. A *bool is used so a nil value omits the field from the<br />rendered body (rather than sending the Go zero value). |  |  |
 | `policyTemplate` _string_ | PolicyTemplate names a reusable rule bundle stored server-side<br />(Guardrail.policy_template — top-level field, NOT inside<br />litellm_params). When set, the named template is merged with<br />litellm_params at evaluation time. |  |  |
 | `params` _[RawExtension](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#rawextension-runtime-pkg)_ | Params is the litellm_params pass-through bag (any JSON object<br />accepted via x-kubernetes-preserve-unknown-fields). Forwarded<br />verbatim to LiteLLM on POST /guardrails and PUT<br />/guardrails/\{guardrail_id\}, after \{\{NAME\}\} substitution from<br />spec.secrets[] is applied to string-typed leaves.<br />String leaves matching "os.environ/<VAR>" pass through unchanged<br />— LiteLLM resolves them at runtime against its own process env.<br />The LiteLLM Deployment admin owns provisioning of these env<br />vars; the operator does not touch the LiteLLM Deployment.<br />Reserved keys are stripped from this bag before send and<br />surfaced via a Warning Event (reason=ReservedKeyStripped) — the<br />canonical home for each is the typed spec field shown:<br />  - guardrail        → spec.provider<br />  - mode             → spec.mode<br />  - default_on       → spec.defaultOn<br />  - policy_template  → spec.policyTemplate<br />  - guardrail_name   → spec.guardrailName<br />All other keys flow through untouched, including but not limited<br />to: api_base, api_key, weight (load-balancing), category_thresholds<br />(Lakera), patterns, blocked_words, categories, image_model<br />(litellm_content_filter), unreachable_fallback<br />(Literal["fail_closed","fail_open"]), extra_headers,<br />skip_system_message_in_guardrail, skip_tool_message_in_guardrail,<br />mask_request_content, mask_response_content,<br />violation_message_template, end_session_after_n_fails,<br />on_violation, realtime_violation_message,<br />experimental_use_latest_role_message_only,<br />additional_provider_specific_params, custom_code,<br />pangea_input_recipe, pangea_output_recipe, template_id / location<br />/ credentials / api_endpoint / fail_on_error (Model Armor),<br />guardrailIdentifier / guardrailVersion / aws_region_name /<br />aws_access_key_id / aws_secret_access_key (Bedrock),<br />presidio_analyzer_api_base / presidio_anonymizer_api_base /<br />pii_entities / output_parse_response (Presidio), ...<br />LiteLLM's litellm_params Pydantic model is extra="allow" so any<br />future field flows through without a CRD schema change. |  |  |

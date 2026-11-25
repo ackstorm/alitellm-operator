@@ -36,6 +36,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   after its retries. Written to `router_settings.fallbacks` keyed by the alias
   name. The operator owns that whole list: entries set in the LiteLLM UI or
   API are removed. See `docs/user-guide/model-alias.md`.
+- **`LiteLLMGuardRail.spec.mode` accepts `post_mcp_call`**, which runs the
+  guardrail on an MCP tool result before it reaches the model (e.g. a
+  `litellm_content_filter` that masks a credential a tool printed). The enum
+  now matches LiteLLM v1.111.0's `GuardrailEventHooks`; `MaxItems` is 7, so
+  every non-realtime mode fits in one guardrail.
 - **`LiteLLMKey.spec.allowedRoutes`** — the proxy routes a key is confined to,
   sent verbatim as `allowed_routes` and cleared when removed. A key with
   `allowedRoutes: [/metrics]` and no models can scrape LiteLLM's metrics

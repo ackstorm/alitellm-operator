@@ -416,7 +416,7 @@ func TestGuardRail_DriftCorrection_OnSpecEdit(t *testing.T) {
 
 // TestGuardRail_InvalidMode_RealtimeNotAlone surfaces
 // Ready=False reason=InvalidMode when realtime_input_transcription is
-// combined with another slot. NOTE: admission permits MaxItems=6 but
+// combined with another slot. NOTE: admission permits MaxItems=7 but
 // the reconciler enforces the realtime-exclusivity rule.
 func TestGuardRail_InvalidMode_RealtimeNotAlone(t *testing.T) {
 	ctx := context.Background()
