@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **`LiteLLMKey.spec.models` is optional.** A key that lists no model can call
+  no model: the operator sends `models: ["no-default-models"]`, because
+  LiteLLM lets a teamless key with an empty list call every model. Keys that
+  list models are unchanged.
+- **e2e runs LiteLLM v1.111.0** (`ghcr.io/berriai/litellm`), with
+  `require_auth_for_metrics_endpoint` on.
 - **~90% fewer LiteLLM reads.** Measured in prod at 165 models: ~2,700 req/h,
   91% of it `GET /model/info?model_name=`. Two causes, two fixes:
   - Secret watches now ignore metadata-only updates (`secretDataChanged`).
@@ -25,6 +31,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   real peak hour was $24). Each point is now the spend of the preceding hour.
 
 ### Added
+- **`LiteLLMKey.spec.allowedRoutes`** — the proxy routes a key is confined to,
+  sent verbatim as `allowed_routes` and cleared when removed. A key with
+  `allowedRoutes: [/metrics]` and no models can scrape LiteLLM's metrics
+  behind `require_auth_for_metrics_endpoint` and call nothing else. See
+  `docs/user-guide/key.md` § Routes.
 - **`LiteLLMKey` CRD** — a LiteLLM virtual key for one service, with no user
   and no team: `models` (required), `budget`, `rateLimits`, `secretRef`,
   `deletionPolicy`. The operator mints the value and writes it to a Secret in

@@ -29,12 +29,22 @@ type KeySecretRef struct {
 // KeySpec declares a LiteLLM virtual key with no user and no team.
 type KeySpec struct {
 	// Models the key may call, projected onto `models`. LiteLLM model names
-	// or LiteLLMModelAlias names; not validated against LiteLLM. At least
-	// one is required: a teamless key with no models can call every model.
+	// or LiteLLMModelAlias names; not validated against LiteLLM. A key with
+	// none can call no model.
 	//
-	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:items:MinLength=1
-	Models []string `json:"models"`
+	// +optional
+	Models []string `json:"models,omitempty"`
+
+	// AllowedRoutes confines the key to these proxy routes, projected
+	// verbatim onto `allowed_routes`: a path (matches itself and anything
+	// under it), a `*` wildcard or a LiteLLM route group name. It also opens
+	// admin-only routes such as /metrics to the key. Empty leaves the key on
+	// LiteLLM's default routes. Not validated against LiteLLM.
+	//
+	// +kubebuilder:validation:items:MinLength=1
+	// +optional
+	AllowedRoutes []string `json:"allowedRoutes,omitempty"`
 
 	// Budget caps the key's spend (max_budget, budget_duration).
 	//
@@ -64,7 +74,7 @@ type KeySpec struct {
 // KeyLastRenderedStatus records what was last applied to LiteLLM. It never
 // holds the key value.
 type KeyLastRenderedStatus struct {
-	// Hash is the SHA-256 of the rendered models, budget and limits.
+	// Hash is the SHA-256 of the rendered models, routes, budget and limits.
 	//
 	// +optional
 	Hash string `json:"hash,omitempty"`

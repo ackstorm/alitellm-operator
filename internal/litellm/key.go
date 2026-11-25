@@ -26,6 +26,7 @@ func HashKey(key string) string {
 type KeyInfo struct {
 	KeyAlias       string         `json:"key_alias"`
 	Models         []string       `json:"models"`
+	AllowedRoutes  []string       `json:"allowed_routes"`
 	MaxBudget      *float64       `json:"max_budget"`
 	BudgetDuration *string        `json:"budget_duration"`
 	RPMLimit       *int64         `json:"rpm_limit"`

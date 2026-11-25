@@ -73,12 +73,6 @@ func TestKey_CRDValidation(t *testing.T) {
 	ensureNoKey(t, ctx, "key-validation")
 	t.Cleanup(func() { ensureNoKey(t, context.Background(), "key-validation") })
 
-	noModels := keyCR("key-validation")
-	noModels.Spec.Models = nil
-	if err := k8sClient.Create(ctx, noModels); !apierrors.IsInvalid(err) {
-		t.Fatalf("empty models must be rejected, got %v", err)
-	}
-
 	ok := keyCR("key-validation")
 	if err := k8sClient.Create(ctx, ok); err != nil {
 		t.Fatal(err)
@@ -251,6 +245,35 @@ func TestKey_SpecChange_UpdatesAndClears(t *testing.T) {
 	if litellm.HashKey(keyValue(t, ctx, "key-update")) != hash {
 		t.Error("a spec change must not rotate the key value")
 	}
+}
+
+func TestKey_AllowedRoutes_SetAndCleared(t *testing.T) {
+	ctx := context.Background()
+	keyTestSetup(t, "key-routes")
+	cr := keyCR("key-routes")
+	cr.Spec.Models = nil
+	cr.Spec.AllowedRoutes = []string{"/metrics"}
+	if err := k8sClient.Create(ctx, cr); err != nil {
+		t.Fatal(err)
+	}
+	got := pollKeyReason(t, ctx, "key-routes", reasonSynced)
+	hash := litellm.HashKey(keyValue(t, ctx, "key-routes"))
+	if row, _ := mockServer.Key(hash); fmt.Sprint(row["models"]) != "[no-default-models]" ||
+		fmt.Sprint(row["allowed_routes"]) != "[/metrics]" {
+		t.Fatalf("stored key: %v", row)
+	}
+
+	got.Spec.AllowedRoutes = nil
+	if err := k8sClient.Update(ctx, got); err != nil {
+		t.Fatal(err)
+	}
+	// The mock answers 400 to a null, as LiteLLM does, so only [] clears.
+	waitKey(t, "allowed_routes cleared in LiteLLM", func() bool {
+		row, _ := mockServer.Key(hash)
+		routes, ok := row["allowed_routes"].([]any)
+		return ok && len(routes) == 0
+	})
+	pollKeyReason(t, ctx, "key-routes", reasonSynced)
 }
 
 func TestKey_LostInLiteLLM_RegeneratedWithSameValue(t *testing.T) {

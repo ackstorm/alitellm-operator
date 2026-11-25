@@ -61,6 +61,17 @@ spec:
             description: KeySpec declares a LiteLLM virtual key with no user and no
               team.
             properties:
+              allowedRoutes:
+                description: |-
+                  AllowedRoutes confines the key to these proxy routes, projected
+                  verbatim onto `allowed_routes`: a path (matches itself and anything
+                  under it), a `*` wildcard or a LiteLLM route group name. It also opens
+                  admin-only routes such as /metrics to the key. Empty leaves the key on
+                  LiteLLM's default routes. Not validated against LiteLLM.
+                items:
+                  minLength: 1
+                  type: string
+                type: array
               budget:
                 description: Budget caps the key's spend (max_budget, budget_duration).
                 properties:
@@ -96,12 +107,11 @@ spec:
               models:
                 description: |-
                   Models the key may call, projected onto `models`. LiteLLM model names
-                  or LiteLLMModelAlias names; not validated against LiteLLM. At least
-                  one is required: a teamless key with no models can call every model.
+                  or LiteLLMModelAlias names; not validated against LiteLLM. A key with
+                  none can call no model.
                 items:
                   minLength: 1
                   type: string
-                minItems: 1
                 type: array
               rateLimits:
                 description: RateLimits caps the key's request and token rate (rpm_limit,
@@ -161,7 +171,6 @@ spec:
                 - message: secretRef is immutable
                   rule: self == oldSelf
             required:
-            - models
             - secretRef
             type: object
           status:
@@ -234,8 +243,8 @@ spec:
                     format: date-time
                     type: string
                   hash:
-                    description: Hash is the SHA-256 of the rendered models, budget
-                      and limits.
+                    description: Hash is the SHA-256 of the rendered models, routes,
+                      budget and limits.
                     type: string
                   keyAlias:
                     description: KeyAlias is the key's alias in LiteLLM (metadata.name).

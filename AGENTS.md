@@ -130,8 +130,8 @@ alitellm-operator/
 | Access groups / team attachment         | `docs/user-guide/access-group.md` (two disjoint namespaces + the only-ADD bypass); team = closed container, `closedTeamGrant` in `internal/controller/team_permission.go` |
 | Model-group budgets                    | `docs/user-guide/model-group-budget.md` (attribution rule; `team.models` mirror) |
 | Model aliases                          | `docs/user-guide/model-alias.md` (aggregate map) |
-| LiteLLM virtual keys (`/key/*`)        | `references/litellm-key-api.md` (measured shapes; hash-only rule) |
-| Service keys (`LiteLLMKey`)            | `docs/user-guide/key.md` (Secret ownership, `keySecretNamespaces`, rotation) |
+| LiteLLM virtual keys (`/key/*`)        | `references/litellm-key-api.md` (measured shapes; hash-only rule; `allowed_routes` and the no-models sentinel) |
+| Service keys (`LiteLLMKey`)            | `docs/user-guide/key.md` (Secret ownership, `keySecretNamespaces`, rotation, routes) |
 | OLM packaging                          | NOT supported — explicit scope decision (no OperatorHub) |
 
 ## CI gating — one-line summary
@@ -1626,6 +1626,22 @@ c.GetKeyInfo(ctx, value)        // sk-… in the query string → access logs
 ✅ `c.GetKeyInfo(ctx, litellm.HashKey(value))`. Only the `/key/generate` body
 carries the raw value. `TestKey_ValueNeverLeaks` checks every recorded URL
 and body. Shapes: `references/litellm-key-api.md`.
+
+### ❌ Sending a LiteLLMKey with `models: []`, or clearing `allowed_routes` with null
+```go
+body["models"] = s.Models            // [] → the key can call EVERY model
+body["allowed_routes"] = nil         // POST /key/update answers 400, list kept
+```
+✅ `renderKeyBody` (`key_controller.go`) sends `keyModels(s)`, which is
+`["no-default-models"]` for a key that lists none, and always a non-nil
+`allowed_routes` (`[]` clears).
+WHY: `allowed_routes` does not close the model check. A key with `models: []`
+and `allowed_routes: ["/v1/chat/completions"]` reached the provider for a model
+it never listed; the same key with the sentinel got 403
+`key_model_access_denied`. And `allowed_routes` is the one managed key field
+LiteLLM refuses as `null`, unlike budget and limits. Measured on 1.106.0 and
+1.111.0-dev.4; e2e `KEY-02` and `TestKey_AllowedRoutes_SetAndCleared` guard it
+(the mock 400s a null too).
 
 ## Repository-specific patterns
 

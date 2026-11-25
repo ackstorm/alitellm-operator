@@ -328,6 +328,11 @@ func (in *KeySpec) DeepCopyInto(out *KeySpec) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.AllowedRoutes != nil {
+		in, out := &in.AllowedRoutes, &out.AllowedRoutes
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	if in.Budget != nil {
 		in, out := &in.Budget, &out.Budget
 		*out = new(BudgetSpec)
