@@ -419,7 +419,7 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `hash` _string_ | Hash is the SHA-256 of the rendered models, budget and limits. |  |  |
+| `hash` _string_ | Hash is the SHA-256 of the rendered models, routes, budget and limits. |  |  |
 | `keyAlias` _string_ | KeyAlias is the key's alias in LiteLLM (metadata.name). |  |  |
 | `at` _[Time](https://kubernetes.io/docs/reference/generated/kubernetes-api/v/#time-v1-meta)_ |  |  |  |
 
@@ -457,7 +457,8 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `models` _string array_ | Models the key may call, projected onto `models`. LiteLLM model names<br />or LiteLLMModelAlias names; not validated against LiteLLM. At least<br />one is required: a teamless key with no models can call every model. |  | MinItems: 1 <br />items:MinLength: 1 <br /> |
+| `models` _string array_ | Models the key may call, projected onto `models`. LiteLLM model names<br />or LiteLLMModelAlias names; not validated against LiteLLM. A key with<br />none can call no model. |  | items:MinLength: 1 <br /> |
+| `allowedRoutes` _string array_ | AllowedRoutes confines the key to these proxy routes, projected<br />verbatim onto `allowed_routes`: a path (matches itself and anything<br />under it), a `*` wildcard or a LiteLLM route group name. It also opens<br />admin-only routes such as /metrics to the key. Empty leaves the key on<br />LiteLLM's default routes. Not validated against LiteLLM. |  | items:MinLength: 1 <br /> |
 | `budget` _[BudgetSpec](#budgetspec)_ | Budget caps the key's spend (max_budget, budget_duration). |  |  |
 | `rateLimits` _[RateLimitsSpec](#ratelimitsspec)_ | RateLimits caps the key's request and token rate (rpm_limit, tpm_limit). |  |  |
 | `secretRef` _[KeySecretRef](#keysecretref)_ | SecretRef is where the key value is written. Immutable: to move the<br />Secret, delete and recreate the LiteLLMKey. |  |  |

@@ -4,7 +4,9 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -56,8 +58,35 @@ func TestKeyInSync(t *testing.T) {
 			t.Errorf("%s drift not detected", name)
 		}
 	}
-	if !keyInSync(&litellmv1alpha1.KeySpec{Models: []string{"a"}}, &litellm.KeyInfo{Models: []string{"a"}}) {
-		t.Error("nil budget and limits must match a key with none")
+	if !keyInSync(&litellmv1alpha1.KeySpec{Models: []string{"a"}}, &litellm.KeyInfo{Models: []string{"a"}, AllowedRoutes: []string{}}) {
+		t.Error("nil budget, limits and routes must match a key with none")
+	}
+
+	routes := &litellmv1alpha1.KeySpec{AllowedRoutes: []string{"/metrics"}}
+	if !keyInSync(routes, &litellm.KeyInfo{Models: []string{modelDenyAllSentinel}, AllowedRoutes: []string{"/metrics"}}) {
+		t.Error("a key with no models must match the sentinel")
+	}
+	for name, got := range map[string]*litellm.KeyInfo{
+		"no models in LiteLLM": {AllowedRoutes: []string{"/metrics"}},
+		"routes cleared":       {Models: []string{modelDenyAllSentinel}},
+		"extra route":          {Models: []string{modelDenyAllSentinel}, AllowedRoutes: []string{"/metrics", "/key/info"}},
+	} {
+		if keyInSync(routes, got) {
+			t.Errorf("%s drift not detected", name)
+		}
+	}
+}
+
+func TestRenderKeyBody_NoModelsNoRoutes(t *testing.T) {
+	b, err := json.Marshal(renderKeyBody(&litellmv1alpha1.KeySpec{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// An empty models list is every model, and LiteLLM rejects a null allowed_routes.
+	for _, want := range []string{`"models":["no-default-models"]`, `"allowed_routes":[]`} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("body %s lacks %s", b, want)
+		}
 	}
 }
 

@@ -296,12 +296,24 @@ func (r *KeyReconciler) deleteOwnedSecret(ctx context.Context, k *litellmv1alpha
 	return err
 }
 
+// keyModels returns the models sent to LiteLLM. An empty `models` lets a
+// teamless key call every model on any route it can reach, so a key that
+// lists none carries the sentinel nothing matches.
+func keyModels(s *litellmv1alpha1.KeySpec) []string {
+	if len(s.Models) == 0 {
+		return []string{modelDenyAllSentinel}
+	}
+	return slices.Sorted(slices.Values(s.Models))
+}
+
 // renderKeyBody builds the fields the operator manages on the key. Unset
 // budget and limit fields are nil so they reach LiteLLM as JSON null and
-// clear a value removed from the spec.
+// clear a value removed from the spec. allowed_routes is cleared with [],
+// never nil: LiteLLM answers 400 to a null there.
 func renderKeyBody(s *litellmv1alpha1.KeySpec) map[string]any {
 	body := map[string]any{
-		"models":          slices.Sorted(slices.Values(s.Models)),
+		"models":          keyModels(s),
+		"allowed_routes":  append([]string{}, s.AllowedRoutes...),
 		"max_budget":      nil,
 		"budget_duration": nil,
 		"rpm_limit":       nil,
@@ -340,7 +352,8 @@ func keyInSync(s *litellmv1alpha1.KeySpec, got *litellm.KeyInfo) bool {
 	if rl == nil {
 		rl = &litellmv1alpha1.RateLimitsSpec{}
 	}
-	return slices.Equal(slices.Sorted(slices.Values(s.Models)), slices.Sorted(slices.Values(got.Models))) &&
+	return slices.Equal(keyModels(s), slices.Sorted(slices.Values(got.Models))) &&
+		slices.Equal(s.AllowedRoutes, got.AllowedRoutes) &&
 		floatPtrEqual(b.Limit, got.MaxBudget) && b.Period == derefString(got.BudgetDuration) &&
 		keyLimitEqual(rl.RPM, got.RPMLimit) && keyLimitEqual(rl.TPM, got.TPMLimit)
 }

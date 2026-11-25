@@ -88,10 +88,11 @@ install_toolhive() {
 }
 
 install_litellm() {
-  local version image_tag image
+  local version image_tag image_repo image
   version="$(awk '/^chartVersion:/ {print $2}' "${DEPS_DIR}/litellm.values.yaml")"
   image_tag="$(awk '/^[[:space:]]*tag:/ {print $2; exit}' "${DEPS_DIR}/litellm.values.yaml")"
-  image="ghcr.io/berriai/litellm-database:${image_tag}"
+  image_repo="$(awk '/^[[:space:]]*repository:/ {print $2; exit}' "${DEPS_DIR}/litellm.values.yaml")"
+  image="${image_repo}:${image_tag}"
 
   # β: pre-pull the LiteLLM image into the node so the migrations Job (and
   # the runtime Deployment) hit a locally-resident image. Combined with

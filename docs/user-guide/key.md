@@ -2,8 +2,8 @@
 
 A `LiteLLMKey` creates a LiteLLM virtual key for one service and writes its
 value to a Secret in that service's namespace. The key has no user and no
-team: it can call the models you list, within the budget and rate limits you
-set. Verified on LiteLLM 1.106.0.
+team: it can call the models you list, on the routes you allow, within the
+budget and rate limits you set. Verified on LiteLLM 1.111.0.
 
 Use it so a service does not need the LiteLLM master key.
 
@@ -34,7 +34,8 @@ env:
 
 | Field | Notes |
 |---|---|
-| `spec.models` | Required, at least one. LiteLLM lets a teamless key with no models call every model, so an empty list is rejected. Names are not checked against LiteLLM. |
+| `spec.models` | Models the key may call. A key with none can call no model: LiteLLM lets a teamless key with an empty list call every model, so the operator sends LiteLLM's `no-default-models` in its place. Names are not checked against LiteLLM. |
+| `spec.allowedRoutes` | Proxy routes the key is confined to, sent verbatim as `allowed_routes`. See [Routes](#routes). Removing it clears the restriction. |
 | `spec.budget` | `limit` in USD and `period` such as `30d`. Removing it clears the budget. |
 | `spec.rateLimits` | `rpm` and `tpm`. Removing it clears the limits. |
 | `spec.secretRef` | Where the key is written. Immutable. To move the Secret, delete the `LiteLLMKey` and create it again. |
@@ -42,6 +43,49 @@ env:
 
 The key's alias in LiteLLM is the `LiteLLMKey` name. LiteLLM requires an alias
 of at least two characters.
+
+## Routes
+
+Without `allowedRoutes` a key reaches the routes LiteLLM gives any virtual
+key: the model APIs and a few read-only ones. With it, the key reaches only
+the routes listed. An entry is one of:
+
+- a path, which matches itself and everything under it (`/metrics` covers
+  `/metrics/`);
+- a pattern with `*` (`/v1/*`);
+- a LiteLLM route group name (`llm_api_routes`, `info_routes`).
+
+Entries are not checked against LiteLLM.
+
+!!! warning "An entry also opens an admin-only route"
+    A route that LiteLLM reserves for admins becomes reachable by the key
+    when an entry matches it. That is what makes a scrape key work, and it
+    applies to every other admin route too. List only what the consumer
+    calls.
+
+`allowedRoutes` does not grant models. A key that lists a model route and no
+`models` is refused there with `key_model_access_denied`.
+
+### A key for Prometheus
+
+With `litellm_settings.require_auth_for_metrics_endpoint` on, LiteLLM
+refuses a plain virtual key on `/metrics` with 401. This key can scrape and
+do nothing else:
+
+```yaml
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMKey
+metadata:
+  name: prometheus-scrape
+  namespace: litellm-system
+spec:
+  allowedRoutes: [/metrics]
+  secretRef: {namespace: monitoring, name: litellm-scrape-key, key: api-key}
+  deletionPolicy: Delete
+```
+
+LiteLLM serves the metrics at `/metrics/` and answers `/metrics` with a 307
+redirect to it.
 
 ## Allow the target namespace
 
@@ -85,7 +129,7 @@ Pods that read the key from an environment variable must be restarted.
 - Generates the value itself (`sk-` plus 26 random characters) and passes it
   to `POST /key/generate`. If LiteLLM loses the key, the operator registers
   the same value again and the service keeps working.
-- Corrects models, budget and limits changed outside the CR.
+- Corrects models, routes, budget and limits changed outside the CR.
 - Never writes to a Secret it did not create. An existing Secret with the
   same name gives `Ready=False`, reason `SecretNotOwned`.
 - Never deletes a LiteLLM key it did not create. A key that already holds the
@@ -113,6 +157,6 @@ A namespace that does not exist has no RoleBinding, so a `LiteLLMKey` that targe
 
 ## Limits
 
-- The key restricts models only. It carries no agent or MCP permissions of its own, so LiteLLM's defaults for a key without a team apply: A2A agents registered on the proxy are reachable with it unless `general_settings.agent_access_default_deny` is set on the proxy. What such a key can reach on MCP servers is not verified.
+- The key restricts models and routes only. It carries no agent or MCP permissions of its own, so LiteLLM's defaults for a key without a team apply: A2A agents registered on the proxy are reachable with it unless `general_settings.agent_access_default_deny` is set on the proxy. What such a key can reach on MCP servers is not verified.
 - One operator per LiteLLM. Two operators that share a LiteLLM and each have a `LiteLLMKey` with the same name replace and delete each other's key: a key is matched by its alias and the `managed-by` mark, not by which operator created it.
 - No team attachment, expiry or automatic rotation.

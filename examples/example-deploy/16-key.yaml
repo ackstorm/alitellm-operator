@@ -16,3 +16,14 @@ spec:
   rateLimits: {rpm: 60}
   secretRef: {namespace: billing, name: billing-llm-key, key: api-key}
   deletionPolicy: Delete
+---
+# A key confined to /metrics, for Prometheus when LiteLLM runs with
+# litellm_settings.require_auth_for_metrics_endpoint. It can call no model.
+apiVersion: litellm.ackstorm.ai/v1alpha1
+kind: LiteLLMKey
+metadata:
+  name: prometheus-scrape
+spec:
+  allowedRoutes: [/metrics]
+  secretRef: {namespace: monitoring, name: litellm-scrape-key, key: api-key}
+  deletionPolicy: Delete
